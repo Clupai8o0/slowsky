@@ -13,7 +13,7 @@ button { cursor: pointer; }
 
 .sk {
     --void: #03050b;
-    --ink: #eef1f6; --ink2: #c2c8d3; --mute: #8a92a3; --faint: #5a6273;
+    --ink: #eef1f6; --ink2: #c2c8d3; --mute: #9aa1b1; --faint: #7a8294; /* faint still clears 4.5:1 on the void and on the halo */
     --hair: rgba(255, 255, 255, .07); --hair2: rgba(255, 255, 255, .14); --fill: rgba(255, 255, 255, .055); --fill2: rgba(255, 255, 255, .1);
     --gold: #ffc861; --neg: #5c96f0; --pos: #f3983a;
     --trk: rgba(255, 255, 255, .13); --trk-on: rgba(255, 255, 255, .78);
@@ -165,12 +165,14 @@ button { cursor: pointer; }
 
 .sk-strip { display: flex; gap: 14px; padding: 14px 3px 2px; overflow-x: auto; scrollbar-width: none; }
 .sk-strip::-webkit-scrollbar { display: none; }
-.sk-strip button { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; text-align: left; opacity: .45; transition: opacity 200ms var(--ease); }
-.sk-strip button:hover { opacity: .85; }
-.sk-strip canvas { width: 52px; height: 52px; display: block; background: #000; image-rendering: pixelated; outline: 1px solid var(--hair); transition: transform 240ms var(--ease), outline-color 200ms var(--ease); }
-.sk-strip button[aria-current=true] { opacity: 1; }
+/* Unpicked frames dim their picture only, so the dates stay readable. */
+.sk-strip button { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; text-align: left; }
+.sk-strip button canvas { opacity: .45; }
+.sk-strip button:hover canvas { opacity: .85; }
+.sk-strip canvas { width: 52px; height: 52px; display: block; background: #000; image-rendering: pixelated; outline: 1px solid var(--hair); transition: transform 240ms var(--ease), outline-color 200ms var(--ease), opacity 200ms var(--ease); }
+.sk-strip button[aria-current=true] canvas { opacity: 1; }
 .sk-strip button[aria-current=true] canvas { outline: 1px solid #fff; outline-offset: 3px; transform: translateY(-3px); }
-.sk[data-mode=stack] .sk-strip button, .sk[data-mode=diff] .sk-strip button:first-child, .sk[data-mode=diff] .sk-strip button:last-child { opacity: 1; }
+.sk[data-mode=stack] .sk-strip canvas, .sk[data-mode=diff] .sk-strip button:first-child canvas, .sk[data-mode=diff] .sk-strip button:last-child canvas { opacity: 1; }
 .sk-strip small { font: 10.5px/1.35 var(--mono); color: var(--faint); white-space: nowrap; }
 .sk-strip small b { display: block; font-weight: 400; color: var(--ink2); }
 
