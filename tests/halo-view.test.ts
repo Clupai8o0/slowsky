@@ -81,7 +81,7 @@ function fake(points: HaloCurvePoint[], dropped = 0, extra: Partial<typeof R10> 
     };
 }
 
-const ring = () => ({ ringIn: 10, ringOut: 20 });
+const ring = () => ({ ringIn: 10, ringOut: 20, margin: 2 }); // margin: halo round 10
 
 describe('haloFor', () => {
     it('measures the ring with the real module and maps each look back to its frame', () => {
@@ -183,14 +183,14 @@ describe('haloFor', () => {
         const r = result([5000, 5000, 5000]);
         const curve = vi.fn(fake([point(MJD0), point(MJD0 + 100), point(MJD0 + 200)]));
         // REFS sit about 71 px from the target: a ring out to 60 px leaves no room for their own sky ring.
-        expect(haloFor(r, { ring: () => ({ ringIn: 10, ringOut: 60 }), curve })).toBeNull();
+        expect(haloFor(r, { ring: () => ({ ringIn: 10, ringOut: 60, margin: 2 }), curve })).toBeNull();
         expect(curve).not.toHaveBeenCalled();
         expect(haloFor(r, { ring, curve })!.refs).toBeGreaterThanOrEqual(2);
         // Four bright stars too close and two fainter ones far enough out: the fainter two are used.
         const near = [{ x: 120, y: 80 }, { x: 40, y: 80 }, { x: 80, y: 120 }, { x: 80, y: 40 }]; // 40 px out: past the default cut, inside 20 + sky ring
         const r2 = result([5000, 5000, 5000]);
         r2.stars = [...near.map((at, i) => star(`n${i}`, at, 9.5 + i * 0.1)), star('f0', REFS[0]!, 14), star('f1', REFS[3]!, 14.5)];
-        const h2 = haloFor(r2, { ring: () => ({ ringIn: 5, ringOut: 20 }), curve })!;
+        const h2 = haloFor(r2, { ring: () => ({ ringIn: 5, ringOut: 20, margin: 2 }), curve })!;
         expect(h2.refs).toBe(2);
     });
 
