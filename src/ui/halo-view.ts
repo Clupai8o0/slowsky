@@ -200,7 +200,9 @@ export function haloHtml(h: HaloView, name: string, on: number): string
         }
         // One reading compared with its own median always reads +0.0%, so show only its noise.
         const one = h.points.length === 1;
-        const rows = h.points.map((p) => `<tr><td>${date(p.mjd, true)}</td><td>${p.lambda.toFixed(3)} µm</td>`
+        // Each look's date is a button that shows that frame in Blink, as the dots on the curve do.
+        const rows = h.points.map((p) => `<tr><td><button type="button" class="sk-halo-k${p.k === on ? ' on' : ''}" data-k="${p.k}"`
+            + `${p.k === on ? ' aria-current="true"' : ''} aria-label="Show the look of ${date(p.mjd, true)}">${date(p.mjd, true)}</button></td><td>${p.lambda.toFixed(3)} µm</td>`
             + `<td>${one ? `one reading, nothing to compare (noise ± ${(p.err * 100).toFixed(1)}%)` : `${pct(p.relative)} ± ${(p.err * 100).toFixed(1)}%`}</td></tr>`).join('');
         const table = `<table class="sk-halo-t"><caption class="sk-sr">Light in the ring, each look</caption>`
             + '<thead><tr><th scope="col">Look</th><th scope="col">Colour</th><th scope="col">Ring light vs the median of these looks</th></tr></thead>'

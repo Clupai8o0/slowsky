@@ -379,6 +379,12 @@ button { cursor: pointer; }
 .sk-halo-t th { padding: 0 10px 6px 0; color: var(--mute); font-weight: 400; text-align: left; }
 .sk-halo-t td { padding: 4px 10px 4px 0; white-space: nowrap; }
 .sk-halo-t th:last-child, .sk-halo-t td:last-child { padding-right: 0; text-align: right; }
+.sk-halo-k { padding: 0; border: 0; border-radius: 2px; background: none; color: inherit; font: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.sk-halo-k.on { color: var(--ink); text-decoration-style: solid; }
+.sk-halo-k:focus-visible { outline: 2px solid rgba(255, 255, 255, .6); outline-offset: 2px; }
+@media (max-width: 1080px) {
+    .sk-halo-k { min-height: 44px; }
+}
 .sk-lcx .b { display: inline-flex; align-items: center; gap: 6px; }
 .sk-lcx .b i { width: 12px; height: 7px; border-radius: 1px; background: rgba(255, 255, 255, .14); }
 .sk-m-details { margin-top: 44px; gap: 14px; flex: none; }

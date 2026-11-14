@@ -130,6 +130,7 @@ describe('haloFor', () => {
         const html = haloHtml(h, 'R Draconis', -1);
         expect(html).toContain('could be measured in 2 of 2 looks, taken on 1 visit. A curve is drawn only from looks on at least 3 visits, all within 0.005 µm of colour; these looks do not meet that, so each reading is listed instead.');
         expect(html).toContain('<table');
+        expect(html).toMatch(/<button type="button" class="sk-halo-k" data-k="\d+" aria-label="Show the look of [^"]+">/);
         expect(html).not.toContain('<svg');
         expect(html).toContain('0.820 µm');
         expect(html).toContain('+6.0% ± 2.0%');
