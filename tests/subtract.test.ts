@@ -3,7 +3,7 @@ import { StackError, stackVisit, subtract } from '../src/lib/stack';
 import type { SkyResult } from '../src/lib/source';
 import type { FrameRecord, OutputGrid, RegriddedFrame } from '../src/lib/types';
 import { frameMjd, visitsOf } from '../src/ui/measure';
-import { combineVisits, defaultPicks, headerDates, subtractText, visitDates, visitGroups, visitImage, visitLabel, type Visit } from '../src/ui/subtract';
+import { combineVisits, defaultPicks, headerDates, subtractText, visitDates, visitGroups, visitImage, visitLabel, visitMonths, type Visit } from '../src/ui/subtract';
 
 const W = 4;
 const grid: OutputGrid = { center: { ra: 10, dec: 20 }, fovDeg: 0.1, pixelArcsec: 6.15, width: W, height: W };
@@ -166,6 +166,14 @@ describe('subtractText and visitLabel', () => {
         expect(visitDates(visitA2)).toBe('28 Dec 2024 – 3 Jan 2025');
         expect(visitDates(visitC2)).toBe('30 Apr – 8 May 2026');
         expect(visitDates(visitD2)).toBe('1 Jun 2026');
+    });
+
+    it('names both months when a visit runs over a month end, so the looks sentence agrees with the frame dates', () => {
+        const mjd = (iso: string) => Date.parse(iso) / 86400000 + 40587;
+        expect(visitMonths({ mjd: mjd('2026-04-12T00:00:00Z'), end: mjd('2026-04-12T00:00:00Z') })).toBe('Apr 2026');
+        expect(visitMonths({ mjd: mjd('2026-04-03T00:00:00Z'), end: mjd('2026-04-30T23:59:59Z') })).toBe('Apr 2026');
+        expect(visitMonths({ mjd: mjd('2026-04-30T22:00:00Z'), end: mjd('2026-05-01T02:00:00Z') })).toBe('Apr–May 2026');
+        expect(visitMonths({ mjd: mjd('2025-12-28T00:00:00Z'), end: mjd('2026-01-03T00:00:00Z') })).toBe('Dec 2025–Jan 2026');
     });
 
     it('writes header months, or full dates when the two visits share a month', () => {
