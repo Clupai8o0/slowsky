@@ -704,7 +704,7 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('lcwrap').hidden = hideChart;
         ref<HTMLElement>('lcx').hidden = hideChart;
         if (hideChart) {
-            bind('lcNote', `${blendAt}, inside the measuring circle, so its light mixes in. No curve is drawn below 4.4 µm; slide the colour to 4.4 µm or longer.`);
+            bind('lcNote', `${blendAt}, close enough that its light may reach the measuring circle. No curve is drawn below 4.4 µm; slide the colour to 4.4 µm or longer.`);
             return;
         }
         const ys = pts.map((o) => o.p.relative);

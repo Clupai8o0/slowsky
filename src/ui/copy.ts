@@ -46,7 +46,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         kind: 'cold',
         headline: 'WISE 0855, the coldest neighbour',
         show: 'The coldest brown dwarf known. It gives almost no light at short colours: slide to the longest colours to see it appear.',
-        not: 'What it gives off at each colour comes from earlier telescopes, not from these frames.',
+        not: 'The notes on its colours come from earlier telescopes. Only the brightness curve is measured from these frames.',
     },
     rdra: {
         display: 'R Draconis',
@@ -60,7 +60,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
 
 export const CUSTOM_COPY = {
     headline: 'A patch of sky you chose',
-    show: 'SPHEREx looks at this spot, matched closely in colour, in date order. Anything that moves or changes will jump out when it blinks.',
+    show: 'SPHEREx looks at this spot, matched closely in colour, in date order. Blinking shows movement or changes big enough to stand out from the noise.',
     not: 'Nothing is known about this spot here. A change can be noise, a satellite trail or a camera artefact.',
 };
 
