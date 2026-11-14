@@ -97,10 +97,10 @@ export function regridNorthUp(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float
     const cosD0 = Math.cos(dec0);
     const sky: SkyCoord = { ra: 0, dec: 0 };
 
-    // The grid-to-detector map is smooth, so evaluate the exact wcs.skyToPix on a coarse
-    // lattice (every STEP output pixels, plus the last row and column) and interpolate
-    // the detector position bilinearly between nodes. At STEP 8 the error is far below 0.01 px.
-    const STEP = 8;
+    // Evaluate exact wcs.skyToPix on a lattice and interpolate detector positions bilinearly.
+    // Limit each cell to 8 native SPHEREx pixels (6.15 arcsec each), at most 8 output pixels;
+    // coarse grids use every output pixel. Always include the last row and column.
+    const STEP = Math.max(1, Math.min(8, Math.floor(8 * NATIVE_PIXEL_ARCSEC / grid.pixelArcsec)));
     const nx = Math.ceil((width - 1) / STEP) + 1;
     const ny = Math.ceil((height - 1) / STEP) + 1;
     const nodeX = new Float64Array(nx * ny);

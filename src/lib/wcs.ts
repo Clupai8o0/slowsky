@@ -109,6 +109,32 @@ function evalSip(s: SipCoeffs | undefined, u: number, v: number): number
     return sum;
 }
 
+function sipGradient(s: SipCoeffs | undefined, u: number, v: number): [number, number]
+{
+    let du = 0;
+    let dv = 0;
+    if (s) {
+        for (let p = 0; p <= s.order; p++) {
+            const row = s.coeffs[p];
+            if (!row) {
+                continue;
+            }
+            for (let q = 0; q <= s.order - p; q++) {
+                const c = row[q];
+                if (c) {
+                    if (p > 0) {
+                        du += c * p * Math.pow(u, p - 1) * Math.pow(v, q);
+                    }
+                    if (q > 0) {
+                        dv += c * q * Math.pow(u, p) * Math.pow(v, q - 1);
+                    }
+                }
+            }
+        }
+    }
+    return [du, dv];
+}
+
 function wrapRa(ra: number): number
 {
     let r = ra % 360;
@@ -118,7 +144,7 @@ function wrapRa(ra: number): number
     return r;
 }
 
-// pixToSky applies SIP A/B; skyToPix applies AP/BP and then refines by iteration.
+// pixToSky applies SIP A/B; skyToPix uses AP/BP as a guess and refines with Newton's method.
 export function makeWcs(params: WcsParams): Wcs
 {
     const [cd11, cd12] = params.cd[0];
@@ -169,16 +195,25 @@ export function makeWcs(params: WcsParams): Wcs
             let u = U + evalSip(params.ap, U, V);
             let v = V + evalSip(params.bp, U, V);
             for (let i = 0; i < 50; i++) {
-                const [fx, fy] = forwardUV(u, v);
-                const fU = (cd22 * fx - cd12 * fy) / det;
-                const fV = (-cd21 * fx + cd11 * fy) / det;
-                const du = U - fU;
-                const dv = V - fV;
-                u += du;
-                v += dv;
-                if (Math.abs(du) < 1e-9 && Math.abs(dv) < 1e-9) {
+                const fU = u + evalSip(params.a, u, v) - U;
+                const fV = v + evalSip(params.b, u, v) - V;
+                const [au, av] = sipGradient(params.a, u, v);
+                const [bu, bv] = sipGradient(params.b, u, v);
+                const jacDet = (1 + au) * (1 + bv) - av * bu;
+                if (!Number.isFinite(jacDet) || jacDet === 0) {
                     break;
                 }
+                const du = ((1 + bv) * fU - av * fV) / jacDet;
+                const dv = ((1 + au) * fV - bu * fU) / jacDet;
+                u -= du;
+                v -= dv;
+                if (Math.hypot(du, dv) < 1e-9) {
+                    break;
+                }
+            }
+            const residual = Math.hypot(u + evalSip(params.a, u, v) - U, v + evalSip(params.b, u, v) - V);
+            if (!(residual <= 1e-6)) {
+                return { x: NaN, y: NaN };
             }
             return { x: u + params.crpix[0] - 1, y: v + params.crpix[1] - 1 };
         },

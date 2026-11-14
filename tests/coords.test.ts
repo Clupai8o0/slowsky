@@ -4,6 +4,10 @@ import { formatDec, formatRa, parseCoords, resolveName, separationDeg } from '..
 const RW_AUR = { ra: 76.95625, dec: 30.4014 };
 
 describe('parseCoords', () => {
+    it('accepts a doubled-apostrophe arcsecond marker', () => {
+        expect(parseCoords("12h30m +20d30'00''")).toEqual({ ra: 187.5, dec: 20.5 });
+    });
+
     it('reads decimal degrees in several spellings', () => {
         expect(parseCoords('76.956 30.401')).toEqual({ ra: 76.956, dec: 30.401 });
         expect(parseCoords('76.956, +30.401')).toEqual({ ra: 76.956, dec: 30.401 });
@@ -17,6 +21,34 @@ describe('parseCoords', () => {
         for (const got of [a, b, c]) {
             expect(got?.ra).toBeCloseTo(RW_AUR.ra, 4);
             expect(got?.dec).toBeCloseTo(RW_AUR.dec, 4);
+        }
+    });
+
+    it('preserves explicit RA hour markers', () => {
+        expect(parseCoords('12h +20d')).toEqual({ ra: 180, dec: 20 });
+        expect(parseCoords('12H +20d')).toEqual({ ra: 180, dec: 20 });
+        expect(parseCoords('30m +20d')).toEqual({ ra: 7.5, dec: 20 });
+        expect(parseCoords('30s +20d')).toEqual({ ra: 0.125, dec: 20 });
+        expect(parseCoords('24h +20d')).toBeNull();
+    });
+
+    it('preserves explicit RA degree markers', () => {
+        for (const ra of ['12d30m', '12°30′', "12d30'", '12d30m00s', '12°30′00″']) {
+            expect(parseCoords(`${ra} +20d`), ra).toEqual({ ra: 12.5, dec: 20 });
+        }
+        expect(parseCoords('180d30m +20d')).toEqual({ ra: 180.5, dec: 20 });
+        expect(parseCoords('360d00m +20d')).toBeNull();
+    });
+
+    it('always interprets Dec markers as degrees', () => {
+        expect(parseCoords('12h +20d30m')).toEqual({ ra: 180, dec: 20.5 });
+        expect(parseCoords('12h -20°30′')).toEqual({ ra: 180, dec: -20.5 });
+        expect(parseCoords('180 +30m')).toEqual({ ra: 180, dec: 0.5 });
+    });
+
+    it('rejects RA with mixed hour and degree markers', () => {
+        for (const ra of ['12h30d', '12d30h', '12h30°', '12h30′', '12h30\'']) {
+            expect(parseCoords(`${ra} +20d`), ra).toBeNull();
         }
     });
 

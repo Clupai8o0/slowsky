@@ -79,6 +79,31 @@ for (const frame of ['frame1', 'frame2']) {
 }
 
 describe('wcs misc', () => {
+    it('round trips strong forward SIP distortion within 1e-6 px', () => {
+        const wcs = makeWcs({
+            crpix: [1, 1], crval: [0, 0], cd: [[0.001, 0], [0, 0.001]], naxis: [2040, 2040],
+            a: { order: 2, coeffs: [[0, 0, 0], [0, 0, 0], [0.001, 0, 0]] },
+        });
+        const pixel = { x: 900, y: 0 };
+        const back = wcs.skyToPix(wcs.pixToSky(pixel));
+        expect(Math.hypot(back.x - pixel.x, back.y - pixel.y)).toBeLessThan(1e-6);
+    });
+
+    it('returns NaN when forward SIP has no inverse at the target', () => {
+        const linear = {
+            crpix: [1, 1] as [number, number], crval: [0, 0] as [number, number],
+            cd: [[0.001, 0], [0, 0.001]] as [[number, number], [number, number]], naxis: [2040, 2040] as [number, number],
+        };
+        const wcs = makeWcs({
+            ...linear,
+            a: { order: 2, coeffs: [[0, 0, 0], [0, 0, 0], [0.001, 0, 0]] },
+        });
+        // u + 0.001 u^2 has a minimum of -250, so U = -251 cannot be reached.
+        const back = wcs.skyToPix(makeWcs(linear).pixToSky({ x: -251, y: 0 }));
+        expect(back.x).toBeNaN();
+        expect(back.y).toBeNaN();
+    });
+
     it('wraps RA at 0/360', () => {
         const wcs = makeWcs({
             crpix: [10, 10],

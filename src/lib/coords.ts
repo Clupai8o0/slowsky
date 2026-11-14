@@ -3,17 +3,18 @@ import type { Astrometry, SkyCoord } from './types';
 
 const SIMBAD_TAP = 'https://simbad.cfa.harvard.edu/simbad/sim-tap/sync';
 
-// One number as written, with its sign ('', '+' or '-'). Unit markers (h m s d ° ′ ″ ' ") are skipped.
-const TOKEN = /([+-]?)\s*(\d+(?:\.\d*)?|\.\d+)[hdms°′″'"]*/gi;
+// One number as written, with its sign ('', '+' or '-') and explicit unit marker.
+const TOKEN = /([+-]?)\s*(\d+(?:\.\d*)?|\.\d+)([hdms°′″'"]*)/gi;
 
 interface Token {
     sign: string;
     digits: string;
+    unit: string;
 }
 
 // Accepts "56.75 24.1", "56.75, +24.1", "03h47m00s +24d07m00s", "03 47 00 +24 07 00".
 // Returns null for anything it cannot read. Never guesses hours vs degrees silently:
-// a sexagesimal RA is hours, a decimal RA is degrees.
+// an unmarked sexagesimal RA is hours, a decimal RA is degrees; explicit units take precedence.
 export function parseCoords(text: string): SkyCoord | null
 {
     const s = text.trim().replace(/[−–—]/g, '-');
@@ -33,7 +34,7 @@ function tokensOf(part: string): Token[] | null
 {
     const tokens: Token[] = [];
     for (const m of part.matchAll(TOKEN)) {
-        tokens.push({ sign: m[1] ?? '', digits: m[2] ?? '' });
+        tokens.push({ sign: m[1] ?? '', digits: m[2] ?? '', unit: (m[3] ?? '').toLowerCase() });
     }
     const leftover = part.replace(TOKEN, '');
     if (tokens.length === 0 || !/^[\s:]*$/.test(leftover)) {
@@ -76,7 +77,7 @@ function splitGroups(s: string): Token[][] | null
     return [tokens.slice(0, half), tokens.slice(half)];
 }
 
-// One coordinate: 1 number (decimal degrees) or 2-3 numbers (sexagesimal). Sign only on the first number.
+// One coordinate: 1-3 numbers, with explicit units or positional sexagesimal. Sign only on the first number.
 function component(group: Token[], kind: 'ra' | 'dec'): number | null
 {
     const first = group[0];
@@ -88,26 +89,27 @@ function component(group: Token[], kind: 'ra' | 'dec'): number | null
             return null;
         }
     }
-    const sign = first.sign === '-' ? -1 : 1;
-    const values = group.map((t) => Number(t.digits));
-    let value: number;
-    if (values.length === 1) {
-        value = values[0] ?? NaN;
-    } else {
-        const [a = 0, b = 0, c = 0] = values;
-        const lower = values.slice(0, -1);
-        if (lower.some((v) => !Number.isInteger(v)) || b >= 60 || c >= 60 || a < 0) {
-            return null;
-        }
-        if (kind === 'ra' && a >= 24) {
-            return null;
-        }
-        value = a + b / 60 + c / 3600;
-        if (kind === 'ra') {
-            value *= 15;
-        }
+    const units = group.map((t) => t.unit).join('');
+    const degrees = /[d°′″'"]/.test(units);
+    if (kind === 'ra' && degrees && units.includes('h')) {
+        return null;
     }
-    value *= sign;
+    const hours = kind === 'ra' && !degrees && (group.length > 1 || /[hms]/.test(units));
+    const values = group.map((t) => Number(t.digits));
+    let value = 0;
+    let previousRank = -1;
+    for (let i = 0; i < group.length; i++) {
+        const unit = (group[i]?.unit ?? '').replace(/''/g, '"');
+        const rank = unit === '' ? i : 'hd°'.includes(unit) ? 0 : "m′'".includes(unit) ? 1 : 's″"'.includes(unit) ? 2 : -1;
+        const part = values[i] ?? NaN;
+        if (unit.length > 1 || rank <= previousRank || (rank > 0 && part >= 60)
+            || (i < group.length - 1 && !Number.isInteger(part))) {
+            return null;
+        }
+        value += part / 60 ** rank;
+        previousRank = rank;
+    }
+    value *= (first.sign === '-' ? -1 : 1) * (hours ? 15 : 1);
     if (kind === 'ra') {
         return value >= 0 && value < 360 ? value : null;
     }
