@@ -41,9 +41,9 @@ function noise(g: OutputGrid): Float32Array
     return out;
 }
 
-function point(data: Float32Array, g: OutputGrid, x: number, y: number, amplitude: number): void
+function point(data: Float32Array, g: OutputGrid, x: number, y: number, amplitude: number, fwhm = 12): void
 {
-    const s = 12 / 2.35482 / g.pixelArcsec;
+    const s = fwhm / 2.35482 / g.pixelArcsec;
     for (let j = Math.max(0, Math.floor(y - 4 * s)); j <= Math.min(g.height - 1, Math.ceil(y + 4 * s)); j++) {
         for (let i = Math.max(0, Math.floor(x - 4 * s)); i <= Math.min(g.width - 1, Math.ceil(x + 4 * s)); i++) {
             data[j * g.width + i]! += amplitude * Math.exp(-((i - x) ** 2 + (j - y) ** 2) / (2 * s * s));
@@ -124,9 +124,11 @@ describe('change finder', () => {
                     const label = `${separation} px, ${fraction}, ids ${ids}`;
                     if (ids) {
                         expect(r.candidates.filter((c) => c.kind === 'mover'), label).toHaveLength(0);
-                        expect(r.candidates.map((c) => c.sign).sort(), label).toEqual([-1, 1]);
-                        expect(r.candidates.every((c) => c.kind === 'brightness' && c.gaiaMatch
-                            && /could not be measured, because a nearby catalogue star changed/.test(c.reason)), label).toBe(true);
+                        // Round 6: two stars changing the opposite way and a source moving between them look the
+                        // same here, so the finder says either/or and quotes no percentage.
+                        expect(r.candidates.length, label).toBeGreaterThan(0);
+                        expect(r.candidates.every((c) => c.fracChange === undefined
+                            && /Either a source moved|or a source moved between|could not be measured/.test(c.reason)), label).toBe(true);
                     } else {
                         // Without ids two stars cannot always be told from one moving star; the result must say so.
                         expect(r.candidates.length, label).toBeGreaterThan(0);
@@ -361,7 +363,8 @@ describe('change finder', () => {
         // Without error maps the noise comes from the difference alone; a 37″ patch at 5x noise is close in size
         // to a cluster of real faint changes. The one-sided window estimate cuts 67 to 14; error maps cut it to 0.
         expect(blind).toBeLessThanOrEqual(20);
-        expect(understated).toBeLessThanOrEqual(blind);
+        // A map with the right shape but half the patch's noise still helps: 5 here against 18 without a map.
+        expect(understated).toBeLessThanOrEqual(8);
     });
 
     it('keeps sensitivity with flat error maps', () => {
@@ -466,7 +469,9 @@ describe('change finder', () => {
         point(b, grid, 57, 60, 200); point(b, grid, 63, 60, 3800);
         const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 57, y: 60, id: 'a' }, { x: 63, y: 60 }]);
         expect(r.candidates.filter((c) => c.kind === 'mover')).toHaveLength(0);
-        expect(r.candidates.map((c) => c.sign).sort()).toEqual([-1, 1]);
+        // Round 6: the pair passes the shift test, so it is one either/or candidate, not a mover.
+        expect(r.candidates).toHaveLength(1);
+        expect(r.candidates[0]!.reason).toMatch(/^Either a source moved between two catalogue stars/);
     });
 
     it('does not quote a fraction diluted by a changing neighbour 12-14 arcsec away', () => {
@@ -628,6 +633,126 @@ describe('change finder', () => {
     it('warns that a small noisy patch can give false candidates without error maps (Opus Low 2)', () => {
         const r = compareVisits(image(noise(grid), 'a'), image(noise(grid), 'b'), grid, []);
         expect(r.notes.join(' ')).toMatch(/small patch of extra noise can show up as false/);
+    });
+
+    it('never calls two stars changing in opposite ways a mover under wobble, at any PSF width (round 6 item 1)', () => {
+        const P = grid.pixelArcsec;
+        const movers: string[] = [];
+        for (const fwhm of [12, 9, 6]) {
+            for (let k = 0; k < 12; k++) {
+                const t = k * Math.PI / 6, dx = 1.4 * Math.cos(t) / P, dy = 1.4 * Math.sin(t) / P;
+                const a = noise(grid), b = noise(grid);
+                const x1 = 60 - 5 / P, x2 = 60 + 5 / P;
+                point(a, grid, x1, 60, 2000, fwhm); point(a, grid, x2, 60, 2000, fwhm);
+                point(b, grid, x1 + dx, 60 + dy, 200, fwhm); point(b, grid, x2 + dx, 60 + dy, 3800, fwhm);
+                const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }]);
+                if (r.candidates.some((c) => c.kind === 'mover' || /Source centroids shifted/.test(c.reason))) {
+                    movers.push(`${fwhm}″/${k * 30}°`);
+                }
+            }
+        }
+        expect(movers).toEqual([]);
+    });
+
+    it('says either/or for a source passing between two catalogue stars (round 6 item 1)', () => {
+        const P = grid.pixelArcsec;
+        const a = noise(grid), b = noise(grid);
+        const xa = 60 - 7.5 / P, xb = 60 + 7.5 / P;
+        point(a, grid, xa, 60, 50); point(a, grid, xb, 60, 50);
+        point(b, grid, xa, 60, 50); point(b, grid, xb, 60, 50);
+        point(a, grid, xa + 3 / P, 60, 300); point(b, grid, xb - 3 / P, 60, 300);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: xa, y: 60, id: 'a' }, { x: xb, y: 60, id: 'b' }]);
+        expect(r.candidates).toHaveLength(1);
+        expect(r.candidates[0]!.kind).toBe('unknown');
+        expect(r.candidates[0]!.fracChange).toBeUndefined();
+        expect(r.candidates[0]!.reason).toMatch(/^Either a source moved between two catalogue stars 15\.0″ apart, or one got brighter and the other fainter; these look the same here/);
+    });
+
+    it('quotes no percentage for a mover passing 2-4 arcsec off two catalogue stars, off the line (round 6 item 2)', () => {
+        const P = grid.pixelArcsec;
+        const claims: string[] = [];
+        const lost: string[] = [];
+        for (const separation of [10, 13, 16]) {
+            for (const starAmplitude of [50, 500]) {
+                for (const moverAmplitude of [150, 1000, 3000]) {
+                    for (const offset of [2, 3, 4]) {
+                        const a = noise(grid), b = noise(grid);
+                        const xa = 60 - separation / 2 / P, xb = 60 + separation / 2 / P, off = 1 / P;
+                        point(a, grid, xa, 60, starAmplitude); point(a, grid, xb, 60, starAmplitude);
+                        point(b, grid, xa, 60, starAmplitude); point(b, grid, xb, 60, starAmplitude);
+                        point(a, grid, xa + offset / P, 60 + off, moverAmplitude);
+                        point(b, grid, xb - offset / P, 60 + off, moverAmplitude);
+                        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: xa, y: 60, id: 'a' }, { x: xb, y: 60, id: 'b' }]);
+                        if (r.candidates.length === 0) {
+                            lost.push(`${separation}″ ${starAmplitude}/${moverAmplitude} ${offset}″`);
+                        }
+                        for (const c of r.candidates) {
+                            if (c.fracChange !== undefined || /\d+% (brighter|fainter)/.test(c.reason) || c.kind === 'mover') {
+                                claims.push(`${separation}″ ${starAmplitude}/${moverAmplitude} ${offset}″: ${c.reason}`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        expect(claims).toEqual([]);
+        console.log(`Mover off the line: ${lost.length} of 54 lost: ${lost.join(', ')}`);
+        // Lost: a faint source on 500-count stars 10″ apart whose two positions are only 2-4″ apart (under the
+        // 3″ shift needed to pair, and under 10% of the stars' light). A miss, not a wrong label.
+        expect(lost.length, lost.join(', ')).toBeLessThanOrEqual(2);
+    });
+
+    it('quotes no percentage and no "appeared" beside a catalogue star it does not sit on (round 6 item 3)', () => {
+        const P = grid.pixelArcsec;
+        // At 10″ the star's own wing fills the 12″ aperture and the fade falls under the floor (a miss, not a claim).
+        for (const d of [14, 20]) {
+            const a = noise(grid), b = noise(grid);
+            point(a, grid, 60, 60, 3000); point(b, grid, 60, 60, 3000);
+            point(a, grid, 60 + d / P, 60, 300); point(b, grid, 60 + d / P, 60, 150);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60, id: 's' }]);
+            const spot = r.candidates.filter((c) => near(60 + d / P, 60, c, 6));
+            expect(spot, `${d}″`).toHaveLength(1);
+            expect(spot[0]!.fracChange, `${d}″`).toBeUndefined();
+            expect(spot[0]!.reason, `${d}″`).not.toMatch(/appeared|\d+% (brighter|fainter)/);
+        }
+    });
+
+    it('quotes no percentage off catalogue stars in steady wobbling bright fields (round 6 item 3)', () => {
+        const P = grid.pixelArcsec;
+        const claims: string[] = [];
+        for (let field = 0; field < 20; field++) {
+            const a = noise(grid), b = noise(grid);
+            const t = 2 * Math.PI * random(), w = 1.0 + 0.4 * random();
+            const dx = w * Math.cos(t) / P, dy = w * Math.sin(t) / P;
+            const stars = [];
+            for (let s = 0; s < 30; s++) {
+                const x = 12 + random() * 97, y = 12 + random() * 97;
+                const amplitude = s < 3 ? 20000 + random() * 30000 : 300 + random() * 3000;
+                point(a, grid, x, y, amplitude); point(b, grid, x + dx, y + dy, amplitude);
+                stars.push({ x, y, id: `s${s}` });
+            }
+            for (const c of compareVisits(image(a, 'a'), image(b, 'b'), grid, stars).candidates) {
+                if (!c.gaiaMatch && (c.fracChange !== undefined || /appeared/.test(c.reason))) {
+                    claims.push(`field ${field}: ${c.reason}`);
+                }
+            }
+        }
+        expect(claims).toEqual([]);
+    });
+
+    it('pairs a catalogue mover with its own entry even when a nearer uncatalogued spot also shifts (round 6 item 6, sort)', () => {
+        const P = grid.pixelArcsec;
+        for (const ux of [9, 10]) {
+            const a = noise(grid), b = noise(grid);
+            point(a, grid, 60 + 13 / P, 60, 400); point(b, grid, 60, 60, 400);
+            point(a, grid, 60 - ux / P, 60, 400);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60 + 13 / P, y: 60, id: 'm' }, { x: 60, y: 60, id: 'm' }]);
+            const label = `uncatalogued spot ${ux}″ away`;
+            expect(r.candidates.filter((c) => c.kind === 'mover'), label).toHaveLength(1);
+            // The uncatalogued spot that vanished is what is left over, not the star's old position.
+            expect(r.candidates.some((c) => c.kind !== 'mover' && near(60 - ux / P, 60, c, 4)), label).toBe(true);
+            expect(r.candidates.some((c) => c.kind !== 'mover' && near(60 + 13 / P, 60, c, 6)), label).toBe(false);
+        }
     });
 
     it('keeps a new source beside a steady catalogue star', () => {

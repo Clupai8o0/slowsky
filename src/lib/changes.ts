@@ -26,6 +26,8 @@ export interface ChangeCandidate {
 export interface ChangeResult {
     candidates: ChangeCandidate[];
     rejected: { streaks: number; single: number; edge: number; residual: number };
+    // Difference-image noise; NaN when nothing was measured (wavelengths do not match, no frames). Print it only
+    // when Number.isFinite(sigma).
     sigma: number;
     threshold: number;
     skipped: { obsId: string; reason: string }[];
@@ -520,99 +522,6 @@ function sourceCentroid(data: Float32Array, center: PixelCoord, grid: OutputGrid
     return sum > 0 ? { x: sx / sum, y: sy / sum } : undefined;
 }
 
-// Solves the 3x3 system m·x = v (row-major m) by Gaussian elimination with partial pivoting.
-function solve3(m: number[], v: number[]): number[] | undefined
-{
-    const a = [[m[0]!, m[1]!, m[2]!, v[0]!], [m[3]!, m[4]!, m[5]!, v[1]!], [m[6]!, m[7]!, m[8]!, v[2]!]];
-    const scale = Math.max(...m.map(Math.abs));
-    for (let col = 0; col < 3; col++) {
-        let pivot = col;
-        for (let r = col + 1; r < 3; r++) {
-            if (Math.abs(a[r]![col]!) > Math.abs(a[pivot]![col]!)) {
-                pivot = r;
-            }
-        }
-        if (!(Math.abs(a[pivot]![col]!) > 1e-9 * scale)) {
-            return undefined;
-        }
-        [a[col], a[pivot]] = [a[pivot]!, a[col]!];
-        for (let r = 0; r < 3; r++) {
-            if (r !== col) {
-                const f = a[r]![col]! / a[col]![col]!;
-                for (let c = col; c < 4; c++) {
-                    a[r]![c]! -= f * a[col]![c]!;
-                }
-            }
-        }
-    }
-    return a.map((row, r) => row[3]! / row[r]!);
-}
-
-// How much better two PSFs placed freely (each within 4″ of its spot) explain the difference than two PSFs at
-// the catalogue positions: (SS at stars - SS free) / signal free. Both fits have free amplitudes, so noise and
-// a wrong PSF shape hit both alike. Near 0: the stars explain it. Clearly above 0: something moved.
-function spotsFitBetter(diff: Float32Array, grid: OutputGrid, stars: [PixelCoord, PixelCoord],
-    spots: [PixelCoord, PixelCoord]): number
-{
-    const sigma = PSF_FWHM / 2.35482 / grid.pixelArcsec, reach = 2 * PSF_FWHM / grid.pixelArcsec;
-    const all = [...stars, ...spots];
-    const x0 = Math.max(0, Math.floor(Math.min(...all.map((p) => p.x)) - reach));
-    const x1 = Math.min(grid.width - 1, Math.ceil(Math.max(...all.map((p) => p.x)) + reach));
-    const y0 = Math.max(0, Math.floor(Math.min(...all.map((p) => p.y)) - reach));
-    const y1 = Math.min(grid.height - 1, Math.ceil(Math.max(...all.map((p) => p.y)) + reach));
-    // Least squares on [PSF 1, PSF 2, constant]: the constant soaks up a background offset between visits,
-    // which would otherwise count as source signal in one model and not the other.
-    const fit = (centres: [PixelCoord, PixelCoord]): { ss: number; signal: number } => {
-        const m = [0, 0, 0, 0, 0, 0, 0, 0, 0], v = [0, 0, 0];
-        let dd = 0, sd = 0, n = 0;
-        const g = (p: PixelCoord, x: number, y: number): number => Math.exp(-((x - p.x) ** 2 + (y - p.y) ** 2) / (2 * sigma * sigma));
-        for (let y = y0; y <= y1; y++) {
-            for (let x = x0; x <= x1; x++) {
-                const d = diff[y * grid.width + x]!;
-                if (!Number.isFinite(d)) {
-                    continue;
-                }
-                const basis = [g(centres[0], x, y), g(centres[1], x, y), 1];
-                for (let r = 0; r < 3; r++) {
-                    v[r]! += basis[r]! * d;
-                    for (let c = 0; c < 3; c++) {
-                        m[r * 3 + c]! += basis[r]! * basis[c]!;
-                    }
-                }
-                dd += d * d; sd += d; n++;
-            }
-        }
-        const coef = solve3(m, v);
-        if (!coef || n === 0) {
-            return { ss: dd, signal: 0 };
-        }
-        // Signal: what the two PSFs add beyond the constant alone.
-        const explained = coef[0]! * v[0]! + coef[1]! * v[1]! + coef[2]! * v[2]!;
-        return { ss: dd - explained, signal: explained - (sd * sd) / n };
-    };
-    const best: [PixelCoord, PixelCoord] = [{ ...spots[0] }, { ...spots[1] }];
-    let atSpots = fit(best);
-    const step = 0.5 / grid.pixelArcsec, span = 8;
-    for (let round = 0; round < 2; round++) {
-        for (const k of [0, 1] as const) {
-            const start = spots[k];
-            for (let iy = -span; iy <= span; iy++) {
-                for (let ix = -span; ix <= span; ix++) {
-                    const trial: [PixelCoord, PixelCoord] = [best[0], best[1]];
-                    trial[k] = { x: start.x + ix * step, y: start.y + iy * step };
-                    const f = fit(trial);
-                    if (f.ss < atSpots.ss) {
-                        atSpots = f;
-                        best[k] = trial[k];
-                    }
-                }
-            }
-        }
-    }
-    const atStars = fit(stars);
-    return atSpots.signal > 0 ? (atStars.ss - atSpots.ss) / atSpots.signal : 0;
-}
-
 function fractionalChange(earlier: Float32Array, later: Float32Array, pix: PixelCoord, grid: OutputGrid,
     apertureArcsec = 12): number | undefined
 {
@@ -714,8 +623,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     if (stars.some((s) => s.id === undefined)) {
         result.notes.push('Catalogue stars have no ids: two nearby catalogue stars that change in opposite ways can look like one mover.');
     }
-    // With an id on either entry the ids decide (an entry without one comes from another list, so another star).
-    const sameStar = (a: StarPix, b: StarPix): boolean => a.id !== undefined || b.id !== undefined
+    // Two entries with ids are the same star when the ids match; otherwise position decides. (An "id on either
+    // side decides" rule only differed for entries under matchArcsec apart, where no test could tell; round 6.)
+    const sameStar = (a: StarPix, b: StarPix): boolean => a.id !== undefined && b.id !== undefined
         ? a.id === b.id : distance(a, b, grid) <= opt.matchArcsec;
     // Two catalogue stars that change in opposite ways within 2 FWHM (the 12″ aperture plus the neighbour's
     // wings) cancel in the measured fraction, so that fraction is not measurable. Steady neighbours do not count: they subtract out. Nor does a much
@@ -777,22 +687,22 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             if (shift < opt.minShiftArcsec || shift < 3 * uncertainty) {
                 continue;
             }
-            // Spots on two different catalogue stars are those stars changing, unless two freely placed PSFs
-            // explain the difference clearly better than two at the stars: then a source moved between them
-            // (Opus Medium 2). A source 3″ off each star gains about 0.07; a 1″ registration offset about 0.02;
-            // the 8/S/N² term covers what four free position parameters gain on noise alone.
-            const weaker = Math.min(positive.snr, negative.snr);
-            const between = blocked && spotsFitBetter(diff, grid, [positiveStar!, nearestStar(negative.pix)!],
-                [positive.pix, negative.pix]) > 0.04 + 8 / (weaker * weaker);
-            if (blocked && !between) {
-                continue;
-            }
             used.add(i);
             used.add(j);
             const c = candidate(positive, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
-            c.kind = 'mover';
-            c.reason = `Source centroids shifted ${shift.toFixed(1)}″ between visits (${snrText(c.snr)}; candidate).`
-                + (between ? ' It passes between two catalogue stars, whose own positions explain the change worse.' : '');
+            if (blocked) {
+                // Spots on two catalogue stars: a source moving from one to the other and the two stars changing
+                // the opposite way give the same difference image under ordinary registration wobble. A two-PSF
+                // fit could not tell them apart (round 5 review: 8-44 false movers in 135), so do not choose.
+                const apart = distance(positiveStar!, nearestStar(negative.pix)!, grid);
+                c.kind = 'unknown';
+                delete c.fracChange;
+                c.reason = `Either a source moved between two catalogue stars ${apart.toFixed(1)}″ apart, or one got brighter `
+                    + `and the other fainter; these look the same here (${snrText(c.snr)}; candidate).`;
+            } else {
+                c.kind = 'mover';
+                c.reason = `Source centroids shifted ${shift.toFixed(1)}″ between visits (${snrText(c.snr)}; candidate).`;
+            }
             result.candidates.push(c);
             break;
         }
@@ -816,9 +726,11 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             }
         }
     });
-    found.forEach((b, i) => {
+    // Spots that survive the floor. A spot on one of two catalogue stars whose partner failed the shift test
+    // is worded by the blend rule (no percentage); a pair that passed it is the either/or candidate above.
+    const kept = found.map((b, i) => {
         if (used.has(i)) {
-            return;
+            return undefined;
         }
         const star = nearestStar(b.pix);
         const isBlended = star !== undefined && blended(b, star);
@@ -826,10 +738,21 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         const mismatch = floor !== undefined && Math.sign(floor) !== b.sign;
         if (floor !== undefined && !mismatch && Math.abs(floor) < opt.minFracChange) {
             result.rejected.residual++;
+            return undefined;
+        }
+        return { b, star, isBlended, floor, mismatch };
+    });
+    kept.forEach((k) => {
+        if (!k) {
             return;
         }
+        const { b, star, isBlended, floor, mismatch } = k;
+        // No star of its own but one within 2 FWHM: the earlier light in the aperture may be that star's wing, so
+        // quote no percentage and do not say "appeared" (round 6 item 3).
+        const wing = star === undefined && stars.some((s) => Number.isFinite(s.x) && Number.isFinite(s.y)
+            && distance(b.pix, s, grid) <= 2 * PSF_FWHM);
         const signMismatch = mismatch && !isBlended;
-        const frac = isBlended || mismatch ? undefined : floor;
+        const frac = isBlended || mismatch || wing ? undefined : floor;
         const c = candidate(b, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
         if (frac !== undefined) {
             c.fracChange = frac;
@@ -842,7 +765,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 + `by how much could not be measured, because a nearby catalogue star changed the other way (${snrText(c.snr)}; candidate).`;
         } else {
             c.kind = 'unknown';
-            c.reason = b.sign === 1 && !c.gaiaMatch && !signMismatch
+            c.reason = b.sign === 1 && !c.gaiaMatch && !signMismatch && !wing
                 ? `A source appeared here (candidate); ${snrText(c.snr)}.`
                 : `Changed at ${snrText(c.snr)}; brightness change could not be measured here (candidate).`;
         }
@@ -867,7 +790,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         if (changed || shifted) {
             c.kind = 'unknown';
             delete c.fracChange;
-            c.reason = `Changed ${distance(c.pix, star, grid).toFixed(1)}″ from a catalogue star that ${changed ? 'also changed' : 'shifted slightly'}; `
+            c.reason = `Changed ${distance(c.pix, star, grid).toFixed(1)}″ from a catalogue star ${changed ? 'that also changed' : 'whose image shifted slightly between visits'}; `
                 + `it may be part of that star rather than a separate source (${snrText(c.snr)}; candidate).`;
         }
     });
