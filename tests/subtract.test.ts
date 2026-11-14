@@ -186,13 +186,13 @@ describe('subtractText and visitLabel', () => {
 
     it('formats both diff and sum sentences exactly', () => {
         expect(subtractText(visitA1, visitB3, 'diff')).toBe(
-            `Later minus earlier: 9–14 Jul 2026 (3 looks, averaged) minus 18 Jul 2025 (1 look). Blue marks more light in the earlier visit, orange more in the later one. Pixels blank in either visit show black.${AVG}`,
+            `Later minus earlier: 9–14 Jul 2026 (3 looks, averaged) minus 18 Jul 2025 (1 look). Blue marks more light in the earlier visit, orange more in the later one. Black means about the same, or a pixel blank in either visit.${AVG}`,
         );
         expect(subtractText(visitA2, visitB1, 'diff')).toBe(
-            `Later minus earlier: 20 Nov 2026 (1 look) minus 28 Dec 2024 – 3 Jan 2025 (2 looks, averaged). Blue marks more light in the earlier visit, orange more in the later one. Pixels blank in either visit show black.${AVG}`,
+            `Later minus earlier: 20 Nov 2026 (1 look) minus 28 Dec 2024 – 3 Jan 2025 (2 looks, averaged). Blue marks more light in the earlier visit, orange more in the later one. Black means about the same, or a pixel blank in either visit.${AVG}`,
         );
         expect(subtractText(visitA1, visitB1, 'diff')).toBe(
-            'Later minus earlier: 20 Nov 2026 (1 look) minus 18 Jul 2025 (1 look). Blue marks more light in the earlier visit, orange more in the later one. Pixels blank in either visit show black.',
+            'Later minus earlier: 20 Nov 2026 (1 look) minus 18 Jul 2025 (1 look). Blue marks more light in the earlier visit, orange more in the later one. Black means about the same, or a pixel blank in either visit.',
         );
         expect(subtractText(visitA1, visitB3, 'sum')).toBe(
             `Sum of the two visits, 18 Jul 2025 (1 look) plus 9–14 Jul 2026 (3 looks, averaged): the pictures are added pixel by pixel, so light in both visits adds up and light in only one counts once. Pixels blank in either visit show black.${AVG}`,

@@ -114,7 +114,7 @@ export function subtractText(a: Visit, b: Visit, op: SubOp): string
     // A plain average keeps a spot that was in only one of its looks, at a fraction of its level.
     const avg = a.n > 1 || b.n > 1 ? ' An averaged visit can show a spot that was in only one of its looks.' : '';
     if (op === 'diff') {
-        return `Later minus earlier: ${dateB} (${looksB}) minus ${dateA} (${looksA}). Blue marks more light in the earlier visit, orange more in the later one. Pixels blank in either visit show black.${avg}`;
+        return `Later minus earlier: ${dateB} (${looksB}) minus ${dateA} (${looksA}). Blue marks more light in the earlier visit, orange more in the later one. Black means about the same, or a pixel blank in either visit.${avg}`;
     }
     return `Sum of the two visits, ${dateA} (${looksA}) plus ${dateB} (${looksB}): the pictures are added pixel by pixel, so light in both visits adds up and light in only one counts once. Pixels blank in either visit show black.${avg}`;
 }
