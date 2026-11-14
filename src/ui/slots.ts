@@ -9,6 +9,8 @@
 // - falseColour: a "False colour" toggle in the sky legend, a layer over the sky and a line under the legend, for
 //   lane/falsecolour (falseColourRgba for the layer, colourAt for the line).
 // - halo: a panel under "Brightness over time", for the R Draconis halo curve (lane/halo3).
+// - epoch: an "Older picture" toggle in the sky legend that flips the sky between 2MASS (1997 to 2001) and the
+//   SPHEREx frame (src/ui/epoch-view.ts, from src/lib/epoch.ts).
 import { readFlags } from '../lib/flags';
 import { flagsRgba, regridFlags, summariseFlags } from '../lib/flags-view';
 import { createLiveSource, type SkyResult, type SkySource } from '../lib/source';
@@ -26,9 +28,9 @@ import type { RangeReader } from '../lib/types';
 import { readFrameFlags, screen, type FrameFlags } from './flag-screen';
 import { readVariance } from './error-maps';
 
-export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint';
+export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, fcReading: false, halo: false, mlHint: false });
+    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, fcReading: false, halo: false, mlHint: false, epoch: false });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.

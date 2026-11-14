@@ -217,6 +217,9 @@ These parts are in the code but switched off on the site, so a visitor cannot us
 - False colour: one picture made from two wavelengths (`src/lib/falsecolour.ts`).
 - For R Draconis, the light in a ring around its too-bright centre, look by look, as a line or a table
   (`src/lib/halo.ts`, `src/ui/halo-view.ts`).
+- Older picture (switched off in this build): in Blink on the 0.1° or 0.25° field, flips the sky between the 2MASS K
+  survey picture (June 1997 to February 2001) and the SPHEREx frame, so a fast star sits away from its ring in the
+  older one (`src/lib/epoch.ts`, `src/ui/epoch-view.ts`; a preview build switches it on with `epoch`).
 - A machine-learning sort hint for each candidate change, described below.
 - Code that reads one spot's spectrum from the SPHEREx cube tiles in the public archive (`src/lib/cube.ts`). No
   part of the page calls it.

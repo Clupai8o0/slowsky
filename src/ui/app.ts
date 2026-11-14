@@ -20,6 +20,7 @@ import { initLayout } from './layout';
 import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
 import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, renderSpectrum, type LayerState } from './slots';
+import { mountEpoch } from './epoch-view';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, type SubOp, type Visit } from './subtract';
 
@@ -275,11 +276,13 @@ function shell(): string
       <canvas class="sk-glow" data-ref="glow" width="24" height="24" aria-hidden="true"></canvas>
       <canvas class="sk-img" data-ref="canvas" role="img" aria-label="Sky image"></canvas>
       <div class="sk-slot-layer sk-slot-fc" data-ref="fc" hidden></div>
+      <div class="sk-slot-layer sk-slot-ep" data-ref="epoch" aria-hidden="true" hidden></div>
       <svg class="sk-ov" data-ref="ov" aria-hidden="true" preserveAspectRatio="none"></svg>
       <div class="sk-slot-flags" data-ref="flags" hidden></div>
       <div class="sk-slot-layer" data-ref="changesMarks" hidden></div>
       <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
       <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
+      <button type="button" class="sk-ep-tag" data-act="epoch-tag" data-ref="epochTag" hidden></button>
       <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
       <div class="sk-err" data-ref="err" hidden><p data-bind="err" role="alert"></p><button type="button" class="sk-btn2" data-act="retry"><span class="ic">${ICON.retry}</span>Try again</button></div>
     </div>
@@ -289,6 +292,7 @@ function shell(): string
         <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://www.cosmos.esa.int/web/gaia/dr3" target="_blank" rel="noopener" title="Rings: ESA, Gaia DPAC; Gaia DR3, doi:10.5270/esa-qa4lep3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
         <button type="button" class="sk-key g f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Flagged pixels</button>
         <button type="button" class="sk-key g c" data-act="falsecolour" data-ref="fcKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>False colour</button>
+        <button type="button" class="sk-key g e" data-act="epoch" data-ref="epochKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Older picture</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>more light earlier<i class="o"></i>more light later</span>
       </div>
@@ -296,6 +300,7 @@ function shell(): string
     </div>
     <p class="sk-flagnote" data-ref="flagsNote" hidden></p>
     <p class="sk-flagnote" data-ref="fcNote" hidden></p>
+    <p class="sk-flagnote sk-ep-note" data-ref="epochNote" role="status" hidden></p>
     <div class="sk-player">
       <div class="sk-tr">
         <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
@@ -382,6 +387,9 @@ export function mount(root: HTMLElement): void
     const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
     const changesSlot = mountChanges(() => renderSlots());
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderSlots());
+    // Older picture (2MASS): off unless FEATURES.epoch; the logic lives in epoch-view.ts. Play switches it off.
+    const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),
+        note: ref<HTMLElement>('epochNote'), thenHides: [ref<HTMLElement>('flags'), ref<HTMLElement>('changesMarks')] }, { enabled: FEATURES.epoch, pause: () => play(false) });
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const glow = ref<HTMLCanvasElement>('glow');
@@ -1101,6 +1109,8 @@ export function mount(root: HTMLElement): void
         layerSlot(fcLayer.update(view, fcOn), fcOn, 'fcKey', 'fc', 'fcNote');
         // FLAGS are read only once the key is switched on (Blink, live frames); a finished read renders again.
         layerSlot(flagLayer.update(view, flagsOn), flagsOn, 'flagsKey', 'flags', 'flagsNote');
+        const shown = result?.frames[st.index];
+        epochSlot.update(view && shown ? { ...view, when: niceDate(shown.frame.frame.tMin) } : null);
     }
 
     // A legend toggle with a layer over the sky and a line under the legend (Flags, False colour).
@@ -1470,6 +1480,9 @@ export function mount(root: HTMLElement): void
     {
         window.clearTimeout(timer);
         st.playing = on && !!result && result.frames.length > 1;
+        if (on) {
+            epochSlot.off(); // the older picture and frame playback are never on together
+        }
         if (st.playing) {
             if (st.mode !== 'blink') {
                 st.mode = 'blink';
@@ -1559,11 +1572,28 @@ export function mount(root: HTMLElement): void
         } else if (b.dataset.act === 'prev' || b.dataset.act === 'next') {
             step(b.dataset.act === 'next' ? 1 : -1);
         } else if (b.dataset.act === 'flags') {
+            if (FEATURES.epoch) {
+                epochSlot.off();
+            }
             flagsOn = !flagsOn;
             renderSlots();
         } else if (b.dataset.act === 'falsecolour') {
+            if (FEATURES.epoch) {
+                epochSlot.off();
+            }
             fcOn = !fcOn;
             renderSlots();
+        } else if (b.dataset.act === 'epoch' || b.dataset.act === 'epoch-tag') {
+            if (b.dataset.act === 'epoch') {
+                if (FEATURES.epoch && !epochSlot.on && (fcOn || flagsOn)) {
+                    fcOn = false;
+                    flagsOn = false;
+                    renderSlots();
+                }
+                epochSlot.press();
+            } else {
+                epochSlot.tagPress();
+            }
         } else if (b.dataset.act === 'gaia') {
             st.gaia = !st.gaia;
             overlay();
