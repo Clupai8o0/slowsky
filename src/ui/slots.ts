@@ -23,7 +23,8 @@ export function renderSpectrum(box: HTMLElement, view: SlotView): boolean
     return false;
 }
 
-// `box` covers the sky image exactly (same box as the overlay). Return true when there is something to show.
+// `box` covers the sky image exactly (same box as the overlay). It is called while the layer is switched off
+// too, so the Flags key can show only when there is a mask. Return true when there is something to show.
 export function renderFlags(box: HTMLElement, view: SlotView): boolean
 {
     void box;

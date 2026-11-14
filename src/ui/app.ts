@@ -890,11 +890,13 @@ export function mount(root: HTMLElement): void
         const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode } : null;
         const spec = ref<HTMLElement>('spec');
         spec.hidden = !(FEATURES.spectrum && view && renderSpectrum(ref<HTMLElement>('specBox'), view));
-        const key = ref<HTMLButtonElement>('flagsKey');
-        key.hidden = !FEATURES.flags || !view;
-        key.setAttribute('aria-pressed', String(flagsOn));
+        // The layer is filled even when switched off, so the key shows only when there is a mask to show.
         const layer = ref<HTMLElement>('flags');
-        layer.hidden = !(FEATURES.flags && flagsOn && view && renderFlags(layer, view));
+        const hasFlags = Boolean(FEATURES.flags && view && renderFlags(layer, view));
+        const key = ref<HTMLButtonElement>('flagsKey');
+        key.hidden = !hasFlags;
+        key.setAttribute('aria-pressed', String(flagsOn));
+        layer.hidden = !(hasFlags && flagsOn);
     }
 
     function renderText(): void
