@@ -21,15 +21,15 @@ export const COPY: Record<TargetId, TargetCopy> = {
         short: 'Moves fastest across our sky',
         kind: 'mover',
         headline: 'Barnard’s Star, walking north',
-        show: 'The fastest-moving star in our sky. Gold rings mark where ESA’s Gaia says it should be on each date. Watch it step from ring to ring.',
-        not: 'Its centre is too bright for the camera, so its position here is rough, to about one pixel.',
+        show: 'The fastest-moving star in our sky. Gold rings mark where its measured motion puts it on each date. Watch it step from ring to ring.',
+        not: 'Its centre may be too bright for the camera, so treat its position with care.',
     },
     rwaur: {
         display: 'RW Aurigae',
         short: 'Changes its brightness',
         kind: 'variable',
         headline: 'RW Aurigae, changing its light',
-        show: 'A young star still wrapped in dust. Compare it with its neighbours: they hold steady, it does not.',
+        show: 'A young star still wrapped in dust. Compare it with its neighbours: the curve measures it against them, look by look.',
         not: 'Every frame is matched to one colour, so a change here is brightness, not colour.',
     },
     epsindb: {
@@ -38,15 +38,15 @@ export const COPY: Record<TargetId, TargetCopy> = {
         kind: 'spectrum',
         headline: 'Epsilon Indi B, missing colours',
         show: 'Two brown dwarfs, too cold to be stars. Change the colour: they fade where methane and water soak up light.',
-        not: 'It has no known change in brightness, so blinking it shows movement, not flicker.',
+        not: 'It has no known change in brightness, so no curve is drawn. Blinking it shows movement, not flicker.',
     },
     wise0855: {
         display: 'WISE 0855−0714',
         short: 'The coldest brown dwarf known',
         kind: 'cold',
         headline: 'WISE 0855, the coldest neighbour',
-        show: 'The coldest brown dwarf known. At short colours the light at this spot is a background star. At the longest colours, WISE 0855 takes over.',
-        not: 'Its newest visit is not public yet.',
+        show: 'The coldest brown dwarf known. It gives almost no light at short colours: slide to the longest colours to see it appear.',
+        not: 'Its light is not measured here: the colour line above says what to expect, not what was measured.',
     },
     rdra: {
         display: 'R Draconis',
@@ -67,7 +67,7 @@ export const CUSTOM_COPY = {
 export const MODE_HINT = {
     blink: 'Blink flips between dates. Anything that moves or changes jumps out.',
     stack: 'Stack averages every frame. Faint things appear; moving things smear.',
-    diff: 'Subtract takes the last look minus the first. Blue was there then, orange is there now.',
+    diff: 'Subtract: last look minus first. Blue was there then, orange is there now.',
 } as const;
 
 export const STAGE_TEXT = {

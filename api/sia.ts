@@ -76,6 +76,92 @@ export function buildUpstreamUrl(params: SiaParams): URL
     return url;
 }
 
+// Attributes up to the end of a tag; a quoted value may hold '>'.
+const TAG_ATTRS = `(?:[^>"']|"[^"]*"|'[^']*')*`;
+const XML_TAG = new RegExp(`<(/?)([A-Za-z_][\\w:.-]*)(${TAG_ATTRS})>|<!DOCTYPE(?:[^>"'[]|"[^"]*"|'[^']*'|\\[[^\\]]*\\])*>`, 'g');
+const INFO_TAG = new RegExp(`<([A-Za-z_][\\w.-]*:)?INFO\\b${TAG_ATTRS}>`, 'gi');
+
+// True when the document is one VOTABLE element (IRSA writes an ns0: prefix on every tag) and every element in it
+// closes in order, so an HTML page or a reply cut short is never cached as a frame list. Comments, CDATA and
+// processing instructions are removed first, and one left open means the reply was cut. Entities and attribute
+// syntax are not checked.
+export function isVotable(xml: string): boolean
+{
+    const bare = xml.replace(/<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>/g, ' ');
+    if (/<!--|<!\[CDATA\[|<\?/.test(bare)) {
+        return false;
+    }
+    const open: string[] = [];
+    let seenRoot = false;
+    let closed = false;
+    let pos = 0;
+    const textOk = (text: string): boolean => !text.includes('<') && (open.length > 0 || !text.trim());
+    for (const m of bare.matchAll(XML_TAG)) {
+        if (!textOk(bare.slice(pos, m.index))) {
+            return false;
+        }
+        pos = m.index + m[0].length;
+        if (m[2] === undefined) {
+            if (seenRoot) {
+                return false;
+            }
+            continue;
+        }
+        const name = m[2];
+        if (closed) {
+            return false;
+        }
+        if (m[1] === '/') {
+            if (open.pop() !== name) {
+                return false;
+            }
+            closed = open.length === 0;
+            continue;
+        }
+        if (!seenRoot) {
+            if (name.replace(/^[^:]*:/, '') !== 'VOTABLE') {
+                return false;
+            }
+            seenRoot = true;
+        }
+        if (m[3]!.endsWith('/')) {
+            closed = open.length === 0;
+        } else {
+            open.push(name);
+        }
+    }
+    return closed && textOk(bare.slice(pos));
+}
+
+// Character and the five predefined entity references, as an XML parser reads them in attribute values.
+function decodeEntities(value: string): string
+{
+    const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+    return value.replace(/&(#x[0-9a-f]+|#\d+|lt|gt|amp|quot|apos);/gi, (whole, ref: string) => {
+        if (ref[0] === '#') {
+            const code = ref[1] === 'x' || ref[1] === 'X' ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+            return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+        }
+        return named[ref.toLowerCase()] ?? whole;
+    });
+}
+
+// True when an INFO tag says QUERY_STATUS=ERROR. Attributes are read in order, so text inside a quoted value
+// is never taken for another attribute.
+export function queryFailed(xml: string): boolean
+{
+    for (const [tag] of xml.matchAll(INFO_TAG)) {
+        const attrs = new Map<string, string>();
+        for (const m of tag.matchAll(/([A-Za-z_][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+            attrs.set(m[1]!.toLowerCase(), decodeEntities(m[2] ?? m[3] ?? ''));
+        }
+        if (attrs.get('name')?.toUpperCase() === 'QUERY_STATUS' && attrs.get('value')?.toUpperCase() === 'ERROR') {
+            return true;
+        }
+    }
+    return false;
+}
+
 function error(status: number, message: string): Response
 {
     return new Response(JSON.stringify({ error: message }), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -132,7 +218,12 @@ export async function GET(request: Request): Promise<Response>
             body.set(chunk, offset);
             offset += chunk.length;
         }
-        return new Response(body, { headers: { ...cors, 'Content-Type': 'text/xml; charset=utf-8', 'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400' } });
+        const xml = new TextDecoder('utf-8').decode(body);
+        if (!isVotable(xml)) {
+            return error(502, 'Upstream reply was not a VOTable');
+        }
+        const hasError = queryFailed(xml);
+        return new Response(body, { headers: { ...cors, 'Content-Type': 'text/xml; charset=utf-8', 'Cache-Control': hasError ? 'no-store' : 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400' } });
     } catch {
         return error(controller.signal.aborted ? 504 : 502, controller.signal.aborted ? 'Upstream timeout' : 'Upstream failure');
     } finally {

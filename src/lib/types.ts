@@ -67,6 +67,9 @@ export interface FrameRecord {
     lambdaMin: number; // µm, whole detector (SIA em_min is metres)
     lambdaMax: number; // µm, whole detector
     center?: SkyCoord; // s_ra, s_dec
+    // s_region: sky positions of the 4 detector corners, in pixel order (0,0), (nx,0), (nx,ny), (0,ny).
+    // Lets the live loader guess where a star falls, and so its wavelength, before reading the header.
+    footprint?: SkyCoord[];
     estSizeBytes?: number; // approximate: SIA access_estsize is kilobytes, times 1024. FitsIndex has the exact size.
     pipelineVersion?: string; // filled from the FITS header once read
 }
@@ -167,7 +170,7 @@ export interface Wcs {
 
 // ---------- wavelength ----------
 
-// The WCS-WAVE table: a 9x9 grid of (lambda, bandwidth) over the detector,
+// The WCS-WAVE table: a 9x9 grid (9x14 on detector 3) of (lambda, bandwidth) over the detector,
 // looked up bilinearly. Lambda changes mostly along y.
 export interface WaveGrid {
     xs: number[]; // 9 pixel positions, 0-based
@@ -196,6 +199,9 @@ export interface RegriddedFrame {
     frame: FrameRecord;
     grid: OutputGrid;
     data: Float32Array; // NaN where the detector does not cover
+    // Relative noise map on the same grid as data, not a calibrated variance (see regridVariance).
+    // NaN wherever data is NaN, and also where the file's variance was invalid.
+    variance?: Float32Array;
     lambdaAtCenter: number; // µm, from the wave grid at the view centre
     bandwidthAtCenter: number;
 }

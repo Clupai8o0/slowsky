@@ -79,12 +79,36 @@ export function gridSkyToPix(grid: OutputGrid, c: SkyCoord): PixelCoord
 // Outside the detector the output is NaN.
 export function regridNorthUp(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float32Array
 {
+    return resample(cutout, wcs, grid, 'image');
+}
+
+// Relative noise map, not a calibrated variance. Per pixel it overstates the true
+// variance by 1.3 to 4 times (sigma up to 2 times), because the image is
+// interpolated with weights w and this map uses sum(w V), not sum(w^2 V).
+// Oversampled output pixels share input pixels, so a sum over neighbouring pixels
+// understates the noise. Rescale it against measured scatter before reading it as
+// a sigma. The map is NaN wherever data is NaN or a file variance is invalid,
+// even when the image value is finite.
+export function regridVariance(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float32Array | undefined
+{
+    if (!cutout.variance) {
+        return undefined;
+    }
+    if (cutout.variance.length !== cutout.width * cutout.height) {
+        throw new Error(`regridVariance: variance has ${cutout.variance.length} pixels, cutout needs ${cutout.width * cutout.height}`);
+    }
+    return resample(cutout, wcs, grid, 'variance');
+}
+
+function resample(cutout: Cutout, wcs: Wcs, grid: OutputGrid, plane: 'image' | 'variance'): Float32Array
+{
     const { width, height } = grid;
     const out = new Float32Array(width * height);
     const cw = cutout.width;
     const ch = cutout.height;
     const img = cutout.image;
     const zodi = cutout.zodi;
+    const variance = plane === 'variance' ? cutout.variance : undefined;
     const bx = cutout.box.x0;
     const by = cutout.box.y0;
 
@@ -182,6 +206,20 @@ export function regridNorthUp(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float
                 out[row + i] = NaN;
             } else {
                 out[row + i] = top + (bot - top) * fy;
+            }
+            if (variance && !Number.isNaN(out[row + i])) {
+                const v00 = variance[k] ?? NaN;
+                const v10 = variance[k + 1] ?? NaN;
+                const v01 = variance[k + cw] ?? NaN;
+                const v11 = variance[k + cw + 1] ?? NaN;
+                if (!Number.isFinite(v00) || v00 <= 0 || !Number.isFinite(v10) || v10 <= 0
+                    || !Number.isFinite(v01) || v01 <= 0 || !Number.isFinite(v11) || v11 <= 0) {
+                    out[row + i] = NaN;
+                } else {
+                    const top = v00 + (v10 - v00) * fx;
+                    const bot = v01 + (v11 - v01) * fx;
+                    out[row + i] = top + (bot - top) * fy;
+                }
             }
         }
     }

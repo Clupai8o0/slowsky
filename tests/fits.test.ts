@@ -100,6 +100,45 @@ describe('FITS range reader', () => {
         expect(grid.bandwidth).toEqual(wave.VALUES.map((row: number[][]) => row.map(pair => pair[1])));
     });
 
+    it('decodes a detector 3 wavelength table (9 columns by 14 rows) and rejects a mismatched one', async () => {
+        const nx = 9;
+        const ny = 14;
+        const ys = [1, 36, 71, 105, 140, 141, 379, 617, 855, 1091, 1326, 1564, 1802, 2040];
+        const table = (tdim: string): Uint8Array => {
+            const head = header(["XTENSION= 'BINTABLE'", 'BITPIX  = 8', 'NAXIS   = 2', `NAXIS1  = ${4 * nx + 4 * ny + 8 * nx * ny}`, 'NAXIS2  = 1', 'PCOUNT  = 0', 'GCOUNT  = 1', 'TFIELDS = 3',
+                "TTYPE1  = 'X'", "TFORM1  = '9J'", "TTYPE2  = 'Y'", "TFORM2  = '14J'", "TTYPE3  = 'VALUES'", "TFORM3  = '252E'", `TDIM3   = '${tdim}'`, "EXTNAME = 'WCS-WAVE'"]);
+            const body = new Uint8Array(2880);
+            const view = new DataView(body.buffer);
+            for (let i = 0; i < nx; i++) {
+                view.setInt32(i * 4, 1 + i * 255);
+            }
+            ys.forEach((y, i) => view.setInt32(4 * nx + i * 4, y));
+            for (let y = 0; y < ny; y++) {
+                for (let x = 0; x < nx; x++) {
+                    view.setFloat32(4 * (nx + ny) + (y * nx + x) * 8, 1.5 + y / 16 + x / 1024);
+                    view.setFloat32(4 * (nx + ny) + (y * nx + x) * 8 + 4, 0.25 + x / 64);
+                }
+            }
+            const parts = [header(['SIMPLE  = T', 'BITPIX  = 8', 'NAXIS   = 0']), head, body];
+            const data = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));
+            let offset = 0;
+            for (const part of parts) {
+                data.set(part, offset);
+                offset += part.length;
+            }
+            return data;
+        };
+        const reader = createRangeReader({ fetch: server(table('(2,9,14)')).fetcher });
+        const grid = await reader.readWaveGrid(await reader.index(url));
+        expect(grid.xs).toEqual(Array.from({ length: nx }, (_, i) => i * 255));
+        expect(grid.ys).toEqual(ys.map(y => y - 1));
+        expect(grid.lambda).toHaveLength(ny);
+        expect(grid.lambda[13]![8]).toBeCloseTo(1.5 + 13 / 16 + 8 / 1024, 6);
+        expect(grid.bandwidth[5]![2]).toBeCloseTo(0.25 + 2 / 64, 6);
+        const bad = createRangeReader({ fetch: server(table('(2,14,9)')).fetcher });
+        await expect(bad.readWaveGrid(await bad.index(url))).rejects.toThrow('Unsupported WCS-WAVE table layout');
+    });
+
     it.each([200, -1, 1])('rejects invalid status or body length (%s)', async mode => {
         const fetcher: typeof fetch = async () => new Response(new Uint8Array(mode === -1 ? 0 : 2), { status: mode === 200 ? 200 : 206 });
         await expect(createRangeReader({ fetch: fetcher }).index(url)).rejects.toThrow();

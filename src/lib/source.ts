@@ -9,11 +9,13 @@ import type {
 } from './types';
 import { commonRange, lockWavelength, type LockedFrame } from './lock';
 import { createRangeReader } from './fits';
-import { searchFrames } from './sia';
+import { searchFrames, type FrameList } from './sia';
 import { makeWcs, wcsFromHeader } from './wcs';
 import { groupVisits, sampleWave } from './wavelength';
+import { pickByWavelength, predictPixel } from './footprint';
 import { gridForView, gridSkyToPix, regridNorthUp } from './regrid';
 import { positionAt, targetById } from './targets';
+import { fetchGaia, type GaiaRow } from './gaia';
 
 export type SkyStage = 'search' | 'headers' | 'pixels' | 'regrid';
 
@@ -188,6 +190,11 @@ export function thinFrames(frames: FrameRecord[], gapDays: number, max: number):
 
 function thinVisits(visits: FrameRecord[][], max: number): FrameRecord[]
 {
+    if (visits.length > max) {
+        // More visits than reads: take max visits spread over the whole span, the middle frame of each.
+        const picked = Array.from({ length: max }, (_, k) => visits[Math.floor((k + 0.5) * visits.length / max)] as FrameRecord[]);
+        return picked.map((v) => v[Math.floor(v.length / 2)] as FrameRecord).sort((a, b) => a.tMin - b.tMin);
+    }
     const perVisit = Math.max(1, Math.floor(max / Math.max(1, visits.length)));
     const kept: FrameRecord[] = [];
     for (const v of visits) {
@@ -280,6 +287,7 @@ async function assemble(
     frameVisits: FrameRecord[][],
     opts: SourceOptions,
     notes: string[],
+    skippedVisits = 0,
 ): Promise<Omit<SkyResult, 'source' | 'stars' | 'credits'>>
 {
     const grid = gridForView(req.center, req.fovDeg, opts.minScreenPx ?? 4, opts.maxSide ?? 721);
@@ -300,7 +308,7 @@ async function assemble(
         return { grid, frames: [], locked: [], lambda: NaN, notes };
     }
     const locked = lockWavelength(visits, lambdaOf, chosen, { limitOf });
-    const dropped = visits.length - locked.length;
+    const dropped = visits.length - locked.length + skippedVisits;
     if (dropped > 0) {
         notes.push(`${plural(dropped, 'visit')} left out: no frame close enough to ${chosen.toFixed(3)} µm.`);
     }
@@ -378,26 +386,197 @@ function knownTarget(id: TargetId | undefined): Target | undefined
 
 // ---------- live ----------
 
-export function createLiveSource(opts: LiveOptions = {}): SkySource
+const GAIA_UNAVAILABLE_NOTE = 'Gaia stars are not available for this view.';
+const GAIA_MAX_RADIUS_DEG = 0.2; // the widest cone gaia.ts accepts
+const GAIA_GRACE_MS = 1500; // how long a finished picture waits for a slow catalogue
+
+// Runs the Gaia cone search beside the frame work. `rows` never rejects: undefined means "no catalogue".
+function startCatalogue(req: SkyRequest, fetcher: typeof fetch): { rows: Promise<GaiaRow[] | undefined>; stop: () => void }
 {
-    const reader = opts.reader ?? createRangeReader();
-    const search = opts.search ?? ((q: FrameQuery, signal?: AbortSignal) => searchFrames(q, signal));
+    const own = new AbortController();
+    const onAbort = (): void => own.abort(req.signal?.reason);
+    req.signal?.addEventListener('abort', onAbort, { once: true });
+    const radiusDeg = Math.max(0.000001, Math.min(GAIA_MAX_RADIUS_DEG, req.fovDeg * Math.SQRT1_2));
+    const rows = fetchGaia(req.center, radiusDeg, { signal: own.signal, fetcher, timeoutMs: 6000 })
+        .then((found) => found.rows, () => undefined);
+    return {
+        rows,
+        stop: () => {
+            req.signal?.removeEventListener('abort', onAbort);
+            own.abort();
+        },
+    };
+}
+
+// Waits for a promise at most `ms` longer: undefined when time runs out, a rejection when the caller aborts.
+function settleWithin<T>(pending: Promise<T>, ms: number, signal?: AbortSignal): Promise<T | undefined>
+{
+    return new Promise<T | undefined>((resolve, reject) => {
+        const onAbort = (): void => {
+            clearTimeout(timer);
+            reject(signal?.reason);
+        };
+        const timer = setTimeout(() => {
+            signal?.removeEventListener('abort', onAbort);
+            resolve(undefined);
+        }, ms);
+        signal?.addEventListener('abort', onAbort, { once: true });
+        pending.then((value) => {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
+            resolve(value);
+        }, (error: unknown) => {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
+            reject(error);
+        });
+    });
+}
+
+function gaiaStarsOnGrid(rows: GaiaRow[], grid: OutputGrid): GaiaStar[]
+{
+    return rows.flatMap((row): GaiaStar[] => {
+        const pix = gridSkyToPix(grid, { ra: row.ra, dec: row.dec });
+        if (!(pix.x >= -0.5 && pix.y >= -0.5 && pix.x <= grid.width - 0.5 && pix.y <= grid.height - 0.5)) {
+            return [];
+        }
+        return [{ ...row, pix }];
+    }).sort((a, b) => a.g - b.g);
+}
+
+const DETECTOR_PX = 2040; // SPHEREx detectors are 2040 x 2040; only used to choose the probe frame
+const GUESS_MAX_ERROR_PX = 40; // a probe guess further off than this means the corners can't be trusted
+const GUESS_EDGE_PX = 20; // a guess this far outside the detector still counts as on it (guesses are ~10 px off)
+
+// When there are too many frames to read every header, guess each frame's wavelength at the spot from its corner
+// positions (SIA s_region) and spend the reads on the frames nearest the chosen wavelength. Inside a visit the spot
+// steps across the detector, and so across the filter, so frames spread evenly in time mostly miss it. The
+// wavelength at a pixel is the same in every frame of one detector, so one frame's grid serves all. One "probe"
+// header is read to get that grid and to check the guess. Returns undefined to fall back to thinning in time.
+async function pickByGuess(
+    frames: FrameRecord[],
+    visits: FrameRecord[][],
+    target: Target | undefined,
+    req: SkyRequest,
+    reader: RangeReader,
+    opts: SourceOptions,
+    max: number,
+    probeRead: { url?: string },
+): Promise<{ frames: FrameRecord[]; skippedVisits: number } | undefined>
+{
+    if (max < 1) {
+        return undefined;
+    }
+    let probe: FrameRecord | undefined;
+    let probeDepth = 0;
+    for (const f of frames) {
+        const p = f.footprint ? predictPixel(f.footprint, [DETECTOR_PX, DETECTOR_PX], lookPoint(target, req, f)) : null;
+        if (!p) {
+            return undefined;
+        }
+        const d = Math.min(p.x, p.y, DETECTOR_PX - 1 - p.x, DETECTOR_PX - 1 - p.y);
+        if (d > probeDepth) {
+            probe = f;
+            probeDepth = d;
+        }
+    }
+    if (!probe?.footprint) {
+        return undefined;
+    }
+    try {
+        probeRead.url = probe.url;
+        const index = await reader.index(probe.url, req.signal);
+        const wcs = makeWcs(wcsFromHeader(index.hdu('IMAGE').header));
+        const naxis = wcs.params.naxis;
+        const look = lookPoint(target, req, probe);
+        const truth = safeSkyToPix(wcs, look);
+        const guess = predictPixel(probe.footprint, naxis, look);
+        if (!truth || !inside(truth, naxis, 0) || !guess
+            || Math.hypot(truth.x - guess.x, truth.y - guess.y) > GUESS_MAX_ERROR_PX) {
+            return undefined;
+        }
+        // The footprint order is (-0.5,-0.5), (nx-0.5,-0.5), (nx-0.5,ny-0.5), (-0.5,ny-0.5).
+        const corner0 = safeSkyToPix(wcs, probe.footprint[0]!);
+        const corner1 = safeSkyToPix(wcs, probe.footprint[1]!);
+        if (!corner0 || !corner1 || Math.hypot(corner0.x + 0.5, corner0.y + 0.5) > GUESS_MAX_ERROR_PX
+            || Math.hypot(corner1.x - (naxis[0] - 0.5), corner1.y + 0.5) > GUESS_MAX_ERROR_PX) {
+            return undefined;
+        }
+        const wave = await reader.readWaveGrid(index, req.signal);
+        const guessed = new Map<string, { lambda: number; bandwidth: number }>();
+        for (const f of frames) {
+            const p = f.footprint ? predictPixel(f.footprint, naxis, lookPoint(target, req, f)) : null;
+            if (!p) {
+                return undefined;
+            }
+            if (!inside(p, naxis, -GUESS_EDGE_PX)) {
+                // Off the detector: never near any wavelength.
+                guessed.set(f.obsId, { lambda: Infinity, bandwidth: 0 });
+                continue;
+            }
+            const clamped = { x: Math.min(Math.max(p.x, 0), naxis[0] - 1), y: Math.min(Math.max(p.y, 0), naxis[1] - 1) };
+            guessed.set(f.obsId, sampleWave(wave, clamped));
+        }
+        const lambdaOf = (f: FrameRecord): number | undefined => guessed.get(f.obsId)?.lambda;
+        const limitOf = (f: FrameRecord): number => opts.maxDeltaUm ?? (guessed.get(f.obsId)?.bandwidth ?? 0) / 2;
+        const known = visits.map((v) => v.filter((f) => Number.isFinite(lambdaOf(f) ?? NaN))).filter((v) => v.length > 0);
+        const chosen = req.lambda ?? bestLambda(known, lambdaOf, limitOf, commonRange(known, lambdaOf));
+        if (!Number.isFinite(chosen)) {
+            return undefined;
+        }
+        // Reserve one header for the probe, even if it is not among the picked frames.
+        const pick = pickByWavelength(visits, (f) => {
+            const l = lambdaOf(f);
+            // Off-detector guesses are known to be useless: a huge finite value makes their visit "far", not "unknown".
+            return l === Infinity ? 1e9 : l;
+        }, chosen, limitOf, max - 1);
+        return pick.frames.length > 0 ? pick : undefined;
+    } catch (err) {
+        if (req.signal?.aborted) {
+            throw err;
+        }
+        return undefined;
+    }
+}
+
+export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = {}): SkySource
+{
+    const fetcher = opts.fetch ?? globalThis.fetch.bind(globalThis);
+    const reader = opts.reader ?? createRangeReader({ fetch: fetcher });
+    const search = opts.search ?? ((q: FrameQuery, signal?: AbortSignal) => searchFrames(q, signal, fetcher));
     const gap = opts.visitGapDays ?? 10;
     return {
         async load(req: SkyRequest): Promise<SkyResult>
         {
+            req.signal?.throwIfAborted();
             const notes: string[] = [];
             const target = knownTarget(req.target);
+            // Started now so it costs no waiting time; its failure is absorbed even if the frame work fails first.
+            const catalogue = startCatalogue(req, fetcher);
             req.onProgress?.({ stage: 'search', done: 0, total: 1 });
             const found = await search({ center: req.center, radiusDeg: 0.001, detector: req.detector }, req.signal);
             const onDetector = found.filter((f) => f.detector === req.detector);
             req.onProgress?.({ stage: 'search', done: 1, total: 1 });
+            if ((found as FrameList).truncated) {
+                notes.push('This spot has more frames than the archive lists at once, so some visits may be missing.');
+            }
             if (onDetector.length === 0) {
                 notes.push(`No SPHEREx frames on detector ${req.detector} cover this spot yet.`);
             }
             const visits = groupVisits(onDetector, gap);
             const maxHeaders = opts.maxHeaders ?? 60;
-            const candidates = onDetector.length <= maxHeaders ? onDetector : thinVisits(visits, maxHeaders);
+            let candidates = onDetector;
+            let skippedVisits = 0;
+            if (onDetector.length > maxHeaders) {
+                const probeRead: { url?: string } = {};
+                const pick = await pickByGuess(onDetector, visits, target, req, reader, opts, maxHeaders, probeRead);
+                const fallback = thinVisits(visits, maxHeaders);
+                // The FITS reader caches the probe URL; otherwise reserve a read for it, including failed reads.
+                const fallbackBudget = !probeRead.url || fallback.some((frame) => frame.url === probeRead.url)
+                    ? maxHeaders : Math.max(0, maxHeaders - 1);
+                candidates = pick?.frames ?? (fallbackBudget === maxHeaders ? fallback : thinVisits(visits, fallbackBudget));
+                skippedVisits = pick?.skippedVisits ?? 0;
+            }
             if (candidates.length < onDetector.length) {
                 notes.push(`Read ${candidates.length} of ${onDetector.length} frames to keep loading quick.`);
             }
@@ -447,9 +626,19 @@ export function createLiveSource(opts: LiveOptions = {}): SkySource
             if (usable.length < candidates.length) {
                 notes.push(`${plural(candidates.length - usable.length, 'frame')} left out: the spot is at the detector edge.`);
             }
-            const core = await assemble(req, usable, visits, opts, notes);
+            const core = await assemble(req, usable, visits, opts, notes, skippedVisits);
+            // The picture is ready: give a slow catalogue a short grace time, then go on without it.
+            const rows = await settleWithin(catalogue.rows, GAIA_GRACE_MS, req.signal);
+            catalogue.stop();
+            req.signal?.throwIfAborted();
+            const stars = rows ? gaiaStarsOnGrid(rows, core.grid) : [];
+            if (!rows) {
+                notes.push(GAIA_UNAVAILABLE_NOTE);
+            } else if (stars.length > 0 && req.fovDeg * Math.SQRT1_2 > GAIA_MAX_RADIUS_DEG) {
+                notes.push(`Gaia stars are shown only within ${GAIA_MAX_RADIUS_DEG}° of the centre.`);
+            }
             const records = core.frames.map((f) => f.frame.frame);
-            return { source: 'live', stars: [], credits: credits(records, false), ...core };
+            return { source: 'live', stars, credits: credits(records, stars.length > 0), ...core };
         },
     };
 }
@@ -708,7 +897,7 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
                 });
             } catch (error) {
                 req.signal?.throwIfAborted();
-                notes.push('Gaia stars are not available for this view.');
+                notes.push(GAIA_UNAVAILABLE_NOTE);
             }
             const records = core.frames.map((f) => f.frame.frame);
             return { source: 'snapshot', stars, credits: credits(records, stars.length > 0), ...core };
