@@ -87,6 +87,23 @@ describe('IRSA DR1 cube range reader', () => {
         expect(Number.isFinite(result.surfaceBrightness[1])).toBe(true);
     });
 
+    for (const value of [NaN, Infinity, -Infinity]) {
+        for (const [x, y] of [[4, 4], [5, 5]]) {
+            it(`marks central pixel (${x}, ${y}) with ${value} as no data`, async () => {
+                const spot = fixture.spots[0]!;
+                const server = fake(spot, (data, plane) => {
+                    if (plane === 0) {
+                        new DataView(data.buffer, data.byteOffset, data.byteLength).setFloat32((y! * 512 + x!) * 4, value, false);
+                    }
+                    return undefined;
+                });
+                const result = await readCubeSpectrum(spot.coord, { fetcher: server.fetcher });
+                expect(result.surfaceBrightness[0]).toBeNaN();
+                expect(result.reasons[0]).toBe('no data');
+            });
+        }
+    }
+
     it('still has a background and a noise value with the smallest box', async () => {
         const spot = fixture.spots[0]!;
         const server = fake(spot);
@@ -128,18 +145,46 @@ describe('IRSA DR1 cube range reader', () => {
         expect(Number.isFinite(result.surfaceBrightness[0])).toBe(true);
     });
 
+    it('computes noise from the fixture pixels in an 11 x 11 box', async () => {
+        const spot = fixture.spots[0]!;
+        const sky: number[] = [];
+        const server = fake(spot, (data, plane) => {
+            if (plane === 0) {
+                const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+                for (let y = 0; y < 11; y++) {
+                    for (let x = 0; x < 11; x++) {
+                        const value = view.getFloat32((y * 512 + x) * 4, false);
+                        if ((x - 5) ** 2 + (y - 5) ** 2 >= 9 && Number.isFinite(value)) {
+                            sky.push(value);
+                        }
+                    }
+                }
+            }
+            return undefined;
+        });
+        const result = await readCubeSpectrum(spot.coord, { fetcher: server.fetcher, boxPx: 11 });
+        const median = (values: number[]): number => {
+            const sorted = [...values].sort((a, b) => a - b);
+            const middle = Math.floor(sorted.length / 2);
+            return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
+        };
+        expect(sky.length).toBeGreaterThanOrEqual(8);
+        const background = median(sky);
+        close(result.noise[0]!, 1.4826 * median(sky.map(value => Math.abs(value - background))));
+    });
+
     it('reads all channels when BLANKCH is missing or malformed', async () => {
         const spot = fixture.spots[0]!;
-        for (const card of ['        ', "'D3:99' "]) {
+        for (const card of [null, 'D3:99', 'D3:17, D4:01', 'd3:17', 'D3:17,']) {
             clearCubeCache();
             const server = fake(spot, (data, plane) => {
                 if (plane === undefined && data.length === 8640) {
                     const text = new TextDecoder().decode(data);
                     const at = text.indexOf('BLANKCH');
-                    if (card.startsWith(' ')) {
+                    if (card === null) {
                         data.set(new TextEncoder().encode('        '), at);
                     } else {
-                        data.set(new TextEncoder().encode(card), at + 10);
+                        data.set(new TextEncoder().encode(`'${card}'`.padEnd(70)), at + 10);
                     }
                 }
                 return undefined;
@@ -352,6 +397,15 @@ describe('IRSA DR1 cube range reader', () => {
         const odd = '<ListBucketResult><Prefix>dr1/hips5_cube/hips_99999999/</Prefix><Prefix>dr1/hips5_cube/hips_20261332/</Prefix></ListBucketResult>';
         expect(await findCubeFolder(async () => new Response(odd))).toBe(CUBE_FOLDER);
     });
+
+    for (const [name, list] of [
+        ['truncated', '<ListBucketResult><IsTruncated>  TrUe  </IsTruncated><Prefix>dr1/hips5_cube/hips_20260101/</Prefix></ListBucketResult>'],
+        ['cut off', '<ListBucketResult><Prefix>dr1/hips5_cube/hips_20260101/</Prefix>']
+    ]) {
+        it(`falls back when a cube listing is ${name}`, async () => {
+            expect(await findCubeFolder(async () => new Response(list))).toBe(CUBE_FOLDER);
+        });
+    }
 
     it('starts planes early, skips blank channels, and caches headers and wavelengths', async () => {
         const spot = fixture.spots[0]!;

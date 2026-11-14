@@ -53,7 +53,8 @@ export async function findCubeFolder(fetcher: typeof fetch = globalThis.fetch): 
             return CUBE_FOLDER;
         }
         const body = await response.text();
-        if (!/<ListBucketResult(?:\s|>)/.test(body)) {
+        if (!/<ListBucketResult(?:\s|>)/.test(body) || !body.trimEnd().endsWith('</ListBucketResult>')
+            || /<IsTruncated>\s*true\s*<\/IsTruncated>/i.test(body)) {
             return CUBE_FOLDER;
         }
         const folders = [...body.matchAll(/<Prefix>dr1\/hips5_cube\/(hips_(\d{4})(\d{2})(\d{2}))\/<\/Prefix>/g)]
