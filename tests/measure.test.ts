@@ -148,6 +148,9 @@ describe('curveFor', () => {
         expect(sumNoise([100, 100], [0.02, 0.02])).toBeCloseTo(0.02 / 2, 4);
         // A bright steady star dominates the sum; faint noisy ones barely move it.
         expect(sumNoise([1000, 10, 20, 30], [0.001, 0.3, 0.3, 0.3])).toBeLessThan(0.02);
+        // Two stars can't say which one is noisy: their own sky noise decides. Faint and noisy barely moves the sum.
+        expect(sumNoise([1000, 10], [0.1, 0.1], [0.0001, 0.1])).toBeLessThan(0.002);
+        expect(sumNoise([1000, 10], [0.1, 0.1], [0.1, 0.0001])).toBeGreaterThan(0.09);
         // Non-positive fluxes are skipped and never give a negative noise.
         expect(sumNoise([400, -450], [0.05, 0.05])).toBeGreaterThanOrEqual(0);
         expect(sumNoise([], [])).toBe(0);

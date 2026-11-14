@@ -201,11 +201,16 @@ export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
     }
     const frameOf = order.slice();
     const validFrames = frameOf.filter((_, i) => lc.points[i]!.valid).map((i) => frames[i]!);
-    const noise = sumNoise(
-        refs.map((r) => median(validFrames.map((f) => aperture(f.data, width, height, r.pix, options).sum))),
-        lc.refScatter,
-    );
     const native = NATIVE_ARCSEC / result.grid.pixelArcsec;
+    // Per star: its median flux, and its sky noise over the aperture (scaled up because regridded pixels share
+    // a detector pixel's noise) as a fraction of that flux.
+    const perStar = refs.map((r) => {
+        const ap = validFrames.map((f) => aperture(f.data, width, height, r.pix, options));
+        const flux = median(ap.map((a) => a.sum));
+        const sky = median(ap.map((a) => a.backgroundSigma * Math.sqrt(a.nPix) * Math.max(1, native)));
+        return { flux, phot: flux > 0 ? sky / flux : NaN };
+    });
+    const noise = sumNoise(perStar.map((p) => p.flux), lc.refScatter, perStar.map((p) => p.phot));
     const reach = radius + 0.33 * native;
     const pmOk = (id: string): boolean => {
         const s = stars.get(id);
@@ -240,11 +245,26 @@ export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
 
 // Fractional scatter of the summed comparison flux. Each refScatter[i] is star i against the sum of the others, so
 // it carries their noise too: solve for each star's own scatter first, then add them weighted by flux.
-export function sumNoise(flux: number[], scatter: number[]): number
+// With two stars both ratios scatter alike and can't say which star is noisy, so their shared scatter is split
+// in proportion to each one's own sky noise (`phot`, fractional), or evenly when that is unknown.
+export function sumNoise(flux: number[], scatter: number[], phot: number[] = []): number
 {
     const ok = flux.map((f, i) => Number.isFinite(f) && f > 0 && Number.isFinite(scatter[i]));
     const F = flux.map((f, i) => (ok[i] ? f : 0));
     const s2 = scatter.map((v, i) => (ok[i] ? v * v : 0));
+    const total = F.reduce((a, b) => a + b, 0);
+    if (!(total > 0)) {
+        return 0;
+    }
+    const used = ok.map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
+    if (used.length === 2) {
+        const [a, b] = used as [number, number];
+        const shared = (s2[a]! + s2[b]!) / 2;
+        const pa = phot[a]! ** 2;
+        const pb = phot[b]! ** 2;
+        const wa = Number.isFinite(pa) && Number.isFinite(pb) && pa + pb > 0 ? pa / (pa + pb) : 0.5;
+        return Math.sqrt(F[a]! ** 2 * shared * wa + F[b]! ** 2 * shared * (1 - wa)) / total;
+    }
     let own = s2.slice();
     for (let pass = 0; pass < 40; pass++) {
         own = own.map((v, i) => {
@@ -262,10 +282,6 @@ export function sumNoise(flux: number[], scatter: number[]): number
             const next = Math.max(0, s2[i]! - (rest > 0 ? restVar / rest ** 2 : 0));
             return 0.5 * v + 0.5 * next; // damped, so equal stars settle instead of see-sawing
         });
-    }
-    const total = F.reduce((a, b) => a + b, 0);
-    if (!(total > 0)) {
-        return 0;
     }
     return Math.sqrt(F.reduce((sum, f, i) => sum + f ** 2 * own[i]!, 0)) / total;
 }
