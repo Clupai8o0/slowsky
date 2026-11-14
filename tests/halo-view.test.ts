@@ -128,7 +128,7 @@ describe('haloFor', () => {
         const h = haloFor(r, { ring, curve: fake([point(MJD0, { lambda: 0.82 }), point(MJD0 + 3, { lambda: 0.84, relative: 1.06 })]) })!;
         expect(h.kind).toBe('table');
         const html = haloHtml(h, 'R Draconis', -1);
-        expect(html).toContain('could be measured in 2 of 2 looks, taken on 1 visit. Not enough measured looks at this colour to draw a curve: it needs at least 3.');
+        expect(html).toContain('could be measured in 2 of 2 looks, taken on 1 visit. A curve is drawn only from looks on at least 3 visits, all within 0.005 µm of colour; these looks do not meet that, so each reading is listed instead.');
         expect(html).toContain('<table');
         expect(html).not.toContain('<svg');
         expect(html).toContain('0.820 µm');
@@ -136,7 +136,7 @@ describe('haloFor', () => {
         expect(html).toContain('from 0.820 to 0.840 µm; looks at slightly different colours can read differently for that reason alone.');
         const none = haloFor(r, { ring, curve: fake([point(MJD0, bad), point(MJD0 + 100, bad)]) })!;
         expect(none.kind).toBe('none');
-        expect(haloHtml(none, 'R Draconis', -1)).toContain('could be measured in 0 of 2 looks. Not enough');
+        expect(haloHtml(none, 'R Draconis', -1)).toContain('could be measured in 0 of 2 looks. A curve is drawn only');
     });
 
     it('handles one reading, float edges of the colour span, chained visits and repeated caveat dates', () => {
@@ -152,6 +152,17 @@ describe('haloFor', () => {
         expect(haloHtml(edge, 'R Draconis', -1)).toContain('from 1.000 to 1.005 µm');
         const chain = haloFor(r, { ring, curve: fake([point(MJD0), point(MJD0 + 8), point(MJD0 + 16)]) })!;
         expect(haloHtml({ ...chain, kind: 'table' }, 'R Draconis', -1)).toContain('taken on 2 visits');
+    });
+
+    it('draws a line only from 3 or more visits inside one 0.005 µm colour window', () => {
+        const r = result([5000, 5000, 5000]);
+        const at = (lams: number[], gaps = 100) => haloFor(r, { ring, curve: fake(lams.map((l, i) => point(MJD0 + i * gaps, { lambda: l }))) })!.kind;
+        expect(at([0.9396, 0.9420, 0.9446])).toBe('curve');
+        expect(at([0.92, 0.93, 0.94])).toBe('table'); // three visits, but 0.02 µm apart
+        expect(at([0.9, 0.9, 0.9], 3)).toBe('table'); // one colour, but one visit
+        expect(at([0.9, 0.9, 0.9, 0.9], 5)).toBe('table'); // visits counted from their start: days 0-15 are 2 visits
+        expect(haloHtml(haloFor(r, { ring, curve: fake([point(MJD0, { lambda: 0.92 }), point(MJD0 + 100, { lambda: 0.93 }),
+            point(MJD0 + 200, { lambda: 0.94 })]) })!, 'R Draconis', -1)).toContain('taken on 3 visits. A curve is drawn only');
     });
 
     it('asks for a wider field when the ring does not fit, and hides on other module errors', () => {

@@ -1,7 +1,7 @@
 // "Halo over time": for a target whose card says its centre is too bright to measure (R Draconis), the light in a
 // ring around the blank centre, look by look, against steady Gaia stars (src/lib/halo.ts). It says what was
 // measured, never that the star changed. Only looks the module marks valid are used; each look's caveats are shown
-// as text. Under MIN_CURVE looks it gives a table of readings, not a line. Which targets get it is decided by the
+// as text. A line needs MIN_VISITS visits in one narrow colour window; otherwise a table. Which targets get it is decided by the
 // card (kind 'saturated'), never by finding a blank centre: Barnard's Star's centre is often blank too.
 import { HaloError, haloCurve, ringFor, type HaloCurve } from '../lib/halo';
 import type { SkyResult } from '../lib/source';
@@ -34,8 +34,12 @@ export interface HaloView {
     caveats: { text: string; mjds: number[] }[];
 }
 
-// Fewer looks than this get a table of readings: two points always make a line that looks like a trend.
-export const MIN_CURVE = 3;
+// A line is drawn only from looks on at least MIN_VISITS visits, all within CURVE_WIDTH_UM of colour. Otherwise
+// the readings go in a table. Two points always make a line that looks like a trend. On real R Draconis frames,
+// same-date looks about 0.02 µm apart disagreed by up to 5.9 error bars while an ordinary star on the same frames
+// agreed, so looks at different colours are not put on one line (probe, 14 Nov). No wider window is validated.
+export const MIN_VISITS = 3;
+export const CURVE_WIDTH_UM = 0.005;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -110,8 +114,11 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
         }
     });
     points.sort((a, b) => a.mjd - b.mjd);
+    const lams = points.map((p) => p.lambda);
+    const oneColour = lams.every(Number.isFinite) && Math.max(...lams) - Math.min(...lams) <= CURVE_WIDTH_UM + 1e-9;
+    const line = points.length >= MIN_VISITS && visitCount(points.map((p) => p.mjd)) >= MIN_VISITS && oneColour;
     return {
-        kind: points.length >= MIN_CURVE ? 'curve' : points.length > 0 ? 'table' : 'none',
+        kind: line ? 'curve' : points.length > 0 ? 'table' : 'none',
         lambda: Number.isFinite(lc.lambda) ? lc.lambda : result.lambda,
         ringIn: ring.ringIn * px,
         ringOut: ring.ringOut * px,
@@ -159,14 +166,15 @@ export function haloHtml(h: HaloView, name: string, on: number): string
     const lamLo = Math.min(...lams);
     const lamHi = Math.max(...lams);
     // The ring and the comparison stars need not share a colour, so looks a little apart in wavelength can differ.
-    const colours = lams.length > 1 && lamHi - lamLo >= 0.005 - 1e-9
+    const colours = lams.length > 1 && lamHi - lamLo >= CURVE_WIDTH_UM - 1e-9
         ? ` These looks were taken from ${lamLo.toFixed(3)} to ${lamHi.toFixed(3)} µm; looks at slightly different colours can read differently for that reason alone.`
         : '';
     const visits = visitCount(h.points.map((p) => p.mjd));
     if (h.kind === 'none' || h.kind === 'table') {
         const head = `At ${h.lambda.toFixed(2)} µm, ${where}, could be measured in ${h.points.length} of ${plural(h.looks, 'look', 'looks')}`
             + `${h.points.length ? `, taken on ${plural(visits, 'visit', 'visits')}` : ''}.`
-            + ` Not enough measured looks at this colour to draw a curve: it needs at least ${MIN_CURVE}.${off}`;
+            + ` A curve is drawn only from looks on at least ${MIN_VISITS} visits, all within ${CURVE_WIDTH_UM} µm of colour;`
+            + ` these looks do not meet that, so ${h.kind === 'table' ? 'each reading is listed instead' : 'there is no curve'}.${off}`;
         if (h.kind === 'none') {
             return `<p class="sk-body mute">${head}</p>${notes}`;
         }
