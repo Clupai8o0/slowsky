@@ -167,10 +167,11 @@ in it.
   0.2° of the centre, and skip the rings if the catalogue is slow to answer.
 - The page tries a brightness curve only for RW Aurigae and WISE 0855; the other three presets never get one. The
   curve divides the target by two to four Gaia comparison stars in the field, of G magnitude 9 to 15 (a range we
-  chose ourselves). They are not checked for steadiness, so a variable one shows up as wobble. The curve appears
-  only when at least two such stars are slow-moving and sit clear of the target, of other nearby stars and of the
-  picture's edge. In the offline copy only RW Aurigae's field has two; WISE 0855's has fewer, so it gets a curve
-  only on a live view whose field holds enough. The shaded band shows how much those comparison stars wobble; a faint target can wobble more.
+  chose ourselves). While more than two remain, the page drops one whose brightness scatters more than three times
+  as much as the others'; beyond that they are not checked for steadiness, so a variable one shows up as wobble.
+  The curve appears only when at least two such stars are slow-moving and sit clear of the target, of other nearby
+  stars and of the picture's edge. Of those two targets, only RW Aurigae has two in the offline copy; WISE 0855's
+  field has fewer, so it gets a curve only on a live view whose field holds enough. The shaded band shows how much those comparison stars wobble; a faint target can wobble more.
   It is a rough check, not calibrated photometry.
 - For Barnard's Star the page measures how far the star moved between two frames and shows the distance its
   catalogue proper motion predicts beside it. The prediction leaves out parallax (the small back-and-forth shift
