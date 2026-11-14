@@ -15,8 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
-
-from playwright.sync_api import sync_playwright
+from urllib.parse import urlsplit
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TARGETS = [  # (id, button name, needs click)
@@ -42,6 +41,61 @@ PIXELS_JS = """() => {
 }"""
 BUILD_TIMEOUT = 300
 FRAME_RE = re.compile(r"Frame (\d+) of (\d+)")
+
+
+def is_fits_url(url):
+    try:
+        parsed = urlsplit(url)
+        return (parsed.scheme == "https" and parsed.hostname in {
+            "nasa-irsa-spherex.s3.us-east-1.amazonaws.com",
+            "nasa-irsa-spherex.s3.amazonaws.com",
+        } and parsed.path.lower().endswith(".fits"))
+    except ValueError:
+        return False
+
+
+def has_error_text(text):
+    # "error bar" is the brightness curve's own wording, not a failure.
+    return bool(re.search(r"failed to fetch|couldn['’]t|\berror\b(?!\s+bars?\b)", text, re.IGNORECASE))
+
+
+def sequence_changed(saved_list, live_list, saved_count, live_count, saved_file, live_file, is_live):
+    if saved_list and live_list and saved_list != live_list:
+        return True
+    return bool(is_live and (saved_count != live_count or
+                             (saved_file and live_file and saved_file != live_file)))
+
+
+def self_test():
+    cases = [
+        ("regional FITS", lambda: is_fits_url("https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/dr1/a.fits?x=1")),
+        ("global FITS", lambda: is_fits_url("https://nasa-irsa-spherex.s3.amazonaws.com/a.fits")),
+        ("non-FITS", lambda: not is_fits_url("https://nasa-irsa-spherex.s3.amazonaws.com/a.txt")),
+        ("wrong host", lambda: not is_fits_url("https://nasa-irsa-spherex.evil.example/a.fits")),
+        ("wrong scheme", lambda: not is_fits_url("http://nasa-irsa-spherex.s3.amazonaws.com/a.fits")),
+        ("clean text", lambda: not has_error_text("Live: archive ready")),
+        ("failed fetch", lambda: has_error_text("Live: Failed to fetch")),
+        ("couldn't", lambda: has_error_text("Couldn't load frame")),
+        ("error", lambda: has_error_text("Live: ERROR loading frame")),
+        ("error bars are not an error", lambda: not has_error_text("Each point has its own error bar. Error bars show noise.")),
+        ("same sequence different pixels", lambda: not sequence_changed(["a", "b"], ["a", "b"], 2, 2, "a", "a", True)),
+        ("different sequence", lambda: sequence_changed(["a", "b"], ["a", "c"], 2, 2, "a", "a", False)),
+        ("different first file", lambda: sequence_changed(["a", "b"], ["a", "b"], 2, 2, "a", "c", True)),
+        ("different count", lambda: sequence_changed([], [], 2, 3, "a", "a", True)),
+        ("no live status", lambda: not sequence_changed([], [], 2, 3, "a", "a", False)),
+        ("missing file", lambda: not sequence_changed([], [], 2, 2, "a", "", True)),
+    ]
+    failed = 0
+    for name, check in cases:
+        try:
+            ok = check()
+        except Exception as exc:
+            ok = False
+            print(f"FAIL {name}: {exc}")
+        else:
+            print(f"{'PASS' if ok else 'FAIL'} {name}")
+        failed += not ok
+    return 1 if failed else 0
 
 
 def free_port(start=5210):
@@ -119,7 +173,38 @@ def frame_now(pg):
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
-def pause_and_step(pg, fails):
+def visible_error(pg):
+    elements = pg.locator('[data-ref="err"], [role="alert"], .error, .sk-err')
+    for i in range(elements.count()):
+        el = elements.nth(i)
+        if el.is_visible():
+            return el.inner_text().strip() or "visible error element"
+    text = page_texts(pg)
+    return "visible error text" if has_error_text(text) else ""
+
+
+def pause_first_frame(pg):
+    play = pg.locator('button[data-act="play"]')
+    if play.get_attribute("aria-label") == "Pause":
+        play.click()
+    if play.get_attribute("aria-label") != "Play":
+        raise RuntimeError("could not pause playback")
+    pg.locator('[data-ref="strip"] button').first.click()
+    pg.wait_for_function("document.querySelector('[data-bind=\"frame\"]')?.textContent?.startsWith('Frame 1 of ')")
+    frame = frame_now(pg)
+    details = pg.evaluate("""() => {
+        const d = document.querySelector('[data-ref="dl"]');
+        const file = [...d.querySelectorAll('dt')].find(e => e.textContent.trim() === 'File');
+        return file?.nextElementSibling?.textContent?.trim() || '';
+    }""")
+    dates = pg.locator('[data-ref="strip"] button').evaluate_all(
+        "buttons => buttons.map(b => (b.getAttribute('aria-label') || '').replace(/^Frame \\d+:\\s*/, ''))")
+    if not frame or not details or len(dates) != frame[1] or not all(dates):
+        raise RuntimeError("first frame details or frame list missing")
+    return {"count": frame[1], "file": details, "dates": dates, "hash": pg.evaluate(HASH_JS)}
+
+
+def pause_and_step(pg, fails, check_live_errors=False):
     play = pg.locator('button[data-act="play"]')
     if play.get_attribute("aria-label") == "Pause":
         play.click()
@@ -134,6 +219,9 @@ def pause_and_step(pg, fails):
         return
     h0 = pg.evaluate(HASH_JS)
     pg.locator('button[data-act="next"]').click()
+    if check_live_errors and (error := visible_error(pg)):
+        fails.append("live view error after Next: " + error[:140])
+        return
     want = a[0] + 1 if a[0] < a[1] else 1
     ok = False
     for _ in range(15):
@@ -142,24 +230,26 @@ def pause_and_step(pg, fails):
         if b and b[0] == want:
             ok = True
             break
+    if check_live_errors and (error := visible_error(pg)):
+        fails.append("live view error after Next: " + error[:140])
+        return
     if not ok:
         fails.append("Next did not go to frame %d (was %d of %d)" % (want, a[0], a[1]))
         return
     for _ in range(10):
         if pg.evaluate(HASH_JS) != h0:
+            if check_live_errors and (error := visible_error(pg)):
+                fails.append("live view error after Next: " + error[:140])
             return
         time.sleep(0.3)
+    if check_live_errors and (error := visible_error(pg)):
+        fails.append("live view error after Next: " + error[:140])
     fails.append("canvas pixels did not change after Next")
 
 
 def go_live(pg, fails, live_timeout, allow_fallback):
     """From the saved copy, press Go live and require a real live read. Returns a note."""
-    play = pg.locator('button[data-act="play"]')
-    if play.get_attribute("aria-label") == "Pause":
-        play.click()
-    time.sleep(0.5)
-    saved = frame_now(pg)
-    saved_hash = pg.evaluate(HASH_JS)
+    saved = pause_first_frame(pg)
     btn = pg.locator('[data-act="live"]')
     if btn.is_hidden():
         fails.append("Go live button is not shown on the saved copy")
@@ -170,11 +260,14 @@ def go_live(pg, fails, live_timeout, allow_fallback):
     while time.time() - t0 < live_timeout:
         time.sleep(0.5)
         status = pg.evaluate("document.querySelector('[data-bind=\"status\"]')?.textContent || ''")
-        err = pg.evaluate("(() => { const e = document.querySelector('[data-ref=\"err\"]'); return e && !e.hidden ? e.textContent : ''; })()")
+        err = visible_error(pg)
+        if err:
+            fails.append("live view error: " + err[:140])
+            return ""
         if status.startswith("Live:") and frame_now(pg):
             break
-        if err or "did not answer" in status:
-            status = (err or status).strip()
+        if "did not answer" in status:
+            status = status.strip()
             break
     secs = time.time() - t0
     if not status.startswith("Live:"):
@@ -186,16 +279,17 @@ def go_live(pg, fails, live_timeout, allow_fallback):
     if not now or now[1] < 2:
         fails.append("live view has fewer than 2 frames (%s)" % (now,))
         return ""
-    play = pg.locator('button[data-act="play"]')
-    if play.get_attribute("aria-label") == "Pause":
-        play.click()
-        time.sleep(0.5)
-    if now[1] == saved[1] and pg.evaluate(HASH_JS) == saved_hash:
-        fails.append("live view looks identical to the saved copy (same frame count and pixels)")
+    live = pause_first_frame(pg)
+    if error := visible_error(pg):
+        fails.append("live view error: " + error[:140])
+    if not sequence_changed(saved["dates"], live["dates"], saved["count"], live["count"],
+                            saved["file"], live["file"], status.startswith("Live:")):
+        fails.append("live view has the same frame sequence and first file as the saved copy "
+                     f"(first-frame hashes {saved['hash']}, {live['hash']})")
     hrefs = pg.evaluate("[...document.querySelectorAll('[data-ref=\"dl\"] a')].map(a => a.href)")
-    if not any("nasa-irsa-spherex" in h and h.lower().split("?")[0].endswith(".fits") or "nasa-irsa-spherex" in h for h in hrefs):
+    if not any(is_fits_url(h) for h in hrefs):
         fails.append("details panel has no FITS link on nasa-irsa-spherex (%s)" % hrefs[:2])
-    return "live read %.0fs, %d frames (saved copy had %d)" % (secs, now[1], saved[1])
+    return "live read %.0fs, %d frames (saved copy had %d)" % (secs, live["count"], saved["count"])
 
 
 def run_target(browser, base, tid, label, click, mode, timeout, out, brk, live_timeout=90, allow_fallback=False):
@@ -283,7 +377,7 @@ def run_target(browser, base, tid, label, click, mode, timeout, out, brk, live_t
             else:
                 note = "snapshot"
             if not fails:
-                pause_and_step(pg, fails)
+                pause_and_step(pg, fails, mode == "live")
         if errs:
             fails.append("; ".join(errs[:3]))
     except Exception as e:
@@ -332,6 +426,7 @@ def run_page_checks(browser, base, out):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--self-test", action="store_true", help="test pure checks without a browser")
     ap.add_argument("--base")
     ap.add_argument("--mode", choices=["offline", "live", "both"], default="offline")
     ap.add_argument("--out")
@@ -340,6 +435,9 @@ def main():
     ap.add_argument("--allow-fallback", action="store_true", help="live mode: a fallback to the saved copy passes with a note")
     ap.add_argument("--break", dest="brk", choices=["snapshot", "target", "next", "live"], help=argparse.SUPPRESS)
     a = ap.parse_args()
+    if a.self_test:
+        return self_test()
+    from playwright.sync_api import sync_playwright
     out = a.out or tempfile.mkdtemp(prefix="slowsky-smoke-")
     os.makedirs(out, exist_ok=True)
     server = Server()
