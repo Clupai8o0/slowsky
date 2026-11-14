@@ -1359,7 +1359,12 @@ export function mount(root: HTMLElement): void
             if (mine.signal.aborted) {
                 return;
             }
-            toast('Couldn’t find that. Try a star name, or RA and Dec like 269.45, 4.69.');
+            // Only numbers, signs and units that parseCoords refused: it reads more than one way ("10 30 20 15").
+            // Asked only after the name lookup, since a few real names look like this ("1H 0707-495").
+            const numeric = /^[+-]?[\d.]/.test(text) && /^[\d\s.,:;+\-hdms°′″'"]+$/i.test(text);
+            toast(numeric
+                ? 'Couldn’t find that name or read it as RA and Dec. Write them with a comma between them, like 269.45, 4.69, or with units, like 17h57m +4d41m.'
+                : 'Couldn’t find that. Try a star name, or RA and Dec like 269.45, 4.69.');
         }
     });
 
