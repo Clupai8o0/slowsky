@@ -223,16 +223,17 @@ describe('live source (fake SIA and S3)', () => {
         expect(res.locked.map((l) => l.frame.obsId)).toEqual(['firstD1', 'secondD1']);
     });
 
-    it('keeps one frame for a daily visit after thinning to two headers', async () => {
+    it('splits daily coverage into visits and reads one frame from each of two spread visits', async () => {
+        // 40 daily frames make 4 visits of at most 10 days (days 0-10, 11-21, 22-32, 33-39).
         const fakes = Array.from({ length: 40 }, (_, i) => fakeBand(`day${i}D1`, 60900 + i, 1.000));
         const reader = fakeReader(fakes);
         const source = createLiveSource({
             reader, search: async () => fakes.map((f) => f.record), visitGapDays: 10, maxHeaders: 2,
         });
         const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: 1.000 });
-        expect(res.frames).toHaveLength(1);
-        expect(res.locked.map((l) => l.frame.obsId)).toEqual(['day10D1']);
-        expect(reader.reads).toBe(2);
+        expect(res.frames).toHaveLength(2);
+        expect(res.locked.map((l) => l.frame.obsId)).toEqual(['day16D1', 'day36D1']);
+        expect(reader.reads).toBe(4); // IMAGE + ZODI for the 2 kept frames
         expect(res.notes.join(' ')).toContain('Read 2 of 40 frames');
     });
 
