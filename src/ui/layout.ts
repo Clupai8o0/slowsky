@@ -50,6 +50,7 @@ export function initLayout(root: HTMLElement): Layout
     const focusBtn = root.querySelector('[data-act="focus"]') as HTMLButtonElement;
     const sky = root.querySelector('.sk-sky') as HTMLElement | null;
     let animTimer = 0;
+    let flip: Animation | null = null;
 
     function num(v: unknown): number | undefined
     {
@@ -136,7 +137,7 @@ export function initLayout(root: HTMLElement): Layout
         const vh = innerHeight;
         const cs = getComputedStyle(root);
         const inner = root.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-        const gutter = vw <= 1280 ? 32 : Math.min(64, Math.max(32, vw * 0.04)); // --cg
+        const gutter = Math.min(72, Math.max(56, vw * 0.044)); // --cg: clamp(56px, 4.4vw, 72px)
         const midW = Math.max(360, inner
             - (folded.left ? 0 : gutter + current('left'))
             - (folded.right ? 0 : gutter + current('right')));
@@ -162,7 +163,11 @@ export function initLayout(root: HTMLElement): Layout
     function animate(opening: Side | 'both' | null, change: () => void): void
     {
         const watch = root.querySelector<HTMLElement>('.sk-m-watch');
+        // Where the sky is on screen now, mid-glide included; then drop any glide still running so the new box is
+        // measured untransformed and the next glide starts from where the eye last saw it.
         const before = sky?.getBoundingClientRect();
+        flip?.cancel();
+        flip = null;
         change();
         clearTimeout(animTimer);
         if (opening) {
@@ -181,7 +186,7 @@ export function initLayout(root: HTMLElement): Layout
             const dx = before.left - after.left;
             const dy = before.top - after.top;
             if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || Math.abs(s - 1) > 0.01) {
-                watch.animate([
+                flip = watch.animate([
                     { transformOrigin: `${ox}px ${oy}px`, transform: `translate(${dx}px, ${dy}px) scale(${s})` },
                     { transformOrigin: `${ox}px ${oy}px`, transform: 'none' },
                 ], { duration: MOVE_MS, easing: MOVE_EASE });

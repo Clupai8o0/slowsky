@@ -82,7 +82,7 @@ button { cursor: pointer; }
 /* The fold button: a framed square on the divider, level with the step labels, clear of them by 12 px. */
 .sk-fold { position: absolute; z-index: 3; left: 50%; top: calc(var(--head) + var(--gap) - 8px); width: 32px; height: 32px; margin-left: -16px; padding: 0;
     display: grid; place-items: center; border: 1px solid var(--hair2); border-radius: 3px; background: #0a0d16; color: var(--ink2);
-    transition: border-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease), background var(--t-hover) var(--ease), transform var(--t-press) var(--ease); }
+    transition: transform var(--t-press) var(--ease); }
 .sk-fold:hover { border-color: rgba(255, 255, 255, .45); background: #121623; color: #fff; }
 .sk-fold .ic svg { width: 16px; height: 16px; }
 .sk-fold[aria-expanded=false] .ic svg { transform: rotate(180deg); }
@@ -108,11 +108,11 @@ button { cursor: pointer; }
 
     .sk-mini { position: absolute; z-index: 4; top: var(--pt); display: inline-flex; align-items: center; gap: 10px; height: 36px; max-width: 280px; padding: 0 12px;
         border: 1px solid var(--hair2); border-radius: 3px; background: rgba(3, 5, 11, .55); color: var(--ink2); font-size: var(--fs-small); white-space: nowrap;
-        opacity: 0; visibility: hidden; transition: opacity var(--t-exit) var(--ease), visibility 0s var(--t-exit), border-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease), transform var(--t-press) var(--ease); }
+        opacity: 0; visibility: hidden; transition: opacity var(--t-exit) var(--ease), visibility 0s var(--t-exit), transform var(--t-press) var(--ease); }
     .sk-mini-l { left: var(--px); }
     .sk-mini-r { right: var(--px); }
     .sk[data-left=min] .sk-mini-l, .sk[data-right=min] .sk-mini-r { opacity: 1; visibility: visible;
-        transition: opacity var(--t-enter) var(--ease) 60ms, visibility 0s, border-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease), transform var(--t-press) var(--ease); }
+        transition: opacity var(--t-enter) var(--ease) 60ms, visibility 0s, transform var(--t-press) var(--ease); }
     .sk-mini:hover { border-color: rgba(255, 255, 255, .45); color: var(--ink); }
     .sk-mini .ic svg { width: 15px; height: 15px; }
     .sk-mini .t { font: 500 var(--fs-label)/1 var(--mono); letter-spacing: var(--track); text-transform: uppercase; color: var(--mute); }
@@ -172,17 +172,17 @@ button { cursor: pointer; }
 .sk-tg button { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 1px; min-height: 40px; padding: 7px 0 7px 28px; border: 0; background: none; text-align: left; transition: transform var(--t-press) var(--ease); }
 .sk-tg button:active { transform: scale(.98); }
 /* Each target's kind (mover, variable, cold ...) as a small mark beside its name. */
-.sk-tg .k { position: absolute; left: 0; top: 11px; color: var(--mute); transition: color var(--t-hover) var(--ease); }
+.sk-tg .k { position: absolute; left: 0; top: 11px; color: var(--mute); }
 .sk-tg .k svg { width: 16px; height: 16px; }
 .sk-tg button:hover .k { color: var(--ink2); }
 .sk-tg button[aria-pressed=true] .k { color: #fff; filter: drop-shadow(0 0 5px rgba(150, 180, 255, .8)); }
-.sk-tg b { font-size: 16px; line-height: 22px; font-weight: 400; letter-spacing: -.01em; color: var(--ink2); transition: color var(--t-hover) var(--ease); }
-.sk-tg small { font-size: var(--fs-small); line-height: 18px; color: var(--mute); transition: color var(--t-hover) var(--ease); }
+.sk-tg b { font-size: 16px; line-height: 22px; font-weight: 400; letter-spacing: -.01em; color: var(--ink2); }
+.sk-tg small { font-size: var(--fs-small); line-height: 18px; color: var(--mute); }
 .sk-tg button:hover b { color: #fff; }
 .sk-tg button[aria-pressed=true] b { color: #fff; }
 .sk-tg button[aria-pressed=true] small { color: var(--ink2); }
 
-.sk-search { display: flex; align-items: center; gap: 12px; height: 40px; margin: 10px 0 0; border-bottom: 1px solid var(--hair2); transition: border-color var(--t-hover) var(--ease); }
+.sk-search { display: flex; align-items: center; gap: 12px; height: 40px; margin: 10px 0 0; border-bottom: 1px solid var(--hair2); }
 .sk-search:focus-within { border-color: rgba(255, 255, 255, .45); }
 .sk-search .ic { flex: none; width: 16px; display: grid; place-items: center start; color: var(--mute); }
 .sk-search .ic svg { width: 15px; height: 15px; }
@@ -227,7 +227,7 @@ button { cursor: pointer; }
 .sk-read b:not(:empty) + span::before { content: "  ·  "; white-space: pre; color: var(--faint); }
 .sk-focus { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 32px; height: 32px; padding: 0 10px; border: 1px solid var(--hair2); border-radius: 3px;
     background: none; color: var(--ink2); font: 500 var(--fs-label)/1 var(--mono); letter-spacing: var(--track); text-transform: uppercase;
-    transition: border-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease), transform var(--t-press) var(--ease); }
+    transition: transform var(--t-press) var(--ease); }
 .sk-focus:hover { border-color: rgba(255, 255, 255, .45); color: #fff; }
 .sk-focus[aria-pressed=true] { border-color: rgba(255, 255, 255, .6); color: #fff; }
 .sk-focus .ic svg { width: 14px; height: 14px; }
@@ -239,7 +239,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-sub[hidden] { display: none; }
 .sk-seg2 { display: inline-flex; gap: 4px; }
 .sk-seg2 button { height: 32px; padding: 0 12px; border: 1px solid var(--hair2); border-radius: 2px; background: none; color: var(--ink2); font: var(--fs-label) var(--mono);
-    transition: background var(--t-hover) var(--ease), color var(--t-hover) var(--ease), border-color var(--t-hover) var(--ease), transform var(--t-press) var(--ease); }
+    transition: transform var(--t-press) var(--ease); }
 .sk-seg2 button:hover { color: #fff; border-color: rgba(255, 255, 255, .45); }
 .sk-seg2 button[aria-pressed=true] { background: #fff; border-color: #fff; color: #000; }
 /* Two lines reserved, so a longer hint never shoves the frames below it. */
@@ -297,9 +297,9 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 }
 .sk-key { display: inline-flex; align-items: center; gap: 8px; min-height: 26px; }
 .sk-key i { flex: none; display: inline-block; }
-.sk-key.g { height: 32px; padding: 0 4px 0 0; border: 0; background: none; color: var(--ink2); font-size: var(--fs-small); white-space: nowrap; transition: color var(--t-hover) var(--ease), transform var(--t-press) var(--ease); }
+.sk-key.g { height: 32px; padding: 0 4px 0 0; border: 0; background: none; color: var(--ink2); font-size: var(--fs-small); white-space: nowrap; transition: transform var(--t-press) var(--ease); }
 .sk-key.g:hover { color: #fff; }
-.sk-key.g .box { width: 14px; height: 14px; border: 1px solid rgba(255, 255, 255, .3); border-radius: 2px; position: relative; transition: background var(--t-hover) var(--ease), border-color var(--t-hover) var(--ease); }
+.sk-key.g .box { width: 14px; height: 14px; border: 1px solid rgba(255, 255, 255, .3); border-radius: 2px; position: relative; }
 .sk-key.g[aria-pressed=true] .box { background: var(--ink); border-color: var(--ink); }
 .sk-key.g[aria-pressed=true] .box::after { content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid var(--void); border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
 .sk-key.g[aria-pressed=false] { color: var(--mute); }
@@ -332,8 +332,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-fov { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font: 500 var(--fs-label) var(--mono); letter-spacing: var(--track); text-transform: uppercase; color: var(--mute); }
 .sk-legrow > .sk-fov { margin-left: auto; }
 .sk-fov select { -webkit-appearance: none; appearance: none; height: 32px; padding: 0 22px 0 6px; border: 1px solid transparent; border-radius: 2px; color: var(--ink); font: 400 var(--fs-small) var(--mono); letter-spacing: 0; text-transform: none; cursor: pointer;
-    background: linear-gradient(45deg, transparent 50%, var(--ink2) 50%) no-repeat calc(100% - 12px) 55% / 4px 4px, linear-gradient(135deg, var(--ink2) 50%, transparent 50%) no-repeat calc(100% - 8px) 55% / 4px 4px, transparent;
-    transition: border-color var(--t-hover) var(--ease); }
+    background: linear-gradient(45deg, transparent 50%, var(--ink2) 50%) no-repeat calc(100% - 12px) 55% / 4px 4px, linear-gradient(135deg, var(--ink2) 50%, transparent 50%) no-repeat calc(100% - 8px) 55% / 4px 4px, transparent; }
 .sk-fov select:hover { border-color: var(--hair2); }
 .sk-fov select option { background: #0b0e16; }
 /* Scale bar in the image's corner, with end caps so it reads as a ruler. */
@@ -343,7 +342,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 
 .sk-player { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; padding-top: 6px; }
 .sk-tr { display: flex; gap: 4px; }
-.sk-btn { width: 44px; height: 44px; padding: 0; border: 0; border-radius: 3px; background: var(--fill); display: grid; place-items: center; color: var(--ink); transition: background var(--t-hover) var(--ease), transform var(--t-press) var(--ease); }
+.sk-btn { width: 44px; height: 44px; padding: 0; border: 0; border-radius: 3px; background: var(--fill); display: grid; place-items: center; color: var(--ink); transition: transform var(--t-press) var(--ease); }
 .sk-btn:hover { background: var(--fill2); }
 /* Presses answer at once: a small dip on every button, no delay. */
 .sk-btn:active, .sk-seg button:active, .sk-seg2 button:active, .sk-btn2:active, .sk-fold:active, .sk-focus:active, .sk-mini:active, .sk-key.g:active, .sk-strip button:active { transform: scale(.97); }
@@ -352,7 +351,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 /* View switch: three equal cells, so the white block behind the chosen one only ever slides (transform). */
 .sk-seg { position: relative; isolation: isolate; display: flex; padding: 3px; gap: 2px; border-radius: 4px; background: var(--fill); }
 .sk-seg button { flex: 1 1 0; min-width: 0; height: 38px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 2px; background: none; color: var(--ink2); font-size: var(--fs-small); white-space: nowrap;
-    transition: color var(--t-hover) var(--ease), transform var(--t-press) var(--ease); }
+    transition: transform var(--t-press) var(--ease); }
 .sk-seg .ic svg { width: 15px; height: 15px; }
 .sk-seg button:hover { color: #fff; }
 .sk-seg::before { content: ""; position: absolute; z-index: -1; top: 3px; bottom: 3px; left: 0; width: var(--sw, 0px); transform: translateX(var(--sx, 0px)); border-radius: 2px; background: #fff; }
@@ -383,7 +382,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk[data-source=snapshot] .sk-status .dot { background: var(--gold); }
 .sk[data-source=demo] .sk-status .dot { background: #fff; }
 .sk-btn2 { flex: none; height: 36px; padding: 0 12px; border: 1px solid var(--hair2); border-radius: 3px; background: none; color: var(--ink2); font-size: var(--fs-small); display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
-    transition: border-color var(--t-hover) var(--ease), background var(--t-hover) var(--ease), color var(--t-hover) var(--ease), transform var(--t-press) var(--ease); }
+    transition: transform var(--t-press) var(--ease); }
 .sk-btn2:hover { border-color: rgba(255, 255, 255, .35); background: var(--fill); color: #fff; }
 .sk-btn2 .ic svg { width: 14px; height: 14px; }
 .sk-acts { flex: none; display: flex; gap: 6px; }
@@ -456,7 +455,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-m-details a { color: var(--ink); text-decoration-color: rgba(255, 255, 255, .35); text-underline-offset: 3px; }
 .sk-m-details a:hover { text-decoration-color: #fff; }
 /* A source sits on the fact it backs: a quiet underlined link with the full citation in its title. */
-.sk-src { color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .3); text-underline-offset: 3px; transition: text-decoration-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease); }
+.sk-src { color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .3); text-underline-offset: 3px; }
 .sk-src:hover, .sk-src:focus-visible { color: var(--ink); text-decoration-color: currentColor; }
 /* Small links and text buttons keep their look but get a 32 px tall hit area (44 px on touch screens). */
 .sk-src, .sk-m-details dd a, .sk-chg-more, .sk-halo-k { position: relative; }
