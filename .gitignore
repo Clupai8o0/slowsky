@@ -16,3 +16,4 @@ data-raw/
 AGENTS.md
 .vercel
 .env*
+.claude/
