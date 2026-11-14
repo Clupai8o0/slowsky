@@ -1914,10 +1914,27 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     }
     // S/N prints only where both visits' error maps have a value at every end of the candidate: elsewhere the noise
     // there came from the difference image alone (Opus r11: a NaN core in the maps left "S/N > 50" from it).
+    // The noise behind a spot's S/N comes from noise bins (NATIVE wide) under an aperture about PSF_FWHM across, so the
+    // maps must have a value at every in-picture pixel within PSF_FWHM + NATIVE of the spot (Codex r11p: one NaN per
+    // surrounding bin left the centre pixel valid and still printed an S/N from the difference image).
+    const coverPix = (PSF_FWHM + NATIVE) / grid.pixelArcsec;
     const mappedAt = (p: PixelCoord): boolean => {
-        const x = Math.round(p.x), y = Math.round(p.y);
-        const v = varSum && x >= 0 && y >= 0 && x < grid.width && y < grid.height ? varSum[y * grid.width + x]! : NaN;
-        return Number.isFinite(v) && v > 0;
+        if (!varSum) {
+            return false;
+        }
+        const r = Math.ceil(coverPix);
+        for (let y = Math.max(0, Math.round(p.y) - r); y <= Math.min(grid.height - 1, Math.round(p.y) + r); y++) {
+            for (let x = Math.max(0, Math.round(p.x) - r); x <= Math.min(grid.width - 1, Math.round(p.x) + r); x++) {
+                if (Math.hypot(x - p.x, y - p.y) > coverPix) {
+                    continue;
+                }
+                const v = varSum[y * grid.width + x]!;
+                if (!(Number.isFinite(v) && v > 0)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     };
     let unmapped = 0;
     const finished = finish(result, opt, singleFrame, (c) => {
