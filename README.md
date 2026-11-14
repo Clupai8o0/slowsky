@@ -12,12 +12,13 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 ## What you can do
 
 - Pick a preset target: Barnard's Star (moves fastest across our sky), RW Aurigae (changes its brightness),
-  Epsilon Indi B (fades at some colours), WISE 0855−0714 (the coldest brown dwarf known) or R Draconis (too bright
-  to measure). Each one comes with a short note on what to look for and what the view cannot tell you.
+  Epsilon Indi B (dim at the colours that methane and water absorb), WISE 0855−0714 (the coldest brown dwarf
+  known) or R Draconis (its centre is too bright for the camera in every saved frame). Each one comes with a short
+  note on what to look for and what the view cannot tell you.
 - Search any other spot: type RA and Dec (decimal degrees, or hours-minutes-seconds and degrees), or a star name.
   Names are looked up in the SIMBAD catalogue.
 - Watch the frames three ways:
-  - **Blink** plays the frames one after another, so anything that moves or changes jumps out.
+  - **Blink** plays the frames one after another, so things that move or change are easier to spot.
   - **Stack** averages all frames into one. Faint things show up; moving things smear.
   - **Subtract** shows the last frame minus the first. Blue was there then, orange is there now.
 - Play, pause and step through frames with the buttons, the space bar, the arrow keys or `[` and `]`, or click
@@ -27,8 +28,8 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 - Change the field of view: 0.1°, 0.25°, 0.5° or 1°.
 - For a preset target, see a marker where the target should be on each frame's date (a ring for Barnard's Star
   and Epsilon Indi B, corner marks for the others).
-- See rings that mark stars from ESA's Gaia DR3 catalogue (live within 0.2° of the centre, or from the offline
-  copy), and turn them off or on.
+- See rings that mark stars from ESA's Gaia DR3 catalogue that are brighter than G magnitude 19 (live: within 0.2°
+  of the centre, the 400 brightest at most; or from the offline copy), and turn them off or on.
 - On a live view in Blink, switch on **Flags** to paint the pixels that the frame's own quality layer marks
   (cosmic-ray hits, for example), and read how many pixels are flagged and which three kinds are most common.
 - Read each frame's details: when it was taken, its wavelength at the centre, detector, data release, file name,
@@ -39,7 +40,7 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 
 1. **Position.** The page starts from a sky position. For the presets, positions and proper motions (the slow
    drift of a star across the sky, year by year) are stored in `src/data/targets.json`.
-2. **Frame lookup.** It asks NASA's Infrared Science Archive (IRSA) for every SPHEREx frame that covers the spot.
+2. **Frame lookup.** It asks NASA's Infrared Science Archive (IRSA) for the SPHEREx frames that cover the spot.
    The question goes through a small server function, `api/sia.ts`, because IRSA's search service does not accept
    calls from other websites' pages. Only the DR1 and QR3 releases are allowed through.
 3. **Only the needed bytes.** The frames are FITS files in NASA's public storage on Amazon S3 (bucket
@@ -48,18 +49,19 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 4. **Same-wavelength rule.** In a SPHEREx frame, each part of the detector sees a slightly different wavelength.
    Frames taken within 10 days of each other count as one visit. For each visit, the page keeps the one frame whose
    wavelength at the spot is closest to the chosen value, and only if that value lies inside the frame's band.
-   Visits with no such frame are left out, and a note on the page says how many. Each kept frame is within about
-   half a spectral channel of the chosen wavelength, which keeps colour differences between frames small. Near a
-   strong spectral line even that small difference can matter.
+   Visits with no such frame are left out, and a note on the page says how many. Each kept frame's wavelength at
+   the spot is within half of that frame's own bandwidth of the chosen value, which keeps colour differences
+   between frames small. Near a strong spectral line even that small difference can matter.
 5. **Moving targets.** For a preset target, its proper motion is applied for each frame's own date, so the marker
    and the wavelength check follow the star.
 6. **Lining up.** The page removes zodiacal light, the glow of sunlit dust in the solar system (the archive's own
    model of it is in each file). Then it resamples every frame onto one grid with north up, using the sky mapping
    stored in each file's header.
-7. **Drawing.** All frames share one brightness scale, so a frame that looks brighter really is brighter in the
-   data.
+7. **Drawing.** All frames are drawn with one brightness scale, so a frame that looks brighter has higher values
+   in the data. Higher values are not always a real change in the sky (see Limits).
 8. **Saved copy first.** A live read takes 20 to 45 seconds, so the five preset targets open from a snapshot: a
-   small copy of real SPHEREx frames saved with the site in `public/snapshot/`. The same steps run on it. **Go live**
+   small copy of real SPHEREx frames saved with the site in `public/snapshot/`. Steps 4 to 7 run on it just as on
+   live frames; the lookup and the byte reads were done when the copy was made. **Go live**
    reads the same target from the archive. Any other spot, or a colour on another detector, is read live. If the
    archive does not answer, a preset falls back to the snapshot. The status line says which source you are
    looking at.
@@ -112,19 +114,19 @@ format.
 ## Data and credits
 
 The frames are from NASA's SPHEREx mission (DR1 and QR3), served by the NASA/IPAC Infrared Science Archive.
-Star rings use ESA's Gaia DR3 (credit: ESA, Gaia DPAC). Names and target positions come from the SIMBAD database
-through the CfA mirror. The full list, with licences and credit lines: [DATA-LICENSES.md](DATA-LICENSES.md).
+Star rings use ESA's Gaia DR3 (credit: ESA, Gaia DPAC), read through STScI's Gaia cone service with the CfA
+VizieR mirror as a fallback. Names and target positions come from the SIMBAD database through the CfA mirror. The full list, with licences and credit lines: [DATA-LICENSES.md](DATA-LICENSES.md).
 Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md).
 
 ## AI tools used
 
 | Tool | Maker | Used for |
 |---|---|---|
-| Claude Code (Claude Fable, Opus, Sonnet and Haiku models) | Anthropic | Writing and reviewing code, tests, planning help, page text drafts |
+| Claude Code (Claude Fable, Opus, Sonnet and Haiku models) | Anthropic | Writing and reviewing code, tests, planning help, page text drafts; checking the facts in this file and on the page against their sources and writing [SOURCES.md](SOURCES.md) |
 | Claude API (Claude Opus 5.5) | Anthropic | Inside the site: the server route `api/insight.ts` writes the optional research note from the page's own measurements. The note is labelled as written by AI and sits behind a passcode; the route stays off until it is set up |
-| Codex (GPT-6.1 Sol and Terra models) | OpenAI | Writing and reviewing code |
-| Gemini (Argon and Carbon models, through Antigravity) | Google | Writing and reviewing code |
-| Grok 4.7 (through Grok Build) | xAI | Reviewing code |
+| Codex (GPT-6.1 Sol and Terra models) | OpenAI | Writing and reviewing code; checking the source list |
+| Gemini (Argon and Carbon models, through Antigravity) | Google | Writing and reviewing code; reviewing the facts and wording in this file and on the page |
+| Grok 4.7 (through Grok Build) | xAI | Reviewing code; checking the source list |
 | ElevenLabs | ElevenLabs | AI voice in the demo video |
 | GPT Image | OpenAI | Decorative images, if used, marked where they appear |
 
@@ -139,8 +141,9 @@ in it.
   ZTF, DES and Pan-STARRS1 have together ruled out about 78% of its predicted range, and what is left is faint,
   around V 22 (Brown, Holman & Batygin 2024, arXiv:2401.17977). SPHEREx reaches 19.5 to 19.9 AB (5 sigma) below 3.8 µm
   only after its two-year survey, with four observations in each spectral channel at a typical sky brightness
-  away from the Milky Way's plane, and one frame is shallower (Bock et al. 2025, arXiv:2511.02985). These are
-  different bands, so this is a rough comparison, not a limit this repo computes.
+  away from the Milky Way's plane (Bock et al. 2025, arXiv:2511.02985). One frame is shallower still; that part
+  is our own reasoning, not a number from the paper. These are different bands, so this is a rough comparison,
+  not a limit this repo computes.
 - Live loading reads many files from the archive and takes 20 to 45 seconds. It reads at most 60 frames per view
   and says so when it does. To choose them it guesses each frame's wavelength at the spot from the frame's corner
   positions in the archive list (about 10 pixels off), then reads the frames nearest the chosen wavelength.
@@ -153,8 +156,8 @@ in it.
   that walked in from just outside it since then has no ring. Live views ask the catalogue only for stars within
   0.2° of the centre, and skip the rings if the catalogue is slow to answer.
 - The brightness curve (RW Aurigae and WISE 0855; none is drawn for Epsilon Indi B) divides the target by two to
-  four Gaia comparison stars in the field. They are not checked for steadiness, so a variable one shows up as
-  wobble. The curve appears only when the field holds at least two such stars; in the offline copy that is
+  four Gaia comparison stars in the field, of G magnitude 9 to 15 (a range we chose ourselves). They are not
+  checked for steadiness, so a variable one shows up as wobble. The curve appears only when the field holds at least two such stars; in the offline copy that is
   RW Aurigae only. The shaded band shows how much those comparison stars wobble; a faint target can wobble more.
   It is a rough check, not calibrated photometry.
 - For Barnard's Star the page measures how far the star moved between two frames and shows the distance its
@@ -168,7 +171,8 @@ in it.
   The Flags layer leaves out three kinds: SOURCE (set on every pixel mapped to a known source, so it would cover
   the stars themselves), FULLSAMPLE (for information only) and GHOST_FPA (not in use at present). The TRANSIENT
   flag marks cosmic-ray hits, and near a very bright star it can also mark charge spilling into neighbouring
-  pixels, so a flagged pixel beside a bright star is not always a cosmic ray.
+  pixels, so a flagged pixel beside a bright star is not always a cosmic ray. Hits in the first ten seconds of
+  an exposure may go unflagged, so an unflagged pixel is not proof of a clean one.
 - The picture's brightness scale is for viewing. The brightness curve is relative to nearby stars, not in physical
   units. The centre of R Draconis is too bright for the camera in every saved frame, and Barnard's Star's in most
   of them, so neither gets a curve.

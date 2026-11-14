@@ -34,7 +34,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
     },
     epsindb: {
         display: 'Epsilon Indi B',
-        short: 'Fades at some colours',
+        short: 'Dim at some colours',
         kind: 'spectrum',
         headline: 'Epsilon Indi B, missing colours',
         show: 'Two brown dwarfs: heavier than planets, too light to shine like stars. Change the colour: they fade where methane and water soak up light.',
@@ -65,7 +65,7 @@ export const CUSTOM_COPY = {
 };
 
 export const MODE_HINT = {
-    blink: 'Blink flips between dates. Anything that moves or changes jumps out.',
+    blink: 'Blink flips between dates. Things that move or change are easier to spot.',
     stack: 'Stack averages every frame. Faint things appear; moving things smear.',
     diff: 'Subtract: last look minus first. Blue was there then, orange is there now.',
 } as const;
