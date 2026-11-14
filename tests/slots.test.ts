@@ -279,7 +279,7 @@ describe('false colour slot', () => {
         // label describes the picture, which both frames paint: their mean wavelength, not frame a's alone.
         expect(note).toContain('Blue: 1.20 µm (the shorter wavelength), 2 frames');
         expect(note).toContain('Orange: 4.60 µm');
-        expect(note).toContain('1.20 µm cannot be measured here (some frames have blank pixels here)');
+        expect(note).toContain('At the centre: cannot be measured here (blank pixels).');
     });
 
     it('measures a native-width star with the page aperture on the fine grid', async () => {

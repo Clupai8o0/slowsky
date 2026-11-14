@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { colourParts, colourSentence, falseColourView } from '../src/lib/falsecolour-view';
-import { colourAt, falseColourRgba, pairStretch, type ColourAt } from '../src/lib/falsecolour';
+import { describe, expect, it, vi } from 'vitest';
+import { chooseColourFrames, colourParts, colourSentence, falseColourView } from '../src/lib/falsecolour-view';
+import { colourAt, falseColourRgba, FalseColourError, pairStretch, type ColourAt } from '../src/lib/falsecolour';
 import { stackVisit } from '../src/lib/stack';
+import * as stack from '../src/lib/stack';
 import { aperture } from '../src/lib/photometry';
 import type { SkyResult } from '../src/lib/source';
 import type { OutputGrid, RegriddedFrame } from '../src/lib/types';
@@ -33,8 +34,176 @@ function at(mjd: number): [number, number]
     return [mjd, mjd + 0.001];
 }
 
+describe('one frame set per band', () => {
+    it('keeps 85% overlap and leaves out 70%, breaking ties by time and input order', () => {
+        const first = frame(1.2, 60000);
+        const same = frame(1.2, 60000);
+        const late = frame(1.2, 60001);
+        const keep = frame(1.2, 60002);
+        const omit = frame(1.2, 60003);
+        keep.data.fill(NaN, 817);
+        omit.data.fill(NaN, 673);
+        const chosen = chooseColourFrames([late, first, same, keep, omit]);
+        expect(chosen.frames).toEqual([first, same, late, keep]);
+        expect(chosen.leftOut).toBe(1);
+        expect(chooseColourFrames([first, omit, keep]).frames).toEqual([first, keep]);
+        const differentGap = frame(1.2, 60004);
+        differentGap.data.fill(NaN, 0, 145);
+        expect(chooseColourFrames([first, keep, differentGap]).frames).toEqual([first, keep]);
+        const boundary = frame(1.2, 60005);
+        boundary.data.fill(NaN, 769);
+        expect(chooseColourFrames([first, boundary]).frames).toEqual([first, boundary]);
+        boundary.data[768] = NaN;
+        expect(chooseColourFrames([first, boundary]).frames).toEqual([first]);
+    });
+
+    it('rejects an all-blank band with the existing picture error', () => {
+        const blank = frame(1.2);
+        blank.data.fill(NaN);
+        expect(chooseColourFrames([blank])).toEqual({ frames: [], leftOut: 1 });
+        expect(() => falseColourView(sky([blank]), sky([frame(4.6)]), radii)).toThrow(FalseColourError);
+        expect(() => falseColourView(sky([blank]), sky([frame(4.6)]), radii)).toThrow('Picture has no finite pixel values');
+    });
+
+    it('omits a blank frame from wavelength, count, date and warning', () => {
+        const blank = frame(1.8, 60100);
+        blank.data.fill(NaN);
+        const result = falseColourView(sky([frame(1.2), blank]), sky([frame(4.6)]), radii);
+        expect(result.parts.labels).toContain('Blue: 1.20 µm (the shorter wavelength), 1 frame, 2023-02-25; 1 more left out (they cover less of this view).');
+        expect(result.parts.warning).toBe('');
+        expect(result.parts.note).not.toContain('left unpainted');
+        const secondBlank = frame(1.9, 60200);
+        secondBlank.data.fill(NaN);
+        expect(falseColourView(sky([frame(1.2), blank, secondBlank]), sky([frame(4.6)]), radii).parts.labels)
+            .toContain('1 frame, 2023-02-25; 2 more left out (they cover less of this view).');
+    });
+
+    it('does not paint the nebula strip orange', () => {
+        const full = frame(1.2);
+        const strip = frame(1.2);
+        const long = frame(4.6);
+        for (let y = 0; y < 31; y++) {
+            for (let x = 0; x < 31; x++) {
+                const i = y * 31 + x;
+                full.data[i] = long.data[i] = x < 8 ? 60 : 10;
+                strip.data[i] = x < 8 ? 60 : NaN;
+            }
+        }
+        const result = falseColourView(sky([full, strip]), sky([long]), radii);
+        const pixel = result.rgba.slice(4 * (15 * 31 + 2), 4 * (15 * 31 + 2) + 4);
+        expect(pixel[3] === 0 || (pixel[0] === pixel[1] && pixel[1] === pixel[2])).toBe(true);
+        expect(result.parts.labels).toContain('1 more left out');
+    });
+
+    it('judges the shared scale only where both bands are painted', () => {
+        const short = frame(1.2);
+        const long = frame(4.6);
+        for (let y = 0; y < 31; y++) {
+            for (let x = 0; x < 31; x++) {
+                const i = y * 31 + x;
+                long.data[i] = x < 15 ? 60 : 10;
+                short.data[i] = x >= 26 ? NaN : long.data[i]!;
+            }
+        }
+        const result = falseColourView(sky([short]), sky([long]), radii);
+        for (const x of [5, 20]) {
+            const pixel = result.rgba.slice(4 * (15 * 31 + x), 4 * (15 * 31 + x) + 4);
+            expect(pixel[3]).toBe(255);
+            expect(pixel[0] === pixel[1] && pixel[1] === pixel[2]).toBe(true);
+        }
+        expect(result.rgba[4 * (15 * 31 + 28) + 3]).toBe(0);
+    });
+
+    it('averages chosen frames with different frame medians without subtracting them', () => {
+        const full = frame(1.2);
+        const edge = frame(1.2);
+        const long = frame(4.6);
+        for (let y = 0; y < 31; y++) {
+            for (let x = 0; x < 31; x++) {
+                const i = y * 31 + x;
+                full.data[i] = long.data[i] = x < 15 ? 60 : 10;
+                edge.data[i] = x >= 26 ? NaN : full.data[i]!;
+            }
+        }
+        const expected = stackVisit([full, edge], { clipSigma: Infinity, background: 'none' }).data;
+        for (let i = 0; i < expected.length; i++) {
+            if (!Number.isFinite(edge.data[i])) { expected[i] = NaN; }
+        }
+        // The scale is judged where both bands are painted, so the long band is masked the same way here.
+        const longShown = Float32Array.from(long.data, (value, i) => Number.isFinite(expected[i]) ? value : NaN);
+        const stretch = pairStretch(expected, longShown);
+        const calls = vi.spyOn(stack, 'stackVisit');
+        const result = falseColourView(sky([full, edge]), sky([long]), radii);
+        expect(calls).toHaveBeenCalledWith([full, edge], { clipSigma: Infinity, background: 'none' });
+        calls.mockRestore();
+        expect(result.parts.labels).toContain('2 frames');
+        expect(result.rgba).toEqual(falseColourRgba(expected, longShown, stretch.sShort, stretch.sLong));
+    });
+
+    it('compares time sets, ignoring duplicates within tolerance', () => {
+        const duplicate = frame(1.2, 60000 + 0.5 / 86400);
+        const same = falseColourView(sky([frame(1.2), duplicate]), sky([frame(4.6)]), radii);
+        expect(same.parts.warning).toBe('');
+        const other = falseColourView(sky([frame(1.2), frame(1.2, 60100)]), sky([frame(4.6)]), radii);
+        expect(other.parts.warning).toContain('not taken at the same times');
+        const unavailable = frame(1.2, NaN, NaN);
+        expect(falseColourView(sky([unavailable]), sky([frame(4.6)]), radii).parts.warning).toContain('frame dates are unavailable');
+    });
+
+    it('warns for different chosen dates even when a discarded frame matches', () => {
+        const short = frame(1.2, 60000);
+        const absent = frame(1.2, 60100);
+        absent.data.fill(NaN);
+        const result = falseColourView(sky([short, absent]), sky([frame(4.6, 60000), frame(4.6, 60100)]), radii);
+        expect(result.parts.warning).toContain('not taken at the same times');
+    });
+
+    it('measures painted circles and leaves a missing circle pixel transparent', () => {
+        const full = frame(1.2);
+        const missing = frame(1.2);
+        missing.data[15 * 31 + 15] = NaN;
+        const result = falseColourView(sky([full, missing]), sky([frame(4.6)]), radii);
+        expect(result.parts.reading).toContain('1.20 µm cannot be measured here (blank pixels)');
+        expect(result.rgba[4 * (15 * 31 + 15) + 3]).toBe(0);
+        expect(result.parts.note).toContain('parts not covered by every frame are left unpainted');
+        const covered = falseColourView(sky([full, frame(1.2)]), sky([frame(4.6)]), radii);
+        expect(covered.parts.reading).not.toContain('cannot be measured');
+    });
+
+    it('reports flat long-band noise while retaining the valid short band', () => {
+        const flat = frame(4.6);
+        flat.data.fill(10);
+        flat.data[15 * 31 + 15] = 100;
+        const result = falseColourView(sky([frame(1.2)]), sky([flat]), radii);
+        expect(result.parts.reading).toContain('4.60 µm cannot be measured here (the noise could not be judged)');
+        expect(result.parts.reading).toContain('1.20 µm');
+    });
+
+    it('treats an invalid aperture with non-finite noise as blank pixels', () => {
+        const missing = frame(4.6);
+        for (let y = 0; y < 31; y++) {
+            for (let x = 0; x < 31; x++) {
+                const d = (x - 15) ** 2 + (y - 15) ** 2;
+                if (d >= 16 && d <= 49) { missing.data[y * 31 + x] = NaN; }
+            }
+        }
+        const measured = aperture(missing.data, 31, 31, { x: 15, y: 15 }, radii);
+        expect(measured.valid).toBe(false);
+        expect(Number.isFinite(measured.noise)).toBe(false);
+        const result = falseColourView(sky([frame(1.2)]), sky([missing]), radii);
+        expect(result.parts.reading).toContain('4.60 µm cannot be measured here (blank pixels)');
+        expect(result.parts.reading).not.toContain('noise could not be judged');
+    });
+
+    it('prints both readings when an index cannot be formed', () => {
+        const parts = colourParts(1.25, 4.6, { short: 10, long: -2, snrShort: 5, snrLong: 4, index: NaN, seen: 'both', valid: false });
+        expect(parts.reading).toBe('At the centre: seen at both wavelengths (signal-to-noise 5.0 at 1.25 µm and 4.0 at 4.60 µm); no colour index could be formed.');
+        expect(parts.method).not.toContain('The colour index is');
+    });
+});
+
 describe('false colour view coverage', () => {
-    it('labels every painted frame and explains frames absent from the reading', () => {
+    it('labels the chosen frames and measures only their shared circle', () => {
         const cover = frame(1.2, 60000);
         const blank = frame(1.3, 60100);
         for (let y = 0; y < 31; y++) {
@@ -48,12 +217,13 @@ describe('false colour view coverage', () => {
         const result = falseColourView(sky([cover, blank]), sky([frame(4.6)]), radii);
         expect(result.parts.labels).toContain('Blue: 1.25 µm (the shorter wavelength), 2 frames, 2023-02-25 and 2023-06-05.');
         expect(result.parts.warning).toContain('The two colours were not taken at the same times');
-        expect(result.parts.reading).toContain('The 1.25 µm reading uses 1 of 2 frames; the other is blank here.');
+        expect(result.parts.reading).toContain('1.25 µm cannot be measured here (blank pixels).');
         const plural = falseColourView(sky([cover, blank, blank]), sky([frame(4.6)]), radii);
-        expect(plural.parts.reading).toContain('The 1.27 µm reading uses 1 of 3 frames; the others are blank here.');
+        expect(plural.parts.labels).toContain('1.27 µm (the shorter wavelength), 3 frames');
+        expect(plural.parts.reading).toContain('1.27 µm cannot be measured here (blank pixels).');
     });
 
-    it('removes each frame sky before stacking so missing pixels do not create a disc', () => {
+    it('averages without removing frame skies and masks missing pixels', () => {
         const high = frame(1.25);
         const low = frame(1.25);
         high.data.fill(100);
@@ -66,9 +236,11 @@ describe('false colour view coverage', () => {
             }
         }
         const long = frame(4.6);
-        const expected = stackVisit([high, low], { clipSigma: Infinity, background: 'median' }).data;
-        expect([...expected].every(value => value === 0)).toBe(true);
-        const longStack = stackVisit([long], { clipSigma: Infinity, background: 'median' }).data;
+        const expected = stackVisit([high, low], { clipSigma: Infinity, background: 'none' }).data;
+        for (let i = 0; i < expected.length; i++) {
+            if (!Number.isFinite(low.data[i])) { expected[i] = NaN; } else { expect(expected[i]).toBe(50); }
+        }
+        const longStack = stackVisit([long], { clipSigma: Infinity, background: 'none' }).data;
         const stretch = pairStretch(expected, longStack);
         expect(falseColourView(sky([high, low]), sky([long]), radii).rgba)
             .toEqual(falseColourRgba(expected, longStack, stretch.sShort, stretch.sLong));
@@ -100,11 +272,11 @@ describe('false colour view coverage', () => {
         expect(bothFlat.sentence).toBe(Object.values(bothFlat.parts).filter(Boolean).join(' '));
     });
 
-    it('rejects a frame blank exactly at the inner ring edge', () => {
+    it('allows a missing inner ring pixel when aperture accepts the ring', () => {
         const partial = frame(4.6);
         partial.data[15 * 31 + 19] = NaN;
         expect(falseColourView(sky([frame(1.25)]), sky([frame(4.6), partial]), radii).parts.reading)
-            .toContain('4.60 µm cannot be measured here (some frames have blank pixels here)');
+            .not.toContain('cannot be measured');
     });
 
     it.each(['circle missing', 'complementary'] as const)('rejects mismatched frame identities: %s', mode => {
@@ -121,7 +293,7 @@ describe('false colour view coverage', () => {
             }
         }
         expect(falseColourView(sky([high, low]), sky([frame(4.6)]), radii).sentence)
-            .toContain('1.25 µm cannot be measured here (some frames have blank pixels here)');
+            .toContain('1.25 µm cannot be measured here (blank pixels)');
     });
 
     it('uses all frames for wavelengths and dates, including when partial', () => {
@@ -146,19 +318,25 @@ describe('false colour view coverage', () => {
     });
 
     it.each([[17, 15, 'circle edge'], [22, 15, 'outer edge'], [21, 15, 'outer ring']] as const)
-    ('rejects a partial frame with a blank at the %s,%s %s', (x, y, _edge) => {
+    ('handles a frame with a blank at the %s,%s %s', (x, y, _edge) => {
         const partial = frame(4.6);
         partial.data[y * 31 + x] = NaN;
-        expect(falseColourView(sky([frame(1.25)]), sky([frame(4.6), partial]), radii).sentence)
-            .toContain('4.60 µm cannot be measured here (some frames have blank pixels here)');
+        const result = falseColourView(sky([frame(1.25)]), sky([frame(4.6), partial]), radii);
+        expect(result.rgba[4 * (y * 31 + x) + 3]).toBe(0);
+        if (_edge === 'circle edge') {
+            expect(result.parts.reading).toContain('4.60 µm cannot be measured here (blank pixels)');
+        } else {
+            expect(result.parts.reading).not.toContain('cannot be measured');
+        }
     });
 
     it('ignores a gap pixel', () => {
         const a = frame(1.25);
         const b = frame(1.25);
         b.data[15 * 31 + 18] = NaN;
-        expect(falseColourView(sky([a, b]), sky([frame(4.6)]), radii).sentence)
-            .not.toContain('some frames have blank pixels here');
+        const result = falseColourView(sky([a, b]), sky([frame(4.6)]), radii);
+        expect(result.parts.reading).not.toContain('cannot be measured');
+        expect(result.rgba[4 * (15 * 31 + 18) + 3]).toBe(0);
     });
 
     it('ignores a ring pixel blank in every frame', () => {
@@ -166,8 +344,9 @@ describe('false colour view coverage', () => {
         const b = frame(1.25);
         a.data[15 * 31 + 20] = NaN;
         b.data[15 * 31 + 20] = NaN;
-        expect(falseColourView(sky([a, b]), sky([frame(4.6)]), radii).sentence)
-            .not.toContain('some frames have blank pixels here');
+        const result = falseColourView(sky([a, b]), sky([frame(4.6)]), radii);
+        expect(result.parts.reading).not.toContain('cannot be measured');
+        expect(result.rgba[4 * (15 * 31 + 20) + 3]).toBe(0);
     });
 
     it('uses the half-pixel centre on an even grid', () => {
@@ -178,10 +357,10 @@ describe('false colour view coverage', () => {
         b.data[14 * 30 + 13] = NaN;
         const makeSky = (frames: RegriddedFrame[]) => ({ ...sky(frames), grid: evenGrid });
         expect(falseColourView(makeSky([a, b]), makeSky([convert(frame(4.6))]), radii).sentence)
-            .toContain('1.25 µm cannot be measured here (some frames have blank pixels here)');
+            .toContain('1.25 µm cannot be measured here (blank pixels)');
     });
 
-    it.each(['short', 'long'] as const)('retains the seen band when %s is partial in a two-signal image', partialBand => {
+    it.each(['short', 'long'] as const)('retains the seen band when %s has a blank circle pixel', partialBand => {
         const short = frame(1.25);
         const long = frame(4.6);
         for (let y = 13; y <= 17; y++) {
@@ -193,11 +372,11 @@ describe('false colour view coverage', () => {
             }
         }
         const partial = { ...(partialBand === 'short' ? short : long), data: (partialBand === 'short' ? short : long).data.slice() };
-        partial.data[15 * 31 + 20] = NaN;
+        partial.data[15 * 31 + 15] = NaN;
         const result = falseColourView(sky(partialBand === 'short' ? [short, partial] : [short]), sky(partialBand === 'long' ? [long, partial] : [long]), radii);
         expect(result.parts.reading).toMatch(partialBand === 'short'
-            ? /^At the centre: seen at 4\.60 µm \(signal-to-noise [\d.]+\); 1\.25 µm cannot be measured here \(some frames have blank pixels here\)\.$/
-            : /^At the centre: seen at 1\.25 µm \(signal-to-noise [\d.]+\); 4\.60 µm cannot be measured here \(some frames have blank pixels here\)\.$/);
+            ? /^At the centre: seen at 4\.60 µm \(signal-to-noise [\d.]+\); 1\.25 µm cannot be measured here \(blank pixels\)\.$/
+            : /^At the centre: seen at 1\.25 µm \(signal-to-noise [\d.]+\); 4\.60 µm cannot be measured here \(blank pixels\)\.$/);
     });
 
     it('counts and compares every painted frame', () => {
@@ -216,10 +395,10 @@ describe('false colour view coverage', () => {
         expect(sentence).toContain('Blue: 1.25 µm (the shorter wavelength), 3 frames, 2023-02-25 to 2023-03-07.');
         expect(sentence).toContain('2023-03-07');
         expect(sentence).toContain('The two colours were not taken at the same times');
-        expect(sentence).toContain('The 1.25 µm reading uses 2 of 3 frames; the other is blank here.');
+        expect(sentence).toContain('1.25 µm cannot be measured here (blank pixels).');
     });
 
-    it('rejects a false signal caused by incomplete sky-ring coverage without changing the tint', () => {
+    it('avoids a false signal caused by mixed frame coverage in the sky ring', () => {
         const low = frame(1.25, 60000, 60000.001, 0);
         const high = frame(1.25, 60000, 60000.001, 100);
         const long = frame(4.6);
@@ -234,19 +413,23 @@ describe('false colour view coverage', () => {
         const stacked = stackVisit([low, high], { clipSigma: Infinity, background: 'none' }).data;
         expect(colourAt(stacked, long.data, grid.width, grid.height, { x: 15, y: 15 }, { pixelArcsec: grid.pixelArcsec, ...radii }).seen).toBe('short');
         const incomplete = falseColourView(sky([low, high]), sky([long]), radii);
-        expect(incomplete.sentence).toContain('1.25 µm cannot be measured here (some frames have blank pixels here).');
+        expect(incomplete.sentence).not.toContain('1.25 µm cannot be measured here');
         expect(incomplete.sentence).not.toContain('seen at 1.25 µm');
-        const corrected = stackVisit([low, high], { clipSigma: Infinity, background: 'median' }).data;
-        const correctedLong = stackVisit([long], { clipSigma: Infinity, background: 'median' }).data;
+        const corrected = stackVisit([low, high], { clipSigma: Infinity, background: 'none' }).data;
+        for (let i = 0; i < corrected.length; i++) {
+            if (!Number.isFinite(high.data[i])) { corrected[i] = NaN; }
+        }
+        const correctedLong = stackVisit([long], { clipSigma: Infinity, background: 'none' }).data;
         const stretch = pairStretch(corrected, correctedLong);
         expect(incomplete.rgba).toEqual(falseColourRgba(corrected, correctedLong, stretch.sShort, stretch.sLong));
         const outside = frame(1.25, 60000, 60000.001, 100);
         outside.data[0] = NaN;
-        expect(falseColourView(sky([low, outside]), sky([long]), radii).sentence).not.toContain('some frames have blank pixels here');
+        expect(falseColourView(sky([low, outside]), sky([long]), radii).parts.reading).not.toContain('cannot be measured');
         const blank = frame(4.6);
         blank.data[15 * grid.width + 15] = NaN;
         const mixed = falseColourView(sky([low, high]), sky([blank]), radii).sentence;
-        expect(mixed).toContain('1.25 µm cannot be measured here (some frames have blank pixels here); 4.60 µm cannot be measured here (blank pixels).');
+        expect(mixed).toContain('4.60 µm cannot be measured here (blank pixels).');
+        expect(mixed).not.toContain('1.25 µm cannot be measured here');
     });
 });
 
@@ -261,8 +444,8 @@ describe('false colour sentence', () => {
         const input = { ...both };
         const result = colourSentence(1.25, 4.6, input, undefined, [short, long]);
         expect(result).toContain(short
-            ? 'seen at 4.60 µm (signal-to-noise 31); 1.25 µm cannot be measured here (some frames have blank pixels here)'
-            : 'seen at 1.25 µm (signal-to-noise 14); 4.60 µm cannot be measured here (some frames have blank pixels here)');
+            ? 'seen at 4.60 µm (signal-to-noise 31); 1.25 µm cannot be measured here (blank pixels)'
+            : 'seen at 1.25 µm (signal-to-noise 14); 4.60 µm cannot be measured here (blank pixels)');
         expect(input).toEqual(both);
     });
 
