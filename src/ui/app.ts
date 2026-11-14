@@ -369,6 +369,13 @@ export function mount(root: HTMLElement): void
     const lamInput = ref<HTMLInputElement>('lam');
     const fovSelect = ref<HTMLSelectElement>('fov');
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Narrow screens fold long layer notes (see layerSlot); wide ones show them in full.
+    const narrow = matchMedia('(max-width: 1080px)');
+    narrow.addEventListener('change', () => {
+        root.querySelectorAll<HTMLDetailsElement>('details.sk-more').forEach((d) => {
+            d.open = !narrow.matches;
+        });
+    });
     const params = new URLSearchParams(location.search);
     const demoOnly = params.get('demo') === '1';
 
@@ -924,8 +931,23 @@ export function mount(root: HTMLElement): void
         key.setAttribute('aria-pressed', String(on));
         ref<HTMLElement>(layerRef).hidden = !fs.layer;
         const note = ref<HTMLElement>(noteRef);
-        if (note.textContent !== fs.note) {
-            note.textContent = fs.note;
+        // A long note is split: the reading stays in view; how to read it folds away on narrow screens.
+        const split = fs.split && fs.split.lead && fs.split.more ? fs.split : undefined;
+        const want = split ? `${split.lead}\u0000${split.more}` : fs.note;
+        if (note.dataset.shown !== want) {
+            note.dataset.shown = want;
+            if (split) {
+                note.replaceChildren(split.lead, ' ');
+                const more = document.createElement('details');
+                more.className = 'sk-more';
+                more.open = !narrow.matches;
+                const sum = document.createElement('summary');
+                sum.textContent = 'How to read this colour';
+                more.append(sum, split.more);
+                note.append(more);
+            } else {
+                note.textContent = fs.note;
+            }
         }
         note.hidden = !(fs.key && fs.note);
     }

@@ -18,9 +18,9 @@ import type { RegriddedFrame, TargetId } from '../lib/types';
 import { COPY } from './copy';
 import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
 
-export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo';
+export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo' | 'mlHint';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
+    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false, mlHint: false });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
@@ -80,6 +80,8 @@ export interface LayerState {
     key: boolean; // show the key in the sky legend
     layer: boolean; // show the layer over the sky
     note: string; // the line under the legend ('' hides it)
+    // Optional split of `note` for small screens: `lead` always shows, `more` goes behind "How to read this colour".
+    split?: { lead: string; more: string };
 }
 
 export type FlagsState = LayerState;
@@ -356,7 +358,10 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                     paint(layer, picture.rgba, picture.width, picture.height);
                     painted = true;
                 }
-                return { key: true, layer: true, note: entry.picture.sentence };
+                const parts = entry.picture.parts;
+                const join = (xs: string[]) => xs.filter(Boolean).join(' ');
+                return { key: true, layer: true, note: entry.picture.sentence,
+                    split: { lead: join([parts.reading, parts.warning]), more: join([parts.labels, parts.note, parts.method]) } };
             } catch {
                 entry = { status: 'failed', note: FALSE_COLOUR_TEXT.picture };
                 return { key: true, layer: false, note: FALSE_COLOUR_TEXT.picture };
