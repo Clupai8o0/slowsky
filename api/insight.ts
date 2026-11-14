@@ -166,7 +166,7 @@ function setting(name: string, fallback: number): number
     const value = Number(process.env[name]);
     return Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
-function networkAddress(ip: string): string
+export function networkAddress(ip: string): string
 {
     if (!ip.includes(':')) { return ip; }
     try {
@@ -180,7 +180,7 @@ function networkAddress(ip: string): string
         if (words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff) {
             return `${words[6]! >> 8}.${words[6]! & 255}.${words[7]! >> 8}.${words[7]! & 255}`;
         }
-        return words.slice(0, 4).map((word) => word.toString(16)).join(':');
+        return [...words.slice(0, 3), words[3]! & 0xff00].map((word) => word.toString(16)).join(':') + '/56';
     } catch { return ip; }
 }
 class StoreFailure extends Error {}

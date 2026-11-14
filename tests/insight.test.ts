@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { GET as serverGET, createHandlers as createServerHandlers, memoryStore, pickStore, storeMissing, upstashStore, type InsightDeps, type LimitStore } from '../api/insight';
+import { GET as serverGET, createHandlers as createServerHandlers, memoryStore, networkAddress, pickStore, storeMissing, upstashStore, type InsightDeps, type LimitStore } from '../api/insight';
 import { checkNote, factSheet, fetchInsight, insightEnabled, insightStatus, validateFacts, type InsightFacts } from '../src/lib/insight';
 import { SYSTEM_PROMPT } from '../src/lib/insight-prompt';
 import { TARGETS } from '../src/lib/targets';
 
 const facts: InsightFacts = { targetId: 'custom', ra: 12.34567, dec: -38, lambdaUm: 4.27, visits: [{ mjd: 61000, frames: 3 }, { mjd: 61010, frames: 4 }], lightCurve: { points: [{ mjd: 61000, relative: 1, snr: 20 }, { mjd: 61010, relative: 0.8, snr: 10 }], refScatter: [0.02, 0.03], dropped: 2 }, difference: { peakSigma: -3.4 }, motion: { arcsec: 2.3, days: 10 }, snapshot: true };
-const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3457 deg, Dec -38.0000 deg.', 'Wavelength: 4.270 micron.', 'Visits: 2. Frames in each visit: 3, 4. Time from first to last visit: 10.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.80.', 'Largest change from the median brightness: 11 percent either side.', 'Lowest signal-to-noise among the points: 10. This counts sky noise only, so the real uncertainty is larger.', 'Reference stars: 2 with available scatter. Scatter of each: 2.0, 3.0 percent.', 'Frames left out because their wavelength did not match: 2.', 'Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit.', 'Shift in position: 2.3 arcsec over 10.0 days.', 'Frames came from: a saved copy.'];
+const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3457 deg, Dec -38.0000 deg.', 'Wavelength: 4.270 micron.', 'Visits: 2. Frames in each visit: 3, 4. Time from first to last visit: 10.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.80.', 'Lowest signal-to-noise among the points: 10. This counts sky noise only, so the real uncertainty is larger.', 'Reference stars: 2 with available scatter. Scatter of each: 2.0, 3.0 percent.', 'Frames left out because their wavelength did not match: 2.', 'Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit.', 'Shift in position: 2.3 arcsec over 10.0 days.', 'Frames came from: a saved copy.'];
 
 describe('honest fact sheet', () => {
     const withPoints = (points: { mjd: number; relative: number; snr: number }[]) => ({ ...facts, lightCurve: { ...facts.lightCurve!, points } });
@@ -41,8 +41,9 @@ describe('honest fact sheet', () => {
     });
     it('reports equal deviations, negligible changes, and excludes weak points', () => {
         const pair = [{ mjd: 61000, relative: 0.8, snr: 10 }, { mjd: 61001, relative: 1.2, snr: 10 }];
-        expect(factSheet(withPoints(pair))).toContain('Largest change from the median brightness: 20 percent either side.');
-        expect(factSheet(withPoints(pair.map((p, i) => ({ ...p, relative: i ? 1.001 : 0.999 })) ))).toContain('Largest change from the median brightness: less than 1 percent.');
+        expect(factSheet(withPoints(pair)).some((line) => line.startsWith('Largest change'))).toBe(false);
+        expect(factSheet(withPoints([...pair, { mjd: 61002, relative: 1, snr: 10 }]))).toContain('Largest change from the median brightness: 20 percent either side.');
+        expect(factSheet(withPoints([{ ...pair[0]!, relative: 0.999 }, { ...pair[1]!, relative: 1.001 }, { mjd: 61002, relative: 1, snr: 10 }]))).toContain('Largest change from the median brightness: less than 1 percent.');
         const weak = factSheet(withPoints([...pair, { mjd: 61002, relative: 20, snr: 0.9 }]));
         expect(weak).toContain('Brightness relative to the reference stars, in time order: 0.80, 1.20. Points too faint to measure are left out.');
         const one = factSheet(withPoints([pair[0]!, { ...pair[1]!, snr: 0 }]));
@@ -68,7 +69,7 @@ describe('honest fact sheet', () => {
         const low = factSheet(withPoints([{ mjd: 61000, relative: 1, snr: 0.4 }]));
         expect(checkNote(`The signal-to-noise is below 1. ${pad}`, low).dropped).toBe(0);
         expect(checkNote(`The signal-to-noise is 1. ${pad}`, low).dropped).toBe(1);
-        const small = factSheet(withPoints([{ mjd: 61000, relative: 0.999, snr: 50 }, { mjd: 61001, relative: 1.001, snr: 50 }]));
+        const small = factSheet(withPoints([{ mjd: 61000, relative: 0.999, snr: 50 }, { mjd: 61001, relative: 1.001, snr: 50 }, { mjd: 61002, relative: 1, snr: 50 }]));
         expect(checkNote(`The largest change was less than 1 percent. ${pad}`, small).dropped).toBe(0);
         expect(checkNote(`The brightness changed by more than 1 percent. ${pad}`, small).dropped).toBe(1);
         expect(checkNote(`The brightness changed by 1 percent. ${pad}`, small).dropped).toBe(1);
@@ -469,12 +470,17 @@ describe('insight access and allowances', () => {
         const response = await handler.POST(request({ facts: { ...facts, ra: 82 } }, { 'x-real-ip': 'known', 'x-insight-passcode': 'secret' }));
         expect(response.status).toBe(200);
     }, 60000);
-    it('groups IPv6 by /64 and IPv4 mapped addresses by IPv4', async () => {
+    it('groups IPv6 by /56 and IPv4 mapped addresses by IPv4', async () => {
+        expect(networkAddress('2001:db8:1:1201::1')).toBe('2001:db8:1:1200/56');
+        expect(networkAddress('2001:db8:1:12ff::2')).toBe(networkAddress('2001:db8:1:1201::1'));
+        expect(networkAddress('2001:db8:1:1300::1')).not.toBe(networkAddress('2001:db8:1:1201::1'));
+        expect(networkAddress('::ffff:1.2.3.4')).toBe('1.2.3.4');
+        expect(networkAddress('not::an::address')).toBe('not::an::address');
         const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => 0, maxPerUserDay: 1 });
         const send = (ip: string, ra: number) => handler.POST(request({ facts: { ...facts, ra } }, { 'x-real-ip': ip }));
-        expect((await send('2001:db8:1:2:aaaa::1', 83)).status).toBe(200);
-        expect((await send('2001:db8:1:2:bbbb::9', 84)).status).toBe(429);
-        expect((await send('2001:db8:1:3::1', 85)).status).toBe(200);
+        expect((await send('2001:db8:1:1201:aaaa::1', 83)).status).toBe(200);
+        expect((await send('2001:db8:1:12ff:bbbb::9', 84)).status).toBe(429);
+        expect((await send('2001:db8:1:1300::1', 85)).status).toBe(200);
         expect((await send('::ffff:1.2.3.4', 86)).status).toBe(200);
         expect((await send('1.2.3.4', 87)).status).toBe(429);
     });

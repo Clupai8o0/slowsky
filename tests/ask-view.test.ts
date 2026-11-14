@@ -5,7 +5,7 @@ import { busyText, MSG } from '../src/ui/ai-note';
 describe('ask view', () => {
     const wrap = (body: string) => `<section class="sk-ask" aria-live="polite">${body}</section>`;
     it('adds the explanation only for a largest-change answer', () => {
-        const note = '&quot;Largest change&quot; compares the point furthest from the middle value with that middle value. It does not say whether the brightness went up or down over time; the time-order line does.';
+        const note = '&quot;Largest change&quot; is the larger of two gaps: from the middle value up to the brightest point, and down to the faintest. It does not say whether the brightness went up or down over time; the time-order line does.';
         const sheet = ['Brightness relative to the reference stars', 'Largest change from the median brightness: 30 percent brighter.', 'Visits: 3.'];
         expect(askViewHtml({ kind: 'answer', sheet, lines: [1, 2], trust: [3] })).toContain(`<p class="sk-ask-note">${note}</p>`);
         expect(askViewHtml({ kind: 'answer', sheet, lines: [1], trust: [3] })).not.toContain('sk-ask-note');
@@ -27,9 +27,9 @@ describe('ask view', () => {
         expect(askViewHtml({ kind: 'answer', sheet: ['one'], lines: [1], trust: [] })).toBe(wrap('<h3 class="sk-ask-h">Lines from this page&#39;s measurements</h3><p>The AI picked these measured lines as the closest match to your question. They are not a yes or no answer, and they do not say whether a change is real.</p><ul class="sk-ask-rows"><li>one</li></ul>'));
     });
     it.each([
-        ['none', 'The measured lines on this page do not answer that question directly.'],
+        ['none', 'The AI did not match this question to any measured line on this page.'],
         ['failed', 'The AI could not pick lines this time. Try again.'],
-        ['invalid', 'That question could not be sent. Use plain text, 3 to 200 characters.'],
+        ['invalid', 'That question could not be sent. Use 3 to 200 characters with letters or numbers, and avoid angle brackets and special formatting.'],
         ['busy', busyText({})], ['locked', MSG.enter], ['loading', 'Picking lines…'],
     ] as const)('renders %s', (kind, text) => {
         expect(askViewHtml({ kind })).toBe(wrap(`<p>${text}</p>`));

@@ -37,7 +37,7 @@ export function userMessage(sheet: string[]): string
     return `Fact sheet:\n${sheet.map((line) => `- ${line}`).join('\n')}`;
 }
 
-export const ASK_CANNOT = 'The measured lines on this page do not answer that question directly.';
+export const ASK_CANNOT = 'The AI did not match this question to any measured line on this page.';
 export const ASK_SYSTEM_PROMPT = `You are given lettered fact lines measured by this page and a visitor's question inside <question> tags.
 Reply with ONLY the LETTERS of the lines that measure the thing the question asks about, at most 3, separated by
 commas, in sheet order. If no line measures it, reply with only the word none. Also reply none if the question asks
