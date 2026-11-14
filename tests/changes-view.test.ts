@@ -79,3 +79,120 @@ describe('Candidate changes panel', () => {
         expect(DEFAULT_FEATURES.changes).toBe(false);
     });
 });
+
+describe('round 11: marks at every end', () => {
+    it('draws one ring per end at the finder\'s aperture, numbered like the list', () => {
+        const pair = { ...cand('p', 40, 20, 'Two spots (candidate).'), reading: 'pair' as const,
+            ends: [{ visit: 'earlier' as const, x: 30, y: 20, radiusPix: 4 }, { visit: 'later' as const, x: 50, y: 20, radiusPix: 1 }] };
+        const svg = changesMarks(changesView(found([pair], [])), 200, 100);
+        expect(svg.match(/<circle/g)).toHaveLength(2);
+        expect(svg).toContain('<circle cx="30.0" cy="20.0" r="4.0"/>');
+        // A tiny aperture is drawn at 3 px so the ring stays visible.
+        expect(svg).toContain('<circle cx="50.0" cy="20.0" r="3.0"/>');
+        expect(svg.match(/<text [^>]*>1<\/text>/g)).toHaveLength(2);
+    });
+
+    it('falls back to the candidate position when no end has a usable place', () => {
+        const odd = { ...cand('o', 40, 20, 'Spot (candidate).'), ends: [{ visit: 'later' as const, x: NaN, y: 20, radiusPix: 4 }] };
+        const svg = changesMarks(changesView(found([odd], [])), 200, 100);
+        expect(svg).toContain('<circle cx="40.0" cy="20.0" r="5.0"/>');
+    });
+});
+
+describe('round 11: list cap', () => {
+    const many = (n: number) => found(Array.from({ length: n }, (_, i) => ({ ...cand(`c${i}`, 10 + i, 10, `Spot ${i} (candidate).`), snr: 5 + i })), []);
+
+    it('shows the strongest 8 first, by S/N, with a text button for the rest', () => {
+        const v = changesView(many(11));
+        expect(v.candidates[0]!.snr).toBe(15);
+        const html = changesHtml(v);
+        expect(html.match(/<li><b>Candidate \d+<\/b>/g)).toHaveLength(8);
+        expect(html).toContain('Spot 10 (candidate).');
+        expect(html).not.toContain('Spot 2 (candidate).');
+        expect(html).toContain('<p class="sk-chg-more-row">Listed by the size of the change, largest first. <button type="button" class="sk-chg-more" data-chg-more aria-expanded="false">Show 3 more</button></p>');
+        expect(changesMarks(v, 200, 100).match(/<circle/g)).toHaveLength(8);
+        const all = changesHtml(v, true);
+        expect(all.match(/<li><b>Candidate \d+<\/b>/g)).toHaveLength(11);
+        expect(all).toContain('aria-expanded="true">Show fewer</button>');
+        expect(changesMarks(v, 200, 100, true).match(/<circle/g)).toHaveLength(11);
+    });
+
+    it('has no button at 8 or fewer', () => {
+        expect(changesHtml(changesView(many(8)))).not.toContain('data-chg-more');
+    });
+});
+
+describe('round 11: order', () => {
+    it('puts an infinite S/N first and a NaN last', () => {
+        const v = changesView(found([{ ...cand('a', 1, 1, 'a (candidate).'), snr: 10 }, { ...cand('b', 2, 1, 'b (candidate).'), snr: Infinity },
+            { ...cand('c', 3, 1, 'c (candidate).'), snr: NaN }], []));
+        expect(v.candidates.map((c) => c.id)).toEqual(['b', 'a', 'c']);
+    });
+
+    it('groups single spots, then pairs, then spots near catalogue stars, and says so', () => {
+        const near = { ...cand('n', 1, 1, 'n (candidate).'), snr: 40, nearCatalogue: true };
+        const pair = { ...cand('p', 2, 1, 'p (candidate).'), snr: 30, nearCatalogue: false, reading: 'pair' as const };
+        const one = { ...cand('s', 3, 1, 's (candidate).'), snr: 6, nearCatalogue: false, reading: 'laterOnly' as const };
+        const v = changesView(found([near, pair, one], []));
+        expect(v.candidates.map((c) => c.id)).toEqual(['s', 'p', 'n']);
+        expect(changesHtml(v)).toContain('<p class="sk-chg-more-row">Listed in groups, each by the size of the change, largest first: single spots away from catalogue stars, '
+            + 'then pairs of spots away from catalogue stars, then spots or pairs near catalogue stars.</p>');
+    });
+
+    it('prints a caveat that only some lines share on those lines', () => {
+        const a = { ...cand('a', 1, 1, 'a (candidate).'), snr: 9, caveat: 'One frame only.' };
+        const b = { ...cand('b', 2, 1, 'b (candidate).'), snr: 8 };
+        const html = changesHtml(changesView(found([a, b], [])));
+        expect(html).toContain('<b>Candidate 1</b> a (candidate). One frame only.</li>');
+        expect(html).toContain('<b>Candidate 2</b> b (candidate).</li>');
+        expect(html).not.toContain('sk-chg-lead');
+    });
+});
+
+describe('round 11: order wording follows what the lines show', () => {
+    it('says by S/N only when a listed line shows one', () => {
+        const a = { ...cand('a', 1, 1, 'a (S/N 9.0; candidate).'), snr: 9, nearCatalogue: false };
+        const b = { ...cand('b', 2, 1, 'b (S/N 8.0; candidate).'), snr: 8, nearCatalogue: true };
+        expect(changesHtml(changesView(found([a, b], [])))).toContain('Listed in groups, each by S/N, highest first: spots away from catalogue stars, then spots near catalogue stars.');
+    });
+});
+
+describe('round 11: groups from the review', () => {
+    it('keeps a one-spot mover with the single spots, and says "away" only for a group the finder vouches for', () => {
+        const mover = { ...cand('m', 1, 1, 'm (candidate).'), kind: 'mover' as const, snr: 9 };
+        const pair = { ...cand('p', 2, 1, 'p (candidate).'), snr: 8, reading: 'pair' as const, nearCatalogue: false };
+        const near = { ...cand('n', 3, 1, 'n (candidate).'), snr: 7, nearCatalogue: true };
+        const html = changesHtml(changesView(found([near, pair, mover], [])));
+        expect(html).toContain('Listed in groups, each by the size of the change, largest first: single spots, then pairs of spots away from catalogue stars, then spots or pairs near catalogue stars.');
+    });
+
+    it('sorts an S/N that is not a number last', () => {
+        const v = changesView(found([{ ...cand('u', 1, 1, 'u (candidate).'), snr: undefined as unknown as number }, { ...cand('f', 2, 1, 'f (candidate).'), snr: 5 }], []));
+        expect(v.candidates.map((c) => c.id)).toEqual(['f', 'u']);
+    });
+});
+
+describe('plain list (compareVisits plain: true)', () => {
+    const plain = (id: string, snr: number, reading: 'moreLater' | 'lessLater', near: boolean) => ({ ...cand(id, 10 + snr, 10, `${id} (candidate).`), snr, reading, nearCatalogue: near,
+        ends: [{ visit: reading === 'moreLater' ? 'later' as const : 'earlier' as const, x: 10 + snr, y: 10, radiusPix: 4 }] }) as unknown as ChangeCandidate;
+    // (cast: the plain readings join ChangeReading with -b3's plain mode)
+
+    it('keeps the finder\'s order and adds no order sentence; the button still shows', () => {
+        // The finder's own order (away from catalogue stars first); the panel would otherwise sort by S/N.
+        const list = [plain('a', 5, 'moreLater', false), plain('b', 9, 'lessLater', false), plain('c', 20, 'moreLater', true),
+            ...Array.from({ length: 7 }, (_, i) => plain(`d${i}`, 6, 'lessLater', true))];
+        const v = changesView(found(list, ['Listed with spots away from catalogue stars first.']));
+        expect(v.candidates.map((c) => c.id).slice(0, 3)).toEqual(['a', 'b', 'c']);
+        const html = changesHtml(v);
+        expect(html).not.toContain('Listed in groups');
+        expect(html).not.toContain('Listed by');
+        expect(html).toContain('<p class="sk-chg-more-row"><button type="button" class="sk-chg-more" data-chg-more aria-expanded="false">Show 2 more</button></p>');
+        expect(html).toContain('<li>Listed with spots away from catalogue stars first.</li>');
+        expect(changesMarks(v, 200, 100).match(/<circle/g)).toHaveLength(8);
+    });
+
+    it('a short plain list has no order row at all', () => {
+        const html = changesHtml(changesView(found([plain('a', 5, 'moreLater', false), plain('c', 20, 'moreLater', true)], [])));
+        expect(html).not.toContain('sk-chg-more-row');
+    });
+});

@@ -1,4 +1,4 @@
-import { withCaveats, type PanelCandidate } from './changes-view';
+import { withCaveats, type CandidateEnd, type PanelCandidate, type Reading } from './changes-view';
 import type { PixelCoord, RangeReader, RegriddedFrame } from '../lib/types';
 import { gridPixToSky } from '../lib/regrid';
 import { readFlags } from '../lib/flags';
@@ -104,47 +104,86 @@ export async function readFrameFlags(frame: RegriddedFrame, deps: { reader: Rang
     }
 }
 
+// Every lobe of a candidate with the visit it carries light in: the finder's `ends` (round 11), else a mover's
+// `lightEnds`, else the one spot in the visit with more light.
+export function endsOf(c: PanelCandidate): CandidateEnd[]
+{
+    if (c.ends?.length) {
+        return c.ends;
+    }
+    if (c.lightEnds?.length) {
+        return c.lightEnds;
+    }
+    return [{ visit: c.lightVisit ?? (c.sign === 1 ? 'later' : 'earlier'), x: c.x ?? c.pix.x, y: c.y ?? c.pix.y }];
+}
+
+// Readings that compare the light of the two visits at one place; OVERFLOW there withdraws them.
+const COMPARES: readonly Reading[] = ['brighter', 'fainter', 'laterOnly', 'earlierOnly'];
+
+function snrText(snr: number): string
+{
+    // The finder's own format (src/lib/changes.ts snrText); nothing when it is not a number.
+    return !Number.isFinite(snr) ? '' : snr > 50 ? 'S/N > 50' : `S/N ${snr.toFixed(1)}`;
+}
+
 export function screen(candidates: PanelCandidate[], visits: { earlier: RegriddedFrame[]; later: RegriddedFrame[] }, frameFlags: Map<string, FrameFlags | null>, order: string[], saved = false): { kept: ScreenedCandidate[]; dropNote?: string; allUnread: boolean; lead: string[] }
 {
     const dropped = new Set<string>();
     let count = 0;
+    let two = false; // a dropped candidate had two spots
     const kept: (ScreenedCandidate & { unread: 'none' | 'some' | 'all' })[] = [];
+    const read = (frames: RegriddedFrame[], at: PixelCoord) => frames.map(f => frameFlags.get(f.frame.obsId)?.names(at) ?? null);
     for (const c of candidates) {
-        const found = (frames: RegriddedFrame[]) => frames.map(f => frameFlags.get(f.frame.obsId)?.names(c.pix) ?? null);
-        const early = found(visits.earlier);
-        const late = found(visits.later);
-        const light = (c.lightVisit ?? (c.sign === 1 ? 'later' : 'earlier')) === 'later' ? late : early;
-        const bad = light.flatMap(names => names?.filter(n => (DROP_FLAGS as readonly string[]).includes(n)) ?? []);
+        const ends = endsOf(c);
+        // Each end in the visit it carries light in: a DROP flag at any end drops the candidate (both ends of a pair go).
+        const own = ends.map(end => ({ end, names: read(visits[end.visit], { x: end.x, y: end.y }) }));
+        const bad = own.flatMap(o => o.names.flatMap(names => names?.filter(n => (DROP_FLAGS as readonly string[]).includes(n)) ?? []));
         if (bad.length) {
             count++;
+            two ||= ends.length > 1;
             bad.forEach(n => dropped.add(n));
             continue;
         }
-        // A mover's light is in one visit only, so only that visit's frames speak for it.
-        const mover = c.kind === 'mover';
-        const lightIsLater = light === late;
-        const e = (!mover || !lightIsLater) && early.some(n => n?.includes(CORE_FLAG));
-        const l = (!mover || lightIsLater) && late.some(n => n?.includes(CORE_FLAG));
+        // OVERFLOW at any end in its own visit. A single spot is a comparison of one place across both visits, so
+        // the other visit at that place counts too; a pair's or mover's other end is that comparison already.
+        const other = ends.length === 1 && c.kind !== 'mover'
+            ? [{ end: { ...ends[0]!, visit: ends[0]!.visit === 'later' ? 'earlier' as const : 'later' as const }, names: read(
+                visits[ends[0]!.visit === 'later' ? 'earlier' : 'later'], { x: ends[0]!.x, y: ends[0]!.y }) }]
+            : [];
+        const checked = [...own, ...other];
+        const over = new Set(checked.filter(o => o.names.some(n => n?.includes(CORE_FLAG))).map(o => o.end.visit));
         const said = c.sentence ?? c.reason;
         let line = said;
-        if (e || l) {
-            const where = e && l ? 'at least one frame of each visit'
-                : `at least one frame of the ${e ? 'earlier' : 'later'} visit`;
-            const flagged = `The archive flags the brightest pixel within 12″ as OVERFLOW in ${where}`;
-            if (!mover && /\b(brighter|fainter|appeared)\b/i.test(said)) {
-                // Keep the finder's own S/N (as it wrote it); drop only the direction it read.
-                const snr = /S\/N (?:> 50|\d+(?:\.\d+)?)/.exec(said)?.[0];
-                line = `A difference between the visits${c.gaiaMatch ? ' at a catalogue star' : ''}${snr ? `, at ${snr}` : ''} (candidate). ${flagged}, so the brightness comparison is not shown.`;
+        let kind = c.kind;
+        if (over.size) {
+            const where = over.size === 2 ? 'at least one frame of each visit'
+                : `at least one frame of the ${over.has('earlier') ? 'earlier' : 'later'} visit`;
+            // Each frame has its own brightest pixel. A pair's or mover's ends sit in different visits, so each
+            // visit is named with its own spot; two ends in one visit are not told apart.
+            const split = ends.length > 1 && new Set(ends.map(end => end.visit)).size === ends.length;
+            const pixel = ends.length === 1 ? 'that frame’s brightest pixel within 12″ of the spot'
+                : split ? 'that frame’s brightest pixel within 12″ of its spot in that visit'
+                    : 'that frame’s brightest pixel within 12″ of at least one of its spots';
+            const flagged = `In ${where}, the archive flags ${pixel} as OVERFLOW`;
+            // Without the finder's `reading` (before round 11) every non-mover line is withdrawn: hiding a sound
+            // reading is safer than showing one OVERFLOW may have spoiled. Only a known comparison is named as one.
+            const compares = c.reading ? COMPARES.includes(c.reading) : c.kind !== 'mover';
+            if (compares) {
+                // The S/N is repeated only when the finder's own line shows one (round 11 drops it without error maps).
+                const snr = said.includes('S/N') ? snrText(c.snr) : '';
+                const what = c.reading ? 'the brightness comparison' : 'the finder’s reading here';
+                line = `The two visits differ here${c.gaiaMatch ? ' at a catalogue star' : ''}${snr ? `, at ${snr}` : ''} (candidate). `
+                    + `${flagged}, so ${what} is not shown; an overflowing pixel can make the reading here unreliable.`;
+                kind = 'unknown';
             } else {
-                line = `${line} ${flagged}.`;
+                line = `${line} ${flagged}; an overflowing pixel can make the reading here unreliable.`;
             }
         }
-        // When no frame of the visit with the light was read, the drop check never ran: that counts as unread
-        // in full, even if the other visit read fine (or the visit has no frames here at all).
-        const needed = mover ? light : [...early, ...late];
-        const lightRead = light.some(n => n !== null);
-        const missing = needed.filter(n => n === null).length;
-        kept.push({ ...c, line, unread: !lightRead ? 'all' : missing === 0 ? 'none' : 'some' });
+        // When no frame of an end's own visit was read, the drop check never ran for it: unread in full, even if
+        // the other frames read fine (or that visit has no frames here at all).
+        const endUnread = own.some(o => !o.names.some(n => n !== null));
+        const missing = checked.some(o => o.names.some(n => n === null));
+        kept.push({ ...c, kind, line, unread: endUnread ? 'all' : missing ? 'some' : 'none' });
     }
     const allUnread = kept.length > 0 && kept.every(c => c.unread === 'all');
     const lead: string[] = [];
@@ -160,9 +199,10 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
         }
     }
     lead.push(...withCaveats(kept));
-    const names = [...new Set([...order, ...dropped])].filter(n => dropped.has(n)).join(', ');
-    const dropNote = count === 0 ? undefined : count === 1
-        ? `1 spot is not listed: in at least one frame of the visit with more light, the brightest pixel within 12″ of it carries an archive flag (${names}).`
-        : `${count} spots are not listed: in at least one frame of the visit with more light, the brightest pixel within 12″ of each carries an archive flag (${names}).`;
+    const list = [...new Set([...order, ...dropped])].filter(n => dropped.has(n));
+    const flags = list.length === 1 ? `the archive flag ${list[0]}` : `at least one of these archive flags: ${list.join(', ')}`;
+    const dropNote = count === 0 ? undefined
+        : `${count === 1 ? '1 candidate is not listed:' : `${count} candidates are not listed: for each,`} in at least one frame of `
+            + `the visit where its spot${two ? ', or one of its two spots,' : ''} shows more light, that frame’s brightest pixel within 12″ of that spot carries ${flags}.`;
     return { kept, dropNote, allUnread, lead };
 }

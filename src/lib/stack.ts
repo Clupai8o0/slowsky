@@ -390,11 +390,13 @@ export function groupByVisit(frames: RegriddedFrame[], gapDays = 10): RegriddedF
     if (frames.length === 0) {
         return [];
     }
-    const sorted = frames.slice().sort((p, q) => p.frame.tMin - q.frame.tMin);
-    // A visit spans at most gapDays from its first frame, so daily coverage does not chain into one visit.
+    const midpoint = (f: RegriddedFrame): number => (f.frame.tMin + f.frame.tMax) / 2;
+    const sorted = frames.filter((f) => Number.isFinite(midpoint(f))).sort((p, q) => midpoint(p) - midpoint(q));
+    if (sorted.length === 0) { return []; }
+    // Match the measurement view: consecutive looks less than gapDays apart share a visit.
     const visits: RegriddedFrame[][] = [[sorted[0]!]];
     for (let i = 1; i < sorted.length; i++) {
-        if (sorted[i]!.frame.tMin - visits[visits.length - 1]![0]!.frame.tMin > gapDays) {
+        if (midpoint(sorted[i]!) - midpoint(sorted[i - 1]!) >= gapDays) {
             visits.push([]);
         }
         visits[visits.length - 1]!.push(sorted[i]!);
