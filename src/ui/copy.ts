@@ -45,7 +45,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         short: 'The coldest brown dwarf known',
         kind: 'cold',
         headline: 'WISE 0855, the coldest neighbour',
-        show: 'The coldest brown dwarf known. It gives almost no light at short colours. Earlier telescopes detected it around 4.5 to 4.6 µm: slide the colour there.',
+        show: 'The coldest brown dwarf known. It gives almost no light at short colours: earlier telescopes found it far brighter at 4.5 µm than at 3.6 µm, so slide the colour toward 4.5 µm.',
         not: 'The notes on its colours come from earlier telescopes. Any brightness curve shown is measured from these frames.',
     },
     rdra: {
