@@ -524,6 +524,8 @@ function optionalNumber(v: number | null | undefined): number | undefined
     return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
+const SNAPSHOT_MAX_FOV_DEG = 0.1;
+
 export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
 {
     const base = (opts.baseUrl ?? '').replace(/\/$/, '');
@@ -582,13 +584,28 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
             if (onDetector.length === 0) {
                 notes.push(`The offline copy has detector ${target.detector} only for this target.`);
             }
+            if (onDetector.length > 0) {
+                // The baked boxes follow the star at frame time and span about 0.19 deg, so centre there and keep the view inside.
+                const meanMjd = onDetector.reduce((a, f) => a + mid(f.record), 0) / onDetector.length;
+                const center = positionAt(target.astrometry, meanMjd);
+                const fovDeg = Math.min(req.fovDeg, SNAPSHOT_MAX_FOV_DEG);
+                if (fovDeg < req.fovDeg) {
+                    notes.push(`The offline copy limits the field to ${SNAPSHOT_MAX_FOV_DEG}°.`);
+                }
+                req = { ...req, center, fovDeg };
+            }
             const infos: FrameInfo[] = [];
             let missingScale = 0;
             for (const f of onDetector) {
-                const hasScale = [['CD1_1', 'CD1_2', 'CD2_1', 'CD2_2'], ['CDELT1', 'CDELT2']].some((keys) => keys.every((key) => {
+                const finite = (key: string): boolean => {
                     const value = f.imageHeader[key];
                     return typeof value === 'number' && Number.isFinite(value);
-                }));
+                };
+                const anyCd = ['CD1_1', 'CD1_2', 'CD2_1', 'CD2_2'].some((key) => f.imageHeader[key] !== undefined);
+                // Mirror wcsFromHeader: with any CD key present, missing ones default to 0.
+                const hasScale = anyCd
+                    ? ['CD1_1', 'CD2_2'].every(finite)
+                    : ['CDELT1', 'CDELT2'].every(finite);
                 if (!hasScale) {
                     missingScale++;
                     continue;

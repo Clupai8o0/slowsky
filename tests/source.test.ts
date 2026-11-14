@@ -293,8 +293,7 @@ describe('snapshot source (fake site)', () => {
         expect(finite.length).toBeGreaterThan(0);
         expect(Math.min(...finite)).toBeGreaterThanOrEqual(0.5 - 1e-6); // IMAGE - ZODI, IMAGE >= 1
         expect(res.stars.map((s) => s.sourceId)).toEqual(['1']);
-        const c = res.stars[0]!.pix;
-        expect(Math.abs(c.x - (res.grid.width - 1) / 2)).toBeLessThan(1e-6);
+        expect(Number.isFinite(res.stars[0]!.pix.x)).toBe(true);
         expect(res.stars[0]!.pmDec).toBeUndefined();
         expect(res.credits.join(' ')).toContain('Gaia');
         expect(res.track?.length).toBe(res.frames.length);
@@ -344,6 +343,27 @@ describe('snapshot source (fake site)', () => {
             '2 offline frames lack a pixel scale and were skipped.',
         ]);
         expect(Array.from(res.frames[0]!.frame.data).some(Number.isFinite)).toBe(true);
+    });
+
+    it('accepts a header with only CD1_1 and CD2_2 (cross-terms default to 0)', async () => {
+        const f = fakeBand('diagOnlyD1', 60900, 1);
+        delete f.cards.CD1_2;
+        delete f.cards.CD2_1;
+        const source = createSnapshotSource({ fetch: site([f]) });
+        const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur', lambda: 1 });
+        expect(res.locked.map((l) => l.frame.obsId)).toEqual(['diagOnlyD1']);
+        expect(res.notes.some((n) => n.includes('lack a pixel scale'))).toBe(false);
+    });
+
+    it('centres the view on the target at frame time and caps the field to the baked box', async () => {
+        const source = createSnapshotSource({ fetch: site() });
+        const res = await source.load({ center: { ra: CENTER.ra + 0.5, dec: CENTER.dec + 0.5 }, fovDeg: 0.25, detector: 1, target: 'rwaur' });
+        const track = res.track!;
+        const mx = track.reduce((a, t) => a + t.pix.x, 0) / track.length;
+        const my = track.reduce((a, t) => a + t.pix.y, 0) / track.length;
+        expect(Math.abs(mx - (res.grid.width - 1) / 2)).toBeLessThan(1.5);
+        expect(Math.abs(my - (res.grid.height - 1) / 2)).toBeLessThan(1.5);
+        expect(res.grid.pixelArcsec * res.grid.width).toBeLessThanOrEqual(0.1 * 3600 + res.grid.pixelArcsec);
     });
 
     it('throws SkyUnavailable when every offline frame lacks a pixel scale', async () => {
