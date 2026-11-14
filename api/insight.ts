@@ -215,6 +215,9 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
             for (let i = 0; i < x.length; i++) { diff |= x[i]! ^ y[i]!; }
             correct = diff === 0;
         }
+        // A right passcode is let in whatever the failed-guess count, on purpose. The passcode is published with the
+        // project, so guessing it gains nothing, and counting first would let one visitor behind a shared address
+        // (a venue's Wi-Fi) lock everyone else out. Spend is held by the per-user and global caps in POST below.
         if (correct) { return await brake(id, now) ? 'slow' : 'ok'; }
         try { return await local.hit(`try:${id}`, guessWindow, now) > MAX_ATTEMPTS ? 'busy' : 'locked'; } catch { throw new StoreFailure(); }
     }
