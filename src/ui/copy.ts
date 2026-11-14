@@ -50,9 +50,9 @@ export const COPY: Record<TargetId, TargetCopy> = {
     },
     rdra: {
         display: 'R Draconis',
-        short: 'Too bright to measure',
+        short: 'Centre too bright to measure',
         kind: 'saturated',
-        headline: 'R Draconis, too bright to measure',
+        headline: 'R Draconis, too bright at the centre',
         show: 'A giant star that swells and shrinks. Look at the glow around it, not the centre.',
         not: 'Its centre is too bright for the camera in every saved frame, so the centre cannot be measured.',
     },
@@ -71,7 +71,7 @@ export const MODE_HINT = {
 } as const;
 
 export const STAGE_TEXT = {
-    search: 'Asking NASA’s archive for every look at this spot',
+    search: 'Asking NASA’s archive for its looks at this spot',
     headers: 'Reading the files',
     pixels: 'Fetching the pixels',
     regrid: 'Lining the frames up',
