@@ -21,7 +21,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         short: 'Moves fastest across our sky',
         kind: 'mover',
         headline: 'Barnard’s Star, walking north',
-        show: 'The fastest-moving star in our sky. Gold rings mark where ESA’s Gaia says it should be on each date. Watch it step from ring to ring.',
+        show: 'The fastest-moving star in our sky. Gold rings mark where its measured motion puts it on each date. Watch it step from ring to ring.',
         not: 'Its centre is too bright for the camera, so its position here is rough, to about one pixel.',
     },
     rwaur: {
@@ -67,7 +67,7 @@ export const CUSTOM_COPY = {
 export const MODE_HINT = {
     blink: 'Blink flips between dates. Anything that moves or changes jumps out.',
     stack: 'Stack averages every frame. Faint things appear; moving things smear.',
-    diff: 'Subtract takes the last look minus the first. Blue was there then, orange is there now.',
+    diff: 'Subtract: last look minus first. Blue was there then, orange is there now.',
 } as const;
 
 export const STAGE_TEXT = {
