@@ -23,3 +23,5 @@ python3 scripts/smoke.py --base https://<preview> --mode both   # a deployed pre
 ```
 
 Needs Playwright for Python with Chromium (not in `requirements.txt`). Without `--base` it runs `npm run build` and serves `dist/` with `vite preview` on a free port from 5210, then stops it. Each target needs a "Frame N of M" label, a non-blank canvas, no page or console errors, the snapshot notice (offline), and a frame change on Next. Screenshots go to `--out` (default a temp folder).
+
+Each target must also be the selected one after its click (its button is pressed and the details change), and with playback paused, Next must move to the next frame and change the canvas pixels. Only requests this script aborted on purpose are allowed to fail; any other failed request or console error fails the run. `npm run build` is capped at 300 s, and SIGTERM or Ctrl-C stops the preview server it started. Hidden switches prove the test can fail: `--break snapshot|target|next` (block the snapshot, make target buttons or Next do nothing); each must exit 1.

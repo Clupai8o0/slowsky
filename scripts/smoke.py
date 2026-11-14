@@ -7,7 +7,6 @@ Needs Playwright for Python with Chromium installed. No --base: builds, serves d
 `vite preview` on a free port from 5210 and stops that server by PID on every exit path.
 """
 import argparse
-import atexit
 import os
 import re
 import signal
@@ -41,6 +40,7 @@ PIXELS_JS = """() => {
   for (const v of counts.values()) { if (v > top) top = v; }
   return {distinct: counts.size, topShare: top / n};
 }"""
+BUILD_TIMEOUT = 300
 FRAME_RE = re.compile(r"Frame (\d+) of (\d+)")
 
 
@@ -54,17 +54,37 @@ def free_port(start=5210):
 
 class Server:
     proc = None
+    build = None
+
+    @staticmethod
+    def kill_group(p):
+        if p and p.poll() is None:
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                try:  # a process we started, in its own session: by group, never by name
+                    os.killpg(p.pid, sig)
+                    p.wait(timeout=5)
+                    return
+                except subprocess.TimeoutExpired:
+                    continue
+                except Exception:
+                    return
 
     def start(self):
-        r = subprocess.run(["npm", "run", "build"], cwd=ROOT, capture_output=True, text=True)
-        if r.returncode != 0:
-            print((r.stdout + r.stderr)[-1500:])
+        self.build = subprocess.Popen(["npm", "run", "build"], cwd=ROOT, stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, text=True, start_new_session=True)
+        try:
+            outp, _ = self.build.communicate(timeout=BUILD_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            self.kill_group(self.build)
+            raise RuntimeError("npm run build timed out after %d s" % BUILD_TIMEOUT)
+        if self.build.returncode != 0:
+            print((outp or "")[-1500:])
             raise RuntimeError("npm run build failed")
         port = free_port()
         self.proc = subprocess.Popen(
             ["npx", "vite", "preview", "--port", str(port), "--strictPort", "--host", "127.0.0.1"],
             cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        atexit.register(self.stop)
+        print(f"server pid {self.proc.pid} port {port}", flush=True)
         base = f"http://127.0.0.1:{port}/"
         t0 = time.time()
         while time.time() - t0 < 30:
@@ -77,60 +97,117 @@ class Server:
 
     def stop(self):
         p, self.proc = self.proc, None
-        if p and p.poll() is None:
-            try:  # the server we started: its own process group, by PID
-                os.killpg(p.pid, signal.SIGTERM)
-                p.wait(timeout=5)
-            except Exception:
-                try:
-                    os.killpg(p.pid, signal.SIGKILL)
-                except Exception:
-                    pass
+        self.kill_group(p)
+        self.kill_group(self.build)
 
 
 def page_texts(pg):
     return pg.inner_text("body")
 
 
+HASH_JS = """() => {
+  const c = document.querySelector('canvas[data-ref="canvas"]');
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let h = 2166136261;
+  for (let i = 0; i < d.length; i++) { h = Math.imul(h ^ d[i], 16777619) >>> 0; }
+  return h;
+}"""
+
+
+def frame_now(pg):
+    m = FRAME_RE.search(pg.evaluate("document.querySelector('[data-bind=\"frame\"]')?.textContent || ''"))
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def pause_and_step(pg, fails):
+    play = pg.locator('button[data-act="play"]')
+    if play.get_attribute("aria-label") == "Pause":
+        play.click()
+    time.sleep(0.5)
+    if play.get_attribute("aria-label") != "Play":
+        fails.append("could not pause playback")
+        return
+    a = frame_now(pg)
+    time.sleep(1.5)
+    if frame_now(pg) != a:
+        fails.append("frame changes while paused")
+        return
+    h0 = pg.evaluate(HASH_JS)
+    pg.locator('button[data-act="next"]').click()
+    want = a[0] + 1 if a[0] < a[1] else 1
+    ok = False
+    for _ in range(15):
+        time.sleep(0.3)
+        b = frame_now(pg)
+        if b and b[0] == want:
+            ok = True
+            break
+    if not ok:
+        fails.append("Next did not go to frame %d (was %d of %d)" % (want, a[0], a[1]))
+        return
+    for _ in range(10):
+        if pg.evaluate(HASH_JS) != h0:
+            return
+        time.sleep(0.3)
+    fails.append("canvas pixels did not change after Next")
+
+
 def run_target(browser, base, tid, label, click, mode, timeout, out, brk):
     ctx = browser.new_context(viewport={"width": 1280, "height": 860})
     pg = ctx.new_page()
     errs = []
-    blocked = []
+    aborted = set()  # URLs this script aborted on purpose
     pg.on("pageerror", lambda e: errs.append("pageerror: " + str(e)[:200]))
 
     def on_console(m):
         if m.type != "error":
             return
-        t = m.text
-        if mode == "offline" and re.search(r"Failed to load resource|net::ERR|amazonaws|/api/|Failed to fetch|NetworkError|ERR_FAILED", t, re.I):
-            blocked.append(t)
+        url = (m.location or {}).get("url", "")
+        if url in aborted:
             return
-        if brk == "snapshot" and re.search(r"Failed to load resource|net::ERR|snapshot", t, re.I):
-            return
-        errs.append("console: " + t[:200])
+        if not url and mode == "offline" and re.search(r"amazonaws\.com|/api/", m.text):
+            return  # app-level log of a fetch we aborted (no URL attached)
+        errs.append("console: " + m.text[:150] + (" (" + url[:100] + ")" if url else ""))
     pg.on("console", on_console)
+
+    def on_failed(r):
+        if r.url not in aborted:
+            errs.append("request failed: " + r.url[:120])
+    pg.on("requestfailed", on_failed)
+
+    def abort(r):
+        aborted.add(r.request.url)
+        r.abort()
     if mode == "offline":
-        pg.route(re.compile(r".*(amazonaws\.com|/api/).*"), lambda r: r.abort())
+        pg.route(re.compile(r".*(amazonaws\.com|/api/).*"), abort)
     if brk == "snapshot":
-        pg.route("**/snapshot/**", lambda r: r.abort())
+        pg.route("**/snapshot/**", abort)
+    if brk in ("target", "next"):
+        sel = "[data-target]" if brk == "target" else '[data-act="next"]'
+        pg.add_init_script("document.addEventListener('click', e => { if (e.target.closest('%s')) "
+                           "{ e.stopImmediatePropagation(); e.preventDefault(); } }, true);" % sel)
     t0 = time.time()
     fails = []
     note = ""
     got = None
     try:
         pg.goto(base, wait_until="load")
+        tsel = f'button[data-target="{tid}"]'
+        pg.wait_for_selector(tsel, timeout=15000)
         if click:
-            btn = pg.get_by_role("button", name=re.compile(label, re.I)).first
-            btn.wait_for(timeout=15000)
             pg.wait_for_function("document.querySelector('[data-ref=\"dl\"]')?.textContent.includes('File')", timeout=timeout * 1000)
             old = pg.evaluate("document.querySelector('[data-ref=\"dl\"]').textContent")
-            btn.click()
-            pg.wait_for_function("(o) => document.querySelector('[data-ref=\"dl\"]').textContent !== o", arg=old, timeout=timeout * 1000)
+            pg.locator(tsel).click()
+        try:
+            pg.wait_for_function("(s) => document.querySelector(s)?.getAttribute('aria-pressed') === 'true'", arg=tsel, timeout=timeout * 1000)
+            if click:  # the load finished: details now describe a different file than the previous target's
+                pg.wait_for_function("(o) => document.querySelector('[data-ref=\"dl\"]').textContent !== o", arg=old, timeout=timeout * 1000)
+        except Exception:
+            raise RuntimeError(f"target {tid} did not become selected/loaded within {timeout:g}s")
         deadline = time.time() + timeout
         while time.time() < deadline:
             txt = page_texts(pg)
-            m = FRAME_RE.search(txt)
+            m = FRAME_RE.search(pg.evaluate("document.querySelector('[data-bind=\"frame\"]')?.textContent || ''"))
             if m and int(m.group(2)) >= 2 and re.search(r"Live:|Saved copy|Offline", txt):
                 got = m
                 break
@@ -157,17 +234,7 @@ def run_target(browser, base, tid, label, click, mode, timeout, out, brk):
                 note = "live" if live else "fell back to snapshot (known live bug)"
             else:
                 note = "snapshot"
-            before = FRAME_RE.search(page_texts(pg)).group(0)
-            pg.locator('button[data-act="next"]').click()
-            changed = False
-            for _ in range(10):
-                time.sleep(0.3)
-                m2 = FRAME_RE.search(page_texts(pg))
-                if m2 and m2.group(0) != before:
-                    changed = True
-                    break
-            if not changed:
-                fails.append("frame did not change after Next (%s)" % before)
+            pause_and_step(pg, fails)
         if errs:
             fails.append("; ".join(errs[:3]))
     except Exception as e:
@@ -220,11 +287,18 @@ def main():
     ap.add_argument("--mode", choices=["offline", "live", "both"], default="offline")
     ap.add_argument("--out")
     ap.add_argument("--timeout", type=float, default=60)
-    ap.add_argument("--break", dest="brk", choices=["snapshot"], help=argparse.SUPPRESS)
+    ap.add_argument("--break", dest="brk", choices=["snapshot", "target", "next"], help=argparse.SUPPRESS)
     a = ap.parse_args()
     out = a.out or tempfile.mkdtemp(prefix="slowsky-smoke-")
     os.makedirs(out, exist_ok=True)
     server = Server()
+
+    def bye(signum, frame):
+        server.stop()
+        print("SMOKE FAIL: interrupted", flush=True)
+        os._exit(1)
+    signal.signal(signal.SIGTERM, bye)
+    signal.signal(signal.SIGINT, bye)
     failed = 0
     try:
         base = a.base or server.start()
