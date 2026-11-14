@@ -112,6 +112,20 @@ describe('curveFor', () => {
         expect(middleMjd(r)).toBeCloseTo(MJD0 + 100, 1);
     });
 
+    it('keeps every frame the wavelength lock kept, up to half a channel on detector 4 (R 35)', () => {
+        const r = result([100, 200, 100]);
+        const lam = 3.7;
+        const half = lam / 35 / 2; // 0.053 µm: wider than a fixed 0.05
+        r.lambda = lam;
+        r.frames.forEach((p, i) => {
+            p.frame.lambdaAtCenter = lam + (i === 1 ? half - 0.001 : 0);
+            p.frame.bandwidthAtCenter = 2 * half;
+        });
+        const c = curveFor(r);
+        expect(c!.frameOf).toEqual([0, 1, 2]);
+        expect(c!.lc.dropped).toBe(0);
+    });
+
     it('keeps references with room for the scaled annulus on a coarse grid', () => {
         const r = result([100, 100]);
         r.grid = { ...grid, pixelArcsec: 6.1, fovDeg: N * 6.1 / 3600 };
@@ -237,6 +251,18 @@ describe('curveFor', () => {
 });
 
 describe('shiftFor', () => {
+    it('reads the first and last look by date, even if the frames come out of order', () => {
+        const a: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 1000 };
+        const r = result([100, 100, 100]);
+        const mid = middleMjd(r);
+        const before = shiftFor(r, a)!;
+        r.frames = [r.frames[2]!, r.frames[0]!, r.frames[1]!];
+        expect(middleMjd(r)).toBeCloseTo(mid, 9);
+        const after = shiftFor(r, a)!;
+        expect([after.from, after.to]).toEqual([1, 0]);
+        expect(after.predictedArcsec).toBeCloseTo(before.predictedArcsec, 9);
+    });
+
     it('is null for one frame and measures from the first to the last otherwise', () => {
         const a: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 0 };
         expect(shiftFor(result([100]), a)).toBeNull();
