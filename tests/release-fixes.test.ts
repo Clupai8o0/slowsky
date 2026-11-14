@@ -3,35 +3,61 @@ import page from '../src/ui/app.ts?raw';
 import { dotBar } from '../src/ui/measure';
 
 // Execute the page's actual source-selection and text expressions with fake sources.
-const selection = page.slice(page.indexOf('        let res: SkyResult | null = null;'), page.indexOf('        if (signal.aborted) {\n            return;\n        }\n        reading = null;'))
-    .replace(': SkyResult | null', '').replace(': SourceKind', '').replace(': unknown', '').replace(': SkyResult | null', '');
-const why = page.slice(page.indexOf('            const none = '), page.indexOf("            bind('err', why);"));
+const untyped = (code: string): string => code.replace(/: SkyResult \| null/g, '').replace(/: SourceKind/g, '').replace(/: unknown/g, '').replace('): number =>', ') =>');
+const selection = untyped(page.slice(page.indexOf('        let res: SkyResult | null = null;'), page.indexOf('        if (signal.aborted) {\n            return;\n        }\n        reading = null;')));
+const why = untyped(page.slice(page.indexOf('            const left = '), page.indexOf("            bind('err', why);")));
+const fell = page.split('\n').find((line) => line.includes('        fellBack = got '))!;
+const labels = page.slice(page.indexOf("        bind('statusShort', sourceKind === 'live'"), page.indexOf("        bind('status', status);"));
 const note = page.split('\n').find((line) => line.includes("bind('lcNote', `At "))!;
 const plainErrorSource = page.slice(page.indexOf('    function plainError(e: unknown): string'), page.indexOf('    function play(on: boolean): void'))
     .replace('(e: unknown): string', '(e)');
 const plainError = new Function(`${plainErrorSource}\nreturn plainError;`)() as (e: unknown) => string;
 
 const NO_ANSWER = 'The archive did not answer. Check the connection and try again.';
+const NO_FRAMES = 'SPHEREx has no frames of this spot at this colour yet.';
+const NOT_USABLE = 'SPHEREx has frames near this spot, but none of them could be used for this view at this colour.';
+const EITHER = 'The saved copy on this site could not be loaded either.';
 
-async function pageSelection(order: string[], responses: Record<string, unknown>, wantFrame?: string): Promise<{ res: { frames: unknown[] } | null; got: string; text: string | null }>
+type Picked = { res: { frames: unknown[] } | null; got: string; text: string | null; fellBack: string | null; asked: string[] };
+
+// `target: null` is a spot that is not one of the five targets, which has no saved copy.
+async function pageSelection(order: string[], responses: Record<string, unknown>, wantFrame?: string, target: string | null = 'rwaur'): Promise<Picked>
 {
-    const body = `${selection}\n${why}\nreturn { res, got, text: !res || res.frames.length === 0 ? why : null };`;
-    const run = new (Object.getPrototypeOf(async function () {}).constructor)('order', 'responses', 'wantFrame', 'plainError', `
-        const req = {}, signal = { aborted: false }, st = { target: 'rwaur' }, savedFirst = order[0] === 'snapshot';
-        const demoOnly = false;
+    const body = `${selection}\n${why}\nlet fellBack;\n${fell}\nreturn { res, got, text: !res || res.frames.length === 0 ? why : null, fellBack, asked };`;
+    const run = new (Object.getPrototypeOf(async function () {}).constructor)('order', 'responses', 'wantFrame', 'plainError', 'target', `
+        const req = {}, signal = { aborted: false }, st = { target }, savedFirst = order[0] === 'snapshot';
+        const demoOnly = false, asked = [];
         let reading = null;
         const renderText = () => {}, isNotImplemented = () => false;
-        const loadFrom = async (kind) => { const value = responses[kind]; if (value instanceof Error) throw value; return value; };
+        const loadFrom = async (kind) => {
+            asked.push(kind);
+            if (!(kind in responses)) throw new Error('the test gave no answer for ' + kind);
+            const value = responses[kind];
+            if (value instanceof Error) throw value;
+            return value;
+        };
         ${body}`);
-    return run(order, responses, wantFrame, plainError);
+    return run(order, responses, wantFrame, plainError, target);
+}
+
+function statusFor(sourceKind: string, fellBack: string | null): { short: string; long: string }
+{
+    const out: Record<string, string> = {};
+    new Function('bind', 'sourceKind', 'fellBack', `${labels}\nbind('status', status);`)((name: string, value: string) => { out[name] = value; }, sourceKind, fellBack);
+    return { short: out.statusShort as string, long: out.status as string };
 }
 
 const frame = (obsId: string) => ({ frame: { frame: { obsId } } });
+const LIVE_FIRST = ['live', 'snapshot'];
+const SAVED_FIRST = ['snapshot', 'live'];
 
 describe('release page messages', () => {
-    it('cuts the real loader, message and error code out of the page', () => {
+    it('cuts the real loader, message, label and error code out of the page', () => {
         expect(selection).toContain('for (const kind of order)');
+        expect(selection).toContain("got = 'snapshot';");
         expect(why).toContain('const why = ');
+        expect(fell).toContain("failedLive ? 'failed'");
+        expect(labels).toContain('const status = ');
         expect(plainErrorSource).toContain('function plainError');
         expect(page).toContain('if (!res || res.frames.length === 0) {');
     });
@@ -61,45 +87,108 @@ describe('release page messages', () => {
     });
 
     it('explains a failed live read when the saved copy is empty', async () => {
-        const out = await pageSelection(['live', 'snapshot'], { live: new Error('network'), snapshot: { frames: [] } });
+        const out = await pageSelection(LIVE_FIRST, { live: new Error('network'), snapshot: { frames: [] } });
         expect(out.text).toBe(`Couldn’t read the live SPHEREx archive, and the saved copy has no frames at this colour. ${NO_ANSWER}`);
-        const savedFirst = await pageSelection(['snapshot', 'live'], { live: new Error('network'), snapshot: { frames: [] } });
+        const savedFirst = await pageSelection(SAVED_FIRST, { live: new Error('network'), snapshot: { frames: [] } });
         expect(savedFirst.text).toBe(out.text);
     });
 
     it('does not say the archive could not be reached when it answered and the read failed', async () => {
-        const out = await pageSelection(['live', 'snapshot'], { live: new Error('bad FITS header'), snapshot: { frames: [] } });
+        const out = await pageSelection(LIVE_FIRST, { live: new Error('bad FITS header'), snapshot: { frames: [] } });
         expect(out.text).toBe('Couldn’t read the live SPHEREx archive, and the saved copy has no frames at this colour. Something went wrong reading the frames. Try again, or pick another spot.');
         expect(out.text).not.toContain('reach');
     });
 
-    it('reports an empty live answer as no frames', async () => {
-        const out = await pageSelection(['live', 'snapshot'], { live: { frames: [] } });
-        expect(out.text).toBe('SPHEREx has no frames of this spot at this colour yet.');
-        const zero = await pageSelection(['live', 'snapshot'], { live: { frames: [], unusable: 0, missed: 0 } });
-        expect(zero.text).toBe('SPHEREx has no frames of this spot at this colour yet.');
+    it('reports no frames only when neither source has any', async () => {
+        for (const order of [LIVE_FIRST, SAVED_FIRST]) {
+            const out = await pageSelection(order, { live: { frames: [] }, snapshot: { frames: [] } });
+            expect(out.text).toBe(NO_FRAMES);
+            expect(out.got).toBe('live');
+            expect(out.asked.sort()).toEqual(['live', 'snapshot']);
+            const zero = await pageSelection(order, { live: { frames: [], unusable: 0, missed: 0 }, snapshot: { frames: [], unusable: 0 } });
+            expect(zero.text).toBe(NO_FRAMES);
+        }
+        // The archive's own answer stands when the saved copy cannot be read.
+        const broken = await pageSelection(LIVE_FIRST, { live: { frames: [] }, snapshot: new Error('Snapshot file /snapshot/rwaur/index.json answered 404') });
+        expect(broken.text).toBe(NO_FRAMES);
+        expect(broken.got).toBe('live');
     });
 
-    it('keeps the saved copy after a live failure', async () => {
-        const out = await pageSelection(['live', 'snapshot'], { live: new Error('network'), snapshot: { frames: [{}] } });
+    it('tries the saved copy when a live-first read answers with no frames (second review)', async () => {
+        const saved = { frames: [{}] };
+        for (const live of [{ frames: [] }, { frames: [], missed: 2 }, { frames: [], unusable: 1 }]) {
+            const out = await pageSelection(LIVE_FIRST, { live, snapshot: saved });
+            expect(out.asked).toEqual(['live', 'snapshot']);
+            expect(out.got).toBe('snapshot');
+            expect(out.res).toBe(saved);
+            expect(out.text).toBeNull();
+            expect(out.fellBack).toBe('empty');
+        }
+    });
+
+    it('does not look for a saved copy of a spot that is not one of the five targets', async () => {
+        const empty = await pageSelection(LIVE_FIRST, { live: { frames: [] }, snapshot: { frames: [{}] } }, undefined, null);
+        expect(empty.asked).toEqual(['live']);
+        expect(empty.text).toBe(NO_FRAMES);
+        const failed = await pageSelection(LIVE_FIRST, { live: new Error('network'), snapshot: new Error('Snapshot file x answered 404') }, undefined, null);
+        expect(failed.asked).toEqual(['live']);
+        expect(failed.text).toBe(`Couldn’t load the frames. ${NO_ANSWER}`);
+    });
+
+    it('keeps the saved copy after a live failure, and live frames when live answers', async () => {
+        const out = await pageSelection(LIVE_FIRST, { live: new Error('network'), snapshot: { frames: [{}] } });
         expect(out.got).toBe('snapshot');
         expect(out.res?.frames).toHaveLength(1);
         expect(out.text).toBeNull();
-        expect(page).toContain("liveFailed ? 'Saved copy · archive did not answer' : 'Saved copy'");
+        expect(out.fellBack).toBe('failed');
+        const live = { frames: [{}] };
+        const fresh = await pageSelection(LIVE_FIRST, { live, snapshot: { frames: [{}, {}] } });
+        expect(fresh.asked).toEqual(['live']);
+        expect(fresh.res).toBe(live);
+        expect(fresh.fellBack).toBeNull();
+        // Opening from the saved copy makes no live read, so nothing fell back.
+        const opened = await pageSelection(SAVED_FIRST, { live, snapshot: { frames: [{}] } });
+        expect(opened.asked).toEqual(['snapshot']);
+        expect(opened.got).toBe('snapshot');
+        expect(opened.fellBack).toBeNull();
+    });
+
+    it('labels the saved copy by what the live read did, and never says the archive did not answer', () => {
+        expect(statusFor('snapshot', 'failed')).toEqual({
+            short: 'Saved copy · live read failed',
+            long: 'The live read of NASA’s archive failed, so this is the saved copy: real SPHEREx frames stored with this page. Go live tries the archive again.',
+        });
+        expect(statusFor('snapshot', 'empty')).toEqual({
+            short: 'Saved copy · live read gave no frames',
+            long: 'The live read of NASA’s archive gave no frames for this view, so this is the saved copy: real SPHEREx frames stored with this page. Go live tries the archive again.',
+        });
+        expect(statusFor('snapshot', null).short).toBe('Saved copy');
+        expect(statusFor('snapshot', null).long).toContain('Saved copy: real NASA SPHEREx frames stored with this page');
+        expect(statusFor('live', null).short).toBe('Live from NASA’s SPHEREx archive');
+        expect(statusFor('live', 'failed').short).toBe('Live from NASA’s SPHEREx archive');
+        expect(labels).not.toContain('did not answer');
     });
 
     it('says frames exist when live answers but none could be used for this view', async () => {
-        const text = 'SPHEREx has frames near this spot, but none of them could be used for this view at this colour.';
         for (const live of [{ frames: [], unusable: 3 }, { frames: [], missed: 2 }, { frames: [], unusable: 1, missed: 1 }]) {
-            expect((await pageSelection(['live', 'snapshot'], { live })).text).toBe(text);
-            expect((await pageSelection(['snapshot', 'live'], { live, snapshot: { frames: [] } })).text).toBe(text);
+            expect((await pageSelection(LIVE_FIRST, { live, snapshot: { frames: [] } })).text).toBe(NOT_USABLE);
+            expect((await pageSelection(SAVED_FIRST, { live, snapshot: { frames: [] } })).text).toBe(NOT_USABLE);
+        }
+    });
+
+    it('counts the saved copy’s unusable frames as proof that frames exist (second review)', async () => {
+        for (const snapshot of [{ frames: [], unusable: 2 }, { frames: [], missed: 1 }]) {
+            for (const order of [LIVE_FIRST, SAVED_FIRST]) {
+                const out = await pageSelection(order, { live: { frames: [] }, snapshot });
+                expect(out.text).toBe(NOT_USABLE);
+            }
         }
     });
 
     it('never hides a failed live read behind what the saved copy lacks', async () => {
         const text = `Couldn’t read the live SPHEREx archive, and the saved copy has no frames that could be used for this view at this colour. ${NO_ANSWER}`;
         for (const snapshot of [{ frames: [], unusable: 2 }, { frames: [], missed: 2 }]) {
-            for (const order of [['live', 'snapshot'], ['snapshot', 'live']]) {
+            for (const order of [LIVE_FIRST, SAVED_FIRST]) {
                 const out = await pageSelection(order, { live: new Error('network'), snapshot });
                 expect(out.text).toBe(text);
                 expect(out.text).not.toContain('SPHEREx has frames');
@@ -107,31 +196,47 @@ describe('release page messages', () => {
         }
     });
 
-    it('says the frames could not be loaded when both sources fail, with the last error', async () => {
-        const out = await pageSelection(['live', 'snapshot'], { live: new Error('network'), snapshot: new Error('The saved copy timed out reading /snapshot/rwaur/index.json.') });
-        expect(out.text).toBe('Couldn’t load the frames. The saved copy on this site took too long to load. Check the connection and try again.');
-        const other = await pageSelection(['snapshot', 'live'], { live: new Error('network'), snapshot: new Error('Snapshot file /snapshot/rwaur/index.json answered 404') });
-        expect(other.text).toBe(`Couldn’t load the frames. ${NO_ANSWER}`);
+    it('reports the live error when both sources fail, and says the saved copy failed too (second review)', async () => {
+        for (const order of [LIVE_FIRST, SAVED_FIRST]) {
+            const missing = await pageSelection(order, { live: new Error('network'), snapshot: new Error('Snapshot file /snapshot/rwaur/index.json answered 404') });
+            expect(missing.text).toBe(`Couldn’t load the frames. ${NO_ANSWER} ${EITHER}`);
+            const slow = await pageSelection(order, { live: new Error('Request failed: 503'), snapshot: new Error('The saved copy timed out reading /snapshot/rwaur/index.json.') });
+            expect(slow.text).toBe(`Couldn’t load the frames. NASA’s archive is busy or down right now. Try again in a minute. ${EITHER}`);
+            const parse = await pageSelection(order, { live: new Error('bad FITS header'), snapshot: new Error('Snapshot file a.f32 has 3 bytes, expected 8') });
+            expect(parse.text).toBe(`Couldn’t load the frames. Something went wrong reading the frames. Try again, or pick another spot. ${EITHER}`);
+        }
     });
 
     it('shows the saved copy when it lacks the linked frame and live answers with no frames', async () => {
         const saved = { frames: [frame('a')] };
-        const out = await pageSelection(['snapshot', 'live'], { live: { frames: [] }, snapshot: saved }, 'b');
+        const out = await pageSelection(SAVED_FIRST, { live: { frames: [] }, snapshot: saved }, 'b');
         expect(out.got).toBe('snapshot');
         expect(out.res).toBe(saved);
         expect(out.text).toBeNull();
+        expect(out.fellBack).toBe('empty');
+        const down = await pageSelection(SAVED_FIRST, { live: new Error('network'), snapshot: saved }, 'b');
+        expect(down.res).toBe(saved);
+        expect(down.fellBack).toBe('failed');
         // Live with frames still wins over the saved copy, and so does live's answer when the saved copy is empty too.
         const live = { frames: [frame('b')] };
-        const fresh = await pageSelection(['snapshot', 'live'], { live, snapshot: saved }, 'b');
+        const fresh = await pageSelection(SAVED_FIRST, { live, snapshot: saved }, 'b');
         expect(fresh.got).toBe('live');
         expect(fresh.res).toBe(live);
-        const empty = await pageSelection(['snapshot', 'live'], { live: { frames: [], missed: 1 }, snapshot: { frames: [] } }, 'b');
+        expect(fresh.fellBack).toBeNull();
+        const empty = await pageSelection(SAVED_FIRST, { live: { frames: [], missed: 1 }, snapshot: { frames: [] } }, 'b');
         expect(empty.got).toBe('live');
-        expect(empty.text).toBe('SPHEREx has frames near this spot, but none of them could be used for this view at this colour.');
+        expect(empty.text).toBe(NOT_USABLE);
+        // A saved copy that holds the linked frame opens with no live read.
+        const held = await pageSelection(SAVED_FIRST, { live, snapshot: saved }, 'a');
+        expect(held.asked).toEqual(['snapshot']);
+        expect(held.res).toBe(saved);
     });
 
-    it('does not blame NASA for a slow saved copy on this site', () => {
+    it('does not blame NASA for a failure of the saved copy on this site', () => {
         expect(plainError(new Error('The saved copy timed out reading /snapshot/rwaur/a.f32.'))).toBe('The saved copy on this site took too long to load. Check the connection and try again.');
+        for (const message of ['Snapshot file /snapshot/rwaur/index.json answered 503', 'Snapshot file /snapshot/rwaur/index.json answered 404', 'Snapshot file a.f32 has no IMAGE plane', 'The saved copy only has the five official targets.']) {
+            expect(plainError(new Error(message))).toBe('The saved copy on this site could not be loaded. Try again in a minute.');
+        }
         expect(plainError(new Error('Request failed: 503'))).toBe('NASA’s archive is busy or down right now. Try again in a minute.');
         expect(plainError(new Error('Failed to fetch'))).toBe(NO_ANSWER);
         expect(plainError(null)).toBe(NO_ANSWER);

@@ -421,7 +421,8 @@ export function mount(root: HTMLElement): void
     let subAHtml = '';
     let subBHtml = '';
     let sourceKind: SourceKind = 'live';
-    let liveFailed = false; // the saved copy is showing because the live archive did not answer
+    // Why the saved copy is showing after a live read: the read failed, or it gave no frames. null = no live read was made.
+    let fellBack: 'failed' | 'empty' | null = null;
     let cored = false; // the picture shows a too-bright core painted white
     let reading: SourceKind | null = null; // the source being read right now, for the status line
     let curve: Curve | null = null; // brightness against nearby comparison stars, for targets that change
@@ -563,40 +564,66 @@ export function mount(root: HTMLElement): void
         let res: SkyResult | null = null;
         let got: SourceKind = 'live';
         let lastErr: unknown = null;
+        let liveErr: unknown = null; // what the live read failed with: the message is about the archive, not the saved copy
         let allMissing = true;
         let failedLive = false;
-        let spare: SkyResult | null = null; // a saved copy without the linked frame, used if live fails
+        let failedSaved = false;
+        let fromLive: SkyResult | null = null; // what the archive answered, frames or none
+        let fromSaved: SkyResult | null = null; // what the saved copy answered, frames or none
         for (const kind of order) {
             reading = kind;
             renderText();
             try {
-                res = await loadFrom(kind, req);
-                got = kind;
-                if (kind === 'snapshot' && savedFirst) {
+                const out = await loadFrom(kind, req);
+                if (kind === 'snapshot') {
+                    fromSaved = out;
                     const wanted = wantFrame;
-                    if (res.frames.length === 0 || (wanted !== undefined && !res.frames.some((f) => f.frame.frame.obsId === wanted))) {
-                        spare = res;
-                        res = null;
-                        continue;
+                    // Opening from the saved copy: live is still read when the copy is empty or lacks the linked frame.
+                    if (out.frames.length > 0 && !(savedFirst && wanted !== undefined && !out.frames.some((f) => f.frame.frame.obsId === wanted))) {
+                        break;
                     }
+                } else if (kind === 'live') {
+                    fromLive = out;
+                    // An empty live answer does not end the search while one of the five targets has a saved copy to try.
+                    if (out.frames.length > 0 || !st.target) {
+                        break;
+                    }
+                } else {
+                    res = out;
+                    got = kind;
+                    break;
                 }
-                break;
             } catch (e) {
                 if (signal.aborted) {
                     return;
                 }
                 lastErr = e;
                 allMissing = allMissing && isNotImplemented(e);
-                failedLive ||= kind === 'live';
+                if (kind === 'live') {
+                    failedLive = true;
+                    liveErr = e;
+                } else if (kind === 'snapshot') {
+                    failedSaved = true;
+                }
                 // A spot that is not one of the five targets has no saved copy.
                 if (kind === 'live' && !st.target && !isNotImplemented(e)) {
                     break;
                 }
             }
         }
-        // The saved copy stands in when live fails, and when live answers with no frames while the saved copy has some.
-        if (spare && (!res || (res.frames.length === 0 && spare.frames.length > 0))) {
-            res = spare;
+        // Live frames win. The saved copy stands in when live fails or answers with no frames. With no frames anywhere,
+        // the live answer is the one reported.
+        if (fromLive && fromLive.frames.length > 0) {
+            res = fromLive;
+            got = 'live';
+        } else if (fromSaved && fromSaved.frames.length > 0) {
+            res = fromSaved;
+            got = 'snapshot';
+        } else if (fromLive) {
+            res = fromLive;
+            got = 'live';
+        } else if (fromSaved) {
+            res = fromSaved;
             got = 'snapshot';
         }
         if (!res && allMissing && !demoOnly) {
@@ -623,10 +650,13 @@ export function mount(root: HTMLElement): void
             paintGlow();
             renderText();
             // Frames exist, but none could be used: blank in this view, off the detector, or the spot at its edge.
-            const none = !!res && (res.unusable ?? 0) + (res.missed ?? 0) > 0;
+            // Either source's count is proof that they exist.
+            const left = (r: SkyResult | null): number => (r ? (r.unusable ?? 0) + (r.missed ?? 0) : 0);
+            const none = left(fromLive) + left(fromSaved) > 0;
+            const either = failedSaved && st.target ? ' The saved copy on this site could not be loaded either.' : '';
             // A failed live read comes first: what the saved copy lacks says nothing about the archive.
-            const why = !res ? `Couldn’t load the frames. ${plainError(lastErr)}`
-                : failedLive && got !== 'live' ? `Couldn’t read the live SPHEREx archive, and the saved copy has no ${none ? 'frames that could be used for this view' : 'frames'} at this colour. ${plainError(lastErr)}`
+            const why = !res ? `Couldn’t load the frames. ${plainError(liveErr ?? lastErr)}${failedLive ? either : ''}`
+                : failedLive ? `Couldn’t read the live SPHEREx archive, and the saved copy has no ${none ? 'frames that could be used for this view' : 'frames'} at this colour. ${plainError(liveErr)}`
                 : none ? 'SPHEREx has frames near this spot, but none of them could be used for this view at this colour.'
                 : 'SPHEREx has no frames of this spot at this colour yet.';
             bind('err', why);
@@ -657,7 +687,7 @@ export function mount(root: HTMLElement): void
         }
         core = coreBlank(res);
         sourceKind = got;
-        liveFailed = failedLive;
+        fellBack = got !== 'snapshot' ? null : failedLive ? 'failed' : fromLive ? 'empty' : null;
         if (got === 'snapshot' && st.fovDeg > SAVED_FOV + 1e-9) {
             // Live failed and the saved copy holds only the small field: say what is shown.
             st.fovDeg = SAVED_FOV;
@@ -1316,9 +1346,10 @@ export function mount(root: HTMLElement): void
             ref<HTMLElement>('dl').innerHTML = html;
         }
         bind('statusShort', sourceKind === 'live' ? 'Live from NASA’s SPHEREx archive'
-            : sourceKind === 'snapshot' ? (liveFailed ? 'Saved copy · archive did not answer' : 'Saved copy') : 'Simulated sky · not real data');
+            : sourceKind === 'snapshot' ? (fellBack === 'failed' ? 'Saved copy · live read failed' : fellBack === 'empty' ? 'Saved copy · live read gave no frames' : 'Saved copy') : 'Simulated sky · not real data');
         const status = sourceKind === 'live' ? 'Live: read straight from NASA’s SPHEREx archive on Amazon S3.'
-            : sourceKind === 'snapshot' ? (liveFailed ? 'NASA’s live archive did not answer, so this is the saved copy: real SPHEREx frames stored with this page. Go live tries the archive again.'
+            : sourceKind === 'snapshot' ? (fellBack === 'failed' ? 'The live read of NASA’s archive failed, so this is the saved copy: real SPHEREx frames stored with this page. Go live tries the archive again.'
+                : fellBack === 'empty' ? 'The live read of NASA’s archive gave no frames for this view, so this is the saved copy: real SPHEREx frames stored with this page. Go live tries the archive again.'
                 : 'Saved copy: real NASA SPHEREx frames stored with this page, so it opens at once. Go live reads them fresh from the archive (about 30 s).')
                 : 'Simulated sky for building the page. Not real data.';
         bind('status', status);
@@ -1400,9 +1431,12 @@ export function mount(root: HTMLElement): void
     function plainError(e: unknown): string
     {
         const msg = e instanceof Error ? e.message : '';
-        // The saved copy is served by this site, so its timeout is not the archive's doing.
+        // The saved copy is served by this site, so its failures are not the archive's doing.
         if (/saved copy timed out/i.test(msg)) {
             return 'The saved copy on this site took too long to load. Check the connection and try again.';
+        }
+        if (/snapshot file|saved copy/i.test(msg)) {
+            return 'The saved copy on this site could not be loaded. Try again in a minute.';
         }
         if (!msg || /failed to fetch|networkerror|load failed|network/i.test(msg)) {
             return 'The archive did not answer. Check the connection and try again.';
