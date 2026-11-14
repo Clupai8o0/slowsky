@@ -740,6 +740,17 @@ describe('change finder', () => {
         expect(claims).toEqual([]);
     });
 
+    it('does not call two stars 5 arcsec apart, one without an id, a mover when they swap brightness (round 6 item 6, sameStar)', () => {
+        // Codex round 6: position alone treats the two as one star and the swap passes the shift test.
+        const P = grid.pixelArcsec;
+        const a = noise(grid), b = noise(grid);
+        const x1 = 60 - 2.5 / P, x2 = 60 + 2.5 / P;
+        point(a, grid, x1, 60, 2000); point(a, grid, x2, 60, 100);
+        point(b, grid, x1, 60, 100); point(b, grid, x2, 60, 2000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y: 60, id: 'a' }, { x: x2, y: 60 }]);
+        expect(r.candidates.filter((c) => c.kind === 'mover')).toHaveLength(0);
+    });
+
     it('pairs a catalogue mover with its own entry even when a nearer uncatalogued spot also shifts (round 6 item 6, sort)', () => {
         const P = grid.pixelArcsec;
         for (const ux of [9, 10]) {

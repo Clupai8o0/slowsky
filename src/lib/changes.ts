@@ -623,9 +623,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     if (stars.some((s) => s.id === undefined)) {
         result.notes.push('Catalogue stars have no ids: two nearby catalogue stars that change in opposite ways can look like one mover.');
     }
-    // Two entries with ids are the same star when the ids match; otherwise position decides. (An "id on either
-    // side decides" rule only differed for entries under matchArcsec apart, where no test could tell; round 6.)
-    const sameStar = (a: StarPix, b: StarPix): boolean => a.id !== undefined && b.id !== undefined
+    // With an id on either entry the ids decide (an entry without one comes from another list, so another star).
+    // Position alone would merge two stars 5″ apart, one with an id, and let their swap pass as a mover.
+    const sameStar = (a: StarPix, b: StarPix): boolean => a.id !== undefined || b.id !== undefined
         ? a.id === b.id : distance(a, b, grid) <= opt.matchArcsec;
     // Two catalogue stars that change in opposite ways within 2 FWHM (the 12″ aperture plus the neighbour's
     // wings) cancel in the measured fraction, so that fraction is not measurable. Steady neighbours do not count: they subtract out. Nor does a much
