@@ -80,6 +80,62 @@ function sixFrames(): RegriddedFrame[]
     return Array.from({ length: 6 }, (_, i) => frame(i));
 }
 
+
+/** Pixels of the default sky ring (16 to 24 px) around a point, as flat indices. */
+function ringIndices(at: PixelCoord, w = width, h = height, inner = 16, outer = 24): number[]
+{
+    const out: number[] = [];
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const d = Math.hypot(x - at.x, y - at.y);
+            if (d >= inner && d <= outer) {
+                out.push(y * w + x);
+            }
+        }
+    }
+    return out;
+}
+
+function ownMedian(values: number[]): number
+{
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+}
+
+/** A small image whose aperture is finite and whose ring holds exactly the given values; the rest is NaN. */
+function sparseRing(values: number[]): { data: Float32Array; size: number; at: PixelCoord }
+{
+    const size = 61;
+    const at = { x: 30, y: 30 };
+    const data = new Float32Array(size * size).fill(Number.NaN);
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            if (Math.hypot(x - at.x, y - at.y) <= 1) {
+                data[y * size + x] = 1;
+            }
+        }
+    }
+    const ring = ringIndices(at, size, size, 2, 4);
+    expect(ring.length).toBeGreaterThanOrEqual(values.length);
+    values.forEach((value, i) => {
+        data[ring[i]!] = value;
+    });
+    return { data, size, at };
+}
+
+function noisyValues(n: number, seed: number): number[]
+{
+    const random = mulberry32(seed);
+    return Array.from({ length: n }, () => 0.5 + 0.02 * (random() - 0.5));
+}
+
+function sparseAperture(values: number[])
+{
+    const { data, size, at } = sparseRing(values);
+    return aperture(data, size, size, at, { radius: 1, annulusIn: 2, annulusOut: 4 });
+}
+
 describe('aperture', () => {
     it('recovers known Gaussian flux and sky with seeded noise', () => {
         const at = { x: 60.37, y: 41.81 };
@@ -142,6 +198,62 @@ describe('aperture', () => {
         expect(result.nSky).toBe(19);
     });
 
+    it('clips a large share of bright sky outliers from background, sigma and nSky', () => {
+        const at = { x: 100, y: 88 };
+        const data = image([], 0.5, 0.01, 1, 77);
+        const ring = ringIndices(at);
+        const random = mulberry32(5);
+        let raised = 0;
+        for (const offset of ring) {
+            if (random() < 0.15) {
+                data[offset] = data[offset]! + 5;
+                raised++;
+            }
+        }
+        expect(raised).toBeGreaterThan(0.1 * ring.length);
+        const result = aperture(data, width, height, at);
+        expect(result.valid).toBe(true);
+        expect(Math.abs(result.background - 0.5)).toBeLessThan(0.001);
+        expect(result.backgroundSigma).toBeGreaterThan(0.0095);
+        expect(result.backgroundSigma).toBeLessThan(0.0105);
+        expect(result.nSky).toBeLessThanOrEqual(ring.length - raised);
+        expect(result.nSky).toBeGreaterThan(0.8 * (ring.length - raised));
+    });
+
+    it('computes backgroundSigma as 1.4826 x MAD after the one-pass clip', () => {
+        const at = { x: 60.37, y: 41.81 };
+        const data = image([{ ...at, flux: 2000 }]);
+        const ring: number[] = [];
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const d = Math.hypot(x - at.x, y - at.y);
+                if (d >= 16 && d <= 24) {
+                    ring.push(data[y * width + x]!);
+                }
+            }
+        }
+        const mad = (values: number[], centre: number): number => 1.4826 * ownMedian(values.map((v) => Math.abs(v - centre)));
+        const first = ownMedian(ring);
+        const limit = 3 * mad(ring, first);
+        const clipped = ring.filter((v) => Math.abs(v - first) <= limit);
+        const expected = mad(clipped, ownMedian(clipped));
+        const result = aperture(data, width, height, at);
+        expect(Math.abs(result.backgroundSigma / expected - 1)).toBeLessThan(0.001);
+        expect(result.nSky).toBe(clipped.length);
+    });
+
+    it('accepts a ring of exactly 20 finite pixels and rejects 19', () => {
+        expect(sparseAperture(noisyValues(20, 1))).toMatchObject({ valid: true, nSky: 20 });
+        expect(sparseAperture(noisyValues(19, 1)).valid).toBe(false);
+    });
+
+    it('counts finite ring pixels before the clip when validating', () => {
+        const values = [...noisyValues(19, 2), 50, 50, 50];
+        const result = sparseAperture(values);
+        expect(result.valid).toBe(true);
+        expect(result.nSky).toBe(19);
+    });
+
     it.each([
         { x: Number.POSITIVE_INFINITY, y: 50 },
         { x: 50, y: Number.NEGATIVE_INFINITY },
@@ -165,6 +277,13 @@ describe('centroid', () => {
     it('refines an offset guess to a subpixel Gaussian centre', () => {
         const at = { x: 60.37, y: 41.81 };
         const measured = centroid(image([{ ...at, flux: 2000 }]), width, height, { x: at.x + 2, y: at.y - 1.5 });
+        expect(measured).toBeDefined();
+        expect(Math.hypot(measured!.x - at.x, measured!.y - at.y)).toBeLessThan(0.05);
+    });
+
+    it('iterates: a guess 5 px off converges where one pass would not', () => {
+        const at = { x: 60.37, y: 41.81 };
+        const measured = centroid(image([{ ...at, flux: 2000 }]), width, height, { x: at.x + 5, y: at.y - 4 });
         expect(measured).toBeDefined();
         expect(Math.hypot(measured!.x - at.x, measured!.y - at.y)).toBeLessThan(0.05);
     });
@@ -236,6 +355,39 @@ describe('lightCurve', () => {
         expect(curve.lambda).toBe(1.95);
         expect(curve.dropped).toBe(1);
         expect(curve.points.map((p) => p.lambda)).toEqual([1.95, 2]);
+    });
+
+    it('keeps frames exactly maxDeltaUm away despite rounding', () => {
+        const frames = [frame(0, target, 2.02), frame(1, target, 1.98), frame(2)];
+        const curve = lightCurve(frames, target, refs, { lambda: 2.0 });
+        expect(curve.dropped).toBe(0);
+        expect(curve.points).toHaveLength(3);
+    });
+
+    it('uses the lower middle frame wavelength as the default reference', () => {
+        const lambdas = [2, 2, 2.01, 3, 3, 3];
+        const curve = lightCurve(lambdas.map((l, i) => frame(i, target, l)), target, refs);
+        expect(curve.lambda).toBe(2.01);
+        expect(curve.points).toHaveLength(3);
+        expect(curve.dropped).toBe(3);
+    });
+
+    it('drops a frame with a NaN wavelength without moving the reference', () => {
+        const lambdas = [2, 2.01, 2.01, Number.NaN];
+        const withNaN = lightCurve(lambdas.map((l, i) => frame(i, target, l)), target, refs);
+        expect(withNaN.lambda).toBe(2.01);
+        expect(withNaN.dropped).toBe(1);
+        expect(withNaN.points).toHaveLength(3);
+        const without = lightCurve(lambdas.slice(0, 3).map((l, i) => frame(i, target, l)), target, refs);
+        expect(without.lambda).toBe(withNaN.lambda);
+    });
+
+    it('returns an empty curve when no frame has a finite wavelength', () => {
+        const curve = lightCurve([frame(0, target, Number.NaN), frame(1, target, Number.NaN)], target, refs);
+        expect(curve.points).toEqual([]);
+        expect(curve.dropped).toBe(2);
+        expect(curve.refScatter).toEqual([]);
+        expect(curve.lambda).toBeNaN();
     });
 
     it('follows a moving target and passes original input indices through sorting and filtering', () => {
