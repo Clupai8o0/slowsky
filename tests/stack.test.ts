@@ -34,6 +34,7 @@ interface FrameOpts {
     tMin?: number;
     pipelineVersion?: string;
     grid?: OutputGrid;
+    variance?: Float32Array;
 }
 
 function mkFrame(data: Float32Array, o: FrameOpts = {}): RegriddedFrame
@@ -46,7 +47,7 @@ function mkFrame(data: Float32Array, o: FrameOpts = {}): RegriddedFrame
         tMax: (o.tMin ?? 60000) + 0.001,
         pipelineVersion: o.pipelineVersion,
     } as FrameRecord;
-    return { frame, grid, data, lambdaAtCenter: 1, bandwidthAtCenter: 0.01 };
+    return { frame, grid, data, variance: o.variance, lambdaAtCenter: 1, bandwidthAtCenter: 0.01 };
 }
 
 function noise(size: number, sigma: number, rng: () => number): Float32Array
@@ -94,6 +95,82 @@ function boxSum(img: Float32Array, w: number, cx: number, cy: number): number
 }
 
 describe('stackVisit', () => {
+    it('keeps clipped image and counts byte identical with variance', () => {
+        const frames = [-100, 1, -1, 0, 0.5].map((v, i) => mkFrame(new Float32Array([v]), {
+            variance: new Float32Array([[1000, 3, 6, 9, 12][i]!]),
+        }));
+        const options = { background: 'none' as const, clipSigma: 4 };
+        const result = stackVisit(frames, options);
+        const without = stackVisit(frames.map(({ variance, ...frame }) => frame), options);
+        expect(result.n[0]).toBe(4);
+        expect(result.variance![0]).toBe(30 / 16);
+        expect(new Uint8Array(result.data.buffer)).toEqual(new Uint8Array(without.data.buffer));
+        expect(new Uint8Array(result.n.buffer)).toEqual(new Uint8Array(without.n.buffer));
+    });
+
+    it.each([-5, NaN, Infinity, -Infinity])('masks invalid kept variance %s without changing data or counts', (invalid) => {
+        const frames = [2, 4].map((v) => mkFrame(new Float32Array([v]), { variance: new Float32Array([invalid]) }));
+        const result = stackVisit(frames, { background: 'none' });
+        expect(result.variance![0]).toBeNaN();
+        expect(result.data[0]).toBe(3);
+        expect(result.n[0]).toBe(2);
+    });
+    it('propagates V/4 for four frames without changing image stacking', () => {
+        const frames = [12, 14, 10, 16].map((v) => mkFrame(new Float32Array([v, v + 2, v + 4, v + 6]), {
+            variance: new Float32Array([8, 12, 16, 20]),
+        }));
+        const result = stackVisit(frames);
+        expect(result.variance).toEqual(new Float32Array([2, 3, 4, 5]));
+        const without = frames.map(({ variance, ...frame }) => frame);
+        expect(result.data).toEqual(stackVisit(without).data);
+        expect(stackVisit(without).variance).toBeUndefined();
+    });
+
+    it('uses only kept frame variances after sorting and clipping at each pixel', () => {
+        const frames = [100, 1, -1, 0].map((v) => mkFrame(new Float32Array([v, v === 100 ? 2 : v, 1, 1]), {
+            variance: new Float32Array(4).fill(12),
+        }));
+        const result = stackVisit(frames, { background: 'none' });
+        expect(Array.from(result.n)).toEqual([3, 4, 4, 4]);
+        expect(result.variance).toEqual(new Float32Array([4, 3, 3, 3]));
+        // Different V values expose an incorrect association after value sorting.
+        frames[0]!.variance!.fill(1200);
+        frames[1]!.variance!.fill(3);
+        frames[2]!.variance!.fill(6);
+        frames[3]!.variance!.fill(9);
+        const different = stackVisit(frames, { background: 'none' });
+        expect(different.variance![0]).toBe(2);
+        expect(different.variance![1]).toBe(1218 / 16);
+        const raw = stackVisit(frames, { background: 'none', clipSigma: Infinity });
+        expect(raw.variance![0]).toBe(1218 / 16);
+    });
+
+    it('uses finite image coverage and propagates missing kept variance pixels', () => {
+        const frames = [0, 1, 2, 3].map(() => mkFrame(new Float32Array([1, NaN, 1, 1]), {
+            variance: new Float32Array(4).fill(12),
+        }));
+        frames[0]!.data[0] = NaN;
+        frames[0]!.variance![0] = NaN;
+        frames[1]!.variance![2] = NaN;
+        const result = stackVisit(frames, { background: 'none' });
+        expect(Array.from(result.n)).toEqual([3, 0, 4, 4]);
+        expect(result.variance).toEqual(new Float32Array([4, NaN, NaN, 3]));
+    });
+
+    it('omits the entire variance map when any frame has no plane', () => {
+        const withVariance = mkFrame(new Float32Array(4), { variance: new Float32Array(4).fill(12) });
+        const without = mkFrame(new Float32Array(4));
+        expect(stackVisit([withVariance, without]).variance).toBeUndefined();
+        expect(stackVisit([without, withVariance]).variance).toBeUndefined();
+    });
+
+    it('rejects wrong variance lengths with StackError even if another frame has none', () => {
+        const bad = mkFrame(new Float32Array(4), { variance: new Float32Array(3) });
+        expect(() => stackVisit([bad])).toThrow(StackError);
+        expect(() => stackVisit([mkFrame(new Float32Array(4)), bad])).toThrow(StackError);
+        expect(() => stackVisit([mkFrame(new Float32Array(3), { grid: mkGrid(2) })])).toThrow(StackError);
+    });
+
     it('identical frames give the frame minus its median, n = frame count', () => {
         const rng = mulberry32(1);
         const base = noise(32 * 32, 1, rng);
@@ -227,6 +304,32 @@ describe('stackVisit', () => {
 });
 
 describe('subtract', () => {
+    it.each([-5, NaN, Infinity, -Infinity])('masks invalid variance %s without changing data or counts', (invalid) => {
+        const a: StackResult = { data: new Float32Array([5]), n: new Uint16Array([3]), variance: new Float32Array([invalid]) };
+        const b: StackResult = { data: new Float32Array([2]), n: new Uint16Array([4]), variance: new Float32Array([1]) };
+        for (const result of [subtract(a, b), subtract(b, a)]) {
+            expect(result.variance![0]).toBeNaN();
+            expect(result.n[0]).toBe(3);
+        }
+        expect(subtract(a, b).data[0]).toBe(3);
+        expect(subtract(b, a).data[0]).toBe(-3);
+    });
+    it('adds visit variances and masks missing data', () => {
+        const a: StackResult = {
+            data: new Float32Array([5, NaN]), n: new Uint16Array([3, 0]), variance: new Float32Array([2, 7]),
+        };
+        const b: StackResult = {
+            data: new Float32Array([2, 1]), n: new Uint16Array([4, 4]), variance: new Float32Array([6, 3]),
+        };
+        expect(subtract(a, b).variance).toEqual(new Float32Array([8, NaN]));
+        expect(subtract(a, b.data).variance).toBeUndefined();
+        expect(subtract(a.data, b).variance).toBeUndefined();
+        expect(subtract(a, { data: b.data, n: b.n }).variance).toBeUndefined();
+        expect(subtract(a.data, b.data).variance).toBeUndefined();
+        expect(() => subtract({ ...a, variance: new Float32Array(1) }, b)).toThrow(StackError);
+        expect(() => subtract(a, { ...b, variance: new Float32Array(3) })).toThrow(StackError);
+    });
+
     it('shows a brighter star as a positive peak and nothing else', () => {
         const w = 48;
         const rng = mulberry32(7);
@@ -269,6 +372,34 @@ describe('subtract', () => {
 });
 
 describe('add', () => {
+    it.each([-5, NaN, Infinity, -Infinity])('masks invalid contributing variance %s without changing data or counts', (invalid) => {
+        const a: StackResult = { data: new Float32Array([2]), n: new Uint16Array([2]), variance: new Float32Array([invalid]) };
+        const b: StackResult = { data: new Float32Array([8]), n: new Uint16Array([4]), variance: new Float32Array([1]) };
+        for (const result of [add(a, b), add(b, a)]) {
+            expect(result.variance![0]).toBeNaN();
+            expect(result.data[0]).toBe(6);
+            expect(result.n[0]).toBe(6);
+        }
+        const empty: StackResult = { data: new Float32Array([NaN]), n: new Uint16Array([0]), variance: new Float32Array([1]) };
+        expect(add(a, empty).variance![0]).toBeNaN();
+        expect(add(empty, a).variance![0]).toBeNaN();
+    });
+    it('weights variances by squared counts and ignores zero-weight NaNs', () => {
+        const a: StackResult = {
+            data: new Float32Array([2, NaN, 5, NaN, 6]), n: new Uint16Array([2, 0, 3, 0, 0]),
+            variance: new Float32Array([3, NaN, 7, NaN, NaN]),
+        };
+        const b: StackResult = {
+            data: new Float32Array([8, 4, NaN, NaN, 9]), n: new Uint16Array([4, 2, 0, 0, 2]),
+            variance: new Float32Array([6, 5, NaN, NaN, 11]),
+        };
+        expect(add(a, b).variance).toEqual(new Float32Array([(4 * 3 + 16 * 6) / 36, 5, 7, NaN, 11]));
+        expect(add(a, { data: b.data, n: b.n }).variance).toBeUndefined();
+        expect(add({ data: a.data, n: a.n }, b).variance).toBeUndefined();
+        expect(() => add({ ...a, variance: new Float32Array(1) }, b)).toThrow(StackError);
+        expect(() => add(a, { ...b, variance: new Float32Array(1) })).toThrow(StackError);
+    });
+
     it('is a weighted mean, falls back to the side with data, and sums n', () => {
         const a: StackResult = { data: new Float32Array([1, 5, 9, NaN]), n: new Uint16Array([1, 0, 3, 0]) };
         const b: StackResult = { data: new Float32Array([4, 7, 2, NaN]), n: new Uint16Array([3, 2, 0, 0]) };
