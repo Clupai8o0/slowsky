@@ -1,0 +1,15 @@
+{
+  "url": "https://gea.esac.esa.int/tap-server/tap/sync?REQUEST=doQuery&LANG=ADQL&FORMAT=csv&QUERY=SELECT+TOP+2+source_id%2Cra%2Cdec%2Cref_epoch%2Cpmra%2Cpmdec%2Cparallax%2Cradial_velocity+FROM+gaiadr3.gaia_source+WHERE+1%3DCONTAINS%28POINT%28%27ICRS%27%2Cra%2Cdec%29%2CCIRCLE%28%27ICRS%27%2C269.4520769586187%2C4.693364966576667%2C0.2%29%29+AND+pmdec%3E9000",
+  "query": "SELECT TOP 2 source_id,ra,dec,ref_epoch,pmra,pmdec,parallax,radial_velocity FROM gaiadr3.gaia_source WHERE 1=CONTAINS(POINT('ICRS',ra,dec),CIRCLE('ICRS',269.4520769586187,4.693364966576667,0.2)) AND pmdec>9000",
+  "sourceId": "4472832130942575872",
+  "astrometry": {
+    "ra": 269.44850252543836,
+    "dec": 4.739420051112412,
+    "epochJyear": 2016,
+    "pmRa": -801.5509783684709,
+    "pmDec": 10362.394206546573,
+    "parallax": 546.975939730948,
+    "radialVelocity": -110.46822
+  },
+  "note": "Live ESA Gaia DR3 response, 2026-11-14. The repository target snapshot is labelled SIMBAD; the live test checks this separate Gaia DR3 track using the repository positionAt function."
+}
