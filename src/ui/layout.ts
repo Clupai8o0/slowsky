@@ -13,7 +13,9 @@ const FOLDED_W = 0; // a folded rail and its gutter take no width (--lcol, --lg 
 // Side by side (styles.css, .sk[data-side]): the controls column and the gap beside the sky.
 const CTRL_W = 300;
 const CTRL_GAP = 32;
-const ANIM_MS = 320; // a little over the 280 ms grid transition
+const ANIM_MS = 260; // a little over the 240 ms enter in styles.css (sk-in-l, sk-in-r)
+const MOVE_MS = 220; // the centre settling into its new place
+const MOVE_EASE = 'cubic-bezier(.5, 0, .1, 1)'; // --ease-move in styles.css
 
 function read(): Saved
 {
@@ -48,6 +50,7 @@ export function initLayout(root: HTMLElement): Layout
     const focusBtn = root.querySelector('[data-act="focus"]') as HTMLButtonElement;
     const sky = root.querySelector('.sk-sky') as HTMLElement | null;
     let animTimer = 0;
+    let flip: Animation | null = null;
 
     function num(v: unknown): number | undefined
     {
@@ -91,8 +94,20 @@ export function initLayout(root: HTMLElement): Layout
         }
     }
 
-    function apply(): void
+    // Everything that reads the layout (fit's gutter widths, arrange's --under, padding and sky top) runs after the
+    // fold state is on the page, so a fold or Focus sizes the sky exactly as a reload in the same state would.
+    function apply(refit = true): void
     {
+        for (const s of ['left', 'right'] as Side[]) {
+            if (folded[s]) {
+                root.dataset[s] = 'min';
+            } else {
+                delete root.dataset[s];
+            }
+        }
+        if (refit) {
+            fit();
+        }
         for (const s of ['left', 'right'] as Side[]) {
             const w = width[s];
             const prop = s === 'left' ? '--lw' : '--rw';
@@ -100,11 +115,6 @@ export function initLayout(root: HTMLElement): Layout
                 root.style.removeProperty(prop);
             } else {
                 root.style.setProperty(prop, `${w}px`);
-            }
-            if (folded[s]) {
-                root.dataset[s] = 'min';
-            } else {
-                delete root.dataset[s];
             }
             const open = !folded[s];
             root.querySelectorAll(`[data-act="fold-${s}"]`).forEach((b) => {
@@ -130,19 +140,21 @@ export function initLayout(root: HTMLElement): Layout
             root.style.removeProperty('--sky');
             return;
         }
+        // Measure from the stacked layout, as the first arrange after a reload does, whatever it was a moment ago.
+        delete root.dataset.side;
+        root.style.removeProperty('--sky');
         const vw = innerWidth;
         const vh = innerHeight;
         const cs = getComputedStyle(root);
         const inner = root.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-        const gutter = vw <= 1280 ? 32 : Math.min(64, Math.max(32, vw * 0.04)); // --cg
+        const gutter = Math.min(72, Math.max(56, vw * 0.044)); // --cg: clamp(56px, 4.4vw, 72px)
         const midW = Math.max(360, inner
             - (folded.left ? 0 : gutter + current('left'))
             - (folded.right ? 0 : gutter + current('right')));
         const short = vh <= 820;
-        const focus = folded.left && folded.right;
-        // Mirrors --w in styles.css: the sky's size when the controls sit under it.
+        // Mirrors --w in styles.css: the sky's size when the controls sit under it (--under is set there).
         const floor = short ? 320 : 360;
-        const under = short ? (focus ? 374 : 404) : (focus ? 362 : 398);
+        const under = parseFloat(cs.getPropertyValue('--under')) || 436;
         const stacked = Math.min(midW, Math.max(floor, vh - under));
         const top = sky.getBoundingClientRect().top - root.getBoundingClientRect().top;
         const side = Math.floor(Math.min(vh - parseFloat(cs.paddingBottom) - top, midW - CTRL_W - CTRL_GAP));
@@ -155,11 +167,41 @@ export function initLayout(root: HTMLElement): Layout
         }
     }
 
-    // While a rail opens or shuts, its content keeps its width (styles.css [data-anim]) instead of rewrapping.
-    function animate(): void
+    // The columns snap to their new widths at once (no grid animation, so nothing re-lays-out every frame). An opened
+    // rail's content fades in from its side (styles.css [data-anim]), and the centre glides from where it was to
+    // where it is now, by transform only (FLIP).
+    function animate(opening: Side | 'both' | null, change: () => void): void
     {
-        root.dataset.anim = '';
+        const watch = root.querySelector<HTMLElement>('.sk-m-watch');
+        // Where the sky is on screen now, mid-glide included; then drop any glide still running so the new box is
+        // measured untransformed and the next glide starts from where the eye last saw it.
+        const before = sky?.getBoundingClientRect();
+        flip?.cancel();
+        flip = null;
+        change();
         clearTimeout(animTimer);
+        if (opening) {
+            root.dataset.anim = `${opening}-open`;
+        } else {
+            delete root.dataset.anim;
+        }
+        const after = sky?.getBoundingClientRect();
+        const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (watch && before && after && after.width > 0 && !still && typeof watch.animate === 'function') {
+            const s = before.width / after.width;
+            const box = watch.getBoundingClientRect();
+            // Map the sky's new box onto its old one; the rest of the centre rides along.
+            const ox = after.left - box.left;
+            const oy = after.top - box.top;
+            const dx = before.left - after.left;
+            const dy = before.top - after.top;
+            if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || Math.abs(s - 1) > 0.01) {
+                flip = watch.animate([
+                    { transformOrigin: `${ox}px ${oy}px`, transform: `translate(${dx}px, ${dy}px) scale(${s})` },
+                    { transformOrigin: `${ox}px ${oy}px`, transform: 'none' },
+                ], { duration: MOVE_MS, easing: MOVE_EASE });
+            }
+        }
         animTimer = window.setTimeout(() => {
             delete root.dataset.anim;
         }, ANIM_MS);
@@ -172,21 +214,22 @@ export function initLayout(root: HTMLElement): Layout
 
     function fold(s: Side, v: boolean): void
     {
-        animate();
-        folded[s] = v;
-        fit();
-        apply();
+        animate(v ? null : s, () => {
+            folded[s] = v;
+            apply();
+        });
         save();
     }
 
     function toggleFocus(): void
     {
         const on = !(folded.left && folded.right);
-        animate();
-        folded.left = on;
-        folded.right = on;
-        fit();
-        apply();
+        const opening = on ? null : folded.left && folded.right ? 'both' : folded.left ? 'left' : folded.right ? 'right' : null;
+        animate(opening, () => {
+            folded.left = on;
+            folded.right = on;
+            apply();
+        });
         save();
     }
 
@@ -194,7 +237,7 @@ export function initLayout(root: HTMLElement): Layout
     {
         folded[s] = false;
         width[s] = w === undefined ? undefined : clamp(s, w);
-        apply();
+        apply(false);
     }
 
     // ---------- drag ----------
@@ -275,12 +318,10 @@ export function initLayout(root: HTMLElement): Layout
     addEventListener('resize', () => {
         cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => {
-            fit();
             apply();
         });
     });
     wide.addEventListener('change', () => {
-        fit();
         apply();
     });
 
@@ -288,7 +329,6 @@ export function initLayout(root: HTMLElement): Layout
     const narrow = matchMedia('(max-width: 1080px)');
     narrow.addEventListener('change', () => placeAbout(root, !narrow.matches));
     placeAbout(root, !narrow.matches);
-    fit();
     apply();
     return { toggleFocus };
 }

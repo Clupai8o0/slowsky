@@ -185,16 +185,18 @@ function motionSvg(pmRa: number, pmDec: number): { svg: string; text: string }
     const way = COMPASS[Math.round((((pa % 360) + 360) % 360) / 45) % 8]!;
     const S = 66;
     const c = S / 2;
-    const len = 22;
+    const len = 17; // the tip stays 3 px clear of the N and E labels inside the frame
     const ux = -pmRa / 1000 / pm;
     const uy = -pmDec / 1000 / pm;
     const tx = c + ux * len;
     const ty = c + uy * len;
     const head = (k: number) => `${(tx - ux * 6 + k * uy * 4).toFixed(1)} ${(ty - uy * 6 - k * ux * 4).toFixed(1)}`;
+    // Same outer box as the sky map beside it (66 px tall). N and E sit inside the frame at the ends of the axes,
+    // which start past them, and the arrow is short enough never to reach them.
     const svg = `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" role="img" aria-label="Moves ${pm.toFixed(1)} arcseconds a year toward the ${way}">
 <rect x=".5" y=".5" width="${S - 1}" height="${S - 1}" rx="2" class="fr"/>
-<path d="M${c} 8V${S - 8}M8 ${c}H${S - 8}" class="eq"/>
-<text x="${c}" y="7" class="lb">N</text><text x="5" y="${c + 3}" class="lb">E</text>
+<path d="M${c} 16V${S - 8}M16 ${c}H${S - 8}" class="eq"/>
+<text x="${c}" y="13" class="lb">N</text><text x="8" y="${c + 4}" class="lb">E</text>
 <path d="M${c} ${c}L${tx.toFixed(1)} ${ty.toFixed(1)}" class="ar"/>
 <path d="M${head(1)}L${tx.toFixed(1)} ${ty.toFixed(1)}L${head(-1)}" class="ar"/>
 <rect x="${c - 2}" y="${c - 2}" width="4" height="4" rx="1" class="me"/>
@@ -490,7 +492,21 @@ export function mount(root: HTMLElement): void
         st.lambda = undefined;
         st.live = false;
         st.label = COPY[id].display;
+        swapText();
         void load();
+    }
+
+    // One beat of data-swap: styles.css fades the left panel's notes in as they change (opacity only).
+    let swapTimer = 0;
+    function swapText(): void
+    {
+        delete root.dataset.swap;
+        void root.offsetWidth;
+        root.dataset.swap = '';
+        clearTimeout(swapTimer);
+        swapTimer = window.setTimeout(() => {
+            delete root.dataset.swap;
+        }, 220);
     }
 
     function setSpot(center: SkyCoord, label: string): void
@@ -499,6 +515,7 @@ export function mount(root: HTMLElement): void
         st.center = center;
         st.label = label;
         st.lambda = undefined;
+        swapText();
         void load();
     }
 
@@ -533,6 +550,7 @@ export function mount(root: HTMLElement): void
         stretch = null;
         composed = {};
         strip.innerHTML = '';
+        // The last picture and its rings go at once: a picture of the old spot under the new spot's name is a wrong picture.
         ov.innerHTML = '';
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         paintGlow();
@@ -647,6 +665,7 @@ export function mount(root: HTMLElement): void
         lamInput.disabled = false;
         if (!res || res.frames.length === 0) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ov.innerHTML = '';
             paintGlow();
             renderText();
             // Frames exist, but none could be used: blank in this view, off the detector, or the spot at its edge.
@@ -728,7 +747,7 @@ export function mount(root: HTMLElement): void
         bind('stage', `${STAGE_TEXT[p.stage]}${p.total > 1 ? ` · ${Math.min(p.done + 1, n)} of ${n}` : ''}`);
         const stages = ['search', 'headers', 'pixels', 'regrid'];
         const frac = (stages.indexOf(p.stage) + Math.min(p.done / n, 1)) / stages.length;
-        ref<HTMLElement>('prog').style.width = `${Math.round(frac * 100)}%`;
+        ref<HTMLElement>('prog').style.setProperty('--p', frac.toFixed(3)); // styles.css fills the line by scaleX
     }
 
     // ---------- drawing ----------
