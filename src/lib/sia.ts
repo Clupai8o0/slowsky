@@ -30,9 +30,23 @@ export function parseSiaXml(xml: string): VoRow[]
     return parseVotable(xml.replace(/(<\/?)[A-Za-z_][\w.-]*:(?=[A-Za-z])/g, '$1'));
 }
 
+// Reads the QUERY_STATUS INFO. IRSA can answer HTTP 200 with ERROR, or OVERFLOW when MAXREC cut the list.
+export function queryStatus(xml: string): { status: string; message: string } | null
+{
+    const tag = xml.replace(/(<\/?)[A-Za-z_][\w.-]*:(?=[A-Za-z])/g, '$1').match(/<INFO\b[^>]*\bname="QUERY_STATUS"[^>]*>/i)?.[0];
+    if (!tag) {
+        return null;
+    }
+    const value = tag.match(/\bvalue="([^"]*)"/i)?.[1] ?? '';
+    return { status: value.toUpperCase(), message: value };
+}
+
+export const SIA_MAXREC = 2000;
+
 export async function searchFrames(q: FrameQuery, signal?: AbortSignal, fetcher: typeof fetch = fetch): Promise<FrameRecord[]>
 {
     const params = new URLSearchParams({ POS: `CIRCLE ${q.center.ra} ${q.center.dec} ${q.radiusDeg}` });
+    params.set('MAXREC', String(SIA_MAXREC));
     if (q.lambda !== undefined) {
         params.set('BAND', String(q.lambda * 1e-6));
     }
@@ -43,8 +57,16 @@ export async function searchFrames(q: FrameQuery, signal?: AbortSignal, fetcher:
     if (!response.ok) {
         throw new Error(`SIA request failed (${response.status})`);
     }
+    const xml = await response.text();
+    const status = queryStatus(xml);
+    if (status?.status === 'ERROR') {
+        throw new Error('SIA query failed (QUERY_STATUS=ERROR)');
+    }
+    if (status?.status === 'OVERFLOW') {
+        throw new Error(`SIA result truncated at ${SIA_MAXREC} rows (QUERY_STATUS=OVERFLOW); narrow the time range or radius`);
+    }
     const frames = new Map<string, FrameRecord>();
-    for (const row of parseSiaXml(await response.text())) {
+    for (const row of parseSiaXml(xml)) {
         const frame = rowToFrame(row);
         if (frame && (!q.detector || frame.detector === q.detector) && !frames.has(frame.obsId)) {
             frames.set(frame.obsId, frame);

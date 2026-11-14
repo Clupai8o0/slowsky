@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fixture from './fixtures/sia/rwaur_dr1.xml?raw';
 import { buildUpstreamUrl, GET, OPTIONS, parseParams } from '../api/sia';
-import { parseSiaXml, rowToFrame, searchFrames } from '../src/lib/sia';
+import { parseSiaXml, queryStatus, rowToFrame, searchFrames } from '../src/lib/sia';
 
 const valid = 'POS=CIRCLE+76.956+30.401+0.01';
 const req = (query = valid) => new Request(`https://example.test/api/sia?${query}`);
@@ -84,8 +84,24 @@ describe('SIA rows', () => {
         const only = await searchFrames({ ...q, detector: d }, undefined, mockFetch());
         expect(only.length).toBeGreaterThan(0);
         expect(only.every((f) => f.detector === d)).toBe(true);
-        const dup = `${fixture}`;
-        expect((await searchFrames(q, undefined, vi.fn(async () => new Response(dup)) as unknown as typeof fetch)).length).toBe(frames.length);
+        expect(new Set(frames.map((f) => f.detector)).size).toBeGreaterThan(1);
+        const trs = fixture.match(/<[^>]*TR>[\s\S]*?<\/[^>]*TR>/g) ?? [];
+        expect(trs.length).toBeGreaterThan(0);
+        const dup = fixture.replace(trs[trs.length - 1]!, trs[trs.length - 1]! + trs.join(''));
+        expect(parseSiaXml(dup).length).toBe(parseSiaXml(fixture).length * 2);
+        const deduped = await searchFrames(q, undefined, vi.fn(async () => new Response(dup)) as unknown as typeof fetch);
+        expect(deduped.length).toBe(frames.length);
+    });
+    it('sends MAXREC and surfaces QUERY_STATUS ERROR and OVERFLOW', async () => {
+        const fetcher = mockFetch();
+        await searchFrames(q, undefined, fetcher);
+        expect(String(vi.mocked(fetcher).mock.calls[0]![0])).toContain('MAXREC=2000');
+        for (const status of ['OVERFLOW', 'ERROR']) {
+            const xml = fixture.replace(/<(\w*:?)RESOURCE\b([^>]*)>/, `<$1RESOURCE$2><$1INFO name="QUERY_STATUS" value="${status}"/>`);
+            expect(queryStatus(xml)?.status).toBe(status);
+            await expect(searchFrames(q, undefined, vi.fn(async () => new Response(xml)) as unknown as typeof fetch)).rejects.toThrow(status);
+        }
+        expect(queryStatus(fixture)?.status).not.toMatch(/ERROR|OVERFLOW/);
     });
     it('keeps rows sharing an obs_id but differing in detector', () => {
         const row = parseSiaXml(fixture)[0]!;
