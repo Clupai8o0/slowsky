@@ -79,7 +79,7 @@ The last column says what the source gives, in our own words.
 | WISE 0855 is a near neighbour ("the coldest neighbour") | `src/ui/copy.ts` | [Luhman 2014][luhman], title and abstract | About 2.2 parsecs from the Sun, from a parallax of 0.454 arcsec; the fourth-largest parallax of any known star or brown dwarf at the time |
 | WISE 0855 is far brighter at 4.5 µm than at 3.6 µm, with almost no light at shorter wavelengths | `src/ui/copy.ts` | [Luhman 2014][luhman], Table 1 | Magnitude 17.44 at 3.6 µm and 13.89 at 4.5 µm; only upper limits at J, Ks and W1 |
 | R Draconis is a giant star that swells and shrinks | `src/ui/copy.ts` | [SIMBAD at CfA][simbad]; [NASA, Mira variables][mira]; [CSIRO, pulsating variables][atnf] | SIMBAD lists it as a Mira variable (type Mi*), spectral type M4.5-6+e. The NASA page, which is about another Mira variable (R Aquarii), says stars of this kind are red giants that pulse over cycles of about 80 to 1000 days, with large changes in brightness. CSIRO's teaching page says pulsating stars change in brightness because their outer layers expand and contract, and that the radius of Mira itself changes by about 20%. Neither page is about R Draconis itself |
-| R Draconis' centre is too bright in every saved frame; Barnard's Star's in most | `README.md` | Our own count in `public/snapshot/` | Blank centre in 24 of 24 frames for R Draconis, 22 of 24 for Barnard's Star |
+| R Draconis' centre is too bright for the camera in every saved frame; Barnard's Star's in most | `README.md` | Our own count in `public/snapshot/` | Blank centre in 24 of 24 frames for R Draconis, 22 of 24 for Barnard's Star |
 | R Draconis' centre is too bright for the camera in every saved frame | `src/ui/copy.ts` | Our own count in `public/snapshot/` | Blank centre in 24 of 24 frames |
 | Barnard's Star's centre may be too bright for the camera | `src/ui/copy.ts` | Our own count in `public/snapshot/` | Blank centre in 22 of 24 frames |
 | RW Aur B, 1.5 arcsec from A, is the brighter one in Gaia | `src/ui/measure.ts` | Gaia DR3 TAP query, 14 Nov 2026 | Both stars' rows |
@@ -126,7 +126,7 @@ The README's "Limits" section uses these. The chart in `src/lib/planetx.ts` is n
 | Gaia rows are read through STScI's cone service, with the CfA VizieR mirror as a fallback | `README.md`, `DATA-LICENSES.md` | `src/lib/gaia.ts` (STScI is asked first; the VizieR mirror at `vizier.cfa.harvard.edu` only if that fails or returns nothing); `scripts/bake.py` (the same order when the saved copy is made) |
 | The same-wavelength rule, the target's motion, the lining up and the drawing run on the saved copy just as on live frames | `README.md` | `scripts/bake.py` (saves raw cut-outs of the image, the zodiacal model and the variance, with the header and wavelength table); `src/lib/source.ts` (the snapshot source hands those frames to the same assembly step as live frames) |
 | Frames taken within 10 days of each other count as one visit | `README.md` | `src/lib/wavelength.ts` (`groupVisits`); `src/lib/source.ts` (a gap of 10 days by default); `tests/wavelength.test.ts` |
-| For each visit the page keeps the one frame closest to the chosen wavelength, and only when that wavelength lies inside the frame's band | `README.md`, `src/ui/copy.ts` ("matched closely in colour") | `src/lib/lock.ts`; `src/lib/source.ts` (the limit is half of that frame's own bandwidth by default) |
+| For each visit the page keeps the one frame closest to the chosen wavelength, and only when that wavelength is within half the bandwidth at the spot | `README.md`, `src/ui/copy.ts` ("matched closely in colour") | `src/lib/lock.ts`; `src/lib/source.ts` (the limit is half of the bandwidth that the frame's wavelength table gives at the spot, by default) |
 | The brightness curve divides the target by two to four Gaia comparison stars | `README.md` | `src/ui/measure.ts` (keeps at most 4, and draws no curve with fewer than 2); `tests/measure.test.ts` |
 | The archive can cut its frame list short at busy spots, and the page then says so | `README.md` | `src/lib/sia.ts` (at most 2000 rows per query; an overflowing query is retried as 4 time windows, and still-full windows mark the list cut short); `src/lib/source.ts` (the note to the user); `tests/sia.test.ts` |
 | Live loading reads at most 60 frames per view | `README.md` | `src/lib/source.ts` (60 headers by default) |
@@ -140,7 +140,7 @@ The licences in [DATA-LICENSES.md](DATA-LICENSES.md) were read from each package
 
 ## Not confirmed, or our own choice
 
-- **Comparison-star limits.** The G 9 and G 15 cuts in `src/ui/measure.ts` are our own. No source gives a
+- **Comparison-star limits** (README, Limits). The G 9 and G 15 cuts in `src/ui/measure.ts` are our own. No source gives a
   saturation magnitude for SPHEREx.
 - **Planet Nine brightness ranges.** The two ranges in `src/lib/planetx.ts` were read by eye from Figure 9 of
   Brown & Batygin 2021. They cannot be checked from the paper's text.
@@ -149,7 +149,7 @@ The licences in [DATA-LICENSES.md](DATA-LICENSES.md) were read from each package
 - **One frame is shallower.** The single-frame depth in `src/lib/planetx.ts` is our own estimate: the
   four-observation depth minus 0.75 mag. No source gives it.
 - **"Near a strong spectral line even that small difference can matter"** (README, step 4). This is our own
-  reasoning about frames matched to within half a channel. No source cited here says it.
+  reasoning about frames matched to within half the bandwidth at the spot. No source cited here says it.
 - **The wavelength guess from corner positions being "about 10 pixels off"** (README, Limits). This figure comes
   only from a code comment in `src/lib/source.ts`. No test measures it on real frames. The tests check the method on
   ideal frames, and the code drops the guess when the check frame is more than 40 pixels off.

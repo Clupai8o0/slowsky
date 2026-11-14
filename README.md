@@ -29,7 +29,7 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 - For a preset target, see a marker where the target should be on each frame's date (a ring for Barnard's Star
   and Epsilon Indi B, corner marks for the others).
 - See rings that mark stars from ESA's Gaia DR3 catalogue that are brighter than G magnitude 19 (live: within 0.2°
-  of the centre, the 400 brightest at most; or from the offline copy), and turn them off or on.
+  of the centre, the 400 brightest at most; offline copy: within 0.1° of the centre), and turn them off or on.
 - On a live view in Blink, switch on **Flags** to paint the pixels that the frame's own quality layer marks
   (cosmic-ray hits, for example), and read how many pixels are flagged and which three kinds are most common.
 - Read each frame's details: when it was taken, its wavelength at the centre, detector, data release, file name,
@@ -48,10 +48,11 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
    that cover the view, using HTTP range requests. It never downloads a whole file.
 4. **Same-wavelength rule.** In a SPHEREx frame, each part of the detector sees a slightly different wavelength.
    Frames taken within 10 days of each other count as one visit. For each visit, the page keeps the one frame whose
-   wavelength at the spot is closest to the chosen value, and only if that value lies inside the frame's band.
-   Visits with no such frame are left out, and a note on the page says how many. Each kept frame's wavelength at
-   the spot is within half of that frame's own bandwidth of the chosen value, which keeps colour differences
-   between frames small. Near a strong spectral line even that small difference can matter.
+   wavelength at the spot is closest to the chosen value, and only if the chosen value is within half the
+   bandwidth that the frame's own wavelength table gives for that spot (the narrow slice of colour that spot sees,
+   not the detector's whole range). Visits with no such frame are left out, and a note on the page says how many.
+   This keeps colour differences between frames small. Near a strong spectral line even that small difference can
+   matter.
 5. **Moving targets.** For a preset target, its proper motion is applied for each frame's own date, so the marker
    and the wavelength check follow the star.
 6. **Lining up.** The page removes zodiacal light, the glow of sunlit dust in the solar system (the archive's own
