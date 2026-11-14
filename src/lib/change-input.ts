@@ -100,7 +100,7 @@ export function changeInput(result: SkyResult, opts: ChangeInputOptions = {}): C
         notes.push(`${untimed} ${untimed === 1 ? 'frame' : 'frames'} without a time ${untimed === 1 ? 'was' : 'were'} left out.`);
     }
     if (result.stars.length === 0) {
-        notes.push('No catalogue stars for this view: every change is reported without a catalogue match.');
+        notes.push('No catalogue stars for this view: every spot is listed without a catalogue match.');
     }
     if (!earlier.variance || !later.variance) {
         notes.push('No error maps for at least one visit; noise is estimated from the difference image.');
@@ -113,6 +113,6 @@ export function findChanges(result: SkyResult, opts: ChangeInputOptions = {}, ch
     const input = changeInput(result, opts);
     const found = compareVisits(input.earlier, input.later, result.grid, input.stars, changeOpts);
     const noiseReported = found.notes.some((note) => /noise from the difference image/i.test(note));
-    found.notes.push(...input.notes.filter((note) => !(noiseReported && note.startsWith('No error maps'))));
+    found.notes.push(...input.notes.filter((note) => !((noiseReported || !Number.isFinite(found.sigma)) && note.startsWith('No error maps'))));
     return found;
 }
