@@ -208,7 +208,7 @@ describe('false colour slot', () => {
         h.calls[0]!.resolve(sky([c]));
         await flush();
         const note = h.slot.update(v, true).note;
-        expect(note).toContain('Blue: 1.23 µm (the shorter wavelength), 2 frames, 2025-07-01 to 2026-09-01.');
+        expect(note).toContain('Blue: 1.23 µm (the shorter wavelength), 2 frames, 2025-07-01 and 2026-09-01.');
         expect(note).toContain('Orange: 4.57 µm (the longer wavelength), 1 frame, 2025-11-21.');
         expect(note).toContain('The two colours were not taken at the same times, so anything that moved or changed in between shows a false tint.');
     });
@@ -257,7 +257,7 @@ describe('false colour slot', () => {
         expect(h.slot.update(v, true).note).toContain('The two colours were not taken at the same times');
     });
 
-    it('uses wavelengths of centre-covered frames, falling back when all centres are blank', async () => {
+    it('labels a band with all its frames when one frame is partly blank at the spot', async () => {
         const h = colourHarness();
         const a = frame('a');
         const b = frame('b');
@@ -275,8 +275,11 @@ describe('false colour slot', () => {
         h.calls[0]!.resolve(sky([c, d]));
         await flush();
         const note = h.slot.update(v, true).note;
-        expect(note).toContain('Blue: 1.10 µm');
+        // Frame b is blank at the centre while frame a is not, so the short band cannot be measured there and the
+        // label describes the picture, which both frames paint: their mean wavelength, not frame a's alone.
+        expect(note).toContain('Blue: 1.20 µm (the shorter wavelength), 2 frames');
         expect(note).toContain('Orange: 4.60 µm');
+        expect(note).toContain('1.20 µm cannot be measured here (some frames have blank pixels here)');
     });
 
     it('measures a native-width star with the page aperture on the fine grid', async () => {
