@@ -31,11 +31,21 @@ export function wcsFromHeader(header: FitsHeader): WcsParams
     if (!okTypes) {
         throw new Error(`Unsupported WCS projection: ${ctype1} / ${ctype2}`);
     }
+    const lonpole = header.get('LONPOLE');
+    if (typeof lonpole === 'number' && lonpole !== 180) {
+        throw new Error(`Unsupported LONPOLE: ${lonpole}`);
+    }
     let cd: [[number, number], [number, number]];
-    if (header.get('CD1_1') !== undefined) {
+    const hasCd = ['CD1_1', 'CD1_2', 'CD2_1', 'CD2_2'].some((k) => header.get(k) !== undefined);
+    if (hasCd) {
+        const cdv = (k: string): number =>
+        {
+            const v = header.get(k);
+            return typeof v === 'number' ? v : 0;
+        };
         cd = [
-            [header.num('CD1_1'), header.num('CD1_2')],
-            [header.num('CD2_1'), header.num('CD2_2')],
+            [cdv('CD1_1'), cdv('CD1_2')],
+            [cdv('CD2_1'), cdv('CD2_2')],
         ];
     } else {
         const d1 = typeof header.get('CDELT1') === 'number' ? header.num('CDELT1') : 1;
@@ -146,6 +156,9 @@ export function makeWcs(params: WcsParams): Wcs
             const dec = c.dec * DEG;
             const dra = ra - ra0;
             const denom = sinD0 * Math.sin(dec) + cosD0 * Math.cos(dec) * Math.cos(dra);
+            if (!(denom > 0)) {
+                return { x: NaN, y: NaN };
+            }
             const xi = (Math.cos(dec) * Math.sin(dra)) / denom;
             const eta = (cosD0 * Math.sin(dec) - sinD0 * Math.cos(dec) * Math.cos(dra)) / denom;
             const xd = xi / DEG;
