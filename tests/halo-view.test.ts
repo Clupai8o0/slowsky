@@ -153,7 +153,7 @@ describe('haloFor', () => {
         const edge = haloFor(r, { ring, curve: fake([point(MJD0, { lambda: 1 }), point(MJD0 + 8, { lambda: 1.005 })]) })!;
         expect(haloHtml(edge, 'R Draconis', -1)).toContain('from 1.000 to 1.005 µm');
         const chain = haloFor(r, { ring, curve: fake([point(MJD0), point(MJD0 + 8), point(MJD0 + 16)]) })!;
-        expect(haloHtml({ ...chain, kind: 'table' }, 'R Draconis', -1)).toContain('taken on 2 visits');
+        expect(haloHtml({ ...chain, kind: 'table' }, 'R Draconis', -1)).toContain('taken on 1 visit');
     });
 
     it('draws a line only from 3 or more visits inside one 0.005 µm colour window', () => {
@@ -162,9 +162,26 @@ describe('haloFor', () => {
         expect(at([0.9396, 0.9420, 0.9446])).toBe('curve');
         expect(at([0.92, 0.93, 0.94])).toBe('table'); // three visits, but 0.02 µm apart
         expect(at([0.9, 0.9, 0.9], 3)).toBe('table'); // one colour, but one visit
-        expect(at([0.9, 0.9, 0.9, 0.9], 5)).toBe('table'); // visits counted from their start: days 0-15 are 2 visits
+        expect(at([0.9, 0.9, 0.9, 0.9, 0.9], 9)).toBe('table'); // looks 9 days apart chain into one visit, as elsewhere on the page
         expect(haloHtml(haloFor(r, { ring, curve: fake([point(MJD0, { lambda: 0.92 }), point(MJD0 + 100, { lambda: 0.93 }),
             point(MJD0 + 200, { lambda: 0.94 })]) })!, 'R Draconis', -1)).toContain('taken on 3 visits. A curve is drawn only');
+    });
+
+    it('names catalogued stars whose light falls in the ring', () => {
+        const r = result([5000, 5000, 5000]);
+        r.stars.push(star('inring', { x: TARGET.x + 15, y: TARGET.y }, 14.24), star('far', { x: TARGET.x, y: TARGET.y + 40 }, 12));
+        const h = haloFor(r, { ring, curve: fake([point(MJD0), point(MJD0 + 100), point(MJD0 + 200)]) })!;
+        expect(h.ringStars).toEqual([14.24]);
+        expect(haloHtml(h, 'R Draconis', -1)).toContain('A catalogued Gaia star (G 14.2) sits in or at the edge of the ring, so some of its light is in every reading.');
+    });
+
+    it('drops comparison stars whose own sky ring reaches the halo ring, and hides with fewer than two left', () => {
+        const r = result([5000, 5000, 5000]);
+        const curve = vi.fn(fake([point(MJD0), point(MJD0 + 100), point(MJD0 + 200)]));
+        // REFS sit about 71 px from the target: a ring out to 60 px leaves no room for their own sky ring.
+        expect(haloFor(r, { ring: () => ({ ringIn: 10, ringOut: 60 }), curve })).toBeNull();
+        expect(curve).not.toHaveBeenCalled();
+        expect(haloFor(r, { ring, curve })!.refs).toBeGreaterThanOrEqual(2);
     });
 
     it('asks for a wider field when the ring does not fit, and hides on other module errors', () => {
@@ -189,7 +206,7 @@ describe('haloHtml', () => {
         kind: 'curve', lambda: 0.912, ringIn: 15.04, ringOut: 33.5, refs: 3, looks: 3, dropped: 1,
         points: [{ mjd: MJD0, k: 2, lambda: 0.912, relative: 0.95, err: 0.02 }, { mjd: MJD0 + 90, k: 1, lambda: 0.912, relative: 1, err: 0.02 },
             { mjd: MJD0 + 180, k: 0, lambda: 0.912, relative: 1.05, err: 0.03 }],
-        caveats: [{ text: 'Ring <b>sensitive</b>', mjds: [MJD0] }],
+        caveats: [{ text: 'Ring <b>sensitive</b>', mjds: [MJD0] }], ringStars: [],
     };
 
     it('says what was measured, marks the look on screen, and escapes module text', () => {

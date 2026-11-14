@@ -32,6 +32,7 @@ export interface HaloView {
     looks: number; // looks measured at this colour
     dropped: number; // frames too far off this colour
     caveats: { text: string; mjds: number[] }[];
+    ringStars: number[]; // Gaia G of catalogued stars in or at the edge of the ring, brightest first
 }
 
 // A line is drawn only from looks on at least MIN_VISITS visits, all within CURVE_WIDTH_UM of colour. Otherwise
@@ -73,7 +74,7 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
     const { frames, maxDeltaUm } = lockedFrames(result);
     const wl = { lambda: result.lambda, maxDeltaUm };
     const px = result.grid.pixelArcsec;
-    const base = { lambda: result.lambda, ringIn: NaN, ringOut: NaN, refs: refs.length, points: [], looks: 0, dropped: 0, caveats: [] };
+    const base = { lambda: result.lambda, ringIn: NaN, ringOut: NaN, refs: refs.length, points: [], looks: 0, dropped: 0, caveats: [], ringStars: [] };
     let ring: { ringIn: number; ringOut: number };
     try {
         ring = (deps.ring ?? ringFor)(frames, (f) => at(f), wl);
@@ -83,11 +84,17 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
         }
         throw e;
     }
+    // A comparison star's own sky ring must sit outside the halo ring, or the halo light leaks into the reference.
+    const { annulusOut } = apertureFor(result.grid);
+    const clear = refs.filter((r) => Math.hypot(r.pix.x - centre.pix.x, r.pix.y - centre.pix.y) > ring.ringOut + annulusOut);
+    if (clear.length < 2) {
+        return null;
+    }
     const curve = deps.curve ?? haloCurve;
     let order: number[] = []; // the module asks for the target once per kept frame, in point order
     let lc: HaloCurve;
     try {
-        lc = steadyRefs(refs, (pix) => {
+        lc = steadyRefs(clear, (pix) => {
             order = [];
             return curve(frames, (f, i) => {
                 order.push(i);
@@ -122,28 +129,35 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
         lambda: Number.isFinite(lc.lambda) ? lc.lambda : result.lambda,
         ringIn: ring.ringIn * px,
         ringOut: ring.ringOut * px,
-        refs: refs.length,
+        refs: clear.length,
         points,
         looks: lc.points.length,
         dropped: lc.dropped,
         caveats: [...caveats].map(([text, mjds]) => ({ text, mjds })),
+        ringStars: starsInRing(result, centre.pix, ring),
     };
+}
+
+// Gaia stars whose light can fall in the ring: centre between the ring's edges, widened by one aperture radius.
+// Positions are at the Gaia epoch; this is a warning, not a correction.
+function starsInRing(result: SkyResult, at: PixelCoord, ring: { ringIn: number; ringOut: number }): number[]
+{
+    const margin = apertureFor(result.grid).radius;
+    return result.stars
+        .filter((s) => {
+            const d = Math.hypot(s.pix.x - at.x, s.pix.y - at.y);
+            return Number.isFinite(d) && Number.isFinite(s.g) && d >= ring.ringIn - margin && d <= ring.ringOut + margin;
+        })
+        .map((s) => s.g)
+        .sort((a, b) => a - b);
 }
 
 // Looks less than 10 days apart count as one visit (as visitsOf in measure.ts).
 function visitCount(mjds: number[]): number
 {
-    // A visit starts at its first look; every look within 10 days of that start belongs to it.
+    // Same rule as the rest of the page: a gap of 10 days or more from the previous look starts a new visit.
     const t = [...mjds].sort((a, b) => a - b);
-    let visits = 0;
-    let start = -Infinity;
-    for (const v of t) {
-        if (v - start >= 10) {
-            visits++;
-            start = v;
-        }
-    }
-    return visits;
+    return t.filter((v, i) => i === 0 || v - t[i - 1]! >= 10).length;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -170,6 +184,11 @@ export function haloHtml(h: HaloView, name: string, on: number): string
         ? ` These looks were taken from ${lamLo.toFixed(3)} to ${lamHi.toFixed(3)} µm; looks at slightly different colours can read differently for that reason alone.`
         : '';
     const visits = visitCount(h.points.map((p) => p.mjd));
+    const gs = h.ringStars;
+    const inRing = gs.length
+        ? ` ${gs.length === 1 ? `A catalogued Gaia star (G ${gs[0]!.toFixed(1)}) sits` : `${gs.length} catalogued Gaia stars (brightest G ${gs[0]!.toFixed(1)}) sit`}`
+            + ` in or at the edge of the ring, so some of ${gs.length === 1 ? 'its' : 'their'} light is in every reading.`
+        : '';
     if (h.kind === 'none' || h.kind === 'table') {
         const head = `Near ${h.lambda.toFixed(2)} µm, ${where}, could be measured in ${h.points.length} of ${plural(h.looks, 'look', 'looks')}`
             + `${h.points.length ? `, taken on ${plural(visits, 'visit', 'visits')}` : ''}.`
@@ -186,7 +205,7 @@ export function haloHtml(h: HaloView, name: string, on: number): string
             + '<thead><tr><th scope="col">Look</th><th scope="col">Colour</th><th scope="col">Ring light vs the median of these looks</th></tr></thead>'
             + `<tbody>${rows}</tbody></table>`;
         return `<p class="sk-body mute">${head}</p>${table}<p class="sk-body mute">Measured against ${h.refs} nearby comparison stars from Gaia. `
-            + `The ± is each reading’s noise: the sky around the ring and around the comparison stars, and how far off the star’s catalogue position could be.${colours}</p>${notes}`;
+            + `The ± is each reading’s noise: the sky around the ring and around the comparison stars, and how far off the star’s catalogue position could be.${colours}${inRing}</p>${notes}`;
     }
     const W = 300;
     const H = 100;
@@ -215,6 +234,6 @@ export function haloHtml(h: HaloView, name: string, on: number): string
     const left = off + (bad > 0 ? ` ${plural(bad, 'look', 'looks')} could not be measured.` : '');
     const note = `At ${h.lambda.toFixed(2)} µm: ${where}, measured against ${h.refs} nearby comparison stars from Gaia, look by look. `
         + 'The bar on each dot is its noise: the sky around the ring and around the comparison stars, and how far off the '
-        + `star’s catalogue position could be. A change inside its bar may be noise.${colours}${left}`;
+        + `star’s catalogue position could be. A change inside its bar may be noise.${colours}${inRing}${left}`;
     return `<div class="sk-lc">${svg}${axis}</div>${dates}<p class="sk-body mute">${note}</p>${notes}`;
 }
