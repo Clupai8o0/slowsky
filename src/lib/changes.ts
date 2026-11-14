@@ -640,7 +640,7 @@ export function plainListNotes(candidates: { line?: string; sentence?: string; r
     const hiddenMapped = usedErrorMap && candidates.some(c => !c.snrMapMissing && !hasSnrFigure(c.line ?? c.sentence ?? c.reason));
     const order = !shown && hiddenMapped ? `${base}.` : !shown ? `${base} estimated from the difference image; that figure is used only for this order.`
         : `${base}${shown < candidates.length ? '; within each group, spots with no S/N figure come after those with one' : ''}.`;
-    const flagged = candidates.filter(c => c.snrFlagRemoved).length;
+    const flagged = candidates.filter(c => c.snrFlagRemoved && !c.snrMapMissing).length;
     const count = (n: number) => candidates.length === 1 ? 'the 1 candidate' : n === candidates.length ? (n === 2 ? 'both candidates' : `all ${n} candidates`) : `${n} of the ${candidates.length} candidates`;
     const subject = (n: number) => count(n).replace(/^./, c => c.toUpperCase());
     return [order, ...(flagged ? [`${subject(flagged)} ${flagged === 1 ? 'is' : 'are'} marked by an archive overflow flag, so ${flagged === 1 ? 'its' : 'their'} S/N is left out; the S/N figure there can be unreliable.`] : []),

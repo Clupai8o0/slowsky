@@ -3,7 +3,7 @@
 // claim of its own: each line is labelled "Candidate N" so the word stays on every line, and the marks over the
 // sky carry the same N. The finder's counts, noise and threshold are not shown. Pure string builders, no DOM.
 
-import { PLAIN_CAUSES, PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
+import { isSnrNote, PLAIN_CAUSES, PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
 
 // Fields the finder is adding (lane/changes r10b): `sentence` (the reason without its caveat), `caveat` (a full
 // sentence, absent when both visits have 2+ frames) and `lightVisit`; `reason` stays as an alias of `sentence`.
@@ -139,11 +139,12 @@ export function changesHtml(v: ChangesView, all = false): string
             ? `No spot is shown: ${hidden.length === 1 ? 'the 1 candidate lies' : hidden.length === 2 ? 'both candidates lie' : `all ${hidden.length} candidates lie`} within ${match}″ of a catalogue star.`
             : `Not shown: ${spots}${hidden.length === starCount ? ` within ${match}″ of a catalogue star` : starCount ? `; ${starCount} of them ${starCount === 1 ? 'lies' : 'lie'} within ${match}″ of a catalogue star` : ''}.`;
         const button = closed.length ? `Show ${hidden.length} more` : hidden.length === 1 ? 'Show it' : 'Show them';
-        const more = hidden.length ? `<p class="sk-chg-more-row">${all ? '' : esc(hiddenText) + ' '}<button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? 'Show fewer' : button}</button></p>` : '';
+        const more = hidden.length ? `<p class="sk-chg-more-row">${all ? '' : esc(hiddenText) + ' '}<button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? (closed.length ? 'Show fewer' : hidden.length === 1 ? 'Hide it' : 'Hide them') : button}</button></p>` : '';
         const items = listed(v, all);
         const list = items.length ? `<ol class="sk-chg">${items.map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(shared ? c.line.replace(clause, ' (') : c.line)}</li>`).join('')}</ol>`
             : '';
-        const notes = v.notes.length ? `<ul class="sk-chg-notes">${v.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
+        const visibleNotes = !all && !items.length ? v.notes.filter(n => !n.startsWith('Listed with spots that have no catalogue star within ') && !isSnrNote(n)) : v.notes;
+        const notes = visibleNotes.length ? `<ul class="sk-chg-notes">${visibleNotes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
         return lead + list + more + notes;
     }
     const rest = v.candidates.length - LIST_CAP;
@@ -301,14 +302,16 @@ export function plainMarks(v: ChangesView, width: number, height: number, all = 
         if (!chosen) { chosen = candidates[0]!; tier = 5; }
         if (counts) { counts[(['preferred', 'soft', 'hard', 'apart', 'grid', 'last'] as const)[tier]!]++; }
         boxes.push(box(chosen));
-        // A label left nearer another candidate's ring than its own gets a short line to its own ring.
+        // When another candidate's ring is strictly nearer and the own ring is at least 2 px away,
+        // draw a white leader with a dark outline to the nearest own ring.
         const at = box(chosen);
         const gap = (e: { x: number; y: number; radius: number }) => Math.hypot(Math.max(at.left - e.x, 0, e.x - at.right), Math.max(at.top - e.y, 0, e.y - at.bottom)) - e.radius;
         const near = members.reduce((a, b) => gap(ends[a]!) <= gap(ends[b]!) ? a : b);
-        const lead = ends.some((e, i) => !members.some(j => ends[j]!.i === e.i) && Math.max(0, gap(e)) < Math.max(0, gap(ends[near]!)));
+        const lead = gap(ends[near]!) >= 2 && ends.some(e => !members.some(j => ends[j]!.i === e.i) && Math.max(0, gap(e)) < Math.max(0, gap(ends[near]!)));
         const e0 = ends[near]!, bx = Math.max(at.left, Math.min(at.right, e0.x)), by = Math.max(at.top, Math.min(at.bottom, e0.y)), d = Math.hypot(bx - e0.x, by - e0.y);
         marks.push(...members.map(i => { const e = ends[i]!; return `<circle cx="${e.x.toFixed(1)}" cy="${e.y.toFixed(1)}" r="${e.radius.toFixed(1)}"/>`; }),
-            ...(lead ? [`<line x1="${bx.toFixed(1)}" y1="${by.toFixed(1)}" x2="${(e0.x + (bx - e0.x) * e0.radius / d).toFixed(1)}" y2="${(e0.y + (by - e0.y) * e0.radius / d).toFixed(1)}"/>`] : []),
+            ...(lead ? [`<line class="sk-chg-lead-under" x1="${bx.toFixed(1)}" y1="${by.toFixed(1)}" x2="${(e0.x + (bx - e0.x) * e0.radius / d).toFixed(1)}" y2="${(e0.y + (by - e0.y) * e0.radius / d).toFixed(1)}"/>`,
+                `<line x1="${bx.toFixed(1)}" y1="${by.toFixed(1)}" x2="${(e0.x + (bx - e0.x) * e0.radius / d).toFixed(1)}" y2="${(e0.y + (by - e0.y) * e0.radius / d).toFixed(1)}"/>`] : []),
             `<text x="${chosen.x.toFixed(1)}" y="${chosen.y.toFixed(1)}" font-size="${size.toFixed(1)}">${label}</text>`);
     }
     return `<svg class="sk-chg-marks" viewBox="0 0 ${width} ${height}" aria-hidden="true">${marks.join('')}</svg>`;
