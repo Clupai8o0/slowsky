@@ -123,7 +123,7 @@ button { cursor: pointer; }
     .sk[data-side] .sk-seg { flex: none; }
     .sk[data-side] .sk-seg button { flex: 1; min-width: 0; padding: 0 8px; }
     .sk[data-side] .sk-seg .ic { display: inline-block; }
-    .sk[data-side] .sk-hint { order: 2; margin-top: 12px; }
+    .sk[data-side] .sk-sub, .sk[data-side] .sk-hint { order: 2; margin-top: 12px; }
     .sk[data-side] .sk-strip { order: 3; flex-wrap: wrap; padding-top: 16px; }
     .sk[data-side] .sk-legrow { order: 4; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 18px; padding-top: 0; }
     .sk[data-side] .sk-leg { flex-direction: column; align-items: flex-start; gap: 6px; }
@@ -214,6 +214,13 @@ button { cursor: pointer; }
 .sk-focus:hover { border-color: rgba(255, 255, 255, .4); color: var(--ink); }
 .sk-focus[aria-pressed=true] { border-color: rgba(255, 255, 255, .55); color: #fff; }
 .sk-focus .ic svg { width: 13px; height: 13px; }
+/* Subtract: two visit pickers and the B − A / A + B choice. */
+.sk-sub { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-top: 10px; }
+.sk-sub[hidden] { display: none; }
+.sk-seg2 { display: inline-flex; gap: 4px; }
+.sk-seg2 button { height: 28px; padding: 0 12px; border: 1px solid var(--hair2); border-radius: 2px; background: none; color: var(--mute); font: 12px var(--mono); transition: background 160ms var(--ease), color 160ms var(--ease); }
+.sk-seg2 button:hover { color: var(--ink); border-color: rgba(255, 255, 255, .4); }
+.sk-seg2 button[aria-pressed=true] { background: #fff; border-color: #fff; color: #000; }
 .sk-hint { margin: 10px 0 0; font-size: 13px; line-height: 20px; color: var(--mute); min-height: 20px; }
 
 .sk-sky { position: relative; width: 100%; aspect-ratio: 1 / 1; background: #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, .06); }
@@ -277,6 +284,7 @@ button { cursor: pointer; }
 .sk-key.d .o { background: var(--pos); }
 .sk[data-mode=diff] .sk-key.g, .sk[data-mode=diff] .sk-key.t { display: none; }
 .sk[data-mode=diff] .sk-key.d { display: inline-flex; }
+.sk[data-mode=diff][data-subop=sum] .sk-key.d { display: none; } /* A + B is drawn in grey, not blue and orange */
 
 .sk-fov { flex: none; display: inline-flex; align-items: center; gap: 8px; font: 10.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
 .sk-fov select { -webkit-appearance: none; appearance: none; height: 28px; padding: 0 20px 0 2px; border: 0; border-radius: 0; color: var(--ink); font: 12px var(--mono); letter-spacing: 0; text-transform: none; cursor: pointer;
@@ -316,7 +324,7 @@ button { cursor: pointer; }
 .sk-strip canvas { width: 52px; height: 52px; display: block; background: #000; image-rendering: pixelated; outline: 1px solid var(--hair); transition: transform 240ms var(--ease), outline-color 200ms var(--ease), opacity 200ms var(--ease); }
 .sk-strip button[aria-current=true] canvas { opacity: 1; }
 .sk-strip button[aria-current=true] canvas { outline: 1px solid #fff; outline-offset: 3px; transform: translateY(-3px); }
-.sk[data-mode=stack] .sk-strip canvas, .sk[data-mode=diff] .sk-strip button:first-child canvas, .sk[data-mode=diff] .sk-strip button:last-child canvas { opacity: 1; }
+.sk[data-mode=stack] .sk-strip canvas, .sk[data-mode=diff] .sk-strip button[data-in-sub] canvas { opacity: 1; }
 .sk-strip small { font: 10.5px/1.35 var(--mono); color: var(--faint); white-space: nowrap; }
 .sk-strip small b { display: block; font-weight: 400; color: var(--ink2); }
 
@@ -464,7 +472,7 @@ button { cursor: pointer; }
     .sk-brand { order: 0; height: auto; padding-top: 20px; }
     .sk-m-pick { order: 1; margin-top: 22px; }
     .sk-m-watch { order: 2; width: 100%; margin-top: 30px; padding: 0; }
-    .sk-mhrow, .sk-hint { padding-left: 18px; padding-right: 18px; }
+    .sk-mhrow, .sk-sub, .sk-hint { padding-left: 18px; padding-right: 18px; }
     .sk-glow { display: none; }
     .sk-status { order: 3; height: auto; margin-top: 18px; align-items: center; }
     .sk-status p { margin: 0; }
@@ -498,11 +506,12 @@ button { cursor: pointer; }
 }
 /* Phones: every control is at least 44 px tall to tap, and no label is under 12 px. */
 @media (max-width: 1080px) {
-    .sk-fov select { min-height: 44px; padding: 0 6px; }
+    .sk-fov select { min-height: 44px; padding: 0 22px 0 6px; } /* room for the arrow */
     .sk-key.g { min-height: 44px; }
     .sk-gk .sk-src { line-height: 44px; padding: 0 4px; }
     .sk-btn2 { min-height: 44px; }
     .sk-seg, .sk-seg button { min-height: 44px; }
+    .sk-seg2 button { min-height: 44px; padding: 0 16px; }
     .sk-rng { height: 44px; top: -8px; } /* same centre line as the 28 px desktop slider */
     .sk-search input { min-height: 44px; }
     .sk-ai-lock label { height: 44px; }
