@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import f1 from './fixtures/frame/frame1.json';
 import box1 from './fixtures/frame/frame1.box.json';
 import type { CardValue, Cutout, FitsHeader, FrameRecord, OutputGrid, WcsParams } from '../src/lib/types';
-import { gridForView, gridPixToSky, gridSkyToPix, regridNorthUp } from '../src/lib/regrid';
+import { gridForView, gridPixToSky, gridSkyToPix, regridNorthUp, regridVariance } from '../src/lib/regrid';
 import { makeWcs, wcsFromHeader } from '../src/lib/wcs';
 
 function headerFrom(obj: Record<string, CardValue>): FitsHeader
@@ -195,6 +195,19 @@ describe('real fixture', () => {
     const zodi = f32('frame1.box.zodi.f32');
     const cut = mkCutout(params, box, image, zodi);
 
+    it('preserves every image bit from the pre-variance implementation', () => {
+        const center = wcs.pixToSky({ x: (box.x0 + box.x1 - 1) / 2, y: (box.y0 + box.y1 - 1) / 2 });
+        const out = regridNorthUp(cut, wcs, gridForView(center, 0.2, 4, 301));
+        // Captured before refactoring by running the original regridNorthUp with
+        // Node's --experimental-strip-types on this fixture and hashing all bytes.
+        let hash = 0x811c9dc5;
+        for (const byte of new Uint8Array(out.buffer, out.byteOffset, out.byteLength)) {
+            hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+        }
+        expect(out.length).toBe(90601);
+        expect(hash).toBe(4210853044);
+    });
+
     it('samples the coarse-grid centre within 0.05 native px of exact skyToPix', () => {
         const center = wcs.pixToSky({ x: (box.x0 + box.x1 - 1) / 2, y: (box.y0 + box.y1 - 1) / 2 });
         const grid = gridForView(center, 2, 4, 9);
@@ -255,6 +268,93 @@ describe('real fixture', () => {
             const inside = p.x >= box.x0 && p.x <= box.x1 - 1 && p.y >= box.y0 && p.y <= box.y1 - 1;
             expect(out[k] === out[k]).toBe(inside);
         }
+    });
+});
+
+describe('regridVariance', () => {
+    const params: WcsParams = {
+        crpix: [5, 5], crval: [150, 2],
+        cd: [[-6.15 / 3600, 0], [0, 6.15 / 3600]], naxis: [9, 9],
+    };
+    const wcs = makeWcs(params);
+    const box = { x0: 0, y0: 0, x1: 9, y1: 9 };
+    const grid: OutputGrid = {
+        center: wcs.pixToSky({ x: 4.25, y: 4.25 }),
+        fovDeg: 0.03, pixelArcsec: 6.15 / 2, width: 25, height: 25,
+    };
+
+    it('keeps constant variance within exactly the image footprint and NaN mask', () => {
+        const image = new Float32Array(81).fill(10);
+        image[4 * 9 + 4] = NaN;
+        const cut = mkCutout(params, box, image);
+        cut.variance = new Float32Array(81).fill(12);
+        const data = regridNorthUp(cut, wcs, grid);
+        const variance = regridVariance(cut, wcs, grid)!;
+        const center = Math.floor(data.length / 2);
+        expect(data[center]).toBeNaN();
+        expect(regridNorthUp(mkCutout(params, box, new Float32Array(81).fill(10)), wcs, grid)[center]).toBe(10);
+        expect(variance.length).toBe(data.length);
+        expect(data.some(Number.isNaN)).toBe(true);
+        expect(data.some(Number.isFinite)).toBe(true);
+        for (let i = 0; i < data.length; i++) {
+            expect(variance[i]).toBe(Number.isNaN(data[i]) ? NaN : 12);
+        }
+    });
+
+    it('puts a variance step on the same pixels with the same bilinear weights as IMAGE', () => {
+        const step = Float32Array.from({ length: 81 }, (_, i) => i % 9 < 4 ? 2 : 18);
+        const cut = mkCutout(params, box, step);
+        cut.variance = step;
+        const data = regridNorthUp(cut, wcs, grid);
+        const variance = regridVariance(cut, wcs, grid)!;
+        expect(variance).toEqual(data);
+        expect(variance.some((v) => v > 2 && v < 18)).toBe(true);
+    });
+
+    it('never subtracts ZODI from variance, and masks invalid IMAGE minus ZODI', () => {
+        const zodi = new Float32Array(81).fill(7);
+        zodi[4 * 9 + 4] = NaN;
+        const cut = mkCutout(params, box, new Float32Array(81).fill(10), zodi);
+        cut.variance = new Float32Array(81).fill(12);
+        const data = regridNorthUp(cut, wcs, grid);
+        const variance = regridVariance(cut, wcs, grid)!;
+        for (let i = 0; i < data.length; i++) {
+            expect(variance[i]).toBe(Number.isNaN(data[i]) ? NaN : 12);
+            if (Number.isFinite(data[i])) {
+                expect(data[i]).toBe(3);
+            }
+        }
+    });
+
+    it.each([0, -1, NaN, Infinity, -Infinity])('masks an invalid V sample (%s) only in variance', (invalid) => {
+        const cut = mkCutout(params, box, new Float32Array(81).fill(10));
+        cut.variance = new Float32Array(81).fill(12);
+        cut.variance[4 * 9 + 4] = invalid;
+        const data = regridNorthUp(cut, wcs, grid);
+        const variance = regridVariance(cut, wcs, grid)!;
+        let extraNaN = 0;
+        for (let i = 0; i < data.length; i++) {
+            if (Number.isNaN(data[i])) {
+                expect(variance[i]).toBeNaN();
+            } else if (Number.isNaN(variance[i])) {
+                extraNaN++;
+            } else {
+                expect(variance[i]).toBe(12);
+            }
+        }
+        expect(extraNaN).toBeGreaterThan(0);
+        expect(variance.some(Number.isFinite)).toBe(true);
+    });
+
+    it.each([80, 82])('rejects a variance plane of length %i', (length) => {
+        const cut = mkCutout(params, box, new Float32Array(81));
+        cut.variance = new Float32Array(length);
+        expect(() => regridVariance(cut, wcs, grid)).toThrow(/variance.*pixels/i);
+    });
+
+    it('returns undefined without a variance plane', () => {
+        const cut = mkCutout(params, box, new Float32Array(81));
+        expect(regridVariance(cut, wcs, grid)).toBeUndefined();
     });
 });
 
