@@ -88,6 +88,7 @@ describe('AI label', () => {
         expect(modelName('claude-opus-5-5')).toBe('Claude Opus 5.5');
         expect(modelName('claude-sonnet-5-5-20261101')).toBe('Claude Sonnet 5.5');
         expect(modelName('claude-haiku-5')).toBe('Claude Haiku 5');
+        expect(modelName('claude-opus-4-20250514')).toBe('Claude Opus 4');
         expect(modelName(undefined)).toBe('Claude');
         expect(modelName('<b>x</b>')).toBe('Claude');
     });

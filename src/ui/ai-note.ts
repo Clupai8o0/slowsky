@@ -19,7 +19,7 @@ export function disclaimer(model?: string): string
 // 'claude-opus-5-5' -> 'Claude Opus 5.5'. Anything else Anthropic-shaped falls back to plain 'Claude'.
 export function modelName(model?: string): string
 {
-    const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?(?:$|-\d{8}$)/.exec(model ?? '');
+    const m = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:$|-\d{8}$)/.exec(model ?? '');
     if (!m) {
         return 'Claude';
     }
