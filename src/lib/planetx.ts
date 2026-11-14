@@ -69,7 +69,7 @@ export const WISE0855 = {
 
 export const TEXT = {
     stackGain: 'stacking frames goes deeper for a source that stays put; the gain is not measured here, and shift-and-stack for a moving source is not tested',
-    bandNote: "Rows are in different bands (optical R and V, survey g, r, i, z and y, SPHEREx AB per channel, WISE W2) on one axis with no colour correction, so compare them only roughly. Only the model row is this repo's own estimate (reflected sunlight, V band); the others come from the papers listed, with the one-observation SPHEREx depth and the WISE 0855 AB value worked out here from published numbers.",
+    bandNote: "Rows are in different bands (optical R and V, survey g, r, i, z and y, SPHEREx AB per channel, WISE W2) on one axis with no colour correction, so compare them only roughly. Only the model row is this repo's own estimate (reflected sunlight, V band); the others come from the papers listed, with the one-observation SPHEREx depth and the WISE 0855 AB value worked out here from published numbers, and the Planet Nine ranges read by eye from Figure 9 of Brown & Batygin 2021.",
     caveat: 'An estimate only: the one-observation depth assumes four equal independent observations. The model assumes the object is seen at opposition, fully lit.',
     wiseNote: "W2 is a broadband average and WISE 0855's spectrum changes steeply across 3.8 to 5 µm, so its brightness in one SPHEREx channel can differ from W2.",
 };
@@ -82,7 +82,7 @@ function roundMarginPair(a: number, b: number): [number, number]
 }
 
 /**
- * Brightness minus depth, in magnitudes (WISE 0855 W2 AB magnitude minus SPHEREx 3.8–5 µm depth:
+ * Apparent magnitude minus depth, in magnitudes (WISE 0855 W2 AB magnitude minus SPHEREx 3.8–5 µm depth:
  * negative means WISE 0855 is brighter than that depth), rounded to 2 decimals in ascending order.
  */
 export function wise0855Margin(): { fourObservations: [number, number]; oneObservation: [number, number] }
@@ -99,7 +99,7 @@ export function modelExample(): { vMag: number; label: string }
 {
     const distance = P9.semiMajorAxis.value;
     const albedo = (P9.albedo.value[0] + P9.albedo.value[1]) / 2;
-    return { vMag: apparentMag(P9.mass.value, albedo, distance), label: `model, V band, if it were at ${distance} AU (its fitted semi-major axis, not its likely current distance)` };
+    return { vMag: apparentMag(P9.mass.value, albedo, distance), label: `model, V band, if it were at ${distance} AU (its fitted semi-major axis, not its likely current distance), with albedo ${albedo}, the middle of the published range` };
 }
 
 function positive(value: number): void

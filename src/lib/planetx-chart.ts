@@ -36,7 +36,7 @@ export function planetxRows(): ChartRow[]
     const remaining = REMAINING.vMag.value;
     const model = modelExample();
     return [
-        { id: 'p9-predicted', label: 'Planet Nine, predicted', band: P9.envelope.unit, marks: [range(P9.envelope, 'Published envelope', 'light'), range(P9.percentileCurveExtents, 'Percentile-curve extents', 'solid')] },
+        { id: 'p9-predicted', label: 'Planet Nine, predicted', band: P9.envelope.unit, marks: [range(P9.envelope, 'Fig. 9 extent, by eye', 'light'), range(P9.percentileCurveExtents, 'Percentile-curve extents', 'solid')] },
         { id: 'p9-remaining', label: 'Not yet ruled out', band: REMAINING.vMag.unit, marks: [{ ...point(remaining.value, 'Remaining estimate', REMAINING.vMag.source), low: remaining.value + remaining.lower, high: remaining.value + remaining.upper }] },
         { id: 'model', label: "This repo's model, one example", band: 'V band', marks: [point(model.vMag, `model, at ${P9.semiMajorAxis.value} AU`, `${model.label}; computed in this repo from the published mass, albedo range and semi-major axis`, 'outline')] },
         { id: 'searches', label: 'Optical searches already done', band: 'Multiple optical bands', marks: [...SURVEYS.map(survey => ({ ...point(survey.limit.value, `${survey.name} ${survey.band}`, survey.limit.source), kind: 'tick' as const })), { ...point(PS1_HALF_COMPLETE.value, `PS1 search half complete, ${PS1_HALF_COMPLETE.unit.split(';')[0]}`, PS1_HALF_COMPLETE.source), kind: 'tick' as const }] },
