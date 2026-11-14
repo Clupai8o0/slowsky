@@ -17,6 +17,7 @@ import numpy as np
 import torch
 
 from ml_stamps import CLASSES, FEATURES, NATIVE, ROOT, SIZE, dataset, features
+from ml_confirm import LOCK as CONFIRM_LOCK, RESULT as CONFIRM_RESULT
 
 
 def tree_predict(tree, x):
@@ -121,6 +122,17 @@ def write_json(path, value):
     path.write_text(json.dumps(value, separators=(',', ':'), allow_nan=False) + '\n')
 
 
+def guard_training():
+    if CONFIRM_LOCK.exists() or CONFIRM_RESULT.exists():
+        raise SystemExit('Training refused: a frozen confirmation lock or result exists; '
+                         'do not overwrite its evaluation or model')
+
+
+def guarded_write(write, *args):
+    guard_training()
+    return write(*args)
+
+
 def git_state(outputs):
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     status = subprocess.check_output([
@@ -149,10 +161,7 @@ def export(model, args, counts, peak_snr_max):
 
 
 def main(args):
-    from ml_confirm import LOCK as CONFIRM_LOCK, RESULT as CONFIRM_RESULT
-    if CONFIRM_LOCK.exists() or CONFIRM_RESULT.exists():
-        raise SystemExit('Training refused: a frozen confirmation lock or result exists; '
-                         'do not overwrite its evaluation or model')
+    guard_training()
     started = time.monotonic()
     revision, dirty = git_state(('public/models/change-classifier.json',
                                  'models/change-classifier.eval.json',
@@ -187,13 +196,13 @@ def main(args):
     peak_snrs = np.max(np.abs(x[:, 2]), axis=(1, 2))
     peak_snr_max = float(np.max(peak_snrs))
     model_path = ROOT / 'public/models/change-classifier.json'
-    write_json(model_path, export(model, args, counts, peak_snr_max))
+    guarded_write(write_json, model_path, export(model, args, counts, peak_snr_max))
     digest = hashlib.sha256(model_path.read_bytes()).hexdigest()
     # Parity fixtures exercise inference within the runtime's supported range.
     selected = [int(np.flatnonzero((targets == target) & (y == kind) & (peak_snrs >= 2.5))[0])
                 for target in names for kind in range(4)]
     probs = tree_probabilities(model, fx[selected])
-    write_json(ROOT / 'tests/fixtures/classify-parity.json', {
+    guarded_write(write_json, ROOT / 'tests/fixtures/classify-parity.json', {
         'seed': args.seed, 'modelSha256': digest, 'reference': 'PyTorch CPU, exported rounded weights',
         'cases': [{'stamp': x[index].flatten().tolist(), 'probabilities': probs[i].tolist(),
                    'truth': CLASSES[y[index]], **provenance['examples'][index]}
@@ -223,7 +232,7 @@ def main(args):
                'psfMeasurements': provenance['psfMeasurements'], 'skippedFrames': provenance['skippedFrames'],
                'gate': {'passed': passed, 'thresholds': {'macroF1': 0.8, 'moverRecallSnr10': 0.85,
                                                        'artifactPrecision': 0.85, 'maxBytes': 200_000}}}
-    write_json(ROOT / 'models/change-classifier.eval.json', summary)
+    guarded_write(write_json, ROOT / 'models/change-classifier.eval.json', summary)
     print(json.dumps({'meanFoldMetrics': mean, 'gate': passed, 'modelSha256': digest,
                       'seconds': summary['elapsedSeconds']}), flush=True)
     return 0 if passed else 1

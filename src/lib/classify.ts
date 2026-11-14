@@ -50,8 +50,9 @@ interface CnnModel extends ModelBase {
 export type ClassifierModel = TreesModel | CnnModel;
 
 // Our own choice, not tuned or validated: decline when the top two uncalibrated scores are closer than this.
-/** Decline when the stamp's peak |diff| is more than this many times the core peak (measured; see classify()). The public card quotes it. */
-export const MAX_OFF_CENTRE_RATIO = 136;
+/** Training mover/brightness 99th percentile, rounded up to two significant figures. */
+export const MAX_OFF_CENTRE_RATIO = 73;
+export const MAX_IMAGE_SNR = 2 ** 17;
 
 export const MIN_SCORE_MARGIN = 0.2;
 export const HELPER_LABEL = 'Experimental sort hint, trained only on fake changes added to single frames. '
@@ -426,6 +427,12 @@ function cnnLogits(model: CnnModel, stamp: Float32Array, features: number[]): nu
  * p contains uncalibrated scores, not probabilities; never show percentages or "% sure".
  * Decline faint, over-bright or spatially flat changes before inference.
  */
+function float32Step(value: number): number
+{
+    const magnitude = Math.abs(value);
+    return magnitude < 2 ** -126 ? 2 ** -149 : 2 ** (Math.floor(Math.log2(magnitude)) - 23);
+}
+
 export function classify(model: ClassifierModel, stamp: Float32Array): Classification
 {
     if (stamp.length !== AREA * 3 || !stamp.every(Number.isFinite)) {
@@ -433,20 +440,16 @@ export function classify(model: ClassifierModel, stamp: Float32Array): Classific
     }
     // Check the precision of the whole stamp before comparing any pixel.
     for (let i = 0; i < AREA; i++) {
-        const earlier = stamp[i]!, later = stamp[AREA + i]!, difference = stamp[AREA * 2 + i]!;
-        // stampFor and ml_stamps.py each store a/sigma, b/sigma and (b-a)/sigma with
-        // one Float32 rounding apiece: each half-ulp is at most 2^-24 times its
-        // magnitude, so their sum bounds the residual; factor 2 covers using
-        // rounded magnitudes, and the floor covers subnormals.
-        const roundingBound = 2 * 2 ** -24 * Math.max(1, Math.abs(earlier) + Math.abs(later) + Math.abs(difference));
-        // Our chosen limit: above a quarter noise unit the check is too imprecise.
-        if (roundingBound > 0.25) {
-            return { kind: 'declined', reason: 'values too large to check the channels against each other' };
+        const earlier = stamp[i]!, later = stamp[AREA + i]!;
+        if (Math.abs(earlier) > MAX_IMAGE_SNR || Math.abs(later) > MAX_IMAGE_SNR) {
+            return { kind: 'declined', reason: 'image values too large to check' };
         }
     }
     for (let i = 0; i < AREA; i++) {
         const earlier = stamp[i]!, later = stamp[AREA + i]!, difference = stamp[AREA * 2 + i]!;
-        const roundingBound = 2 * 2 ** -24 * Math.max(1, Math.abs(earlier) + Math.abs(later) + Math.abs(difference));
+        // Each independently rounded channel contributes at most half its Float32
+        // step to d - (b - a). A 1.5 factor covers boundaries and arithmetic.
+        const roundingBound = 0.75 * (float32Step(earlier) + float32Step(later) + float32Step(difference));
         if (Math.abs(difference - (later - earlier)) > roundingBound) {
             return { kind: 'declined', reason: 'stamp channels disagree' };
         }
@@ -459,9 +462,15 @@ export function classify(model: ClassifierModel, stamp: Float32Array): Classific
     if (fullPeak > 2 * model.training.peakSnrMax) {
         return { kind: 'declined', reason: 'brighter than anything in training' };
     }
-    // Seed 20261114, 600/class/field: largest class 99th percentile is 135.30
-    // (nothing); 136 retains at least 99% of each measured class.
-    if (fullPeak > MAX_OFF_CENTRE_RATIO * peak) {
+    let outsidePeak = 0;
+    for (let i = 0; i < AREA; i++) {
+        if ((i % SIZE - 7) ** 2 + (Math.floor(i / SIZE) - 7) ** 2 > 16) {
+            outsidePeak = Math.max(outsidePeak, Math.abs(diff[i]!));
+        }
+    }
+    // Seed 20261114, 600/class/field, after every other gate: mover 72.2114,
+    // brightness 56.5864 (99th percentiles).
+    if (outsidePeak > MAX_OFF_CENTRE_RATIO * peak) {
         return { kind: 'declined', reason: 'brighter change outside the centre' };
     }
     // An affine plane (including a constant offset) has no localized change.

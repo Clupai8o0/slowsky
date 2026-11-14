@@ -11,6 +11,7 @@ import copy
 from datetime import datetime, timezone
 import hashlib
 import json
+import re
 import time
 
 import numpy as np
@@ -19,12 +20,13 @@ from torch import nn
 from torch.nn import functional as F
 
 from ml_stamps import CLASSES, FEATURES, ROOT, SIZE, dataset, features
-from ml_train import git_state, metrics, train_trees, tree_probabilities, write_json
+from ml_train import git_state, metrics, train_trees, tree_probabilities, write_json, guard_training, guarded_write
 from ml_confirm import LOCK as CONFIRM_LOCK, RESULT as CONFIRM_RESULT
 
 ARCHITECTURE = 'cnn-3x3-gap-features-12-16-16'
 KEYS = ('macroF1', 'accuracy', 'moverRecallSnr10', 'artifactPrecision')
 TREES_NOTE = 'Trees saw 600 stamps per class per target, the CNN 2,500: not like-for-like.'
+CONFIRM_RESULT_SHA256 = 'b1059a79494cbf6d9117121734fab11debe6ad906c165cb3ac4718f53f69a4e4'
 
 
 def feature_batch(stamps):
@@ -253,6 +255,14 @@ def mean_metrics(folds):
     return {key: float(np.mean([fold[key] for fold in folds])) for key in KEYS}
 
 
+def classifier_limits():
+    source = (ROOT / 'src/lib/classify.ts').read_text()
+    image_expr = re.search(r'export const MAX_IMAGE_SNR = 2 \*\* (\d+);', source)
+    ratio_expr = re.search(r'export const MAX_OFF_CENTRE_RATIO = (\d+);', source)
+    assert image_expr and ratio_expr, 'Missing classifier limits'
+    return 2 ** int(image_expr.group(1)), int(ratio_expr.group(1))
+
+
 def model_card(summary, eval_digest):
     """Public wording and every displayed number come from this run's sidecar."""
     worst = min(summary['folds'], key=lambda fold: fold['macroF1'])
@@ -266,6 +276,13 @@ def model_card(summary, eval_digest):
     mover_count = summary['perClass']['mover']['count']
     total = sum(value['count'] for value in summary['perClass'].values())
     share = ('A quarter' if mover_count * 4 == total else f'{100 * mover_count / total:.2f}'.rstrip('0').rstrip('.') + '%')
+    image_limit, ratio_limit = classifier_limits()
+    helper_limit = (f'The browser helper gives no label when the change is too faint, brighter than in training or on '
+                    f'image values above {image_limit:,} noise units; when channels disagree or nothing is localised; '
+                    f'when the top two scores are close; or when a change off-centre is over {ratio_limit} times '
+                    f"the centre's peak.")
+    if ratio_limit >= 5:
+        helper_limit += ' Otherwise the label covers the whole 15x15 stamp, so a brighter off-centre change can decide it.'
     card = {
         'meanFoldMacroF1': round(summary['meanFoldMetrics']['macroF1'], 3),
         'syntheticTestAccuracy': round(summary['meanFoldMetrics']['accuracy'], 3),
@@ -282,11 +299,9 @@ def model_card(summary, eval_digest):
         'limits': ('Labels change spots only; it does not find planets. Not tested on a real asteroid. '
                    f"Mover recall is {low_bin['classes']['mover']['recall']:.2f} at S/N 3-5. "
                    f'{share} of test stamps are movers; if real ones are rarer, more mover labels are wrong.'
-                   ' The browser helper also declines faint, over-bright, inconsistent and close-call stamps, '
-                   'and ones where a change away from the centre is over 136 times brighter, '
-                   'so it labels fewer stamps than these scores cover.'),
+                   f' {helper_limit}'),
         'treesMacroF1OriginalFolds': round(summary['cnnAttempt']['sameTestTrees']['meanFoldMetrics']['macroF1'], 3),
-        'treesNote': TREES_NOTE, 'evalSha256': eval_digest, 'seed': summary['seed'],
+        'treesNote': TREES_NOTE, 'evalSha256': eval_digest, 'confirmSha256': CONFIRM_RESULT_SHA256, 'seed': summary['seed'],
     }
     # The one frozen retest (scripts/ml_confirm.py), once it has run against this evaluation.
     confirm_path = ROOT / 'models/change-classifier.confirm.json'
@@ -343,8 +358,8 @@ def write_card():
     """Rebuild only the public wording from existing evidence; never fit a model."""
     eval_raw = (ROOT / 'models/change-classifier.eval.json').read_bytes()
     card = model_card(json.loads(eval_raw), sha(eval_raw))
-    assert len(encode(card)) < 2048, 'Model card exceeds the 2048-byte budget'
     write_json(ROOT / 'public/models/change-classifier.card.json', card)
+    assert len(encode(card)) < 2048, f'Model card exceeds the 2048-byte budget: {len(encode(card))} bytes'
     return 0
 
 
@@ -403,7 +418,11 @@ def confirmation_fold_metrics(fold):
             high_count += item['count']
             high_correct += item['count'] * (item['recall'] or 0)
     assert high_count > 0 and high_count == fold['moverSnr10Count'], 'Confirmation high-S/N count mismatch'
-    assert np.all(bin_counts <= matrix.sum(1)) and np.all(bin_correct <= np.diag(matrix)), 'Confirmation bin totals mismatch'
+    unbinned = matrix.sum(1) - bin_counts
+    unbinned_correct = np.diag(matrix) - bin_correct
+    # S/N below 3 is omitted (including all "nothing" samples with S/N 0).
+    # Every omitted correct prediction must belong to an omitted example.
+    assert np.all(unbinned >= 0) and np.all(unbinned_correct >= 0) and np.all(unbinned_correct <= unbinned), 'Confirmation bin totals mismatch'
     computed = {'accuracy': float(np.trace(matrix) / matrix.sum()), 'macroF1': float(f1.mean()),
                 'artifactPrecision': float(precision[2]), 'moverRecallSnr10': high_correct / high_count}
     for key, value in computed.items():
@@ -455,6 +474,7 @@ def check_confirmation(evaluation, eval_digest):
 
 
 def check():
+    assert CONFIRM_RESULT.exists() and sha(CONFIRM_RESULT.read_bytes()) == CONFIRM_RESULT_SHA256, 'Confirmation result hash mismatch'
     folder = ROOT / 'models'
     eval_raw = (folder / 'change-classifier.eval.json').read_bytes()
     evaluation = json.loads(eval_raw)
@@ -507,9 +527,7 @@ def check():
 
 
 def main(args):
-    if CONFIRM_LOCK.exists() or CONFIRM_RESULT.exists():
-        raise SystemExit('Training refused: a frozen confirmation lock or result exists; '
-                         'do not overwrite its evaluation or model')
+    guard_training()
     started = time.monotonic()
     revision, dirty = git_state(('public/models/change-classifier.json',
                                  'public/models/change-classifier.card.json',
@@ -607,10 +625,10 @@ def main(args):
                'psfMeasurements': provenance['psfMeasurements'], 'skippedFrames': provenance['skippedFrames'],
                **metrics(y, predictions, snrs)}
     # Write only after all training/evaluation succeeds; preserve exact tree bytes.
-    tree_path.write_bytes(tree_raw)
-    (folder / 'change-classifier-cnn.json').write_bytes(raw)
+    guarded_write(tree_path.write_bytes, tree_raw)
+    guarded_write((folder / 'change-classifier-cnn.json').write_bytes, raw)
     shipped_raw = raw if passed else tree_raw
-    (public / 'change-classifier.json').write_bytes(shipped_raw)
+    guarded_write((public / 'change-classifier.json').write_bytes, shipped_raw)
     summary = {**baseline, 'madeBy': 'scripts/ml_train_cnn.py', 'madeAt': datetime.now(timezone.utc).isoformat(),
                'gitSha': revision, 'gitDirty': dirty, 'seed': args.seed, 'elapsedSeconds': attempt['elapsedSeconds'],
                'treesBaseline': baseline, 'cnnAttempt': attempt,
@@ -637,10 +655,10 @@ def main(args):
         for key, threshold in (('moverRecallSnr10', 0.85), ('artifactPrecision', 0.85), ('macroF1', 0.80))
     }
     eval_path = folder / 'change-classifier.eval.json'
-    write_json(eval_path, summary)
+    guarded_write(write_json, eval_path, summary)
     card = model_card(summary, sha(eval_path.read_bytes()))
     assert len(encode(card)) < 2048, 'Model card exceeds the 2048-byte budget'
-    write_json(public / 'change-classifier.card.json', card)
+    guarded_write(write_json, public / 'change-classifier.card.json', card)
     selected = [int(np.flatnonzero((targets == target) & (y == kind) & (peak_snrs >= 2.5))[0])
                 for target in names for kind in range(4)]
     cnn_probs = probabilities(from_export(exported), x[selected], fx[selected])
@@ -648,7 +666,7 @@ def main(args):
     cases = lambda probs: [{'stamp': x[index].flatten().tolist(), 'probabilities': probs[j].tolist(),
                             'truth': CLASSES[y[index]], **provenance['examples'][index]}
                            for j, index in enumerate(selected)]
-    write_json(ROOT / 'tests/fixtures/classify-parity.json', {
+    guarded_write(write_json, ROOT / 'tests/fixtures/classify-parity.json', {
         'seed': args.seed, 'modelSha256': sha(shipped_raw), 'treeModelSha256': sha(tree_raw),
         'cnnModelSha256': sha(raw), 'reference': 'PyTorch CPU; exported rounded, BN-folded weights',
         'cases': cases(cnn_probs if passed else tree_probs),
