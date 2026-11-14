@@ -190,7 +190,7 @@ describe('round 16 conservative labelled forms', () => {
         expect(noMedian).not.toContain(comparison);
     });
     it('K2 spells out the restrictions in the prompt', () => {
-        for (const instruction of ['Never when the sheet says "at least" or says points were left out.', 'or the sheet has a difference line and it does not say "no change above the noise"', 'copy the whole warning immediately after the difference sentence, in the same paragraph', 'Use only when the sheet has a Largest change line.', 'One: the difference line gives 3 sigma or more.', '"Wait for another visit to see whether the change repeats." Only when there is a notable change.', '"Change the colour to see whether the change shows at another wavelength." Only when there is a notable change.', 'Use only if a shift was measured or there is a notable change.']) {
+        for (const instruction of ['Never when the sheet says "at least" or says points were left out.', 'or the sheet has a difference line and it does not say "no change above the noise"', 'copy the whole warning immediately after the difference sentence, in the same paragraph', 'Use only when the sheet has a Largest change line.', 'One: the difference line gives 3 sigma or more.', 'For exactly two readings, take the brightness change as the difference between them as a percent of the first reading.', '"Wait for another visit to see whether the change repeats." Only when there is a notable change.', '"Change the colour to see whether the change shows at another wavelength." Only when there is a notable change.', 'Use only if a shift was measured or there is a notable change.']) {
             expect(SYSTEM_PROMPT).toContain(instruction);
         }
     });
