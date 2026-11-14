@@ -111,7 +111,8 @@ def self_test():
         ("unavailable", lambda: has_error_text("Unavailable")),
         ("timed out", lambda: has_error_text("Timed Out")),
         ("bad gateway", lambda: has_error_text("Bad Gateway")),
-        ("fallback is not an error", lambda: not has_error_text("Saved copy (the live archive did not answer).")),
+        ("fallback is not an error", lambda: not has_error_text("The live read of NASA’s archive failed, so this is the saved copy: real SPHEREx frames stored with this page.")),
+        ("empty fallback is not an error", lambda: not has_error_text("The live read of NASA’s archive gave no frames for this view, so this is the saved copy: real SPHEREx frames stored with this page.")),
         ("FITS 304", lambda: response_proof("https://nasa-irsa-spherex.s3.amazonaws.com/a.fits?x=1", 304) == ("a.fits", False)),
         ("FITS 200", lambda: response_proof("https://nasa-irsa-spherex.s3.amazonaws.com/a.fits", 200) == ("a.fits", False)),
         ("FITS 206", lambda: response_proof("https://nasa-irsa-spherex.s3.amazonaws.com/a.fits", 206) == ("a.fits", False)),
@@ -339,7 +340,7 @@ def go_live(pg, fails, live_timeout, allow_fallback):
         while time.time() - t0 < live_timeout:
             time.sleep(0.5)
             status = pg.evaluate("document.querySelector('[data-bind=\"status\"]')?.textContent || ''").strip()
-            if status.startswith("Saved copy") and "did not answer" in status:
+            if "so this is the saved copy" in status:
                 if allow_fallback:
                     return "live archive down, fell back to the saved copy (allowed): %s" % status[:100]
                 break
