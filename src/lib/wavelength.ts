@@ -32,7 +32,7 @@ function bilinear(g: number[][], ix: number, iy: number, fx: number, fy: number)
     return top * (1 - fy) + bot * fy;
 }
 
-// Bilinear lookup in the 9x9 grid, matching astropy's -TAB result.
+// Bilinear lookup in the wave grid (any size, ascending axes), matching astropy's -TAB result.
 export function sampleWave(grid: WaveGrid, p: PixelCoord): WaveSample
 {
     const [ix, fx] = locate(grid.xs, p.x);

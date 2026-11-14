@@ -9,7 +9,7 @@ import type {
 } from './types';
 import { commonRange, lockWavelength, type LockedFrame } from './lock';
 import { createRangeReader } from './fits';
-import { searchFrames } from './sia';
+import { searchFrames, type FrameList } from './sia';
 import { makeWcs, wcsFromHeader } from './wcs';
 import { groupVisits, sampleWave } from './wavelength';
 import { gridForView, gridSkyToPix, regridNorthUp } from './regrid';
@@ -392,6 +392,9 @@ export function createLiveSource(opts: LiveOptions = {}): SkySource
             const found = await search({ center: req.center, radiusDeg: 0.001, detector: req.detector }, req.signal);
             const onDetector = found.filter((f) => f.detector === req.detector);
             req.onProgress?.({ stage: 'search', done: 1, total: 1 });
+            if ((found as FrameList).truncated) {
+                notes.push('This spot has more frames than the archive lists at once, so some visits may be missing.');
+            }
             if (onDetector.length === 0) {
                 notes.push(`No SPHEREx frames on detector ${req.detector} cover this spot yet.`);
             }
