@@ -665,7 +665,7 @@ export function mount(root: HTMLElement): void
         const name = st.target ? COPY[st.target].display : 'the target';
         // A catalogued star inside the measuring circle mixes its light in. A cold brown dwarf is fainter than that
         // star below 4.4 µm, so its chart stays hidden there; for other targets the note just says so.
-        const blendAt = c.blend ? `A Gaia star (G ${c.blend.g.toFixed(1)}) sits ${(c.blend.px * result.grid.pixelArcsec).toFixed(0)}″ from ${name}` : '';
+        const blendAt = c.blend ? `A Gaia star (G ${c.blend.g.toFixed(1)}) sits ${(c.blend.px * result.grid.pixelArcsec).toFixed(1)}″ from ${name}` : '';
         const cold = st.target ? COPY[st.target].kind === 'cold' : false;
         const hideChart = c.blend !== null && cold && c.lc.lambda < 4.4;
         ref<HTMLElement>('lcwrap').hidden = hideChart;

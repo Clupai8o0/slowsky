@@ -227,10 +227,11 @@ export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
         const nearby = ringsAt(result.stars, result.grid, mjd).map((r) => ({
             sourceId: r.sourceId, g: r.g, px: Math.hypot(r.pix.x - target.x, r.pix.y - target.y),
         }));
-        // The target itself, when Gaia sees it: the brightest star within a native pixel that moves like it. A
-        // neighbour over 2.5 mag fainter adds under 10% light; when Gaia does not see the target (WISE 0855),
+        // The target itself, when Gaia sees it: the nearest star within a native pixel that moves like it. Not
+        // the brightest: a wide binary moves together, and RW Aur B (1.5 arcsec off) is brighter in Gaia than A.
+        // A neighbour over 2.5 mag fainter adds under 10% light; when Gaia does not see the target (WISE 0855),
         // any neighbour in the aperture counts.
-        const me = nearby.filter((r) => r.px <= native && pmOk(r.sourceId)).sort((a, b) => a.g - b.g)[0];
+        const me = nearby.filter((r) => r.px <= native && pmOk(r.sourceId)).sort((a, b) => a.px - b.px || a.g - b.g)[0];
         for (const r of nearby) {
             if (r === me || r.px > reach || (me && r.g > me.g + 2.5)) {
                 continue;

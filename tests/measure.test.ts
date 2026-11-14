@@ -143,6 +143,15 @@ describe('curveFor', () => {
         expect(curveFor(r, fast)?.blend?.sourceId).toBe('self');
     });
 
+    it('takes the nearest co-moving star as the target, so a brighter companion is the blend (RW Aur A and B)', () => {
+        const r = result([100, 100, 100]);
+        r.stars.push(star('A', { x: 80, y: 80 }, 13.0), star('B', { x: 82, y: 80 }, 12.2));
+        const me: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 0 };
+        const c = curveFor(r, me);
+        expect(c!.blend?.sourceId).toBe('B');
+        expect(c!.blend?.px).toBeCloseTo(2, 6);
+    });
+
     it('solves each comparison star\'s own scatter before adding them', () => {
         // Two equal stars, each seen with scatter s against the other: the sum scatters by s / 2.
         expect(sumNoise([100, 100], [0.02, 0.02])).toBeCloseTo(0.02 / 2, 4);
