@@ -17,7 +17,7 @@ import { createDemoSource } from './demo-source';
 import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
-import { curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, type Curve } from './measure';
+import { coreBlank, curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -236,6 +236,7 @@ function shell(): string
       <figure class="sk-fig" data-ref="pmfig" hidden><span data-ref="pm"></span><figcaption data-bind="pm"></figcaption></figure>
     </div>
     <p class="sk-body" data-bind="show"></p>
+    <p class="sk-body sk-fact" data-ref="fact" hidden><span class="sk-sub">Measured here.</span> <span data-bind="fact"></span></p>
     <p class="sk-body mute"><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
   </section>
 </aside>
@@ -352,6 +353,7 @@ export function mount(root: HTMLElement): void
     let reading: SourceKind | null = null; // the source being read right now, for the status line
     let curve: Curve | null = null; // brightness against nearby comparison stars, for targets that change
     let shift: ReturnType<typeof shiftFor> | undefined; // motion from the first look to the last, worked out once per result
+    let core: ReturnType<typeof coreBlank> = null; // frames with a saturated (blank) centre, once per result
     let stretch: ReturnType<typeof sharedStretch> | null = null;
     let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
     let timer = 0;
@@ -422,6 +424,7 @@ export function mount(root: HTMLElement): void
         result = null;
         curve = null;
         shift = undefined;
+        core = null;
         renderCurve();
         stretch = null;
         composed = {};
@@ -522,6 +525,7 @@ export function mount(root: HTMLElement): void
             return;
         }
         result = res;
+        core = coreBlank(res);
         sourceKind = got;
         liveFailed = failedLive;
         if (got === 'snapshot' && st.fovDeg > SAVED_FOV + 1e-9) {
@@ -544,7 +548,7 @@ export function mount(root: HTMLElement): void
             compose();
         }
         const kindNow = st.target ? COPY[st.target].kind : 'field';
-        curve = kindNow === 'variable' || kindNow === 'spectrum' || kindNow === 'cold' ? curveFor(res, st.target ? targetById(st.target)?.astrometry : undefined) : null;
+        curve = kindNow === 'variable' || kindNow === 'cold' ? curveFor(res, st.target ? targetById(st.target)?.astrometry : undefined) : null;
         renderCurve();
         canvas.width = res.grid.width;
         canvas.height = res.grid.height;
@@ -871,7 +875,10 @@ export function mount(root: HTMLElement): void
         }
         bind('headline', copy ? copy.headline : CUSTOM_COPY.headline);
         bind('show', copy ? copy.show : CUSTOM_COPY.show);
-        bind('not', copy ? copy.not : CUSTOM_COPY.not);
+        const card = cardFacts();
+        bind('not', card.not ?? (copy ? copy.not : CUSTOM_COPY.not));
+        bind('fact', card.fact ?? '');
+        ref<HTMLElement>('fact').hidden = !card.fact;
         bind('hint', MODE_HINT[st.mode]);
         bind('trackLeg', copy && (copy.kind === 'mover' || copy.kind === 'spectrum') ? `Where ${copy.display} should be on this date` : '');
         root.dataset.trackleg = copy && (copy.kind === 'mover' || copy.kind === 'spectrum') ? 'true' : 'false';
@@ -1007,6 +1014,50 @@ export function mount(root: HTMLElement): void
         st.index = stepIndex(st.index, result.frames.length, 1);
         draw();
         timer = window.setTimeout(tick, frameDelayMs(FPS));
+    }
+
+    // The card's measured lines. Every number comes from the frames on screen, never from notes.
+    function cardFacts(): { fact?: string; not?: string }
+    {
+        const kind = st.target ? COPY[st.target].kind : 'field';
+        if (!result || !st.target) {
+            return {};
+        }
+        const n = result.frames.length;
+        const blankText = core && core.blank > 0
+            ? `${core.blank === core.of ? `all ${core.of}` : `${core.blank} of ${core.of}`} frame${core.of === 1 ? '' : 's'} here`
+            : '';
+        if (kind === 'mover') {
+            return blankText
+                ? { not: `Its centre is too bright for the camera in ${blankText}, so its position is rough, to about one pixel.` }
+                : {};
+        }
+        if (kind === 'saturated') {
+            return blankText
+                ? { not: `Its centre is too bright for the camera in ${blankText}, so the centre cannot be measured. The glow around it can.` }
+                : { not: 'Its centre may be too bright for the camera, so treat any change at the centre with care.' };
+        }
+        if (kind === 'variable' && curve) {
+            const rel = curve.lc.points.filter((p) => p.valid && Number.isFinite(p.relative) && p.relative > 0).map((p) => p.relative);
+            if (rel.length >= 2) {
+                const change = (Math.max(...rel) / Math.min(...rel) - 1) * 100;
+                const wobble = Number.isFinite(curve.noise) ? curve.noise * 100 : NaN;
+                const inside = Number.isFinite(wobble) && change < 2 * wobble;
+                return {
+                    fact: `Across ${rel.length} looks its brightest is ${change.toFixed(change < 10 ? 1 : 0)}% above its faintest, against ${curve.refs} comparison stars${Number.isFinite(wobble) ? ` that wobble by ±${wobble.toFixed(1)}%` : ''}.${inside ? ' That change is inside the noise.' : ''}`,
+                };
+            }
+            return {};
+        }
+        if (kind === 'cold') {
+            const visits = visitsOf(result).map((v) => `${v.n} in ${monthYear(v.mjd)}`);
+            const colour = st.detector <= 4
+                ? `At this colour (detector ${st.detector} of 6) the light at its spot is a background star.`
+                : st.detector === 5 ? 'At this colour the background star and WISE 0855 both add light.'
+                    : 'At this colour (detector 6 of 6) WISE 0855 takes over.';
+            return { fact: `${colour} This view has ${n} look${n === 1 ? '' : 's'}${visits.length > 1 ? `: ${visits.join(', ')}` : ''}.` };
+        }
+        return {};
     }
 
     function plainError(e: unknown): string

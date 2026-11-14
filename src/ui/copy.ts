@@ -29,7 +29,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         short: 'Changes its brightness',
         kind: 'variable',
         headline: 'RW Aurigae, changing its light',
-        show: 'A young star still wrapped in dust. Compare it with its neighbours: they hold steady, it does not.',
+        show: 'A young star still wrapped in dust. Compare it with its neighbours: the curve measures it against them, look by look.',
         not: 'Every frame is matched to one colour, so a change here is brightness, not colour.',
     },
     epsindb: {
@@ -38,15 +38,15 @@ export const COPY: Record<TargetId, TargetCopy> = {
         kind: 'spectrum',
         headline: 'Epsilon Indi B, missing colours',
         show: 'Two brown dwarfs, too cold to be stars. Change the colour: they fade where methane and water soak up light.',
-        not: 'It has no known change in brightness, so blinking it shows movement, not flicker.',
+        not: 'It has no known change in brightness, so no curve is drawn. Blinking it shows movement, not flicker.',
     },
     wise0855: {
         display: 'WISE 0855−0714',
         short: 'The coldest brown dwarf known',
         kind: 'cold',
         headline: 'WISE 0855, the coldest neighbour',
-        show: 'The coldest brown dwarf known. At short colours the light at this spot is a background star. At the longest colours, WISE 0855 takes over.',
-        not: 'Its newest visit is not public yet.',
+        show: 'The coldest brown dwarf known. It gives almost no light at short colours: slide to the longest colours to see it appear.',
+        not: 'Its newest visit (November 2026) is not public yet.',
     },
     rdra: {
         display: 'R Draconis',

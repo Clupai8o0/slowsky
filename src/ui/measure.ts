@@ -334,3 +334,53 @@ export function shiftFor(result: SkyResult, a: Astrometry): Shift | null
     }
     return shift;
 }
+
+// How many frames have no value at the target's centre: the camera saturated there (R Dra, Barnard's Star).
+// The centre is the track position at each frame's date; a blank pixel within half a detector pixel counts.
+export function coreBlank(result: SkyResult): { blank: number; of: number } | null
+{
+    if (!result.track || result.track.length === 0 || result.frames.length === 0) {
+        return null;
+    }
+    const { width, height } = result.grid;
+    const reach = Math.max(1, NATIVE_ARCSEC / result.grid.pixelArcsec / 2);
+    let blank = 0;
+    for (const { frame: f } of result.frames) {
+        const at = trackNear(result.track, frameMjd(f))!.pix;
+        let hit = false;
+        const r = Math.ceil(reach);
+        for (let dy = -r; dy <= r && !hit; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+                const x = Math.round(at.x + dx);
+                const y = Math.round(at.y + dy);
+                if (Math.hypot(x - at.x, y - at.y) > reach || x < 0 || y < 0 || x >= width || y >= height) {
+                    continue;
+                }
+                if (!Number.isFinite(f.data[y * width + x] as number)) {
+                    hit = true;
+                    break;
+                }
+            }
+        }
+        blank += hit ? 1 : 0;
+    }
+    return { blank, of: result.frames.length };
+}
+
+// Looks grouped into visits: frames less than `gapDays` apart belong to one visit. In date order.
+export function visitsOf(result: SkyResult, gapDays = 10): { mjd: number; n: number }[]
+{
+    const days = result.frames.map((f) => frameMjd(f.frame)).filter(Number.isFinite).sort((a, b) => a - b);
+    const out: { mjd: number; n: number }[] = [];
+    let prev = -Infinity;
+    for (const d of days) {
+        const last = out[out.length - 1];
+        if (last && d - prev < gapDays) {
+            last.n++;
+        } else {
+            out.push({ mjd: d, n: 1 });
+        }
+        prev = d;
+    }
+    return out;
+}

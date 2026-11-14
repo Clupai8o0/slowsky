@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apertureFor, centreNear, curveFor, frameMjd, middleMjd, ringsOn, shiftFor, sumNoise } from '../src/ui/measure';
+import { apertureFor, centreNear, coreBlank, curveFor, frameMjd, middleMjd, ringsOn, shiftFor, sumNoise, visitsOf } from '../src/ui/measure';
 import { aperture } from '../src/lib/photometry';
 import { gridPixToSky } from '../src/lib/regrid';
 import { separationDeg } from '../src/lib/coords';
@@ -291,5 +291,37 @@ describe('shiftFor', () => {
             { mjd: frameMjd(r.frames[0]!.frame), pix: TARGET },
             { mjd: frameMjd(r.frames[1]!.frame), pix: TARGET })).toThrow(GaiaError);
         expect(shiftFor(r, a)).toEqual({ from: 0, to: 1, predictedArcsec: 0, errArcsec: 0.65 * 6.15, significant: false, measured: null });
+    });
+});
+
+describe('coreBlank', () => {
+    it('counts frames with no value at the target centre', () => {
+        const r = result([100, 100, 100]);
+        r.frames[0]!.frame.data[TARGET.y * N + TARGET.x] = NaN;
+        r.frames[2]!.frame.data[TARGET.y * N + TARGET.x + 1] = Infinity;
+        expect(coreBlank(r)).toEqual({ blank: 2, of: 3 });
+    });
+
+    it('ignores blank pixels away from the centre', () => {
+        const r = result([100, 100]);
+        r.frames[0]!.frame.data[(TARGET.y + 10) * N + TARGET.x] = NaN;
+        expect(coreBlank(r)).toEqual({ blank: 0, of: 2 });
+    });
+
+    it('needs a track', () => {
+        expect(coreBlank(result([100, 100], false))).toBeNull();
+    });
+});
+
+describe('visitsOf', () => {
+    it('groups looks less than 10 days apart', () => {
+        const r = result([100, 100, 100, 100]);
+        const at = [MJD0, MJD0 + 1, MJD0 + 200, MJD0 + 201.5];
+        r.frames.forEach((f, i) => {
+            f.frame.frame.tMin = at[i]!;
+            f.frame.frame.tMax = at[i]!;
+        });
+        expect(visitsOf(r).map((v) => v.n)).toEqual([2, 2]);
+        expect(visitsOf(r)[1]!.mjd).toBe(MJD0 + 200);
     });
 });
