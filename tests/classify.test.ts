@@ -77,6 +77,15 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     expect(card.evalSha256).toBe(digest);
     expect(card.seed).toBe(evaluation.seed);
     expect(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url)).length).toBeLessThan(1280);
+    // The one frozen retest is on the card with its caveat, its numbers from the result file (-ba, 14 Nov).
+    const confirm = JSON.parse(readFileSync(new URL('../models/change-classifier.confirm.json', import.meta.url), 'utf8'));
+    expect(confirm.evalSha256).toBe(digest);
+    expect(card.retest).toContain(confirm.passed ? 'Passed a frozen retest' : 'Failed a frozen retest');
+    expect(card.retest).toContain('fresh synthetic draw (same fields and frames, not new sky)');
+    expect(card.retest).toContain(`macro-F1 ${confirm.meanFoldMetrics.macroF1.toFixed(3)}`);
+    expect(card.retest).toContain(`artifact precision ${confirm.meanFoldMetrics.artifactPrecision.toFixed(3)}`);
+    const [lo, hi] = confirm.bootstrap.meanArtifactPrecision95 as [number, number];
+    expect(card.retest).toContain(`(95% ${lo.toFixed(3)}-${hi.toFixed(3)})`);
     const thresholds = { moverRecallSnr10: 0.85, artifactPrecision: 0.85, macroF1: 0.80 } as const;
     const expected = Object.fromEntries(Object.entries(thresholds).map(([key, threshold]) => [key,
         evaluation.folds.filter((fold) => fold[key as keyof typeof thresholds] < threshold)

@@ -2,7 +2,7 @@
 
 Gate: scripts/.venv/bin/python scripts/ml_train_cnn.py --check
 Train: scripts/.venv/bin/python scripts/ml_train_cnn.py --verify-determinism
-The check succeeds for either an honestly rejected CNN or a passing shipped CNN.
+The check passes only for a shipped model that passed its gate; an honestly rejected run is recorded but fails it.
 Held-out targets are evaluated once, after training-only validation selection.
 """
 
@@ -295,6 +295,16 @@ def model_card(summary, eval_digest):
         'treesMacroF1': round(summary['cnnAttempt']['sameTestTrees']['meanFoldMetrics']['macroF1'], 3),
         'treesNote': TREES_NOTE, 'evalSha256': eval_digest, 'seed': summary['seed'],
     }
+    # The one frozen retest (scripts/ml_confirm.py), once it has run against this evaluation.
+    confirm_path = ROOT / 'models/change-classifier.confirm.json'
+    if confirm_path.exists():
+        confirm = json.loads(confirm_path.read_text())
+        assert confirm['evalSha256'] == eval_digest, 'retest was run against a different evaluation'
+        mean = confirm['meanFoldMetrics']
+        lo, hi = confirm['bootstrap']['meanArtifactPrecision95']
+        card['retest'] = (f"{'Passed' if confirm['passed'] else 'Failed'} a frozen retest, fresh synthetic draw "
+                          f"(same fields and frames, not new sky): macro-F1 {mean['macroF1']:.3f}, artifact precision "
+                          f"{mean['artifactPrecision']:.3f} (95% {lo:.3f}-{hi:.3f}).")
     if below:
         card['belowGate'] = ' '.join(f"Below the {target} target: {'; '.join(parts)}." for target, parts in below.items())
     return card
