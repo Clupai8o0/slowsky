@@ -4,13 +4,25 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "cleanUrls": true,
+  "git": {
+    "deploymentEnabled": false
+  },
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://irsa.ipac.caltech.edu https://skies.esac.esa.int; font-src 'self'; connect-src 'self' https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com https://nasa-irsa-spherex.s3.amazonaws.com https://simbad.cfa.harvard.edu https://vizier.cfa.harvard.edu https://gsss.stsci.edu https://irsa.ipac.caltech.edu https://skies.esac.esa.int; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://irsa.ipac.caltech.edu https://skies.esac.esa.int; font-src 'self'; connect-src 'self' https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com https://nasa-irsa-spherex.s3.amazonaws.com https://simbad.cfa.harvard.edu https://vizier.cfa.harvard.edu https://gsss.stsci.edu https://irsa.ipac.caltech.edu https://skies.esac.esa.int; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
       ]
     }
   ]
