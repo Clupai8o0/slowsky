@@ -121,12 +121,21 @@ def write_json(path, value):
     path.write_text(json.dumps(value, separators=(',', ':'), allow_nan=False) + '\n')
 
 
+def git_state(outputs):
+    revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    status = subprocess.check_output([
+        'git', 'status', '--porcelain', '--untracked-files=no', '--', '.',
+        *[f':(exclude){path}' for path in outputs],
+    ], cwd=ROOT, text=True)
+    return revision, bool(status.strip())
+
+
 def export(model, args, counts):
     return {'version': 1, 'architecture': 'gradient-boosted-trees-12',
             'madeBy': 'Codex (OpenAI) and Claude; scripts/ml_train.py; PyTorch CPU',
             'aiNote': 'AI-written code, built by Codex (OpenAI) and Claude during the event. '
                       "The output is a model's guess about a candidate, and can be wrong. "
-                      'Training labels are injected fake changes, not astronomical discoveries.',
+                      'Training labels are injected fake changes, not confirmed objects.',
             'seed': args.seed, 'classes': CLASSES,
             'stamp': {'size': SIZE, 'channels': ['earlier', 'later', 'later-earlier'],
                       'layout': 'CHW', 'pixelArcsec': NATIVE, 'normalization': 'difference-MAD-sigma',
@@ -141,6 +150,9 @@ def export(model, args, counts):
 
 def main(args):
     started = time.monotonic()
+    revision, dirty = git_state(('public/models/change-classifier.json',
+                                 'models/change-classifier.eval.json',
+                                 'tests/fixtures/classify-parity.json'))
     torch.set_num_threads(1)
     torch.use_deterministic_algorithms(True)
     torch.manual_seed(args.seed)
@@ -177,13 +189,9 @@ def main(args):
         'cases': [{'stamp': x[index].flatten().tolist(), 'probabilities': probs[i].tolist(),
                    'truth': CLASSES[y[index]], **provenance['examples'][index]}
                   for i, index in enumerate(selected)]})
-    try:
-        revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-    except (OSError, subprocess.CalledProcessError):
-        revision = None
     passed = quality and model_path.stat().st_size <= 200_000
     summary = {'madeBy': 'scripts/ml_train.py', 'madeAt': datetime.now(timezone.utc).isoformat(),
-               'gitSha': revision, 'seed': args.seed, 'classes': CLASSES, 'modelSha256': digest,
+               'gitSha': revision, 'gitDirty': dirty, 'seed': args.seed, 'classes': CLASSES, 'modelSha256': digest,
                'modelBytes': model_path.stat().st_size, 'elapsedSeconds': time.monotonic() - started,
                'training': {'rounds': args.rounds, 'perTargetPerClass': args.per_class,
                             'totalStamps': len(y), 'counts': counts, 'cpuThreads': 1},
@@ -205,7 +213,7 @@ def main(args):
                'psfMeasurements': provenance['psfMeasurements'], 'skippedFrames': provenance['skippedFrames'],
                'gate': {'passed': passed, 'thresholds': {'macroF1': 0.8, 'moverRecallSnr10': 0.85,
                                                        'artifactPrecision': 0.85, 'maxBytes': 200_000}}}
-    write_json(ROOT / 'public/models/change-classifier.eval.json', summary)
+    write_json(ROOT / 'models/change-classifier.eval.json', summary)
     print(json.dumps({'meanFoldMetrics': mean, 'gate': passed, 'modelSha256': digest,
                       'seconds': summary['elapsedSeconds']}), flush=True)
     return 0 if passed else 1

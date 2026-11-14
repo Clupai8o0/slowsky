@@ -4,12 +4,40 @@ import { createHash } from 'node:crypto';
 // @ts-expect-error Node types are not included in the browser TypeScript configuration.
 import { readFileSync } from 'node:fs';
 import weights from '../public/models/change-classifier.json';
-import treeWeights from '../public/models/change-classifier-trees.json';
-import cnnWeightsAttempt from '../public/models/change-classifier-cnn.json';
+import treeWeights from '../models/change-classifier-trees.json';
+import cnnWeightsAttempt from '../models/change-classifier-cnn.json';
 import parity from './fixtures/classify-parity.json';
-import evaluation from '../public/models/change-classifier.eval.json';
+import evaluation from '../models/change-classifier.eval.json';
 import { classify, loadClassifier, stampFor } from '../src/lib/classify';
 import type { OutputGrid } from '../src/lib/types';
+
+it('records a compact card and per-fold gate exceptions from the evaluation', () => {
+    const card = JSON.parse(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url), 'utf8'));
+    const digest = createHash('sha256').update(readFileSync(new URL('../models/change-classifier.eval.json', import.meta.url))).digest('hex');
+    const worst = evaluation.folds.find((fold) => fold.testTarget === evaluation.worstFold)!;
+    expect(card.macroF1).toBe(evaluation.meanFoldMetrics.macroF1);
+    expect(card.accuracy).toBe(evaluation.meanFoldMetrics.accuracy);
+    expect(card.worstFold).toEqual({ target: worst.testTarget, macroF1: worst.macroF1 });
+    expect(card.treesMacroF1).toBe(evaluation.cnnAttempt.sameTestTrees.meanFoldMetrics.macroF1);
+    expect(card.treesNote).toBe('Trees trained on fewer stamps (600 per class per target vs 2,500 for the CNN)');
+    const updated = evaluation as typeof evaluation & {
+        worstFoldGate: unknown; comparisonNote: string;
+        cnnAttempt: typeof evaluation.cnnAttempt & { sameTestTrees: typeof evaluation.cnnAttempt.sameTestTrees & { note: string } };
+    };
+    expect(card.treesNote).toBe(updated.cnnAttempt.sameTestTrees.note);
+    expect(updated.comparisonNote).toBe(card.treesNote);
+    expect(evaluation.validation).toContain('Synthetic injections only; each fold holds out all frames of one target');
+    expect(evaluation.validation).toContain('not accuracy on real unknown objects');
+    expect(evaluation.configurationSelection).toContain('Development validation, not an untouched benchmark');
+    expect(card.evalSha256).toBe(digest);
+    expect(card.seed).toBe(evaluation.seed);
+    expect(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url)).length).toBeLessThan(1024);
+    const thresholds = { moverRecallSnr10: 0.85, artifactPrecision: 0.85, macroF1: 0.80 } as const;
+    const expected = Object.fromEntries(Object.entries(thresholds).map(([key, threshold]) => [key,
+        evaluation.folds.filter((fold) => fold[key as keyof typeof thresholds] < threshold)
+            .map((fold) => ({ target: fold.testTarget, value: fold[key as keyof typeof thresholds] }))]));
+    expect(updated.worstFoldGate).toEqual(expected);
+});
 
 const grid: OutputGrid = { center: { ra: 0, dec: 0 }, fovDeg: 0.1,
     pixelArcsec: 6.15, width: 41, height: 41 };
@@ -98,13 +126,14 @@ describe('snapshot change classifier', () => {
                 });
             }
         }
-        const digest = (name: string) => createHash('sha256')
-            .update(readFileSync(new URL(`../public/models/${name}`, import.meta.url))).digest('hex');
-        expect(digest('change-classifier-trees.json'))
-            .toBe('891a06394934f650b7710f3ab6d1252eb6a9f7dabc42fcc189c41ec232831cc7');
-        expect(digest('change-classifier.json')).toBe(parity.modelSha256);
-        expect(digest('change-classifier-trees.json')).toBe(parity.treeModelSha256);
-        expect(digest('change-classifier-cnn.json')).toBe(parity.cnnModelSha256);
+        const digest = (path: string) => createHash('sha256')
+            .update(readFileSync(new URL(path, import.meta.url))).digest('hex');
+        expect(digest('../public/models/change-classifier.json')).toBe(evaluation.modelSha256);
+        expect(digest('../models/change-classifier-trees.json')).toBe(evaluation.treesBaseline.modelSha256);
+        expect(digest('../models/change-classifier-cnn.json')).toBe(evaluation.cnnAttempt.modelSha256);
+        expect(evaluation.modelSha256).toBe(parity.modelSha256);
+        expect(evaluation.treesBaseline.modelSha256).toBe(parity.treeModelSha256);
+        expect(evaluation.cnnAttempt.modelSha256).toBe(parity.cnnModelSha256);
     });
 
     it('selects on training-target validation and records an honest neural gate', () => {

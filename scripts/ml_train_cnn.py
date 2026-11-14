@@ -11,7 +11,6 @@ import copy
 from datetime import datetime, timezone
 import hashlib
 import json
-import subprocess
 import time
 
 import numpy as np
@@ -20,11 +19,11 @@ from torch import nn
 from torch.nn import functional as F
 
 from ml_stamps import CLASSES, FEATURES, ROOT, SIZE, dataset, features
-from ml_train import metrics, train_trees, tree_probabilities, write_json
+from ml_train import git_state, metrics, train_trees, tree_probabilities, write_json
 
 ARCHITECTURE = 'cnn-3x3-gap-features-12-16-16'
-BASELINE_SHA = '891a06394934f650b7710f3ab6d1252eb6a9f7dabc42fcc189c41ec232831cc7'
 KEYS = ('macroF1', 'accuracy', 'moverRecallSnr10', 'artifactPrecision')
+TREES_NOTE = 'Trees trained on fewer stamps (600 per class per target vs 2,500 for the CNN)'
 
 
 def feature_batch(stamps):
@@ -278,13 +277,13 @@ def self_test():
 
 
 def check():
-    folder = ROOT / 'public/models'
+    folder = ROOT / 'models'
     evaluation = json.loads((folder / 'change-classifier.eval.json').read_text())
     attempt = evaluation['cnnAttempt']
-    shipped = (folder / 'change-classifier.json').read_bytes()
+    shipped = (ROOT / 'public/models/change-classifier.json').read_bytes()
     trees = (folder / 'change-classifier-trees.json').read_bytes()
     cnn = (folder / 'change-classifier-cnn.json').read_bytes()
-    assert sha(trees) == BASELINE_SHA
+    assert sha(trees) == evaluation['treesBaseline']['modelSha256']
     assert sha(cnn) == attempt['modelSha256']
     assert len(cnn) == attempt['modelBytes']
     assert attempt['determinism']['passed']
@@ -317,21 +316,28 @@ def check():
         assert attempt['meanFoldMetrics']['macroF1'] >= 0.889
         assert attempt['meanFoldMetrics']['macroF1'] >= evaluation['treesBaseline']['meanFoldMetrics']['macroF1'] + 0.01
     else:
-        assert sha(shipped) == BASELINE_SHA
+        assert sha(shipped) == evaluation['treesBaseline']['modelSha256']
     print('CNN attempt gate passed: honest model selection, hashes, target isolation, size, determinism')
     return 0
 
 
 def main(args):
     started = time.monotonic()
-    folder = ROOT / 'public/models'
+    revision, dirty = git_state(('public/models/change-classifier.json',
+                                 'public/models/change-classifier.card.json',
+                                 'models/change-classifier.eval.json',
+                                 'models/change-classifier-cnn.json',
+                                 'models/change-classifier-trees.json',
+                                 'tests/fixtures/classify-parity.json'))
+    folder = ROOT / 'models'
+    public = ROOT / 'public/models'
     tree_path = folder / 'change-classifier-trees.json'
-    tree_raw = (tree_path if tree_path.exists() else folder / 'change-classifier.json').read_bytes()
-    if sha(tree_raw) != BASELINE_SHA:
-        raise ValueError('Refuse to overwrite the reproducible round-one tree model')
-    tree_json = json.loads(tree_raw)
     previous = json.loads((folder / 'change-classifier.eval.json').read_text())
     baseline = previous.get('treesBaseline', previous)
+    tree_raw = (tree_path if 'treesBaseline' in previous else public / 'change-classifier.json').read_bytes()
+    if sha(tree_raw) != baseline['modelSha256']:
+        raise ValueError('Tree model does not match the recorded baseline hash')
+    tree_json = json.loads(tree_raw)
     # The original data order must be regenerated with the original sample count.
     tx, ty, tt, tsnr, _ = dataset(seed=tree_json['seed'], per_class=600)
     tfx = all_features(tx)
@@ -397,8 +403,8 @@ def main(args):
     attempt = {'architecture': ARCHITECTURE, 'seed': args.seed, 'folds': folds, 'meanFoldMetrics': mean,
                'training': {'perTargetPerClass': args.per_class, 'totalStamps': len(y), 'maximumEpochs': args.epochs,
                             'finalEpochs': epochs, 'cpuThreads': 1, 'counts': counts},
-               'validation': '15% per class per training target; no held-out stamp or statistics used for selection. '
-                             'One held-out evaluation per fold; final epoch count is median validation best epoch.',
+               'validation': '15% per class per training target for epoch selection; '
+                             'final epoch count is the median validation best epoch.',
                'augmentation': 'Training only, independent rotations/flips and common +/-0.3 px XY shifts; '
                                'twelve features recomputed from the augmented stamp.',
                'runtimeChoice': f'12/16/16 channels and {args.epochs} epoch cap; retain all stamps on one CPU thread',
@@ -406,17 +412,17 @@ def main(args):
                'determinism': {'passed': checks['determinism'], 'hashes': hashes, 'scope': 'two independent final fits'},
                'gate': {'passed': passed, 'checks': checks, 'thresholds': thresholds},
                'sameTestTrees': {'folds': tree_folds, 'meanFoldMetrics': tree_mean,
-                                 'training': 'Reproduced original 600/class/target, 220-round tree folds'},
+                                 'training': 'Reproduced original 600/class/target, 220-round tree folds',
+                                 'note': TREES_NOTE},
                'psfMeasurements': provenance['psfMeasurements'], 'skippedFrames': provenance['skippedFrames'],
                **metrics(y, predictions, snrs)}
     # Write only after all training/evaluation succeeds; preserve exact tree bytes.
     tree_path.write_bytes(tree_raw)
     (folder / 'change-classifier-cnn.json').write_bytes(raw)
     shipped_raw = raw if passed else tree_raw
-    (folder / 'change-classifier.json').write_bytes(shipped_raw)
-    revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    (public / 'change-classifier.json').write_bytes(shipped_raw)
     summary = {**baseline, 'madeBy': 'scripts/ml_train_cnn.py', 'madeAt': datetime.now(timezone.utc).isoformat(),
-               'gitSha': revision, 'elapsedSeconds': attempt['elapsedSeconds'],
+               'gitSha': revision, 'gitDirty': dirty, 'seed': args.seed, 'elapsedSeconds': attempt['elapsedSeconds'],
                'treesBaseline': baseline, 'cnnAttempt': attempt,
                'selectionReason': ('CNN passed quality, size, determinism and +0.01 F1 over trees'
                                    if passed else 'Trees retained: CNN failed ' + ', '.join(k for k, v in checks.items() if not v)),
@@ -424,14 +430,30 @@ def main(args):
     if passed:
         summary.update({'modelFamily': ARCHITECTURE, 'folds': folds, 'meanFoldMetrics': mean,
                         'training': attempt['training'], 'gate': attempt['gate'],
-                        'validation': attempt['validation'], 'configurationSelection': attempt['validation'],
+                        'configurationSelection': 'Development validation, not an untouched benchmark: the CNN was '
+                                                  'chosen over gradient-boosted trees on these same held-out folds, '
+                                                  'and an earlier smaller CNN was dropped on them.',
                         'worstFold': min(folds, key=lambda fold: fold['macroF1'])['testTarget'],
                         **metrics(y, predictions, snrs)})
     summary['comparison'] = [{'testTarget': f['testTarget'], 'cnn': {k: f[k] for k in KEYS},
                               'trees': {k: t[k] for k in KEYS},
                               'roundOneTrees': {k: old[k] for k in KEYS}}
                              for f, t, old in zip(folds, tree_folds, baseline['folds'])]
-    write_json(folder / 'change-classifier.eval.json', summary)
+    summary['comparisonNote'] = TREES_NOTE
+    summary['worstFoldGate'] = {
+        key: [{'target': fold['testTarget'], 'value': fold[key]} for fold in summary['folds']
+              if fold[key] < threshold]
+        for key, threshold in (('moverRecallSnr10', 0.85), ('artifactPrecision', 0.85), ('macroF1', 0.80))
+    }
+    eval_path = folder / 'change-classifier.eval.json'
+    write_json(eval_path, summary)
+    worst = min(summary['folds'], key=lambda fold: fold['macroF1'])
+    write_json(public / 'change-classifier.card.json', {
+        'macroF1': summary['meanFoldMetrics']['macroF1'], 'accuracy': summary['meanFoldMetrics']['accuracy'],
+        'worstFold': {'target': worst['testTarget'], 'macroF1': worst['macroF1']},
+        'treesMacroF1': tree_mean['macroF1'], 'treesNote': TREES_NOTE,
+        'evalSha256': sha(eval_path.read_bytes()), 'seed': summary['seed'],
+    })
     selected = [int(np.flatnonzero((targets == target) & (y == kind))[0])
                 for target in names for kind in range(4)]
     cnn_probs = probabilities(from_export(exported), x[selected], fx[selected])
