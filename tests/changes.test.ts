@@ -24,7 +24,7 @@ describe('round 11 public readings', () => {
             console.log('swap', separation, result.candidates.map((c) => `${c.kind}/${c.reading}: ${c.sentence}`));
             expect(result.candidates).toHaveLength(1);
             expect(result.candidates[0]).toMatchObject({ kind: 'unknown', reading: 'pair' });
-            expect(result.candidates[0]!.sentence).toMatch(/spots? about .* apart.*moved.*two sources/);
+            expect(result.candidates[0]!.sentence).toMatch(/^Two nearby spots changed in opposite ways; one source that moved, two sources changing/);
         }
     });
     it('reports catalogue proximity at either pair end', () => {
@@ -134,7 +134,50 @@ describe('round 11 public readings', () => {
             console.log('r11 Barnard', both, JSON.stringify(r.candidates));
             expect(r.candidates).toHaveLength(1);
             expect(r.candidates[0]).toMatchObject({ reading: both ? 'moved' : 'pair', kind: both ? 'mover' : 'unknown' });
-            expect(r.candidates[0]!.sentence).toMatch(both ? /listed motion of about 10″/ : /apart/);
+            expect(r.candidates[0]!.sentence).toMatch(both ? /listed motion of about 10″/ : /^Two nearby spots changed in opposite ways/);
+        }
+    });
+    it('lets a tight catalogue motion win over crowding, and hedges it (Barnard at 4.6 µm)', () => {
+        // Barnard's Star in the partner band had 4 more catalogue stars within 24″ of its earlier lobe, so the pair
+        // was sent to "Opposite changes ..." before its 10.3″ listed motion was looked at.
+        const P = grid.pixelArcsec, x = 57, y = 60, moved = 10.3 / P;
+        const others = [{ x: x - 10 / P, y: y + 8 / P, id: 'n1' }, { x: x - 6 / P, y: y - 14 / P, id: 'n2' },
+            { x: x + 4 / P, y: y + 16 / P, id: 'n3' }, { x: x - 16 / P, y: y - 2 / P, id: 'n4' }];
+        const run = (offset: number) => {
+            const a = noise(grid), b = noise(grid);
+            point(a, grid, x, y, 3000); point(b, grid, x + moved, y, 3000);
+            for (const o of others) { point(a, grid, o.x, o.y, 20); point(b, grid, o.x, o.y, 20); }
+            const stars = [...others, { x, y: y + offset / P, id: 'gj699', visit: 'earlier' as const, properMotion: true },
+                { x: x + moved, y: y + offset / P, id: 'gj699', visit: 'later' as const, properMotion: true }];
+            return compareVisits(mapped(image(a, 'a', 60000)), mapped(image(b, 'b', 60365.25)), grid, stars);
+        };
+        const tight = run(0).candidates;
+        expect(tight).toHaveLength(1);
+        expect(tight[0]).toMatchObject({ kind: 'mover', reading: 'moved' });
+        expect(tight[0]!.sentence).toMatch(/^A catalogue star has a listed motion of about 10″ between these dates/);
+        expect(tight[0]!.sentence).toContain('other catalogue stars close by make it less certain');
+        // Dated positions 9″ off both lobes: the loose 12″ match still predicts it, but crowding keeps it unknown.
+        const loose = run(9).candidates;
+        expect(loose.some((c) => c.kind === 'mover')).toBe(false);
+        expect(loose.length).toBeGreaterThan(0);
+    });
+    it('prints no separation for an uncatalogued opposite pair at 8″ and 9″', () => {
+        for (const sep of [8, 9]) {
+            for (const swap of [false, true]) {
+                const a = noise(grid), b = noise(grid), P = grid.pixelArcsec, x = 55;
+                if (swap) {
+                    point(a, grid, x, 60, 300); point(a, grid, x + sep / P, 60, 30);
+                    point(b, grid, x, 60, 30); point(b, grid, x + sep / P, 60, 300);
+                } else {
+                    point(a, grid, x, 60, 300); point(b, grid, x + sep / P, 60, 300);
+                }
+                const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b', 60200)), grid, []);
+                const pair = r.candidates.find((c) => c.reading === 'pair');
+                expect(pair, `${sep} ${swap}`).toBeDefined();
+                expect(pair!.kind).toBe('unknown');
+                expect(pair!.sentence).toMatch(/^Two nearby spots changed in opposite ways; one source that moved, two sources changing, or a small image shift could look like this \(S\/N/);
+                expect(pair!.sentence).not.toMatch(/\d″/);
+            }
         }
     });
     it('describes later-only and earlier-only light above noise', () => {
@@ -2149,7 +2192,7 @@ describe('visit candidate sentences and caveats', () => {
         const moved = compareVisits(image(movedA, 'a'), image(movedB, 'b'), grid, []);
         const mover = moved.candidates.find((c) => c.reading === 'pair');
         expect(mover).toBeDefined();
-        expect(mover!.sentence).toMatch(/^Two spots about \d+″ apart changed in opposite ways/);
+        expect(mover!.sentence).toMatch(/^Two nearby spots changed in opposite ways/);
     });
     it('exposes the visit metadata and output-grid reading apertures for FLAGS', () => {
         const a = noise(grid), b = noise(grid);

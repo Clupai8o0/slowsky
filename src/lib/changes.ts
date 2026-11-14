@@ -1363,7 +1363,8 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         : a === b || (a.x === b.x && a.y === b.y);
     // Difference lobes can be displaced from their source centres by the image width. Require both
     // date-tagged positions within one FWHM, matching direction and vector within one FWHM.
-    const predictedMotion = (negative: Blob, positive: Blob): number | undefined => {
+    // `endError` is the larger distance from a lobe to its dated catalogue position, in arcsec.
+    const predictedMotion = (negative: Blob, positive: Blob): { motion: number; endError: number } | undefined => {
         for (const first of stars) {
             if (!first.id || first.visit !== 'earlier' || !first.properMotion) { continue; }
             const firstPos = { x: first.motionX ?? first.x, y: first.motionY ?? first.y };
@@ -1373,10 +1374,10 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 const dx = secondPos.x - firstPos.x, dy = secondPos.y - firstPos.y;
                 const ox = positive.pix.x - negative.pix.x, oy = positive.pix.y - negative.pix.y;
                 const motion = distance(firstPos, secondPos, grid);
-                if (motion >= opt.minShiftArcsec && distance(negative.pix, firstPos, grid) <= PSF_FWHM
-                    && distance(positive.pix, secondPos, grid) <= PSF_FWHM && dx * ox + dy * oy > 0
+                const endError = Math.max(distance(negative.pix, firstPos, grid), distance(positive.pix, secondPos, grid));
+                if (motion >= opt.minShiftArcsec && endError <= PSF_FWHM && dx * ox + dy * oy > 0
                     && Math.hypot(dx - ox, dy - oy) * grid.pixelArcsec <= PSF_FWHM) {
-                    return motion;
+                    return { motion, endError };
                 }
             }
         }
@@ -1518,14 +1519,21 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         let ambiguous: { j: number; shift: number } | undefined;
         for (const { j, d, blocked: onTwoStars } of partners) {
             const negative = found[j]!;
-            const prediction = predictedMotion(negative, positive);
+            const predicted = predictedMotion(negative, positive);
+            const prediction = predicted?.motion;
             if (positive.edge || negative.edge) {
                 continue;
             }
             const negativeStar = nearestStar(negative.pix);
+            // Crowding makes light centroids unreliable, but a catalogue motion test uses the lobe positions only.
+            // When both lobes sit within one native pixel plus the wobble of the star's two dated positions, the
+            // listed motion is still the reading to report, hedged for the crowding (Barnard's Star at 4.6 µm:
+            // 5 catalogue stars within 24″, lobes 0.7″ and about 2″ from the dated positions).
+            const tightPrediction = predicted !== undefined && predicted.endError <= NATIVE + WOBBLE_ARCSEC;
+            const isCrowded = crowded[i] || crowded[j];
             // A single star's own dipole may put one lobe just outside the matching radius. Test that pair
             // for wobble/slow-shift ambiguity; other neighbour-dominated spots cannot give reliable centroids.
-            if (crowded[i] || crowded[j] || (brighter[i] && (!negativeStar || !sameStar(brighter[i]!, negativeStar)))
+            if ((isCrowded && !tightPrediction) || (brighter[i] && (!negativeStar || !sameStar(brighter[i]!, negativeStar)))
                 || (brighter[j] && (!positiveStar || !sameStar(brighter[j]!, positiveStar)))) {
                 ambiguous ??= { j, shift: d };
                 continue;
@@ -1575,7 +1583,8 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 c.kind = 'mover';
                 c.reading = 'moved';
                 c.reason = `A catalogue star has a listed motion of about ${Math.round(prediction)}″ between these dates; the light here is consistent with that motion. `
-                    + `Two changing sources, an image shift${earlierUnclipped || laterUnclipped ? ', or detector hits' : ''} could also look like this (${snrText(c.snr)}; candidate).`;
+                    + `Two changing sources, an image shift${earlierUnclipped || laterUnclipped ? ', or detector hits' : ''} could also look like this`
+                    + `${isCrowded ? ', and other catalogue stars close by make it less certain' : ''} (${snrText(c.snr)}; candidate).`;
                 c.lightEnds = c.ends;
             } else if (blocked) {
                 // Spots on two catalogue stars: a source moving from one to the other and the two stars changing
@@ -1587,7 +1596,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                     + `and the other fainter; a small image shift could also cause this (${snrText(c.snr)}; candidate).`;
             } else {
                 c.kind = 'unknown';
-                c.reason = `Two spots about ${Math.round(d)}″ apart changed in opposite ways; one source that moved, two sources changing, or a small image shift could look like this (${snrText(c.snr)}; candidate).`;
+                // No separation is printed: pairs are at most dipoleArcsec (15″) apart, under two image widths, where
+                // the two difference peaks overlap and sit 20 to 50 percent off the sources' true separation.
+                c.reason = `Two nearby spots changed in opposite ways; one source that moved, two sources changing, or a small image shift could look like this (${snrText(c.snr)}; candidate).`;
             }
             result.candidates.push(c);
             break;
