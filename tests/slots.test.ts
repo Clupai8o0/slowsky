@@ -63,9 +63,10 @@ const flush = () => new Promise(r => setTimeout(r, 0));
 const view = (result: SkyResult, index = 0, over: Partial<SlotView> = {}): SlotView => ({ result, index, mode: 'blink', source: 'live', ...over });
 
 describe('flags slot', () => {
-    it('ships switched off', () => {
-        expect(FEATURES.flags).toBe(false);
-        const { slot, calls } = harness({ enabled: undefined });
+    it('ships switched on (spectrum stays off); switched off it shows nothing and reads nothing', () => {
+        expect(FEATURES.flags).toBe(true);
+        expect(FEATURES.spectrum).toBe(false);
+        const { slot, calls } = harness({ enabled: false });
         expect(slot.update(view(sky([frame('a')])), true)).toEqual({ key: false, layer: false, note: '' });
         expect(calls).toHaveLength(0);
     });

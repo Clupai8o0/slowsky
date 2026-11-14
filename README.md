@@ -29,6 +29,8 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   and Epsilon Indi B, corner marks for the others).
 - See rings that mark stars from ESA's Gaia DR3 catalogue (live within 0.2° of the centre, or from the offline
   copy), and turn them off or on.
+- On a live view in Blink, switch on **Flags** to paint the pixels that the frame's own quality layer marks
+  (cosmic-ray hits, for example), and read how many pixels are flagged and which three kinds are most common.
 - Read each frame's details: when it was taken, its wavelength at the centre, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode.
@@ -46,8 +48,9 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 4. **Same-wavelength rule.** In a SPHEREx frame, each part of the detector sees a slightly different wavelength.
    Frames taken within 10 days of each other count as one visit. For each visit, the page keeps the one frame whose
    wavelength at the spot is closest to the chosen value, and only if that value lies inside the frame's band.
-   Visits with no such frame are left out, and a note on the page says how many. So a change you see is a change
-   in brightness or position, not a change of colour.
+   Visits with no such frame are left out, and a note on the page says how many. Each kept frame is within about
+   half a spectral channel of the chosen wavelength, which keeps colour differences between frames small. Near a
+   strong spectral line even that small difference can matter.
 5. **Moving targets.** For a preset target, its proper motion is applied for each frame's own date, so the marker
    and the wavelength check follow the star.
 6. **Lining up.** The page removes zodiacal light, the glow of sunlit dust in the solar system (the archive's own
@@ -109,8 +112,9 @@ format.
 ## Data and credits
 
 The frames are from NASA's SPHEREx mission (DR1 and QR3), served by the NASA/IPAC Infrared Science Archive.
-Star rings use ESA's Gaia DR3 (credit: ESA/Gaia/DPAC). Names and target positions come from the SIMBAD database
+Star rings use ESA's Gaia DR3 (credit: ESA, Gaia DPAC). Names and target positions come from the SIMBAD database
 through the CfA mirror. The full list, with licences and credit lines: [DATA-LICENSES.md](DATA-LICENSES.md).
+Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md).
 
 ## AI tools used
 
@@ -124,41 +128,50 @@ through the CfA mirror. The full list, with licences and credit lines: [DATA-LIC
 | ElevenLabs | ElevenLabs | AI voice in the demo video |
 | GPT Image | OpenAI | Decorative images, if used, marked where they appear |
 
-Sam chose the idea and makes every product decision (see `DECISIONS.md`).
+Sam chose the idea and makes every product decision. `DECISIONS.md` is his own log of them; AI tools do not write
+in it.
 
 ## Limits
 
 - Slowsky shows changes between frames. It does not decide what a change is. A change can be noise, a satellite
   trail or a camera artefact, so anything that stands out is a candidate for a closer look, not a result.
-- It will not show Planet Nine or any other unknown planet. The part of Planet Nine's predicted range that is
-  bright enough for SPHEREx has already been searched by ZTF, DES and Pan-STARRS1; what is left is fainter than
-  these frames can show (Brown, Holman & Batygin 2024, arXiv:2401.17977; SPHEREx depths: Bock et al. 2025,
-  arXiv:2511.02985). This repo does not compute that limit itself.
+- It is not a planet finder. Do not expect it to show Planet Nine or any other unknown planet. Optical searches by
+  ZTF, DES and Pan-STARRS1 have together ruled out about 78% of its predicted range, and what is left is faint,
+  around V 22 (Brown, Holman & Batygin 2024, arXiv:2401.17977). SPHEREx reaches 19.5 to 19.9 AB (5 sigma) below 3.8 µm
+  only after its two-year survey, with four observations in each spectral channel at a typical sky brightness
+  away from the Milky Way's plane, and one frame is shallower (Bock et al. 2025, arXiv:2511.02985). These are
+  different bands, so this is a rough comparison, not a limit this repo computes.
 - Live loading reads many files from the archive and takes 20 to 45 seconds. It reads at most 60 frames per view
   and says so when it does. To choose them it guesses each frame's wavelength at the spot from the frame's corner
   positions in the archive list (about 10 pixels off), then reads the frames nearest the chosen wavelength.
-  When a frame has no corner positions, or the guess does not check out against the first header, frames are spread evenly in time as before.
+  When a frame has no corner positions, or the guess does not check out against the first header, frames are
+  spread evenly in time as before.
 - At very busy spots, such as near the ecliptic poles, the archive can cut its frame list short. The page then
   says some visits may be missing.
-- Gaia rings are moved from the 2016 catalogue to each frame's date using the stars' proper motion (Stack uses
-  the middle date). The source keeps only stars that were on the field in 2016, so a fast star that walked in
-  from just outside it since then has no ring. Live views show rings only within 0.2° of the centre, and skip them
-  if the catalogue is slow to answer.
-- The brightness curve (RW Aurigae, Epsilon Indi B, WISE 0855) divides the target by two to four Gaia comparison
-  stars in the field. They are not checked for steadiness, so a variable one shows up as wobble. The curve appears
-  only when the field holds at least two such stars; in the offline copy that is RW Aurigae only. The shaded band
-  shows how much those comparison stars wobble; a faint target can wobble more. It is a rough check, not
-  calibrated photometry.
+- Gaia rings are moved from the stars' catalogue positions for 2016.0 to each frame's date using the stars' proper
+  motion (Stack uses the middle date). The source keeps only stars that were on the field in 2016, so a fast star
+  that walked in from just outside it since then has no ring. Live views ask the catalogue only for stars within
+  0.2° of the centre, and skip the rings if the catalogue is slow to answer.
+- The brightness curve (RW Aurigae and WISE 0855; none is drawn for Epsilon Indi B) divides the target by two to
+  four Gaia comparison stars in the field. They are not checked for steadiness, so a variable one shows up as
+  wobble. The curve appears only when the field holds at least two such stars; in the offline copy that is
+  RW Aurigae only. The shaded band shows how much those comparison stars wobble; a faint target can wobble more.
+  It is a rough check, not calibrated photometry.
 - For Barnard's Star the page measures how far the star moved between two frames and shows the distance its
-  catalogue proper motion predicts beside it. The prediction leaves out parallax (the small yearly loop caused by
-  Earth's orbit), and the star's bright core is hard to centre, so the two numbers can differ.
+  catalogue proper motion predicts beside it. The prediction leaves out parallax (the small back-and-forth shift
+  caused by Earth's orbit round the Sun), and the star's bright core is hard to centre, so the two numbers can differ.
 - The offline copy has only the five preset targets, one detector each, and a field of at most 0.1°.
 - Each view uses one detector. A star found by name is placed at its catalogue position, and its marker moves only
   for the presets. Gaia rings move in every view.
-- Bad-pixel flags in the files are not read, so hot pixels and cosmic-ray hits show as they are, and one can
-  upset a point on the brightness curve.
+- Bad-pixel flags are only shown, and only when you switch them on, on live frames in Blink. No measurement uses
+  them, so hot pixels and cosmic-ray hits show as they are, and one can upset a point on the brightness curve.
+  The Flags layer leaves out three kinds: SOURCE (set on every pixel mapped to a known source, so it would cover
+  the stars themselves), FULLSAMPLE (for information only) and GHOST_FPA (not in use at present). The TRANSIENT
+  flag marks cosmic-ray hits, and near a very bright star it can also mark charge spilling into neighbouring
+  pixels, so a flagged pixel beside a bright star is not always a cosmic ray.
 - The picture's brightness scale is for viewing. The brightness curve is relative to nearby stars, not in physical
-  units. The centres of Barnard's Star and R Draconis are too bright for the camera, so neither gets a curve.
+  units. The centre of R Draconis is too bright for the camera in every saved frame, and Barnard's Star's in most
+  of them, so neither gets a curve.
 - Stack is a plain average of all frames. Subtract compares only the first and last frame.
 
 ## Licence

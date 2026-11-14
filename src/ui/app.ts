@@ -17,7 +17,7 @@ import { createDemoSource } from './demo-source';
 import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
-import { coreBlank, curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
+import { coreBlank, curveFor, frameMjd, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
 import { FEATURES, mountFlags, renderSpectrum } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
@@ -708,14 +708,13 @@ export function mount(root: HTMLElement): void
             return;
         }
         const ys = pts.map((o) => o.p.relative);
-        // Each point's own error: the comparison stars' wobble plus the target's own noise (sky noise over its
-        // aperture), scaled the same way as the point, so a faint or missing target still gets an honest bar.
+        // Each point's own error: the comparison stars' wobble plus the target's own noise (aperture()'s sky noise
+        // on its sum, already scaled for regridded pixels sharing a detector pixel's noise), scaled the same way as
+        // the point, so a faint or missing target still gets an honest bar.
         const scales = pts.filter((o) => o.p.relative !== 0 && o.p.ratio !== 0).map((o) => o.p.ratio / o.p.relative).sort((a, b) => a - b);
         const med = scales.length ? scales[Math.floor(scales.length / 2)]! : NaN;
-        const spread = Math.max(1, NATIVE_ARCSEC / result.grid.pixelArcsec);
         const err = pts.map((o) => {
-            // Regridding spreads each detector pixel over several output pixels, so their noise is shared: scale up.
-            const own = o.p.target.backgroundSigma * Math.sqrt(o.p.target.nPix) * spread / (o.p.refSum * med);
+            const own = o.p.target.noise / (o.p.refSum * med);
             return Math.hypot(Math.abs(o.p.relative) * noise, Number.isFinite(own) ? own : 0);
         });
         let lo = Math.min(...ys.map((v, i) => v - err[i]!), 1 - noise);
@@ -1140,10 +1139,9 @@ export function mount(root: HTMLElement): void
         if (kind === 'variable' && curve) {
             const valid = curve.lc.points.filter((p) => p.valid && Number.isFinite(p.relative));
             const rel = valid.map((p) => p.relative);
-            // Ratios only mean something when the star itself is clearly seen (3 sigma over the sky noise in its
-            // aperture, scaled for regridded pixels sharing a detector pixel's noise) in every look.
-            const spread = Math.max(1, NATIVE_ARCSEC / result.grid.pixelArcsec);
-            const seen = (p: (typeof valid)[number]): boolean => p.target.backgroundSigma > 0 && p.target.nPix > 0 && p.target.sum > 3 * p.target.backgroundSigma * Math.sqrt(p.target.nPix) * spread;
+            // Ratios only mean something when the star itself is clearly seen in every look: over 3 times aperture()'s
+            // sky noise on its sum (scaled for regridded pixels sharing a detector pixel's noise).
+            const seen = (p: (typeof valid)[number]): boolean => p.target.noise > 0 && p.target.snr > 3;
             if (rel.length >= 2 && (Math.min(...rel) <= 0 || !valid.every(seen))) {
                 return { fact: `Across ${rel.length} looks it is not clearly seen above the sky in at least one, so no change is given.` };
             }
@@ -1160,9 +1158,9 @@ export function mount(root: HTMLElement): void
         if (kind === 'cold') {
             const visits = visitsOf(result).map((v) => `${v.n} in ${monthYear(v.mjd)}`);
             // From earlier telescopes, not measured here, so it sits in the description, not under "Measured here".
-            // Luhman 2014 (arXiv:1404.6501, Table 1): [3.6] 17.44, [4.5] 13.92, W2 (4.6 µm) 13.89 mag. Detector 6
+            // Luhman 2014 (arXiv:1404.6501, Table 1): [3.6] 17.44, [4.5] 13.89, W2 (4.6 µm) 13.89 mag. Detector 6
             // covers 4.42 to 5.00 µm. Other detectors get no sentence here; the card's own line covers 3.6 vs 4.5 µm.
-            const colour = st.detector === 6 ? ' WISE detected it at 4.6 µm, inside this detector’s range (detector 6 of 6).' : '';
+            const colour = st.detector === 6 ? ' WISE measured its light at 4.6 µm, inside this detector’s range (detector 6 of 6).' : '';
             return {
                 show: `${COPY[st.target].show}${colour}`,
                 fact: `This view has ${n} look${n === 1 ? '' : 's'}${visits.length > 1 ? `: ${visits.join(', ')}` : ''}.`,
