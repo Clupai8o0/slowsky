@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fixture from './fixtures/sia/rwaur_dr1.xml?raw';
-import { buildUpstreamUrl, GET, isVotable, OPTIONS, parseParams } from '../api/sia';
+import { buildUpstreamUrl, GET, isVotable, OPTIONS, parseParams, queryFailed } from '../api/sia';
 import { DETECTOR_BAND_UM, parseSiaXml, queryStatus, rowToFrame, searchFrames, SIA_TIME_SPLITS, timeWindows } from '../src/lib/sia';
 
 const valid = 'POS=CIRCLE+76.956+30.401+0.01';
@@ -49,9 +49,21 @@ describe('SIA proxy', () => {
         ['<VOTABLE><![CDATA[</VOTABLE>', false],
         ['<VOTABLE><?pi </VOTABLE>', false],
         ['<VOTABLE><![CDATA[a </VOTABLE> b]]><!-- c --></VOTABLE>', true],
+        ['<VOTABLE a="x/>"></VOTABLE>', true],
+        ['<VOTABLE a="1 > 0"/>', true],
         ['', false],
     ])('isVotable(%j) is %s', (xml, expected) => {
         expect(isVotable(xml)).toBe(expected);
+    });
+    it.each([
+        ['<INFO name="QUERY_STATUS" value="ERROR">x</INFO>', true],
+        ['<ns0:INFO value=\'error\' name=\'QUERY_STATUS\'/>', true],
+        ['<INFO name="QUERY_STATUS" content="a > b" value="ERROR"/>', true],
+        ['<INFO name="QUERY_STATUS" value="OVERFLOW"/>', false],
+        ['<INFO name="QUERY_STATUS" content="value=\'ERROR\'" value="OK"/>', false],
+        ['<INFO name="other" value="ERROR"/>', false],
+    ])('queryFailed(%j) is %s', (xml, expected) => {
+        expect(queryFailed(xml)).toBe(expected);
     });
     it('rejects a VOTable cut short without caching it', async () => {
         vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<ns0:VOTABLE xmlns:ns0="http://www.ivoa.net/xml/VOTable/v1.3"><ns0:RESOURCE>'));

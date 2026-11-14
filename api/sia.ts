@@ -79,7 +79,10 @@ export function buildUpstreamUrl(params: SiaParams): URL
 // IRSA writes the VOTable with an ns0: prefix on every tag.
 const VOTABLE_TAG = '([A-Za-z_][\\w.-]*:)?VOTABLE';
 const VOTABLE_START = new RegExp(`^\\s*(?:<!DOCTYPE[^>]*>\\s*)?<${VOTABLE_TAG}\\b`);
-const VOTABLE_END = new RegExp(`(?:</${VOTABLE_TAG}\\s*>|<${VOTABLE_TAG}\\b[^>]*/>)\\s*$`);
+// Attributes up to the end of a tag; a quoted value may hold '>'.
+const TAG_ATTRS = `(?:[^>"']|"[^"]*"|'[^']*')*`;
+const VOTABLE_END = new RegExp(`(?:</${VOTABLE_TAG}\\s*>|<${VOTABLE_TAG}\\b${TAG_ATTRS}/>)\\s*$`);
+const INFO_TAG = new RegExp(`<([A-Za-z_][\\w.-]*:)?INFO\\b${TAG_ATTRS}>`, 'gi');
 
 // True when the document's root element is VOTABLE and it is closed, so an HTML page or a reply cut short is
 // never cached as a frame list. Comments, CDATA and processing instructions are removed first, so a closing tag
@@ -91,6 +94,22 @@ export function isVotable(xml: string): boolean
         return false;
     }
     return VOTABLE_START.test(bare) && VOTABLE_END.test(bare);
+}
+
+// True when an INFO tag says QUERY_STATUS=ERROR. Attributes are read in order, so text inside a quoted value
+// is never taken for another attribute.
+export function queryFailed(xml: string): boolean
+{
+    for (const [tag] of xml.matchAll(INFO_TAG)) {
+        const attrs = new Map<string, string>();
+        for (const m of tag.matchAll(/([A-Za-z_][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+            attrs.set(m[1]!.toLowerCase(), m[2] ?? m[3] ?? '');
+        }
+        if (attrs.get('name')?.toUpperCase() === 'QUERY_STATUS' && attrs.get('value')?.toUpperCase() === 'ERROR') {
+            return true;
+        }
+    }
+    return false;
 }
 
 function error(status: number, message: string): Response
@@ -153,7 +172,7 @@ export async function GET(request: Request): Promise<Response>
         if (!isVotable(xml)) {
             return error(502, 'Upstream reply was not a VOTable');
         }
-        const hasError = /<([A-Za-z_][\w.-]*:)?INFO\b(?=[^>]*\sname\s*=\s*["']QUERY_STATUS["'])(?=[^>]*\svalue\s*=\s*["']ERROR["'])/i.test(xml);
+        const hasError = queryFailed(xml);
         return new Response(body, { headers: { ...cors, 'Content-Type': 'text/xml; charset=utf-8', 'Cache-Control': hasError ? 'no-store' : 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400' } });
     } catch {
         return error(controller.signal.aborted ? 504 : 502, controller.signal.aborted ? 'Upstream timeout' : 'Upstream failure');
