@@ -280,12 +280,14 @@ export function initLayout(root: HTMLElement): Layout
         });
     });
     wide.addEventListener('change', () => {
-        placeAbout(root, wide.matches);
         fit();
         apply();
     });
 
-    placeAbout(root, wide.matches);
+    // Keyed to the phone CSS query, not !wide: at a sub-pixel width between 1080 and 1081 px neither applies.
+    const narrow = matchMedia('(max-width: 1080px)');
+    narrow.addEventListener('change', () => placeAbout(root, !narrow.matches));
+    placeAbout(root, !narrow.matches);
     fit();
     apply();
     return { toggleFocus };
@@ -302,9 +304,7 @@ export function placeAbout(root: HTMLElement, isWide: boolean): void
         return;
     }
     const active = document.activeElement;
-    const hadFocus = active instanceof HTMLElement && about.contains(active);
+    const focused = active instanceof HTMLElement && about.contains(active) ? active : null;
     anchor.after(about);
-    if (hadFocus) {
-        active.focus({ preventScroll: true });
-    }
+    focused?.focus({ preventScroll: true });
 }
