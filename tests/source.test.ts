@@ -351,7 +351,29 @@ describe('live source (fake SIA and S3)', () => {
         const result = await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 2, maxDeltaUm: 1 })
             .load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: lambdaAtCentre(fakes[0]!) });
         expect(result.notes).toContain('1 frame could not be read.');
+        expect(result.notes).toContain('Read 2 of 4 frames to keep loading quick.');
         expect(result.locked.map(l => l.frame.url)).toEqual([reader.headers[0]]);
+        expect(reader.headers.filter(url => url === reader.headers[0])).toHaveLength(1);
+    });
+
+    it('uses the cached probe when a picked candidate fails and another is at the edge', async () => {
+        const fakes = [...stepped('edgeP', 60900, false, 2), ...stepped('edgeQ', 61080, false, 2)];
+        fakes[0]!.cards.CRPIX2 = 1.5;
+        const reader = counting(fakes);
+        const index = reader.index;
+        reader.index = async (url, signal) => {
+            if (reader.headers.length > 0 && url !== reader.headers[0] && url !== fakes[0]!.record.url) {
+                reader.headers.push(url);
+                throw new Error('candidate failed');
+            }
+            return index(url, signal);
+        };
+        const result = await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 3, maxDeltaUm: 1 })
+            .load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: lambdaAtCentre(fakes[2]!) });
+        expect(result.frames).toHaveLength(1);
+        expect(result.locked.map(l => l.frame.url)).toEqual([reader.headers[0]]);
+        expect(result.notes).toContain('1 frame could not be read.');
+        expect(result.notes).toContain('1 frame left out: the spot is at the detector edge.');
         expect(reader.headers.filter(url => url === reader.headers[0])).toHaveLength(1);
     });
 
@@ -448,6 +470,25 @@ describe('live source (fake SIA and S3)', () => {
         for (const f of fakes) {
             f.record.footprint = corners(f);
             f.record.footprint[3] = { ra: f.record.footprint[3]!.ra + 0.2, dec: f.record.footprint[3]!.dec };
+        }
+        const reader = counting(fakes);
+        let headersAtWave = 0;
+        const readWave = reader.readWaveGrid;
+        reader.readWaveGrid = async (index, signal) => {
+            headersAtWave ||= new Set(reader.headers).size;
+            return readWave(index, signal);
+        };
+        await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 2 })
+            .load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1 });
+        expect(headersAtWave).toBe(2);
+        expect(new Set(reader.headers)).toEqual(new Set([fakes[0]!.record.url, fakes[2]!.record.url]));
+    });
+
+    it('rejects a probe with only its third corner displaced', async () => {
+        const fakes = Array.from({ length: 4 }, (_, i) => fakeBand(`third${i}D1`, 60900 + i * 0.01, 1));
+        for (const f of fakes) {
+            f.record.footprint = corners(f);
+            f.record.footprint[2] = { ra: f.record.footprint[2]!.ra + 0.2, dec: f.record.footprint[2]!.dec };
         }
         const reader = counting(fakes);
         let headersAtWave = 0;
@@ -649,9 +690,16 @@ describe('live source (fake SIA and S3)', () => {
         const fakes = [...stepped('a', 60900, false), ...stepped('b', 61080, true), ...stepped('c', 61260, false)];
         const chosen = lambdaAtCentre(fakes[5]!);
         const reader = counting(fakes);
+        const waveReads = new Map<string, number>();
+        const readWave = reader.readWaveGrid;
+        reader.readWaveGrid = async (index, signal) => {
+            waveReads.set(index.url, (waveReads.get(index.url) ?? 0) + 1);
+            return readWave(index, signal);
+        };
         const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 3 });
         const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: chosen });
         expect(res.locked.some(l => l.frame.url === reader.headers[0])).toBe(true);
+        expect(waveReads.get(reader.headers[0]!)).toBe(1);
         expect(new Set(reader.headers).size).toBe(3);
         expect(res.locked.map(l => l.frame.obsId)).toEqual(['a5D1', 'b5D1', 'c5D1']);
     });

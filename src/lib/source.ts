@@ -643,9 +643,6 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
                         }
                     }
                 }
-                if (candidates.length < onDetector.length) {
-                    notes.push(`Read ${candidates.length} of ${onDetector.length} frames to keep loading quick.`);
-                }
                 let done = 0;
                 let unreadable = probeRead.failed ? 1 : 0;
                 let firstError: unknown = probeRead.error;
@@ -708,15 +705,20 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
                     return info;
                 });
                 let usable = infos.filter((f): f is FrameInfo => f !== undefined);
-                if (usable.length === 0 && unreadable === candidates.length && probeRead.index && probeRead.wave
+                let reusedProbe = false;
+                if (usable.length === 0 && unreadable > 0 && probeRead.index && probeRead.wave
                     && !candidates.some((frame) => frame.url === probeRead.url)) {
                     const probe = onDetector.find((frame) => frame.url === probeRead.url);
                     if (probe) {
                         const info = await readInfo(probe);
                         if (info) {
                             usable = [info];
+                            reusedProbe = true;
                         }
                     }
+                }
+                if (candidates.length < onDetector.length) {
+                    notes.push(`Read ${candidates.length + (reusedProbe ? 1 : 0)} of ${onDetector.length} frames to keep loading quick.`);
                 }
                 if (unreadable > 0) {
                     if (usable.length === 0) {
