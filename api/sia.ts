@@ -133,7 +133,8 @@ export async function GET(request: Request): Promise<Response>
             offset += chunk.length;
         }
         const xml = new TextDecoder('utf-8').decode(body);
-        if (!/<([A-Za-z_][\w.-]*:)?VOTABLE\b/.test(xml)) {
+        // A complete VOTable both opens and closes its root; a reply cut short must not be cached.
+        if (!/(<\/([A-Za-z_][\w.-]*:)?VOTABLE\s*>|<([A-Za-z_][\w.-]*:)?VOTABLE\b[^>]*\/>)\s*$/.test(xml)) {
             return error(502, 'Upstream reply was not a VOTable');
         }
         const hasError = /<([A-Za-z_][\w.-]*:)?INFO\b(?=[^>]*\sname\s*=\s*["']QUERY_STATUS["'])(?=[^>]*\svalue\s*=\s*["']ERROR["'])/i.test(xml);

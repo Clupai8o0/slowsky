@@ -37,6 +37,12 @@ describe('SIA proxy', () => {
         expect(await response.json()).toEqual({ error: 'Upstream reply was not a VOTable' });
         expect(response.headers.get('cache-control')).toBe('no-store');
     });
+    it('rejects a VOTable cut short without caching it', async () => {
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<ns0:VOTABLE xmlns:ns0="http://www.ivoa.net/xml/VOTable/v1.3"><ns0:RESOURCE>'));
+        const response = await GET(req());
+        expect(response.status).toBe(502);
+        expect(response.headers.get('cache-control')).toBe('no-store');
+    });
     it.each(['ERROR', 'error'])('passes through a prefixed VOTable with QUERY_STATUS %s without caching it', async status => {
         const xml = `<ns0:VOTABLE xmlns:ns0="http://www.ivoa.net/xml/VOTable/v1.3"><ns0:RESOURCE><ns0:INFO value='${status}' name='QUERY_STATUS'>Query failed</ns0:INFO></ns0:RESOURCE></ns0:VOTABLE>`;
         vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(xml));
