@@ -24,11 +24,12 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   - **Stack** averages all frames into one. Faint things show up; moving things smear.
   - **Subtract** compares two visits that you pick from two lists, A (earlier) and B (later). It starts on the
     first and the last visit. Here a visit is a run of the frames on show, each taken less than 10 days after the
-    one before, so it can hold more than one frame (step 4 below says how frames are chosen). A visit with more
-    than one frame is averaged first. **B − A** shows B minus A: blue marks more light in A, orange more light in
-    B, and black about the same (a change smaller than about 2.5 times the picture's typical scatter). **A + B**
-    adds the two visits pixel by pixel instead, so light in both adds up and light in only one counts once. When
-    all the frames fall in one visit, Subtract shows the last frame minus the first.
+    one before, so it can hold more than one frame. This grouping is looser than the one step 4 below uses to
+    choose the frames. A visit with more than one frame is averaged first. **B − A** shows B minus A: blue marks
+    more light in A, orange more light in B, and black about the same (a change smaller than about 2.5 times the
+    picture's typical scatter) or a pixel that is blank in either visit. **A + B** adds the two visits pixel by
+    pixel instead, so light in both adds up and light in only one counts once; a pixel that is blank in either
+    visit shows black. When all the frames fall in one visit, Subtract shows the last frame minus the first.
 - Play, pause and step through frames with the buttons, the space bar, the arrow keys or `[` and `]`, or click
   a frame in the strip of small dated pictures.
 - Change the colour: a slider picks a wavelength from 0.75 to 5.00 µm (all infrared). It also picks which of
@@ -38,7 +39,7 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   and Epsilon Indi B, corner marks for the others).
 - See rings that mark stars from ESA's Gaia DR3 catalogue that are brighter than G magnitude 19, and turn them off
   or on. Live views fetch up to the 400 brightest within 0.2° of the centre; the offline copy holds those within
-  0.1°. Each frame rings only the 40 brightest of the stars in the picture. Subtract shows no rings.
+  0.1°. Each frame rings only the 40 brightest of the stars in the picture. Subtract shows no Gaia rings.
 - On a live view in Blink, switch on **Flagged pixels** to paint the pixels that the frame's own quality layer marks
   (cosmic-ray hits, for example), and read how many pixels are flagged and which three kinds are most common.
 - Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
@@ -59,9 +60,10 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
    `nasa-irsa-spherex`). The page reads the file header, the wavelength table, and then only the rows of the image
    that cover the view, using HTTP range requests. It never downloads a whole file.
 4. **Same-wavelength rule.** In a SPHEREx frame, each part of the detector sees a slightly different wavelength.
-   Frames are grouped into visits: a visit takes in every frame up to 10 days after its first one. For each visit,
-   the page keeps the one frame whose wavelength at the spot is closest to the chosen value, and only if the chosen
-   value is within half the bandwidth that the frame's own wavelength table gives for that spot (the narrow slice of colour that spot sees,
+   Frames from one detector are grouped into visits: a visit takes in every frame that starts up to 10 days after
+   its first one. For each visit, the page keeps the one frame whose wavelength at the spot is closest to the
+   chosen value, and only if the chosen value is within half the bandwidth that the frame's own wavelength table
+   gives for that spot (the narrow slice of colour that spot sees,
    not the detector's whole range). Visits with no such frame are left out, and a note on the page says how many.
    This keeps colour differences between frames small. Near a strong spectral line even that small difference can
    matter.
@@ -200,13 +202,15 @@ in it.
   of them, so neither gets a curve.
 - Stack is a plain average of all frames, pixel by pixel, with nothing thrown out, so a cosmic-ray hit or a trail
   in one frame still shows, only fainter. A pixel that is blank in some frames is the average of the frames that
-  have it. Subtract compares two visits at a time. A visit with several frames is a plain average of them too, so
-  a spot that was in only one of its frames can still show.
+  have it. Subtract compares two visits at a time (the first and last frame when there is only one visit). A
+  visit with several frames is a plain average of them too, so a spot that was in only one of its frames can
+  still show.
 
 ## In the repository but not switched on
 
 These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
-`src/ui/slots.ts`; only Flagged pixels is on). A preview build can switch them on with `VITE_PREVIEW_FEATURES`.
+`src/ui/slots.ts`; only Flagged pixels is on). A preview build can switch the first three on with
+`VITE_PREVIEW_FEATURES`. The sort hint is not connected to the page, so its switch shows nothing.
 
 - A list of candidate changes between the first and the last visit, with numbered marks on the sky
   (`src/lib/changes.ts`).
@@ -228,12 +232,14 @@ These parts are in the code but switched off on the site, so a visitor cannot us
   and no person labelled anything. It has not been tried on a real asteroid.
 - How well it does, on fake changes only: it missed many faint moving spots. In tests that kept one field out of
   training at a time, it labelled 55% of the fake movers whose peak was 3 to 5 times the noise as moving.
-- When it gives no label: when its input is broken; when the change is too faint, or more than twice as bright as
-  the brightest change in training; when the picture's values are too large to check; when its three inputs do not
-  agree or show no single spot of change; when its top two answers score about the same; or when a much brighter
-  change sits away from the centre of the square.
-- Nothing on the site loads the model or shows its answer. `src/ui/ml-hint.ts` holds the words it would show, each
-  with a note that it is an experimental hint trained only on fake changes, not a verdict.
+- When it gives no label: when its input is broken; when the change near the centre of the square is too faint;
+  when any pixel of the difference is more than twice as strong as the strongest change in training; when the
+  picture's values are too large to check; when its three inputs do not agree; when the difference is only an
+  even offset or an even slope across the square; when its top two answers score about the same; or when a much
+  stronger change sits away from the centre of the square.
+- Nothing on the site loads the model or shows its answer. `src/ui/ml-hint.ts` holds the words it would show and
+  puts the model's own label under each one (`HELPER_LABEL` in `src/lib/classify.ts`): "Experimental sort hint,
+  trained only on fake changes added to single frames. Never tested on real two-date changes. Not a verdict."
 
 ## Licence
 
