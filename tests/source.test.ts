@@ -390,6 +390,53 @@ describe('live Gaia catalogue (fake hosts)', () => {
         const res = await live.load({ ...request, fovDeg: 1 });
         expect(radius).toBe(0.2);
         expect(res.stars).toHaveLength(3);
+        expect(res.notes).toContain('Gaia stars are shown only within 0.2° of the centre.');
+        const narrow = await source(fetcher).load(request);
+        expect(narrow.notes.join(' ')).not.toContain('only within');
+    });
+
+    it('waits at most 1.5 s for a slow catalogue once the picture is ready', async () => {
+        const signals: AbortSignal[] = [];
+        const fetcher = catalogueFetcher((_host, _url, init) => new Promise<Response>((_resolve, reject) => {
+            signals.push(init!.signal!);
+            init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), { once: true });
+        }));
+        vi.useFakeTimers();
+        try {
+            let settled = false;
+            const loading = source(fetcher).load(request);
+            void loading.then(() => { settled = true; });
+            await vi.advanceTimersByTimeAsync(1400);
+            expect(settled).toBe(false);
+            await vi.advanceTimersByTimeAsync(200);
+            expect(settled).toBe(true);
+            const res = await loading;
+            expect(res.frames).toHaveLength(2);
+            expect(res.stars).toEqual([]);
+            expect(res.notes.filter((note) => note === 'Gaia stars are not available for this view.')).toHaveLength(1);
+            // The abandoned catalogue request is cancelled, not left running.
+            expect(signals.length).toBeGreaterThan(0);
+            expect(signals.every((signal) => signal.aborted)).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not hold an empty sky back for the full catalogue timeout', async () => {
+        const fetcher = catalogueFetcher((_host, _url, init) => new Promise<Response>((_resolve, reject) => {
+            init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), { once: true });
+        }));
+        vi.useFakeTimers();
+        try {
+            const live = createLiveSource({ fetch: fetcher, reader: fakeReader(), search: async () => [] });
+            const loading = live.load(request);
+            await vi.advanceTimersByTimeAsync(1600);
+            const res = await loading;
+            expect(res.frames).toEqual([]);
+            expect(res.stars).toEqual([]);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('does not credit Gaia when every catalogue star lies outside the grid', async () => {

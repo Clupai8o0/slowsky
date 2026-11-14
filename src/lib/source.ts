@@ -14,6 +14,7 @@ import { makeWcs, wcsFromHeader } from './wcs';
 import { groupVisits, sampleWave } from './wavelength';
 import { gridForView, gridSkyToPix, regridNorthUp } from './regrid';
 import { positionAt, targetById } from './targets';
+import { fetchGaia, type GaiaRow } from './gaia';
 
 export type SkyStage = 'search' | 'headers' | 'pixels' | 'regrid';
 
@@ -378,9 +379,52 @@ function knownTarget(id: TargetId | undefined): Target | undefined
 
 // ---------- live ----------
 
-import { fetchGaia, type GaiaRow } from './gaia';
-
 const GAIA_UNAVAILABLE_NOTE = 'Gaia stars are not available for this view.';
+const GAIA_MAX_RADIUS_DEG = 0.2; // the widest cone gaia.ts accepts
+const GAIA_GRACE_MS = 1500; // how long a finished picture waits for a slow catalogue
+
+// Runs the Gaia cone search beside the frame work. `rows` never rejects: undefined means "no catalogue".
+function startCatalogue(req: SkyRequest, fetcher: typeof fetch): { rows: Promise<GaiaRow[] | undefined>; stop: () => void }
+{
+    const own = new AbortController();
+    const onAbort = (): void => own.abort(req.signal?.reason);
+    req.signal?.addEventListener('abort', onAbort, { once: true });
+    const radiusDeg = Math.max(0.000001, Math.min(GAIA_MAX_RADIUS_DEG, req.fovDeg * Math.SQRT1_2));
+    const rows = fetchGaia(req.center, radiusDeg, { signal: own.signal, fetcher, timeoutMs: 6000 })
+        .then((found) => found.rows, () => undefined);
+    return {
+        rows,
+        stop: () => {
+            req.signal?.removeEventListener('abort', onAbort);
+            own.abort();
+        },
+    };
+}
+
+// Waits for a promise at most `ms` longer: undefined when time runs out, a rejection when the caller aborts.
+function settleWithin<T>(pending: Promise<T>, ms: number, signal?: AbortSignal): Promise<T | undefined>
+{
+    return new Promise<T | undefined>((resolve, reject) => {
+        const onAbort = (): void => {
+            clearTimeout(timer);
+            reject(signal?.reason);
+        };
+        const timer = setTimeout(() => {
+            signal?.removeEventListener('abort', onAbort);
+            resolve(undefined);
+        }, ms);
+        signal?.addEventListener('abort', onAbort, { once: true });
+        pending.then((value) => {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
+            resolve(value);
+        }, (error: unknown) => {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
+            reject(error);
+        });
+    });
+}
 
 function gaiaStarsOnGrid(rows: GaiaRow[], grid: OutputGrid): GaiaStar[]
 {
@@ -405,10 +449,8 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
             req.signal?.throwIfAborted();
             const notes: string[] = [];
             const target = knownTarget(req.target);
-            const radiusDeg = Math.max(0.000001, Math.min(0.2, req.fovDeg * Math.SQRT1_2));
-            // Handle rejection immediately, even if the frame work fails before we await the catalogue.
-            const catalogue = fetchGaia(req.center, radiusDeg, { signal: req.signal, fetcher, timeoutMs: 6000 })
-                .then(({ rows }) => rows, () => undefined);
+            // Started now so it costs no waiting time; its failure is absorbed even if the frame work fails first.
+            const catalogue = startCatalogue(req, fetcher);
             req.onProgress?.({ stage: 'search', done: 0, total: 1 });
             const found = await search({ center: req.center, radiusDeg: 0.001, detector: req.detector }, req.signal);
             const onDetector = found.filter((f) => f.detector === req.detector);
@@ -472,19 +514,15 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
                 notes.push(`${plural(candidates.length - usable.length, 'frame')} left out: the spot is at the detector edge.`);
             }
             const core = await assemble(req, usable, visits, opts, notes);
-            const rows = await catalogue;
+            // The picture is ready: give a slow catalogue a short grace time, then go on without it.
+            const rows = await settleWithin(catalogue.rows, GAIA_GRACE_MS, req.signal);
+            catalogue.stop();
             req.signal?.throwIfAborted();
-            let stars: GaiaStar[] = [];
-            let available = rows !== undefined;
-            if (rows) {
-                try {
-                    stars = gaiaStarsOnGrid(rows, core.grid);
-                } catch {
-                    available = false;
-                }
-            }
-            if (!available) {
+            const stars = rows ? gaiaStarsOnGrid(rows, core.grid) : [];
+            if (!rows) {
                 notes.push(GAIA_UNAVAILABLE_NOTE);
+            } else if (stars.length > 0 && req.fovDeg * Math.SQRT1_2 > GAIA_MAX_RADIUS_DEG) {
+                notes.push(`Gaia stars are shown only within ${GAIA_MAX_RADIUS_DEG}° of the centre.`);
             }
             const records = core.frames.map((f) => f.frame.frame);
             return { source: 'live', stars, credits: credits(records, stars.length > 0), ...core };
@@ -746,7 +784,7 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
                 });
             } catch (error) {
                 req.signal?.throwIfAborted();
-                notes.push('Gaia stars are not available for this view.');
+                notes.push(GAIA_UNAVAILABLE_NOTE);
             }
             const records = core.frames.map((f) => f.frame.frame);
             return { source: 'snapshot', stars, credits: credits(records, stars.length > 0), ...core };
