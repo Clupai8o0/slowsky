@@ -66,21 +66,15 @@ export function planetxChartText(): { title: string; caption: string; notes: str
     return {
         title: 'How faint would Planet Nine be, and how deep do the searches go?',
         caption: 'The rows are in different bands and cannot be compared to better than roughly a magnitude. This is an estimate from published numbers, not a search result.',
-        notes: [TEXT.bandNote, TEXT.caveat, TEXT.wiseNote, TEXT.stackGain, modelExample().label, `Optical searches have ruled out about ${EXCLUDED_FRACTION.value * 10 ** AXIS.step}% of the published reference population`].map(sentence),
+        notes: [TEXT.bandNote, TEXT.caveat, TEXT.wiseNote, TEXT.stackGain, modelExample().label, `Optical searches have ruled out about ${Math.round(EXCLUDED_FRACTION.value * 100)}% of the published reference population`].map(sentence),
         references: references(),
     };
-}
-
-interface PlacedLabel {
-    x: number;
-    width: number;
-    lane: number;
 }
 
 export function planetxChartSvg(opts: { width?: number } = {}): string
 {
     const width = opts.width ?? 720;
-    const left = 230;
+    const left = Math.min(230, Math.round(width * 0.42));
     const right = 20;
     const plotWidth = width - left - right;
     const rows = planetxRows();
@@ -91,20 +85,6 @@ export function planetxChartSvg(opts: { width?: number } = {}): string
     let y = 20;
     const groups: string[] = [];
     rows.forEach((row, rowIndex) => {
-        const placed: PlacedLabel[] = [];
-        const labels = row.marks.map(mark => {
-            const textWidth = mark.text.length * 6.6;
-            const x = Math.max(left, Math.min(width - textWidth - 3, xFor(mark.from)));
-            let lane = 0;
-            while (placed.some(other => other.lane === lane && x < other.x + other.width + 4 && x + textWidth + 4 > other.x)) {
-                lane++;
-            }
-            const label = { x, width: textWidth, lane };
-            placed.push(label);
-            return label;
-        });
-        const lanes = Math.max(...labels.map(label => label.lane)) + 1;
-        const markY = y + Math.max(32, lanes * 14 + 8);
         const labelY = y + 13;
         const words = row.label.split(' ');
         const lines: string[] = [];
@@ -116,37 +96,79 @@ export function planetxChartSvg(opts: { width?: number } = {}): string
                 lines[last] += ` ${word}`;
             }
         }
+        const bandY = labelY + lines.length * 15;
+        const sortedMarks = row.marks.map((mark, index) => ({ mark, index }));
+        if (row.id === 'searches') {
+            sortedMarks.sort((a, b) => a.mark.from - b.mark.from || a.index - b.index);
+        }
+        let markY = y + (row.marks[0]?.kind === 'range' ? 30 : 23);
+        if (row.id === 'searches') {
+            markY = bandY + 13;
+        } else if (row.marks[0]?.kind === 'point') {
+            const mark = row.marks[0];
+            const rightEdge = xFor(mark.high ?? mark.from) + (mark.high === undefined ? 4 : 0);
+            if (rightEdge + 8 + mark.text.length * 6.6 > width && xFor(mark.low ?? mark.from) - 12 - mark.text.length * 6.6 < left) {
+                markY = bandY + 12;
+            }
+        }
         const rowLabels = lines.map((line, index) => `<text x="8" y="${labelY + index * 15}" fill="${ink}" font-size="13">${escapeText(line)}</text>`).join('');
-        groups.push(`<g data-row="${row.id}">${rowLabels}<text x="8" y="${labelY + lines.length * 15}" fill="${mute}" font-size="11">${escapeText(row.band)}</text>`);
-        row.marks.forEach((mark, index) => {
+        groups.push(`<g data-row="${row.id}">${rowLabels}<text x="8" y="${bandY}" fill="${mute}" font-size="11">${escapeText(row.band)}</text>`);
+        const above: { x: number; width: number }[] = [];
+        sortedMarks.forEach(({ mark, index }, lineIndex) => {
             const x = xFor(mark.from);
             const end = xFor(mark.to);
+            const currentY = markY + (mark.kind === 'tick' ? lineIndex * 15 : 0);
             const color = colors[rowIndex];
             const value = mark.kind === 'range' ? `${mark.from.toFixed(1)}–${mark.to.toFixed(1)}` : mark.from.toFixed(1);
             const uncertainty = mark.low !== undefined && mark.high !== undefined ? ` (${mark.low.toFixed(1)}–${mark.high.toFixed(1)})` : '';
             const paint = mark.style === 'outline' ? `fill="none" stroke="${color}" stroke-width="1.5"` : `fill="${color}"${mark.style === 'light' ? ' fill-opacity="0.28"' : ''}`;
             let shape = '';
             if (mark.kind === 'range') {
-                shape = `<rect x="${x}" y="${markY - 4}" width="${end - x}" height="8" rx="2" ${paint}/>`;
+                shape = `<rect x="${x}" y="${currentY - 4}" width="${end - x}" height="8" rx="2" ${paint}/>`;
             } else if (mark.kind === 'tick') {
-                shape = `<rect x="${x - 1}" y="${markY - 6}" width="2" height="12" ${paint}/>`;
+                shape = `<rect x="${x - 1}" y="${currentY - 5}" width="2" height="10" ${paint}/>`;
             } else {
-                shape = `<circle cx="${x}" cy="${markY}" r="4" ${paint}/>`;
+                shape = `<circle cx="${x}" cy="${currentY}" r="4" ${paint}/>`;
             }
-            const whisker = mark.low !== undefined && mark.high !== undefined ? `<line x1="${xFor(mark.low)}" y1="${markY}" x2="${xFor(mark.high)}" y2="${markY}" stroke="${color}"/>` : '';
-            const label = labels[index]!;
+            const whisker = mark.low !== undefined && mark.high !== undefined ? `<line x1="${xFor(mark.low)}" y1="${currentY}" x2="${xFor(mark.high)}" y2="${currentY}" stroke="${color}"/>` : '';
+            const textWidth = mark.text.length * 6.6;
+            let textX: number;
+            let textY: number;
+            let anchor = '';
+            let baseline = '';
+            if (mark.kind === 'range') {
+                textX = Math.max(0, Math.min(width - textWidth, x));
+                const below = row.id === 'p9-predicted' ? index === 0 : above.some(other => textX < other.x + other.width + 6 && textX + textWidth + 6 > other.x);
+                textY = currentY + (below ? 16 : -8);
+                if (!below) {
+                    above.push({ x: textX, width: textWidth });
+                }
+            } else {
+                const rightEdge = mark.kind === 'tick' ? x + 1 : xFor(mark.high ?? mark.from) + (mark.high === undefined ? 4 : 0);
+                const leftEdge = mark.kind === 'tick' ? x - 1 : xFor(mark.low ?? mark.from) - (mark.low === undefined ? 4 : 0);
+                const gap = mark.kind === 'tick' ? 6 : 8;
+                const flip = rightEdge + gap + textWidth > width;
+                textX = flip ? leftEdge - gap : rightEdge + gap;
+                textY = currentY;
+                anchor = flip ? ' text-anchor="end"' : '';
+                baseline = ' dominant-baseline="middle"';
+            }
+            const mono = /^\d/.test(mark.text) ? ' font-family="var(--mono, ui-monospace, monospace)"' : '';
             const survey = row.id === 'searches' ? ' data-survey-label="true"' : '';
-            groups.push(`<g data-mark="${row.id}" data-index="${index}"><title>${escapeText(`${value}${uncertainty}; ${mark.source}`)}</title>${whisker}${shape}<text${survey} x="${label.x}" y="${markY - 10 - label.lane * 14}" fill="${color}" font-size="11">${escapeText(mark.text)}</text></g>`);
+            groups.push(`<g data-mark="${row.id}" data-index="${index}"><title>${escapeText(`${value}${uncertainty}; ${mark.source}`)}</title>${whisker}${shape}<text${survey} x="${textX}" y="${textY}"${anchor}${baseline} fill="${color}" font-size="11"${mono}>${escapeText(mark.text)}</text></g>`);
         });
         groups.push('</g>');
-        y = Math.max(markY + 25, labelY + lines.length * 15 + 22);
+        const marksBottom = markY + (row.id === 'searches' ? (row.marks.length - 1) * 15 + 6 : row.marks[0]?.kind === 'range' ? 16 : 6);
+        y = Math.max(y + 46, marksBottom + 10, bandY + 10);
     });
     const axisY = y + 5;
     const height = axisY + 48;
     const ticks: string[] = [];
+    const grid: string[] = [];
     for (let mag = AXIS.min; mag <= AXIS.max; mag += AXIS.step) {
         const x = xFor(mag);
-        ticks.push(`<line x1="${x}" y1="${axisY}" x2="${x}" y2="${axisY + 5}" stroke="${mute}"/><text x="${x}" y="${axisY + 18}" text-anchor="middle" fill="${mute}" font-size="11">${mag}</text>`);
+        grid.push(`<line data-grid="true" x1="${x}" y1="20" x2="${x}" y2="${axisY}" stroke="${mute}" stroke-opacity="0.14"/>`);
+        ticks.push(`<line x1="${x}" y1="${axisY}" x2="${x}" y2="${axisY + 5}" stroke="${mute}"/><text x="${x}" y="${axisY + 18}" text-anchor="middle" fill="${mute}" font-size="11" font-family="var(--mono, ui-monospace, monospace)">${mag}</text>`);
     }
-    return `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="planetx-title planetx-desc" viewBox="0 0 ${width} ${height}" style="font-family: var(--mono, ui-monospace, monospace)"><title id="planetx-title">Planet Nine brightness and survey depths</title><desc id="planetx-desc">Estimated Planet Nine brightness, optical search limits, SPHEREx depths and the brightness of a nearby cold object. Rows use different bands.</desc>${groups.join('')}<line x1="${left}" y1="${axisY}" x2="${width - right}" y2="${axisY}" stroke="${mute}"/>${ticks.join('')}<text x="${width / 2}" y="${height - 5}" text-anchor="middle" fill="${mute}" font-size="10">apparent magnitude (fainter to the right; each row in its own band)</text></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="planetx-title planetx-desc" viewBox="0 0 ${width} ${height}"><title id="planetx-title">Planet Nine brightness and survey depths</title><desc id="planetx-desc">Estimated Planet Nine brightness, optical search limits, SPHEREx depths and the brightness of a nearby cold object. Rows use different bands.</desc>${grid.join('')}${groups.join('')}<line x1="${left}" y1="${axisY}" x2="${width - right}" y2="${axisY}" stroke="${mute}"/>${ticks.join('')}<text x="${width / 2}" y="${height - 5}" text-anchor="middle" fill="${mute}" font-size="10">apparent magnitude (fainter to the right; each row in its own band)</text></svg>`;
 }

@@ -26,7 +26,7 @@ describe('Planet Nine depth chart', () => {
         const text = planetxChartText();
         expect(text.caption).toMatch(/estimate/i);
         expect(text.references).toEqual(references());
-        expect(text.notes.join(' ')).toContain(`${EXCLUDED_FRACTION.value * 100}%`);
+        expect(text.notes.join(' ')).toContain(`${Math.round(EXCLUDED_FRACTION.value * 100)}%`);
         expect(text.notes.join(' ').toLowerCase()).toContain(TEXT.bandNote.toLowerCase());
         expect(JSON.stringify(text)).not.toMatch(/\b(discover|confirm|detect)\b/i);
     });
@@ -53,11 +53,12 @@ describe('Planet Nine depth chart', () => {
         for (const match of svg.matchAll(/<circle\b[^>]*\br="([\d.]+)"/g)) {
             expect(Number(match[1])).toBeLessThanOrEqual(5);
         }
-        expect([...svg.matchAll(/<line\b/g)]).toHaveLength((AXIS.max - AXIS.min) / AXIS.step + 3);
+        expect([...svg.matchAll(/<line\b/g)]).toHaveLength(2 * ((AXIS.max - AXIS.min) / AXIS.step + 1) + 2);
         expect(svg).not.toMatch(/<path\b/);
         expect(magToX(AXIS.min, 230, width - 250)).toBe(230);
         expect(magToX(AXIS.max, 230, width - 250)).toBe(width - 20);
         expect(magToX((AXIS.min + AXIS.max) / 2, 230, width - 250)).toBeCloseTo((230 + width - 20) / 2);
+        const left = Math.min(230, Math.round(width * 0.42));
         const marks = [...svg.matchAll(/<g data-mark="([^"]+)" data-index="(\d+)"[^>]*>([\s\S]*?)<\/g>/g)];
         expect(marks).toHaveLength(planetxRows().flatMap(row => row.marks).length);
         for (const match of marks) {
@@ -65,28 +66,84 @@ describe('Planet Nine depth chart', () => {
             const position = match[3]!.match(/<(?:rect|circle)\b[^>]*\b(?:x|cx)="([\d.]+)"/);
             expect(position).not.toBeNull();
             const actual = Number(position![1]) + (mark.kind === 'tick' ? 1 : 0);
-            expect(actual).toBeCloseTo(magToX(mark.from, 230, width - 250), 2);
+            expect(actual).toBeCloseTo(magToX(mark.from, left, width - left - 20), 2);
             expect(match[3]).toContain('<title>');
             if (mark.kind === 'range') {
                 const rectWidth = Number(match[3]!.match(/\bwidth="([\d.]+)"/)![1]);
-                expect(actual + rectWidth).toBeCloseTo(magToX(mark.to, 230, width - 250), 2);
+                expect(actual + rectWidth).toBeCloseTo(magToX(mark.to, left, width - left - 20), 2);
             }
             if (mark.kind === 'tick') {
                 expect(match[3]).toMatch(/\bwidth="2"/);
             }
         }
-        const labels = [...svg.matchAll(/<text data-survey-label="true" x="([\d.]+)" y="([\d.]+)"[^>]*>([^<]*)<\/text>/g)].map(match => ({ x: Number(match[1]), y: Number(match[2]), width: match[3]!.replace(/&amp;/g, '&').length * 6.6 }));
-        expect(labels).toHaveLength(SURVEYS.length + 1);
-        for (let i = 0; i < labels.length; i++) {
-            const first = labels[i]!;
-            expect(first.x).toBeGreaterThanOrEqual(0);
-            expect(first.x + first.width).toBeLessThanOrEqual(width);
-            for (let j = i + 1; j < labels.length; j++) {
-                const second = labels[j]!;
-                if (first.y === second.y) {
-                    expect(first.x + first.width <= second.x || second.x + second.width <= first.x).toBe(true);
+        const surveys = marks.filter(mark => mark[1] === 'searches');
+        expect(surveys).toHaveLength(SURVEYS.length + 1);
+        const magnitudes = surveys.map(mark => planetxRows()[3]!.marks[Number(mark[2])]!.from);
+        expect(magnitudes).toEqual([...magnitudes].sort((a, b) => a - b));
+        expect(surveys.map(mark => Number(mark[2]))).toEqual(planetxRows()[3]!.marks.map((mark, index) => ({ mark, index })).sort((a, b) => a.mark.from - b.mark.from || a.index - b.index).map(item => item.index));
+        const surveyYs = surveys.map(mark => {
+            const tickY = Number(mark[3]!.match(/<rect[^>]* y="([\d.]+)"/)![1]) + 5;
+            const labelY = Number(mark[3]!.match(/<text[^>]* y="([\d.]+)"/)![1]);
+            expect(labelY).toBe(tickY);
+            return labelY;
+        });
+        expect(new Set(surveyYs).size).toBe(surveys.length);
+        for (let i = 1; i < surveyYs.length; i++) {
+            expect(surveyYs[i]! - surveyYs[i - 1]!).toBe(15);
+        }
+        for (const row of planetxRows()) {
+            const rowStart = svg.indexOf(`<g data-row="${row.id}">`);
+            const nextRow = svg.indexOf('<g data-row=', rowStart + 1);
+            const section = svg.slice(rowStart, nextRow < 0 ? svg.indexOf('</g>', svg.lastIndexOf('<g data-mark=')) + 4 : nextRow);
+            const boxes = [...section.matchAll(/<text\b([^>]*)>([^<]*)<\/text>/g)].map(match => {
+                const attrs = match[1]!;
+                const x = Number(attrs.match(/\bx="([\d.]+)"/)![1]);
+                const y = Number(attrs.match(/\by="([\d.]+)"/)![1]);
+                const size = Number(attrs.match(/font-size="([\d.]+)"/)![1]);
+                const textWidth = match[2]!.replace(/&(?:amp|lt|gt|quot);/g, 'x').length * 6.6;
+                const start = attrs.includes('text-anchor="end"') ? x - textWidth : x;
+                const middle = attrs.includes('dominant-baseline="middle"');
+                return { start, end: start + textWidth, top: middle ? y - size / 2 : y - size, bottom: middle ? y + size / 2 : y };
+            });
+            for (const [i, box] of boxes.entries()) {
+                expect(box.start).toBeGreaterThanOrEqual(0);
+                expect(box.end).toBeLessThanOrEqual(width);
+                for (const other of boxes.slice(i + 1)) {
+                    expect(box.end <= other.start || other.end <= box.start || box.bottom <= other.top || other.bottom <= box.top).toBe(true);
                 }
             }
         }
+        const predicted = marks.filter(mark => mark[1] === 'p9-predicted');
+        for (const mark of predicted) {
+            const barY = Number(mark[3]!.match(/<rect[^>]* y="([\d.]+)"/)![1]) + 4;
+            const labelY = Number(mark[3]!.match(/<text[^>]* y="([\d.]+)"/)![1]);
+            expect(labelY).toBe(barY + (Number(mark[2]) === 0 ? 16 : -8));
+        }
+        for (const mark of marks.filter(item => item[1]!.startsWith('spherex-'))) {
+            expect(mark[3]).toContain('font-family="var(--mono, ui-monospace, monospace)"');
+            const barY = Number(mark[3]!.match(/<rect[^>]* y="([\d.]+)"/)![1]) + 4;
+            const labelY = Number(mark[3]!.match(/<text[^>]* y="([\d.]+)"/)![1]);
+            expect([barY - 8, barY + 16]).toContain(labelY);
+        }
+        for (const mark of marks.filter(item => ['p9-remaining', 'model', 'wise0855'].includes(item[1]!))) {
+            const body = mark[3]!;
+            const circleX = Number(body.match(/<circle[^>]* cx="([\d.]+)"/)![1]);
+            const circleY = Number(body.match(/<circle[^>]* cy="([\d.]+)"/)![1]);
+            const attrs = body.match(/<text([^>]*)>/)![1]!;
+            const labelX = Number(attrs.match(/\bx="([\d.]+)"/)![1]);
+            expect(Number(attrs.match(/\by="([\d.]+)"/)![1])).toBe(circleY);
+            const whisker = body.match(/<line[^>]* x1="([\d.]+)"[^>]* x2="([\d.]+)"/);
+            const minX = whisker ? Number(whisker[1]) : circleX - 4;
+            const maxX = whisker ? Number(whisker[2]) : circleX + 4;
+            expect(attrs.includes('text-anchor="end"') ? labelX <= minX - 8 : labelX >= maxX + 8).toBe(true);
+        }
+        expect(svg.match(/^<svg[^>]*>/)![0]).not.toContain('font-family');
+        const grid = [...svg.matchAll(/<line\b[^>]*data-grid="true"[^>]*\/>/g)];
+        expect(grid).toHaveLength((AXIS.max - AXIS.min) / AXIS.step + 1);
+        expect(grid.length).toBeLessThanOrEqual(6);
+        for (const line of grid) {
+            expect(line[0]).toContain('stroke="var(--mute, #9aa1b1)" stroke-opacity="0.14"');
+        }
+        expect([...svg.matchAll(/<text[^>]*font-family="var\(--mono, ui-monospace, monospace\)"[^>]*>(\d+)<\/text>/g)]).toHaveLength(grid.length);
     });
 });
