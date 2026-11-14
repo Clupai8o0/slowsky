@@ -22,7 +22,13 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 - Watch the frames three ways:
   - **Blink** plays the frames one after another, so things that move or change are easier to spot.
   - **Stack** averages all frames into one. Faint things show up; moving things smear.
-  - **Subtract** shows the last frame minus the first. Blue was there then, orange is there now.
+  - **Subtract** compares two visits that you pick from two lists, A (earlier) and B (later). It starts on the
+    first and the last visit. Here a visit is a run of the frames on show, each taken less than 10 days after the
+    one before, so it can hold more than one frame (step 4 below says how frames are chosen). A visit with more
+    than one frame is averaged first. **B − A** shows B minus A: blue marks more light in A, orange more light in
+    B, and black about the same (a change smaller than about 2.5 times the picture's typical scatter). **A + B**
+    adds the two visits pixel by pixel instead, so light in both adds up and light in only one counts once. When
+    all the frames fall in one visit, Subtract shows the last frame minus the first.
 - Play, pause and step through frames with the buttons, the space bar, the arrow keys or `[` and `]`, or click
   a frame in the strip of small dated pictures.
 - Change the colour: a slider picks a wavelength from 0.75 to 5.00 µm (all infrared). It also picks which of
@@ -32,12 +38,13 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   and Epsilon Indi B, corner marks for the others).
 - See rings that mark stars from ESA's Gaia DR3 catalogue that are brighter than G magnitude 19, and turn them off
   or on. Live views fetch up to the 400 brightest within 0.2° of the centre; the offline copy holds those within
-  0.1°. Each frame rings only the 40 brightest of the stars in the picture.
+  0.1°. Each frame rings only the 40 brightest of the stars in the picture. Subtract shows no rings.
 - On a live view in Blink, switch on **Flagged pixels** to paint the pixels that the frame's own quality layer marks
   (cosmic-ray hits, for example), and read how many pixels are flagged and which three kinds are most common.
 - Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
-- Copy a link that reopens the exact view: position, field, colour, frame and mode.
+- Copy a link that reopens the exact view: position, field, colour, frame and mode, and in Subtract the two
+  visits and whether they are subtracted or added.
 - Use it on a phone: on a narrow screen the page becomes one column, and its web app manifest lets you add it to
   the home screen.
 
@@ -52,9 +59,9 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
    `nasa-irsa-spherex`). The page reads the file header, the wavelength table, and then only the rows of the image
    that cover the view, using HTTP range requests. It never downloads a whole file.
 4. **Same-wavelength rule.** In a SPHEREx frame, each part of the detector sees a slightly different wavelength.
-   Frames taken within 10 days of each other count as one visit. For each visit, the page keeps the one frame whose
-   wavelength at the spot is closest to the chosen value, and only if the chosen value is within half the
-   bandwidth that the frame's own wavelength table gives for that spot (the narrow slice of colour that spot sees,
+   Frames are grouped into visits: a visit takes in every frame up to 10 days after its first one. For each visit,
+   the page keeps the one frame whose wavelength at the spot is closest to the chosen value, and only if the chosen
+   value is within half the bandwidth that the frame's own wavelength table gives for that spot (the narrow slice of colour that spot sees,
    not the detector's whole range). Visits with no such frame are left out, and a note on the page says how many.
    This keeps colour differences between frames small. Near a strong spectral line even that small difference can
    matter.
@@ -63,8 +70,9 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 6. **Lining up.** The page removes zodiacal light, the glow of sunlit dust in the solar system (the archive's own
    model of it is in each file). Then it resamples every frame onto one grid with north up, using the sky mapping
    stored in each file's header.
-7. **Drawing.** All frames are drawn with one brightness scale, so a frame that looks brighter has higher values
-   in the data. Higher values are not always a real change in the sky (see Limits).
+7. **Drawing.** All frames, and the Stack picture, are drawn with one brightness scale, so a frame that looks
+   brighter has higher values in the data. Higher values are not always a real change in the sky (see Limits).
+   Subtract's A + B picture gets a brightness scale of its own, and B − A uses the blue and orange scale.
 8. **Saved copy first.** A live read takes 20 to 45 seconds, so the five preset targets open from a snapshot: a
    small copy of real SPHEREx frames saved with the site in `public/snapshot/`. Steps 4 to 7 run on it just as on
    live frames; the lookup and the byte reads were done when the copy was made. **Go live**
@@ -139,6 +147,7 @@ Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md
 | Grok 4.7 (through Grok Build) | xAI | Reviewing code; checking the source list |
 | ElevenLabs | ElevenLabs | AI voice in the demo video |
 | GPT Image | OpenAI | Decorative images, if used, marked where they appear |
+| Change sort hint (a small neural network, `public/models/change-classifier.json`) | Trained in this repo with PyTorch, by scripts that Codex and Claude wrote | Nothing yet: it is switched off and the site does not use it (see "In the repository but not switched on") |
 
 Sam chose the idea and makes every product decision. `DECISIONS.md` is his own log of them; AI tools do not write
 in it.
@@ -189,7 +198,42 @@ in it.
 - The picture's brightness scale is for viewing. The brightness curve is relative to nearby stars, not in physical
   units. The centre of R Draconis is too bright for the camera in every saved frame, and Barnard's Star's in most
   of them, so neither gets a curve.
-- Stack is a plain average of all frames. Subtract compares only the first and last frame.
+- Stack is a plain average of all frames, pixel by pixel, with nothing thrown out, so a cosmic-ray hit or a trail
+  in one frame still shows, only fainter. A pixel that is blank in some frames is the average of the frames that
+  have it. Subtract compares two visits at a time. A visit with several frames is a plain average of them too, so
+  a spot that was in only one of its frames can still show.
+
+## In the repository but not switched on
+
+These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
+`src/ui/slots.ts`; only Flagged pixels is on). A preview build can switch them on with `VITE_PREVIEW_FEATURES`.
+
+- A list of candidate changes between the first and the last visit, with numbered marks on the sky
+  (`src/lib/changes.ts`).
+- False colour: one picture made from two wavelengths (`src/lib/falsecolour.ts`).
+- For R Draconis, the light in a ring around its too-bright centre, look by look, as a line or a table
+  (`src/lib/halo.ts`, `src/ui/halo-view.ts`).
+- A machine-learning sort hint for each candidate change, described below.
+
+**The change sort hint.** A small neural network (`public/models/change-classifier.json`, run by
+`src/lib/classify.ts`). Its card is `public/models/change-classifier.card.json`; its test results are in `models/`.
+
+- What it looks at: a 15 × 15 pixel square around one candidate change, from the earlier picture, the later one and
+  their difference.
+- What it would say: which of four kinds of change the spot looks most like, among the fake changes it was trained
+  on: a moving spot, a spot whose light went up or down, a camera or processing effect, or plain noise. It does not
+  say what the spot is, and it does not look for planets.
+- What it learned from: only fake changes added to single real SPHEREx frames (DR1 and QR3) of the five preset
+  fields (`scripts/ml_stamps.py`, `scripts/ml_train_cnn.py`). It never saw two real dates or a real moving object,
+  and no person labelled anything. It has not been tried on a real asteroid.
+- How well it does, on fake changes only: it missed many faint moving spots. In tests that kept one field out of
+  training at a time, it labelled 55% of the fake movers whose peak was 3 to 5 times the noise as moving.
+- When it gives no label: when its input is broken; when the change is too faint, or more than twice as bright as
+  the brightest change in training; when the picture's values are too large to check; when its three inputs do not
+  agree or show no single spot of change; when its top two answers score about the same; or when a much brighter
+  change sits away from the centre of the square.
+- Nothing on the site loads the model or shows its answer. `src/ui/ml-hint.ts` holds the words it would show, each
+  with a note that it is an experimental hint trained only on fake changes, not a verdict.
 
 ## Licence
 
