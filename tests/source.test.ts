@@ -193,6 +193,9 @@ describe('live source (fake SIA and S3)', () => {
         broken.cards.delete('ZCMPTYPE');
         fakes[0]!.flagsHeader = valid;
         fakes[1]!.flagsHeader = broken;
+        // Each frame its own WCS, so a context taken from the wrong frame would fail.
+        fakes[1]!.cards.CRPIX2 = 1020.5 + 150;
+        fakes[2]!.cards.CRPIX2 = 1020.5 + 300;
         const reader = fakeReader(fakes);
         const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record) });
         const result = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: 1 });
@@ -207,12 +210,14 @@ describe('live source (fake SIA and S3)', () => {
             expect(frame.context!.url).toBe(fake.record.url);
             expect(frame.context!.box).toBe(imageRead.box);
             expect(frame.context!.wcs.params).toEqual(makeWcs(wcsFromHeader(headerFromCards(fake.cards))).params);
+            expect(frame.context!.wcs.params.crpix).toEqual(makeWcs(wcsFromHeader(headerFromCards(fake.cards))).params.crpix);
             if (fake === fakes[0]) {
                 expect(frame.context!.flags).toEqual({ layout: parseFlagsLayout(valid, 5760), names: flagNames(valid) });
             } else {
                 expect(frame.context).not.toHaveProperty('flags');
             }
         }
+        expect(new Set(result.frames.map(({ frame }) => frame.context!.wcs.params.crpix[1])).size).toBe(3);
     });
 
     it('keeps a visit when only the farther frame contains the chosen wavelength', async () => {
@@ -410,6 +415,23 @@ describe('live source (fake SIA and S3)', () => {
         expect(result.notes).toContain('Read 2 of 4 frames to keep loading quick.');
         expect(result.locked.map(l => l.frame.url)).toEqual([reader.headers[0]]);
         expect(reader.headers.filter(url => url === reader.headers[0])).toHaveLength(1);
+    });
+
+    it('keeps FLAGS context on the probed frame whose index is reused', async () => {
+        const fakes = [...stepped('p', 60900, false, 2), ...stepped('q', 61080, false, 2)];
+        for (const f of fakes) {
+            f.flagsHeader = flagsHeader();
+        }
+        const reader = counting(fakes);
+        const result = await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 2, maxDeltaUm: 1 })
+            .load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: lambdaAtCentre(fakes[1]!) });
+        const probe = reader.headers[0]!;
+        expect(result.frames.some(({ frame }) => frame.frame.url === probe)).toBe(true);
+        expect(reader.headers.filter(url => url === probe)).toHaveLength(1);
+        for (const { frame } of result.frames) {
+            expect(frame.context!.url).toBe(frame.frame.url);
+            expect(frame.context!.flags!.names).toEqual(flagNames(flagsHeader()));
+        }
     });
 
     it('uses the cached probe when a picked candidate fails and another is at the edge', async () => {
