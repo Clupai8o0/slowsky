@@ -37,7 +37,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         short: 'Dim at some colours',
         kind: 'spectrum',
         headline: 'Epsilon Indi B, missing colours',
-        show: 'Two brown dwarfs: heavier than planets, too light to shine like stars. Change the colour: they fade where methane and water soak up light.',
+        show: 'Two brown dwarfs: heavier than planets, too light to shine like stars. Change the colour: they are dim where methane and water soak up light.',
         not: 'No brightness curve is drawn for it here. Blinking shows how it moves; it does not test whether its brightness changes.',
     },
     wise0855: {
@@ -50,9 +50,9 @@ export const COPY: Record<TargetId, TargetCopy> = {
     },
     rdra: {
         display: 'R Draconis',
-        short: 'Too bright to measure',
+        short: 'Centre too bright to measure',
         kind: 'saturated',
-        headline: 'R Draconis, too bright to measure',
+        headline: 'R Draconis, too bright at the centre',
         show: 'A giant star that swells and shrinks. Look at the glow around it, not the centre.',
         not: 'Its centre is too bright for the camera in every saved frame, so the centre cannot be measured.',
     },
@@ -71,7 +71,7 @@ export const MODE_HINT = {
 } as const;
 
 export const STAGE_TEXT = {
-    search: 'Asking NASA’s archive for every look at this spot',
+    search: 'Asking NASA’s archive for its looks at this spot',
     headers: 'Reading the files',
     pixels: 'Fetching the pixels',
     regrid: 'Lining the frames up',
