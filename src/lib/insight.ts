@@ -96,7 +96,7 @@ export function validateQuestion(value: unknown): string
 }
 export const CHANGE_LINE_STARTS = ['Brightness relative to the reference stars', 'Largest change from the median brightness', 'Difference image at the target', 'Shift in position'] as const;
 export const TRUST_LINE_STARTS = ['Lowest signal-to-noise among the points', 'Reference stars:', 'Visits:'] as const;
-// Brightness includes its caveats; a difference without a time-order line includes signal and visits.
+// Brightness includes its caveats; a difference without time order includes a faint-point caveat and visits.
 export function askRows(sheet: string[], picked: number[]): { lines: number[]; trust: number[] }
 {
     const selected = new Set(picked);
@@ -109,7 +109,7 @@ export function askRows(sheet: string[], picked: number[]): { lines: number[]; t
     const other = [...selected].some((n) => matches(n, [CHANGE_LINE_STARTS[2], CHANGE_LINE_STARTS[3]]));
     const difference = [...selected].some((n) => matches(n, [CHANGE_LINE_STARTS[2]]));
     const lines = sheet.flatMap((_, i) => selected.has(i + 1) && (!(brightness || other) || !matches(i + 1, TRUST_LINE_STARTS)) ? [i + 1] : []);
-    const trust = brightness ? sheet.flatMap((line, i) => TRUST_LINE_STARTS.some((start) => line.startsWith(start)) ? [i + 1] : []) : other ? (difference ? [TRUST_LINE_STARTS[0], TRUST_LINE_STARTS[2]] : [TRUST_LINE_STARTS[2]]).flatMap((start) => sheet.flatMap((line, i) => line.startsWith(start) ? [i + 1] : [])) : [];
+    const trust = brightness ? sheet.flatMap((line, i) => TRUST_LINE_STARTS.some((start) => line.startsWith(start)) ? [i + 1] : []) : other ? (difference ? [TRUST_LINE_STARTS[0], TRUST_LINE_STARTS[2]] : [TRUST_LINE_STARTS[2]]).flatMap((start) => sheet.flatMap((line, i) => line.startsWith(start) && (start !== TRUST_LINE_STARTS[0] || /\bbelow 1\b/i.test(line)) ? [i + 1] : [])) : [];
     return { lines, trust };
 }
 export function joinRows(sheet: string[], lines: number[]): string
@@ -172,7 +172,10 @@ export function factSheet(f: InsightFacts): string[]
     return lines;
 }
 type Bound = 'min' | 'max' | undefined;
-type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound };
+type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound; medianDirection?: 'above' | 'below' | 'either' | 'less'; scatter?: boolean };
+const CHANGE_VERBS = /\b(?:got|became|grew|rose|ris|climb|increas|brighten|gain|fell|fall|drop|fad|dimm|decreas|declin|lost|went|jump|spik|surg|soar|shot|shoot|grow|becom|dims?\b|dip|sank|sink|slip|slid|plung|plummet|reach|stay|remain|swing|swung|shift|leap)/i;
+const MEDIAN_TIME_WORDS = /\b(?:first|last\b|latest|final|earl|later\b|now\b|end|finish|start|recent|visit|second\b|third|fourth|fifth)/i;
+const OTHER_SUBJECT = /\b(?:reference|comparison|scatter|spread|nois|signal|snr|s\/n|difference|frame|shift)/i;
 // The direction of a bound written just before a number: "more than 100" is a floor, "below 1" a ceiling.
 function boundBefore(text: string, ai: boolean): Bound
 {
@@ -193,7 +196,7 @@ const meanings: [RegExp, string][] = [
     [/^Frames in each visit\b/i, 'frame|image|exposure'],
     [/^Time from first to last visit\b/i, 'visit|span|apart|baseline|over|across|within|between|period|separat|later|after|first|last|cover|shift|mov'],
     [/^Brightness relative\b/i, 'bright|flux|relative|ratio|level|value|reading|measure|point|went|rise|rose|climb|drop|fell|fall|dip|chang|from|increas|decreas|dim|fade|light'],
-    [/^Largest change\b/i, 'chang|differ|bright|dim|faint|fade|fading|rise|rose|drop|fell|fall|dip|swing|jump|median|largest|peak|increas|decreas|light|went|up(?!\\p{L})|down|above|below|either side|grew|gain|lost|vari'],
+    [/^Largest change\b/i, 'chang|differ|bright|dim|faint|fade|fading|rise|rose|drop|fell|fall|dip|swing|jump|median|largest|peak|increas|decreas|light|went|up(?!\\p{L})|down|above it|below it|either side|grew|gain|lost|vari'],
     [/^Lowest signal-to-noise\b/i, 'signal|noise|s/n|snr'],
     [/^Reference stars\b/i, 'reference|comparison|control|star'],
     [/^Scatter of each\b/i, 'scatter|spread|reference|comparison|control|steady|stable'],
@@ -236,9 +239,11 @@ function sheetFacts(sheet: string[]): NumberFact[]
             if (!stems) { continue; }
             const words = new RegExp(`(?:^|[^\\p{L}])(?:${stems})`, 'iu');
             const count = countNouns.find(([pattern]) => pattern.test(label));
+            const direction = /^Largest change from the median brightness$/i.test(label) ? segment[2]!.match(/(?:\b(above|below) it|\b(either) side|\b(less) than\s+1 percent)\.?$/i) : null;
+            const medianDirection = (direction?.[1] ?? direction?.[2] ?? direction?.[3])?.toLowerCase() as NumberFact['medianDirection'];
             for (const list of lists(segment[2]!)) {
                 const bound = boundBefore(segment[2]!.slice(0, list.start), false);
-                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined }); });
+                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined, medianDirection, scatter: /^Scatter of each$/i.test(label) }); });
             }
         }
     }
@@ -294,6 +299,15 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
                 if (!facts.some((fact) => {
                     if (fact.bound && fact.bound !== bound) { return false; }
                     if (fact.value !== val || (integer && !fact.integer) || !fact.words.test(fact.required && noun ? value : context)) { return false; }
+                    if (fact.scatter && CHANGE_VERBS.test(context)) { return false; }
+                    if (fact.medianDirection) {
+                        if (!/\bmedian\b/i.test(value) || CHANGE_VERBS.test(value) || MEDIAN_TIME_WORDS.test(value) || OTHER_SUBJECT.test(context)) { return false; }
+                        const down = /\b(?:below|beneath|dimmer|fainter|lower)\b|\bunder\s+(?:(?:the|its)\s+median|it)\b/i.test(value);
+                        const up = /\b(?:above|brighter|higher)\b|\bover\s+(?:(?:the|its)\s+median|it)\b/i.test(value);
+                        if ((fact.medianDirection === 'above' && down) || (fact.medianDirection === 'below' && up)
+                            || (fact.medianDirection === 'either' && (up || down) && !/\beither side\b/i.test(value))
+                            || (fact.medianDirection === 'less' && (up || down) && !/\bless than\b/i.test(value))) { return false; }
+                    }
                     if (noun && (!fact.nouns?.test(noun) || (fact.required && !fact.required.test(value)))) { return false; }
                     if (fact.unit) { return list.unit === fact.unit; }
                     if (unitlessBlocked) { return false; }

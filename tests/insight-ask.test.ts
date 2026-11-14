@@ -177,7 +177,8 @@ at 4.67 micron.
 You get a fact sheet. Every line on it was measured by the tool's own code.
 
 Rules:
-- Write every number in digits, exactly as the fact sheet prints it, followed by the sheet's unit, and next to the words the sheet uses for it (for example "shifted 10.4 arcsec", "3 visits", "12 percent brighter"). Never convert a unit, and never work out a rate, a ratio, a count or a date.
+- Write every number in digits, exactly as the fact sheet prints it, followed by the sheet's unit, and next to the words the sheet uses for it (for example "shifted 10.4 arcsec", "3 visits", "12 percent above the median"). Never convert a unit, and never work out a rate, a ratio, a count or a date.
+- The "Largest change" line is a distance from the median, not a change over time. Write it as "N percent above the median", "N percent below the median", "N percent either side of the median" or "less than 1 percent from the median", in a sentence of its own with no words about change over time, visits or dates, and take the direction over time only from the time-order line.
 - Use numbers only from the fact sheet or from the text above, written exactly as they appear there. Never work
   out a new number, and never quote a distance, age, mass, date or catalogue value from memory.
 - You may say in words what is widely known about a named target, with no numbers, and say that it is background
@@ -343,14 +344,13 @@ describe('ask reply checks', () => {
     });
     it('pairs trust only with the relevant measurements', () => {
         const sheet = ['Target:', 'Brightness relative to the reference stars', 'Largest change from the median brightness', 'Difference image at the target', 'Shift in position', 'Lowest signal-to-noise among the points', 'Reference stars:', 'Visits:', 'Position:'];
-        const withoutTime = sheet.filter((_, i) => i !== 1);
+        const withoutTime = ['Target:', 'Position:', 'Wavelength:', 'Visits:', 'Lowest signal-to-noise among the points: below 1.', 'Reference stars:', 'Frames left out:', 'Difference image at the target', 'Shift in position'];
         const cases: [string[], number[], number[], number[]][] = [
             [sheet, [2], [2], [6, 7, 8]], [sheet, [3], [2, 3], [6, 7, 8]],
-            [sheet, [4], [2, 4], [6, 7, 8]], [withoutTime, [3], [3], [5, 7]],
-            [sheet, [5], [5], [8]], [sheet, [5, 6], [5], [8]],
-            [withoutTime, [3, 6], [3], [5, 7]], [withoutTime, [2], [2], [5, 6, 7]],
-            [withoutTime, [3, 4], [3, 4], [5, 7]],
-            [withoutTime.filter((_, i) => i !== 4), [3], [3], [6]],
+            [sheet, [4], [2, 4], [6, 7, 8]], [withoutTime, [8], [8], [5, 4]],
+            [sheet, [5], [5], [8]],
+            [withoutTime, [8, 9], [8, 9], [5, 4]],
+            [withoutTime.filter((_, i) => i !== 4), [7], [7], [4]],
             [sheet, [6], [6], []], [sheet, [7], [7], []], [sheet, [8], [8], []],
             [sheet, [2, 8], [2], [6, 7, 8]], [sheet, [1, 6], [1, 6], []], [sheet, [1, 7], [1, 7], []],
         ];
@@ -358,9 +358,32 @@ describe('ask reply checks', () => {
             expect(askRows(input, picked)).toEqual({ lines, trust });
         }
     });
+    it.each([
+        [0.5, ['D'], [8], [5, 4], true],
+        [48, ['D'], [8], [4], true],
+        [101, ['D'], [8], [4], true],
+        [48, ['S', 'D'], [8], [4], false],
+        [0.5, ['S', 'D'], [8], [5, 4], true],
+    ] as const)('only attaches the signal caveat for difference: %s %j', async (snr, choices, lines, trust, usable) => {
+        const h = setup();
+        h.facts.lightCurve = { points: [{ mjd: 61000, relative: 1, snr }], refScatter: [0.02], dropped: 0 };
+        h.facts.difference = { peakSigma: 3.4 };
+        const sheet = factSheet(h.facts);
+        const picked = choices.map((choice) => choice === 'S' ? 5 : 8);
+        expect(askRows(sheet, picked)).toEqual({ lines, trust });
+        const reply = picked.map((n) => String.fromCharCode(64 + n)).join(',');
+        expect(pickLines(reply, sheet) === null).toBe(!usable);
+        h.complete.mockResolvedValueOnce({ text: reply, refused: false, model: 'fixture-model' });
+        const response = await h.POST(h.request({ facts: h.facts, question }));
+        expect(response.status).toBe(usable ? 200 : 502);
+        const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ text: joinRows(sheet, [...lines]), picked, lines, trust, model: 'fixture-model', dropped: 0, cached: false, kind: 'answer' }));
+        if (usable) { expect(await askInsight(h.facts, question, { fetcher })).toMatchObject({ picked, lines, trust }); }
+        else { await expect(askInsight(h.facts, question, { fetcher })).rejects.toMatchObject({ code: 'failed' }); }
+    });
     it('preserves the row invariants for every one-to-three-line selection', () => {
         const full = ['Target:', 'Brightness relative to the reference stars', 'Largest change from the median brightness', 'Difference image at the target', 'Shift in position', 'Lowest signal-to-noise among the points', 'Reference stars:', 'Visits:', 'Position:'];
-        for (const sheet of [full, full.filter((_, i) => i !== 1)]) {
+        const withoutTime = ['Target:', 'Position:', 'Wavelength:', 'Visits:', 'Lowest signal-to-noise among the points: below 1.', 'Reference stars:', 'Frames left out:', 'Difference image at the target', 'Shift in position'];
+        for (const sheet of [full, withoutTime]) {
             for (let mask = 1; mask < 1 << sheet.length; mask++) {
                 const picked = sheet.flatMap((_, i) => mask & (1 << i) ? [i + 1] : []);
                 if (picked.length > 3) { continue; }
@@ -389,6 +412,9 @@ describe('ask reply checks', () => {
             h.complete.mockResolvedValueOnce({ text: picked.map((n) => String.fromCharCode(64 + n)).join(','), refused: false, model: 'fixture-model' });
             const response = await h.POST(h.request({ facts: h.facts, question }));
             const rows = askRows(sheet, picked);
+            if (!usable) {
+                expect(rows).toEqual({ lines: [sheet.findIndex((line) => line.startsWith(choices[0] === 'M' ? CHANGE_LINE_STARTS[3] : CHANGE_LINE_STARTS[2])) + 1], trust: choices[0] === 'D' ? [5, 4] : [4] });
+            }
             const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ text: joinRows(sheet, rows.lines), picked, ...rows, model: 'fixture-model', dropped: 0, cached: false, kind: 'answer' }));
             if (usable) {
                 expect(response.status).toBe(200);
