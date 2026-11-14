@@ -233,7 +233,8 @@ describe('flags slot', () => {
 describe('slots for modules still in their lanes', () => {
     it('ship switched off and show nothing until a module fills them', () => {
         expect(FEATURES.changes).toBe(false);
-        expect(FEATURES.falseColour).toBe(false);
+        expect(FEATURES.falseColour).toBe(true);
+        expect(FEATURES.fcReading).toBe(false);
         expect(FEATURES.halo).toBe(false);
         const dated = frame('a');
         dated.frame.tMin = 60000;
@@ -248,7 +249,7 @@ describe('slots for modules still in their lanes', () => {
         expect(marks.innerHTML).toBe('');
         expect(renderHalo(el, v)).toBe(false);
         const none = { key: false, layer: false, note: '' };
-        expect(mountFalseColour(el, () => {}).update(v, true)).toEqual(none);
+        expect(mountFalseColour(el, () => {}, { enabled: false }).update(v, true)).toEqual(none);
         expect(mountFalseColour(el, () => {}, { enabled: true }).update(null, true)).toEqual(none);
     });
 });
@@ -285,11 +286,12 @@ describe('false colour slot', () => {
         expect(state.note).toBe('False colour is not shown for this view: the frames at the two wavelengths give a colour to less than half of it.');
         expect(h.paint).not.toHaveBeenCalled();
     });
-    it('defaults both switches off and accepts fcReading in preview features', () => {
-        expect(DEFAULT_FEATURES.falseColour).toBe(false);
+    it('defaults false colour on and its colour reading off, and accepts both in preview features', () => {
+        expect(DEFAULT_FEATURES.falseColour).toBe(true);
         expect(DEFAULT_FEATURES.fcReading).toBe(false);
         expect(featuresFrom('falseColour,fcReading')).toMatchObject({ falseColour: true, fcReading: true });
-        expect(featuresFrom('fcReading,-fcReading')).toMatchObject({ falseColour: false, fcReading: false });
+        expect(featuresFrom('fcReading,-fcReading')).toMatchObject({ falseColour: true, fcReading: false });
+        expect(featuresFrom('-falseColour')).toMatchObject({ falseColour: false, fcReading: false });
         for (const reading of [false, true]) {
             const h = colourHarness(false, reading);
             expect(JSON.stringify(h.slot.update(view(sky([frame('a')])), true))).toBe('{"key":false,"layer":false,"note":""}');
@@ -335,8 +337,8 @@ describe('false colour slot', () => {
         expect(slot.update(v, true).note).not.toMatch(/At the centre|No reading is given|signal-to-noise/);
     });
 
-    it('does not switch the slot on when only fcReading is enabled', async () => {
-        vi.stubEnv('VITE_PREVIEW_FEATURES', 'fcReading');
+    it('keeps the slot off when false colour is switched off, even with fcReading enabled', async () => {
+        vi.stubEnv('VITE_PREVIEW_FEATURES', '-falseColour,fcReading');
         vi.resetModules();
         try {
             const { mountFalseColour: mount } = await import('../src/ui/slots');

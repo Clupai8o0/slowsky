@@ -1,5 +1,5 @@
 // Empty, feature-flagged slots for modules built in their own lanes, so those lanes edit this file and never
-// the shared UI. A slot shows only when its flag is on AND it has something to show. Flags is on; the rest are off.
+// the shared UI. A slot shows only when its flag is on AND it has something to show. Flags and falseColour are on; the rest are off.
 // - spectrum: a panel under the colour step, for src/lib/spectrum-chart.ts. Ships only once the owner logs it
 //   in DECISIONS.md.
 // - flags: a "Flagged pixels" toggle in the sky legend, a layer over the sky and a line under the legend, from
@@ -30,7 +30,7 @@ import { readVariance } from './error-maps';
 
 export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, fcReading: false, halo: false, mlHint: false, epoch: false });
+    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: false });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.

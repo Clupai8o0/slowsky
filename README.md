@@ -42,6 +42,12 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   0.1°. Each frame rings only the 40 brightest of the stars in the picture. Subtract shows no Gaia rings.
 - On a live view in Blink, switch on **Flagged pixels** to paint the pixels that the frame's own quality layer marks
   (cosmic-ray hits, for example), and read how many pixels are flagged and which three kinds are most common.
+- On a live view in Stack, switch on **False colour** to see one picture made from two wavelengths: the one on
+  screen and a partner (4.60 µm when the one on screen is below 2.42 µm, otherwise 1.25 µm). Blue means brighter at
+  the shorter wavelength, orange brighter at the longer one. It is a picture for looking, not a measurement: the
+  two wavelengths were not taken at the same times, areas where not every frame has usable pixels are hatched
+  instead of coloured, and the page lists these limits under the picture (`src/lib/falsecolour.ts`,
+  `src/lib/falsecolour-view.ts`).
 - Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode, and in Subtract the two
@@ -209,12 +215,13 @@ in it.
 ## In the repository but not switched on
 
 These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
-`src/ui/slots.ts`; only Flagged pixels is on). A preview build can switch the first three on with
-`VITE_PREVIEW_FEATURES`. The sort hint is not connected to the page, so its switch shows nothing.
+`src/ui/slots.ts`; only Flagged pixels and False colour are on). A preview build can switch the first two and the
+older picture on with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to the page, so its switch shows nothing.
 
 - A list of candidate changes between the first and the last visit, with numbered marks on the sky
   (`src/lib/changes.ts`).
-- False colour: one picture made from two wavelengths (`src/lib/falsecolour.ts`).
+- A sentence that reads the colour at one spot of the False colour picture (`fcReading`). It stays off: the page
+  shows the picture and does not measure a colour.
 - For R Draconis, the light in a ring around its too-bright centre, look by look, as a line or a table
   (`src/lib/halo.ts`, `src/ui/halo-view.ts`).
 - Older picture (switched off in this build): in Blink on the 0.1° or 0.25° field, flips the sky between the 2MASS K
