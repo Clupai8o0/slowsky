@@ -1,0 +1,10 @@
+{
+  "purpose": "One frozen confirmation of the CNN on a fresh synthetic test draw. Written and committed before the run; the run happens once and its result decides (orchestrator -ba, 14 Nov 2026).",
+  "frozenCommit": "7ef10af",
+  "frozenFiles": ["scripts/ml_stamps.py", "scripts/ml_train.py", "scripts/ml_train_cnn.py"],
+  "models": "The five leave-one-target-out fold models, rebuilt exactly as at 7ef10af (seed 20261114, 2,500 stamps per class per target, 30-epoch cap). Each must reproduce its recorded fold metrics on the original test stamps exactly, proving it is the frozen model.",
+  "freshDraw": {"stampSeed": 731905, "perClassPerTarget": 2500, "note": "Never used in training, selection or any earlier test. Same five SPHEREx fields and frames as training (only the fake injections and fake noise are new), so this is a fresh synthetic draw, not new sky."},
+  "passRule": "Same gates as check(), on the mean over the 5 fields of the fresh draw: macro-F1 >= 0.80, mover recall at S/N>=10 >= 0.85, artifact precision >= 0.85, CNN macro-F1 >= trees macro-F1 + 0.01 on the same fresh stamps, CNN macro-F1 >= the round-one trees baseline + 0.01. Size and determinism are properties of the frozen model, already checked at 7ef10af. Per-field numbers are reported, not gated.",
+  "uncertainty": {"bootstrapSeed": 4410, "replicates": 1000, "method": "Resample each field's fresh test stamps with replacement; 95% interval of the mean artifact precision. Also the spread over the 5 fields."},
+  "runs": "Exactly one. No rerun, no second seed, whatever comes out."
+}
