@@ -129,9 +129,13 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
             const where = e && l ? 'at least one frame of each visit'
                 : `at least one frame of the ${e ? 'earlier' : 'later'} visit`;
             const flagged = `The archive flags the brightest pixel within 12″ as OVERFLOW in ${where}`;
-            line = !mover && /\b(brighter|fainter|appeared)\b/i.test(said)
-                ? `${flagged}, so the difference in light between the visits is not shown (candidate).`
-                : `${line} ${flagged}.`;
+            if (!mover && /\b(brighter|fainter|appeared)\b/i.test(said)) {
+                // Keep the finder's own S/N (as it wrote it); drop only the direction it read.
+                const snr = /S\/N (?:> 50|\d+(?:\.\d+)?)/.exec(said)?.[0];
+                line = `A difference between the visits${snr ? ` at ${snr}` : ''} (candidate). ${flagged}, so the brightness comparison is not shown.`;
+            } else {
+                line = `${line} ${flagged}.`;
+            }
         }
         const needed = mover ? light : [...early, ...late];
         const missing = needed.filter(n => n === null).length;
@@ -140,19 +144,19 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
     const allUnread = kept.length > 0 && kept.every(c => c.unread === 'all');
     const lead: string[] = [];
     if (allUnread) {
-        lead.push('The archive flags could not be read for the listed spots.');
+        lead.push('The archive flags could not be read for the listed spots, so they are listed without that check.');
     }
     for (const c of kept) {
         if (!allUnread && c.unread === 'all') {
-            c.line += ' The archive flags for this spot could not be read.';
+            c.line += ' The archive flags for this spot could not be read, so it is listed without that check.';
         } else if (!allUnread && c.unread === 'some') {
-            c.line += ' Some of the archive flags for this spot could not be read.';
+            c.line += ' Some of the archive flags for this spot could not be read, so that check is incomplete.';
         }
     }
     lead.push(...withCaveats(kept));
-    const names = [...new Set([...order, ...dropped])].filter(n => dropped.has(n)).join(' or ');
+    const names = [...new Set([...order, ...dropped])].filter(n => dropped.has(n)).join(', ');
     const dropNote = count === 0 ? undefined : count === 1
-        ? `1 spot is not listed: in at least one frame, the brightest pixel within 12″ of it carries an archive flag (${names}).`
-        : `${count} spots are not listed: in at least one frame, the brightest pixel within 12″ of each carries an archive flag (${names}).`;
+        ? `1 spot is not listed: in at least one frame of the visit with more light, the brightest pixel within 12″ of it carries an archive flag (${names}).`
+        : `${count} spots are not listed: in at least one frame of the visit with more light, the brightest pixel within 12″ of each carries an archive flag (${names}).`;
     return { kept, dropNote, allUnread, lead };
 }

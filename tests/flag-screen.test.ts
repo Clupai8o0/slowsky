@@ -17,7 +17,7 @@ describe('archive flag screen', () => {
             ['late', { obsId: 'late', names: () => ['TRANSIENT'] }]]);
         const result = screen([candidate], { earlier: [earlier], later: [later] }, flags, ['TRANSIENT']);
         expect(result.kept).toHaveLength(0);
-        expect(result.dropNote).toBe('1 spot is not listed: in at least one frame, the brightest pixel within 12″ of it carries an archive flag (TRANSIENT).');
+        expect(result.dropNote).toBe('1 spot is not listed: in at least one frame of the visit with more light, the brightest pixel within 12″ of it carries an archive flag (TRANSIENT).');
     });
 
     it('uses the light visit, header order, and lets a drop win over unread', () => {
@@ -26,7 +26,7 @@ describe('archive flag screen', () => {
         const a = { ...candidate, sign: -1 as const };
         const b = { ...a, id: 'b', pix: { x: 2, y: 1 } };
         const r = screen([a, b], { earlier: [earlier], later: [later] }, flags, ['OUTLIER', 'NONFUNC']);
-        expect(r.dropNote).toBe('2 spots are not listed: in at least one frame, the brightest pixel within 12″ of each carries an archive flag (OUTLIER or NONFUNC).');
+        expect(r.dropNote).toBe('2 spots are not listed: in at least one frame of the visit with more light, the brightest pixel within 12″ of each carries an archive flag (OUTLIER, NONFUNC).');
         expect(r.kept).toHaveLength(0);
         expect(screen([candidate], { earlier: [earlier], later: [later] }, flags, []).kept).toHaveLength(1);
     });
@@ -36,7 +36,7 @@ describe('archive flag screen', () => {
             ['late', { obsId: 'late', names: () => [] }]]);
         const r = screen([candidate, { ...candidate, id: 'b', kind: 'mover', gaiaMatch: true }],
             { earlier: [earlier], later: [later] }, flags, []);
-        expect(r.kept[0]!.line).toBe('The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of the earlier visit, so the difference in light between the visits is not shown (candidate).');
+        expect(r.kept[0]!.line).toBe('A difference between the visits (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of the earlier visit, so the brightness comparison is not shown.');
         // A mover's light is only in its light visit (later here), so the earlier visit's OVERFLOW is not its own.
         expect(r.kept[1]!.line).toBe('A spot appeared.');
         flags.set('late', { obsId: 'late', names: () => ['OVERFLOW'] });
@@ -46,7 +46,10 @@ describe('archive flag screen', () => {
         // A sentence with no brighter/fainter reading keeps its words and gets the flag sentence added.
         const plain = screen([{ ...candidate, reason: 'Changed at S/N 7.0 (candidate).' }], { earlier: [earlier], later: [later] }, flags, []);
         expect(plain.kept[0]!.line).toBe('Changed at S/N 7.0 (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of each visit.');
-        for (const c of [...r.kept, ...both.kept, ...plain.kept]) {
+        const snr = screen([{ ...candidate, reason: 'A catalogue star here is brighter than in the earlier image (S/N 12.0; candidate).' }],
+            { earlier: [earlier], later: [later] }, flags, []);
+        expect(snr.kept[0]!.line).toBe('A difference between the visits at S/N 12.0 (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of each visit, so the brightness comparison is not shown.');
+        for (const c of [...r.kept, ...both.kept, ...plain.kept, ...snr.kept]) {
             expect(c.line.replace(c.reason, '')).not.toMatch(/discovery|detected|confirmed|proves|changed|brighter/i);
         }
     });
@@ -58,10 +61,10 @@ describe('archive flag screen', () => {
         const b = { ...a, id: 'b', pix: { x: 2, y: 1 } };
         const r = screen([a, b], { earlier: [earlier], later: [later] }, flags, []);
         expect(r.lead).toEqual(['Shared caveat.']);
-        expect(r.kept[0]!.line).toContain('Some of the archive flags for this spot could not be read.');
+        expect(r.kept[0]!.line).toContain('Some of the archive flags for this spot could not be read, so that check is incomplete.');
         expect(r.kept[1]!.line).not.toContain('Shared caveat.');
         const all = screen([a, { ...b, caveat: 'Other caveat.' }], { earlier: [earlier], later: [later] }, new Map(), []);
-        expect(all.lead).toEqual(['The archive flags could not be read for the listed spots.']);
+        expect(all.lead).toEqual(['The archive flags could not be read for the listed spots, so they are listed without that check.']);
         expect(all.kept[0]!.line).toBe('A spot appeared. Shared caveat.');
         expect(all.kept[1]!.line).toBe('A spot appeared. Other caveat.');
     });
@@ -164,7 +167,7 @@ describe('change slot', () => {
         expect(signals[0]!.aborted).toBe(true);
         await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
         slot.render(box, marks, next);
-        expect(box.innerHTML).toContain('The archive flags could not be read for the listed spots.');
+        expect(box.innerHTML).toContain('The archive flags could not be read for the listed spots, so they are listed without that check.');
         expect(box.innerHTML).not.toContain('Checking the archive');
     });
 
@@ -177,7 +180,7 @@ describe('change slot', () => {
         delete b.context;
         const box = {} as HTMLElement;
         slot.render(box, {} as HTMLElement, { source: 'snapshot', result: sky([a, b]), index: 0, mode: 'blink' });
-        expect(box.innerHTML).toContain('The archive flags could not be read for the listed spots.');
+        expect(box.innerHTML).toContain('The archive flags could not be read for the listed spots, so they are listed without that check.');
         expect(box.innerHTML).not.toContain('Checking the archive');
         expect(reader.index).not.toHaveBeenCalled();
     });
