@@ -172,16 +172,22 @@ export function factSheet(f: InsightFacts): string[]
     return lines;
 }
 type Bound = 'min' | 'max' | undefined;
-type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound; medianDirection?: 'above' | 'below' | 'either' | 'less'; scatter?: boolean };
-const CHANGE_VERBS = /\b(?:got|became|grew|rose|ris|climb|increas|brighten|gain|fell|fall|drop|fad|dimm|decreas|declin|lost|went|jump|spik|surg|soar|shot|shoot|grow|becom|dims?\b|dip|sank|sink|slip|slid|plung|plummet|reach|swing|swung|shift|leap|brighter|fainter|dimmer|higher|lower|chang|vari|fluctuat|peak|differ|now\b)/i;
-const SCATTER_BOUND = /\b(?:below|under|above|over|less than|more than|at least|at most|up to)\s*$/i;
+type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound; medianDirection?: 'above' | 'below' | 'either' | 'less'; scatter?: { count: string; values: string[] }; snr?: boolean };
 function medianSentence(value: string, fact: NumberFact): boolean
 {
     const referent = '(?:it|the median|its median)';
     const ending = fact.medianDirection === 'less' ? `less than 1 percent(?: from ${referent})?`
         : fact.medianDirection === 'either' ? `${fact.value} percent either side(?: of ${referent})?`
         : `${fact.value} percent ${fact.medianDirection} ${referent}`;
-    return new RegExp(`^(?:the|its) largest change from (?:the|its) median(?: brightness)? (?:is|was) ${ending}\\.?$`, 'i').test(value.trim());
+    return new RegExp(`^(?:the|its) largest change from (?:the|its) median(?: brightness)? (?:is|was) ${ending}\\.$`, 'i').test(value.trim());
+}
+function scatterSentence(value: string, scatter: NonNullable<NumberFact['scatter']>): boolean
+{
+    if (!scatter.count) { return false; }
+    const escaped = scatter.values.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const list = escaped.length === 1 ? escaped[0] : `${escaped.slice(0, -1).join(', ')}${escaped.length > 2 ? ',?' : ''} and ${escaped[escaped.length - 1]}`;
+    const singular = scatter.count === '1';
+    return new RegExp(`^the(?: ${scatter.count})? (?:reference|comparison) ${singular ? 'star (?:scatters by|has a scatter of)' : 'stars (?:scatter by|have a scatter of)'} ${list} percent\\.$`, 'i').test(value.trim());
 }
 // The direction of a bound written just before a number: "more than 100" is a floor, "below 1" a ceiling.
 function boundBefore(text: string, ai: boolean): Bound
@@ -250,7 +256,9 @@ function sheetFacts(sheet: string[]): NumberFact[]
             const medianDirection = (direction?.[1] ?? direction?.[2] ?? direction?.[3])?.toLowerCase() as NumberFact['medianDirection'];
             for (const list of lists(segment[2]!)) {
                 const bound = boundBefore(segment[2]!.slice(0, list.start), false);
-                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined, medianDirection, scatter: /^Scatter of each$/i.test(label) }); });
+                const scatterCount = line.match(/^Reference stars:\s*(\d+) with available scatter\./i)?.[1];
+                const scatter = /^Scatter of each$/i.test(label) ? { count: scatterCount ?? '', values: list.values } : undefined;
+                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined, medianDirection, scatter, snr: /^Lowest signal-to-noise\b/i.test(label) }); });
             }
         }
     }
@@ -266,6 +274,8 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
 {
     const facts = sheetFacts(sheet);
     const visitCount = Number(sheet.join('\n').match(/^Visits:\s*(?:at least\s+)?(\d+)\./m)?.[1] ?? 3);
+    const exactLine = sheet.join('\n').match(/^Visits:\s*(\d+)\./m)?.[1];
+    const exactVisits = exactLine === undefined ? null : Number(exactLine);
     const target = sheet.join('\n').match(/^Target:\s*(.+)\.$/m)?.[1];
     const dash = '[-\\u2010-\\u2015\\u2212]';
     const names: string[] = [];
@@ -295,8 +305,9 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             const follower = list.follower.trimStart().replace(/^-\s*/, '');
             const nounFollower = follower.replace(/^of\s+(?:the|its|their|these|those)\s+/i, '');
             const followingWords = nounFollower.match(/^[a-z]+(?:-[a-z]+)*(?:\s+[a-z]+(?:-[a-z]+)*)?/i)?.[0].split(/\s+/) ?? [];
-            const noun = list.unit ? undefined : followingWords.find((word) => countingNoun.test(word));
-            const lead = boundBefore(value.slice(0, list.start), true);
+            const noun = list.unit ? undefined : countingNoun.test(followingWords[0] ?? '') ? followingWords[0] : /^(?:in|on|at|by|over|under|above|below|across|through|from|to|of|for|and|or|the)$/i.test(followingWords[0] ?? '') ? undefined : countingNoun.test(followingWords[1] ?? '') ? followingWords[1] : undefined;
+            const prefix = value.slice(0, list.start);
+            const lead = boundBefore(prefix, true);
             const unitlessBlocked = Boolean(list.unit) || /^[°′″$€£±×^/]/.test(follower) || /^[A-Z]/.test(follower) || foreign.test(follower);
             for (const [index, raw] of list.values.entries()) {
                 const val = Number(raw.replace('−', '-'));
@@ -305,13 +316,18 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
                 if (integer && MISSION_COUNTS.some((entry) => entry.value === val && entry.nouns.test(follower))) { continue; }
                 if (!facts.some((fact) => {
                     if (fact.bound && fact.bound !== bound) { return false; }
+                    // A bound the sheet does not give ("fewer than 30 frames" for exactly 30) is refused. "Over" and
+                    // "above" straight before days or arcsec are prepositions: "10.4 arcsec over 20.0 days".
+                    const preposition = /\b(?:over|above)\s*$/i.test(prefix) && (fact.unit === 'days' || fact.unit === 'arcsec');
+                    if (bound && !fact.bound && !preposition) { return false; }
                     if (fact.value !== val || (integer && !fact.integer) || !fact.words.test(fact.required && noun ? value : context)) { return false; }
-                    if (fact.scatter && (!/scatter/i.test(value) || !/reference|comparison/i.test(value) || /target/i.test(value)
-                        || CHANGE_VERBS.test(value) || SCATTER_BOUND.test(value.slice(0, list.start)))) { return false; }
+                    if (fact.scatter && !scatterSentence(value, fact.scatter)) { return false; }
                     if (fact.medianDirection && !medianSentence(value, fact)) { return false; }
+                    if (fact.nouns && !noun) { return false; }
                     if (noun && (!fact.nouns?.test(noun) || (fact.required && !fact.required.test(value)))) { return false; }
                     if (fact.unit) { return list.unit === fact.unit; }
                     if (unitlessBlocked) { return false; }
+                    if (fact.snr && !/\b(?:signal-to-noise|s\/n|snr)(?:\s+ratio)?(?:\s+among the points)?\s+(?:is only|was only|is|was|of)\s*$/i.test(prefix)) { return false; }
                     return true;
                 })) { return true; }
             }
@@ -332,7 +348,8 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
         const unitWords = '(?:percent|per\\s+cent|%|sigma|σ|standard\\s+deviations?|arcsec(?:onds?)?|″|degrees?|deg|°|microns?|micrometres?|micrometers?|µm|um|days?)';
         if (new RegExp(`\\b(?:a couple|a few|several|a handful|some|many|dozens)(?:\\s+of)?\\s+${unitWords}(?![\\p{L}])`, 'iu').test(value)) { return true; }
         value = value.replace(new RegExp(`\\b(?:one|a|an)(?=[\\s-]+${unitWords}(?![\\p{L}]))`, 'giu'), '1');
-        value = value.replace(/\bfewer\s+than\s+(?:3|three)\s+visits\b/gi, 'few visits');
+        // The prompt's own trust rule, "fewer than 3 visits", is true only when the sheet counts fewer than 3.
+        if (exactVisits !== null && exactVisits < 3) { value = value.replace(/\bfewer\s+than\s+(?:3|three)\s+visits\b/gi, 'few visits'); }
         // A name, or any token that mixes letters and digits, is never a quantity: "It moved WISE J085510.83 arcsec."
         for (const token of value.matchAll(/(?<![\w.])(?:NAME|[A-Za-z][\w.]*\d[\w.]*)(?![\w])/g)) {
             const after = value.slice(token.index + token[0].length);
@@ -376,8 +393,7 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     for (const raw of text.split(/\r?\n/)) {
         const line = raw.trim();
         if (!line) { continue; }
-        const colon = line.indexOf(':');
-        const label = colon >= 0 && colon < 30 && line.slice(colon, colon + 3) !== '://' ? line.slice(0, colon + 1) : '';
+        const label = line.match(/^(?:What this shows|How far to trust it|What to check next):/i)?.[0] ?? '';
         const body = line.slice(label.length).trim();
         const sentences = body.match(/.*?(?:[.!?](?=\s|$)|$)/g)?.map((s) => s.trim()).filter(Boolean) ?? [];
         if (invalid(label)) {
@@ -386,7 +402,7 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
         }
         const kept = sentences.filter((sentence) => {
             const labeled = `${label} ${sentence}`;
-            if (invalid(sentence) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
+            if (!/[.!?]$/.test(sentence) || /^\p{Ll}/u.test(sentence) || invalid(sentence) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
                 dropped++;
                 return false;
             }
