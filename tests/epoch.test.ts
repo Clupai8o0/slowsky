@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { planEpochTiles, readEpoch, TWO_MASS_K } from '../src/lib/epoch';
+import { describe, expect, it, vi } from 'vitest';
+import { EPOCH_CREDIT, EPOCH_NOTE, planEpochTiles, readEpoch, TWO_MASS_K } from '../src/lib/epoch';
 import type { EpochDecoded, EpochSource } from '../src/lib/epoch';
 import type { OutputGrid, SkyCoord } from '../src/lib/types';
 import { positionAt, targetById } from '../src/lib/targets';
 import { gridPixToSky, gridSkyToPix } from '../src/lib/regrid';
 import barnardGaia from './fixtures/epoch/barnard-gaia.json';
+import probes from './fixtures/epoch/probes.json';
 // @ts-expect-error Node types are not included in the browser TypeScript configuration.
 import { execFile } from 'node:child_process';
 
@@ -173,10 +174,21 @@ function synthetic(source: EpochSource, marks: Mark[] = [], opts: {
 
 describe('older 2MASS epoch', () => {
     it('uses the full published observing span and verbatim credit', () => {
-        expect(TWO_MASS_K.epochLabel).toBe('2MASS survey: 1997-06-01–2001-02-01');
+        const month = (mjd: number) => new Date((mjd - 40587) * 86400000).toISOString().slice(0, 7);
+        expect(TWO_MASS_K.fromMonth).toBe(month(probes.epoch.t_min));
+        expect(TWO_MASS_K.toMonth).toBe(month(probes.epoch.t_max));
+        expect(TWO_MASS_K.nightKnown).toBe(false);
+        expect(TWO_MASS_K.epochLabel).toBe('2MASS K band, taken between June 1997 and February 2001');
+        expect(EPOCH_NOTE).toBe('The older picture is a stretched survey image, not a measurement: its brightness cannot be compared with SPHEREx, and the night or nights it was taken on are not known.');
+        const properties = probes.candidates[0]!.properties;
+        expect(EPOCH_CREDIT).toBe(`2MASS: ${properties.obs_copyright}. HiPS tiles: ${properties.hips_copyright}, served by IRSA.`);
+        expect(TWO_MASS_K.hipsCreator).toBe(properties.hips_creator);
+        expect(TWO_MASS_K.emMin).toBe(Number(properties.em_min));
+        expect(TWO_MASS_K.emMax).toBe(Number(properties.em_max));
         expect(TWO_MASS_K.credit).toBe('University of Massachusetts & IPAC/Caltech');
         expect(TWO_MASS_K.propertiesUrl).toBe(`${TWO_MASS_K.baseUrl}/properties`);
-        expect(TWO_MASS_K.creditUrl).toBe('http://www.ipac.caltech.edu/2mass/');
+        expect(TWO_MASS_K.creditUrlAsPublished).toBe(properties.obs_copyright_url);
+        expect(TWO_MASS_K.creditUrl).toBe(probes.credit_url_check.http_redirects_to);
     });
 
     it('places a source 30 arcsec north above centre and 30 arcsec east to the left', async () => {
@@ -268,11 +280,11 @@ describe('older 2MASS epoch', () => {
         const source = { ...TWO_MASS_K, tileWidth: 8, hipsOrder: 15 };
         const grid = gridAt(undefined, 235, 6.15);
         const full = planEpochTiles(grid, source, 100000);
-        const capped = planEpochTiles(grid, source, 4);
+        const capped = planEpochTiles(grid, source, 4, 15);
         expect(capped.order).toBeLessThan(full.order);
         expect(capped.tiles.length).toBeGreaterThan(0);
         expect(capped.tiles.length).toBeLessThanOrEqual(4);
-        expect(capped).toEqual(planEpochTiles(grid, source, 4));
+        expect(capped).toEqual(planEpochTiles(grid, source, 4, 15));
         expect(capped.tiles.map((t) => t.npix)).toEqual(capped.tiles.map((t) => t.npix).sort((a, b) => a - b));
         for (const tile of capped.tiles) {
             expect(tile.url).toBe(`${source.baseUrl}/Norder${capped.order}/Dir${Math.floor(tile.npix / 10000) * 10000}/Npix${tile.npix}.jpg`);
@@ -312,27 +324,124 @@ describe('older 2MASS epoch', () => {
         expect(empty).toMatchObject({ ok: false, reason: 'empty' });
     });
 
-    it('leaves NaN for a 404 on one tile of four and reports it', async () => {
+    it('refuses missing tiles by default and reports exact covered area when partial is allowed', async () => {
         const grid = gridAt({ ra: 45, dec: 0 }, 121, 6.15);
         const plan = planEpochTiles(grid, TWO_MASS_K);
         expect(plan.tiles).toHaveLength(4);
         const failed = plan.tiles[0]!;
         const mock = synthetic(TWO_MASS_K, [], { fail: new Set([failed.npix]) });
-        const result = await readEpoch(grid, mock);
+        const refused = await readEpoch(grid, mock);
+        expect(refused).toMatchObject({ ok: false, reason: 'fetch', detail: 'Some tiles are missing', missing: [failed] });
+        const result = await readEpoch(grid, { ...mock, allowPartial: true });
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.missing).toEqual([{ ...failed, reason: 'fetch', detail: 'HTTP 404' }]);
             expect(result.pixels.some(Number.isNaN)).toBe(true);
             expect(result.pixels.some(Number.isFinite)).toBe(true);
+            const missingPixels = Array.from({ length: grid.width * grid.height }, (_, i) =>
+                referenceIndex(atPixel(grid, i % grid.width, Math.floor(i / grid.width)), plan.order) === failed.npix).filter(Boolean).length;
+            expect(result.covered).toBe(1 - missingPixels / result.pixels.length);
+            expect(result.holes).toBe(true);
         }
+        const complete = await readEpoch(grid, synthetic(TWO_MASS_K));
+        expect(complete).toMatchObject({ ok: true, covered: 1, holes: false });
     });
 
-    it('refuses more than half missing, and accepts exactly half when sky varies', async () => {
+    it('refuses missing tiles covering more than half the image, even when most tiles arrive', async () => {
+        const grid = gridAt({ ra: 269.4520769586187, dec: 4.693364966576667 }, 301, 1);
+        const plan = planEpochTiles(grid);
+        const counts = new Map<number, number>();
+        for (let y = 0; y < grid.height; y++) {
+            for (let x = 0; x < grid.width; x++) {
+                const cell = referenceIndex(atPixel(grid, x, y), plan.order);
+                counts.set(cell, (counts.get(cell) ?? 0) + 1);
+            }
+        }
+        const largest = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]!;
+        expect(plan.tiles.length).toBeGreaterThan(2);
+        expect(largest[1]).toBeGreaterThan(grid.width * grid.height / 2);
+        const result = await readEpoch(grid, { ...synthetic(TWO_MASS_K, [], { fail: new Set([largest[0]]) }), allowPartial: true });
+        expect(result).toMatchObject({ ok: false, reason: 'fetch', detail: 'Some tiles are missing', missing: [expect.objectContaining({ npix: largest[0] })] });
+    });
+
+    it('refuses three missing tiles when partial images are allowed', async () => {
         const grid = gridAt({ ra: 45, dec: 0 }, 121, 6.15);
         const ids = planEpochTiles(grid, TWO_MASS_K).tiles.map((t) => t.npix);
-        expect(await readEpoch(grid, synthetic(TWO_MASS_K, [], { fail: new Set(ids.slice(0, 3)) })))
+        expect(await readEpoch(grid, { ...synthetic(TWO_MASS_K, [], { fail: new Set(ids.slice(0, 3)) }), allowPartial: true }))
             .toMatchObject({ ok: false, reason: 'fetch', missing: expect.any(Array) });
-        expect((await readEpoch(grid, synthetic(TWO_MASS_K, [], { fail: new Set(ids.slice(0, 2)) }))).ok).toBe(true);
+    });
+
+    it('accepts exactly half finite samples when partial images are allowed', async () => {
+        const source: EpochSource = { ...TWO_MASS_K, format: 'fits' };
+        const grid = gridAt(undefined, 2, 1);
+        const marks = [{ sky: atPixel(grid, 0, 0), value: NaN }, { sky: atPixel(grid, 1, 0), value: NaN }];
+        const result = await readEpoch(grid, { source, ...synthetic(source, marks), allowPartial: true });
+        expect(result).toMatchObject({ ok: true, covered: 0.5, holes: true });
+    });
+
+    it('reports tile cap degradation and never silently exceeds the step limit', async () => {
+        const grid = gridAt({ ra: 269.4520769586187, dec: 4.693364966576667 }, 1201, 1);
+        const plan = planEpochTiles(grid);
+        expect(plan.wanted).toBe(9);
+        expect(plan.order).toBe(9);
+        expect(plan.tiles).toHaveLength(19);
+        expect(planEpochTiles(grid, TWO_MASS_K, 19).order).toBe(9);
+        const mock = synthetic(TWO_MASS_K);
+        const exact = await readEpoch(grid, { ...mock, maxPixels: grid.width * grid.height });
+        expect(exact).toMatchObject({ ok: true, order: 9, wantedOrder: 9, coarser: false });
+        const coarse = await readEpoch(grid, { ...mock, maxPixels: grid.width * grid.height, maxTiles: 16 });
+        expect(coarse).toMatchObject({ ok: true, order: 8, wantedOrder: 9, coarser: true });
+        if (coarse.ok) {
+            expect(coarse.pixelArcsec).toBeCloseTo(1.6104, 4);
+            expect(coarse.epoch).toMatchObject({ fromMonth: '1997-06', toMonth: '2001-02', nightKnown: false });
+        }
+        for (const options of [{ maxTiles: 4, maxStepDown: 1 }, { maxTiles: 16, maxStepDown: 0 }]) {
+            expect(await readEpoch(grid, { ...mock, ...options, maxPixels: grid.width * grid.height }))
+                .toMatchObject({ ok: false, reason: 'no-tiles', detail: 'The tile cap cannot cover this grid' });
+        }
+        // Choose the closest available sampling for a grid near half the base pixel size.
+        const source = { ...TWO_MASS_K, hipsOrder: 1 };
+        const base = Math.sqrt(Math.PI / 3) * 180 / Math.PI * 3600 / source.tileWidth;
+        expect(planEpochTiles(gridAt(undefined, 1, base * 0.49), source).wanted).toBe(1);
+    });
+
+    it('limits output size before fetching and permits the exact configured limit', async () => {
+        const mock = synthetic(TWO_MASS_K);
+        expect((await readEpoch(gridAt(undefined, 632), mock)).ok).toBe(true);
+        mock.calls.length = 0;
+        expect(await readEpoch(gridAt(undefined, 633), mock)).toMatchObject({ ok: false, reason: 'too-large', detail: 'This view is too large for the older picture' });
+        expect(mock.calls).toHaveLength(0);
+        expect((await readEpoch(gridAt(undefined, 633), { ...mock, maxPixels: 633 * 633 })).ok).toBe(true);
+        expect(await readEpoch(gridAt(undefined, 640), mock)).toMatchObject({ ok: false, reason: 'too-large' });
+    });
+
+    it('observes abort during the fill', async () => {
+        const controller = new AbortController();
+        const mock = synthetic(TWO_MASS_K);
+        const resultPromise = readEpoch(gridAt(undefined, 300), { ...mock, signal: controller.signal });
+        setTimeout(() => controller.abort(), 0);
+        expect(await resultPromise).toMatchObject({ ok: false, reason: 'fetch', detail: 'Request aborted' });
+    });
+
+    it('clears every tile timeout and removes the caller abort listener', async () => {
+        const controller = new AbortController();
+        const add = vi.spyOn(controller.signal, 'addEventListener');
+        const remove = vi.spyOn(controller.signal, 'removeEventListener');
+        const clear = vi.spyOn(globalThis, 'clearTimeout');
+        try {
+            const mock = synthetic(TWO_MASS_K);
+            expect((await readEpoch(gridAt(), { ...mock, signal: controller.signal })).ok).toBe(true);
+            const listeners = add.mock.calls.filter((call) => call[0] === 'abort');
+            expect(listeners).toHaveLength(mock.calls.length);
+            for (const listener of listeners) {
+                expect(remove.mock.calls.some((call) => call[0] === 'abort' && call[1] === listener[1])).toBe(true);
+            }
+            expect(clear).toHaveBeenCalledTimes(mock.calls.length);
+        } finally {
+            add.mockRestore();
+            remove.mockRestore();
+            clear.mockRestore();
+        }
     });
 
     it('returns no-tiles when even base cells cannot fit the cap or the grid is invalid', async () => {
@@ -557,6 +666,7 @@ live('live K orientation, scale, two stationary Gaia/2MASS stars and Barnard tra
     try {
         result = await readEpoch(grid, {
             maxTiles: 64,
+            maxPixels: grid.width * grid.height,
             fetch: (url, init) => fetch(url, { ...init, headers: { Origin: 'https://slowsky.vercel.app' } }),
             decode: decoder.decode,
         });

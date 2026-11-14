@@ -25,6 +25,9 @@
         "hips_tile_width": "512",
         "hips_tile_format": "jpeg",
         "hips_frame": "equatorial",
+        "hips_creator": "Oberto A. (CDS)",
+        "hips_copyright": "CNRS/Unistra",
+        "hips_overlay": "mean",
         "hips_pixel_scale": "2.236E-4",
         "obs_title": "2MASS K (2.16um)",
         "obs_copyright": "University of Massachusetts & IPAC/Caltech",
@@ -185,8 +188,14 @@
     }
   ],
   "choice": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/properties",
+  "properties_fetched": "2026-11-14",
+  "credit_url_check": {
+    "checked": "2026-11-14",
+    "http_redirects_to": "https://www.ipac.caltech.edu/2mass/",
+    "status": 200
+  },
   "epoch": {
-    "label": "2MASS survey: 1997-06-01–2001-02-01",
+    "label": "2MASS K band, taken between June 1997 and February 2001",
     "t_min": 50600,
     "t_max": 51941,
     "utc_dates": [
