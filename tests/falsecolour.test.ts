@@ -224,6 +224,31 @@ describe('pairStretch', () => {
 describe('falseColourRgba', () => {
     const lin: Stretch = { lo: 0, hi: 1, kind: 'linear' };
 
+    it.each([['short', 0.9, 0.45], ['long', 0.45, 0.9]])('retains normalized colour for a %s-bright star above the scale', (_name, short, long) => {
+        const reference = falseColourRgba(Float32Array.of(short), Float32Array.of(long), lin, lin);
+        for (const factor of [1.5 / 0.9, 10 / 0.9, 100 / 0.9]) {
+            const pixel = falseColourRgba(Float32Array.of(short * factor), Float32Array.of(long * factor), lin, lin);
+            for (let channel = 0; channel < 3; channel++) {
+                expect(Math.abs(pixel[channel]! * 0.9 - reference[channel]!)).toBeLessThanOrEqual(2);
+            }
+            expect(pixel[0] === 255 && pixel[2] === 255).toBe(false);
+            expect(Math.sign(pixel[2]! - pixel[0]!)).toBe(Math.sign(short - long));
+        }
+    });
+
+    it.each(['linear', 'asinh'] as const)('keeps saturated colours consistent across 1.5, 10 and 100 times the scale with %s', kind => {
+        const stretch: Stretch = { lo: 0, hi: 1, kind };
+        for (const [short, long] of [[1, 0.5], [0.5, 1]]) {
+            const colours = [1.5, 10, 100].map(factor => falseColourRgba(
+                Float32Array.of(short! * factor), Float32Array.of(long! * factor), stretch, stretch));
+            for (const pixel of colours) {
+                for (let channel = 0; channel < 3; channel++) {
+                    expect(Math.abs(pixel[channel]! - colours[0]![channel]!)).toBeLessThanOrEqual(2);
+                }
+            }
+        }
+    });
+
     it.each(['linear', 'asinh'] as const)('keeps a saturated core blue at every brightness with %s stretches', kind => {
         const s: Stretch = { lo: 2, hi: 12, kind };
         const l: Stretch = { lo: 7, hi: 17, kind };
@@ -668,7 +693,8 @@ describe('falseColourLegend', () => {
             blue: 'Blue: 1.12 µm (the shorter wavelength)',
             note: 'False colour, not what an eye would see. Both pictures share one brightness scale after each '
                 + "one's own sky level is taken off: blue means brighter at the shorter wavelength, orange means "
-                + 'brighter at the longer one, grey means about the same. Coloured rims around bright stars can '
+                + 'brighter at the longer one, grey means about the same. Where a star is too bright for that scale, '
+                + 'both colours are scaled down together, so its colour is kept but its brightness is not. Coloured rims around bright stars can '
                 + 'come from the two pictures not being equally sharp.',
         });
 

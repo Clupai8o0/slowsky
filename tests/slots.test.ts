@@ -230,6 +230,11 @@ describe('false colour slot', () => {
         const a = frame('a');
         const b = frame('b');
         b.lambdaAtCenter = 4.6;
+        for (let y = 0; y < 97; y++) {
+            for (let x = 0; x < 48; x++) {
+                b.data[y * 97 + x] = NaN;
+            }
+        }
         const v = view(sky([a]), 0, { mode: 'stack' });
         h.slot.update(v, true);
         h.calls[0]!.resolve(sky([b]));
@@ -239,7 +244,40 @@ describe('false colour slot', () => {
         expect(state.note).not.toMatch(/At the centre|signal-to-noise|seen at|The reading|Position is compared|count as one visit/);
         expect(state.note).toContain('Blue:');
         expect(state.note).toContain('Hatched areas have no colour:');
+        expect(state.split?.lead).toContain('Hatched areas have no colour:');
+        expect(state.split?.more).not.toContain('Hatched areas have no colour:');
         expect(state.split?.lead).toContain('a detector hit can show as a coloured point');
+    });
+
+    it('defaults the reading off when its override is omitted', async () => {
+        const calls: { resolve: (result: SkyResult) => void }[] = [];
+        const source = { load: () => new Promise<SkyResult>(resolve => calls.push({ resolve })) };
+        const slot = mountFalseColour({} as HTMLElement, vi.fn(), { enabled: true, source, paint: vi.fn() });
+        const b = frame('b');
+        b.lambdaAtCenter = 4.6;
+        const v = view(sky([frame('a')]), 0, { mode: 'stack' });
+        slot.update(v, true);
+        calls[0]!.resolve(sky([b]));
+        await flush();
+        expect(slot.update(v, true).note).not.toMatch(/At the centre|No reading is given|signal-to-noise/);
+    });
+
+    it('does not switch the slot on when only fcReading is enabled', async () => {
+        vi.stubEnv('VITE_PREVIEW_FEATURES', 'fcReading');
+        vi.resetModules();
+        try {
+            const { mountFalseColour: mount } = await import('../src/ui/slots');
+            const load = vi.fn();
+            const paint = vi.fn();
+            const slot = mount({} as HTMLElement, vi.fn(), { source: { load }, paint });
+            expect(slot.update(view(sky([frame('a')]), 0, { mode: 'stack' }), true))
+                .toEqual({ key: false, layer: false, note: '' });
+            expect(load).not.toHaveBeenCalled();
+            expect(paint).not.toHaveBeenCalled();
+        } finally {
+            vi.unstubAllEnvs();
+            vi.resetModules();
+        }
     });
     it('does not request a partner when the current view has no frames', () => {
         const h = colourHarness();

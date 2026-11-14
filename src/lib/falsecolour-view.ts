@@ -530,14 +530,16 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     const legend = falseColourLegend(short.lambda, long.lambda);
     parts.labels = `${label(legend.blue, short)} ${label(legend.red, long)}`;
     parts.note += " Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it.";
-    parts.note += ' Hatched areas have no colour: the frames do not all cover them. The grey picture shows through the hatching.';
     if (bandList.some(band => band.frames.length === 1)) {
         const wavelengths = bandList.filter(band => band.frames.length === 1).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
         parts.warning += `${parts.warning ? ' ' : ''}With only one frame at ${wavelengths}, a detector hit can show as a coloured point.`;
     }
     if (bandList.some(band => band.frames.length === 2)) {
         const wavelengths = bandList.filter(band => band.frames.length === 2).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
-        parts.warning += `${parts.warning ? ' ' : ''}With only two frames at ${wavelengths}, the lower of the two values is used wherever they disagree, so something present in only one of them is missing from this picture. A detector hit at the same place in both, or a faint one, can still show as a coloured point.`;
+        parts.warning += `${parts.warning ? ' ' : ''}With only two frames at ${wavelengths}, the picture uses their average where they agree and the lower of the two values where they clearly disagree, so something bright in only one of them is left out. This can also make a bright star several percent fainter at this wavelength, which tints it slightly. A detector hit at the same place in both, or a faint one, can still show as a coloured point.`;
+    }
+    if (shownShort.some(value => !Number.isFinite(value))) {
+        parts.warning += `${parts.warning ? ' ' : ''}Hatched areas have no colour: the frames do not all cover them. The grey picture shows through the hatching.`;
     }
     if (bandList.some(band => band.frames.length >= 3)) {
         const wavelengths = bandList.filter(band => band.frames.length >= 3).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
