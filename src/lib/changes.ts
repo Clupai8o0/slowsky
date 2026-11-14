@@ -788,8 +788,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     const NEIGHBOUR = 0.25;
     // Neighbours add up: two at 0.2 each dilute like one at 0.4 (Codex round 7: 39% quoted for a 50% change).
     // A star listed once per visit (two entries, one id) counts once: its largest share is kept (Codex round 7).
-    const crowdedIn = (star: StarPix, data: Float32Array): boolean => {
-        const own = level(star, data), sigma = PSF_FWHM / 2.35482;
+    // lv gives a star's peak in one image, or its change between the two (then the size of a change counts).
+    const crowdedBy = (star: StarPix, lv: (p: PixelCoord) => number, change: boolean): boolean => {
+        const own = lv(star), sigma = PSF_FWHM / 2.35482;
         const byId = new Map<string, number>();
         let share = 0;
         for (const s of stars) {
@@ -800,10 +801,13 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             if (d < CORE_ARCSEC || d > 2 * PSF_FWHM) {
                 continue;
             }
-            const g = Math.exp(-(d * d) / (2 * sigma * sigma)), other = level(s, data);
+            const g = Math.exp(-(d * d) / (2 * sigma * sigma)), other = lv(s);
             const mine = (own - g * other) / (1 - g * g), theirs = (other - g * own) / (1 - g * g);
+            // Only a neighbour that changed the same way inflates the percentage; an opposite change on a detected
+            // spot is the blend rule's. The 12″ model also over-subtracts real 6-9″ PSFs, leaving a close
+            // neighbour a false opposite change (RW Aur's 6.8″ one: -59 against +125), which must not count.
             const ratio = theirs / mine;
-            if (!Number.isFinite(ratio) || !(mine > 0)) {
+            if (!Number.isFinite(ratio) || !(change ? mine !== 0 : mine > 0)) {
                 return true;
             }
             if (s.id === undefined) {
@@ -817,7 +821,11 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         }
         return !(share < NEIGHBOUR);
     };
-    const crowded = (star: StarPix): boolean => crowdedIn(star, earlier.data) || crowdedIn(star, later.data);
+    // Three checks: a bright neighbour in either visit, or one whose own same-way change is a large part of this
+    // star's (Codex round 7: a neighbour going 20 -> 700 beside a 2000 -> 3000 star gave "74-80% brighter").
+    const crowded = (star: StarPix): boolean => crowdedBy(star, (p) => level(p, earlier.data), false)
+        || crowdedBy(star, (p) => level(p, later.data), false)
+        || crowdedBy(star, (p) => level(p, later.data) - level(p, earlier.data), true);
     kept.forEach((k) => {
         if (!k) {
             return;

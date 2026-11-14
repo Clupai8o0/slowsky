@@ -1315,6 +1315,23 @@ describe('change finder, round 7: no number where a neighbour or an edge is in t
         expect(quoted(twice)).toBe(1);
     });
 
+    it('quotes no wrong percentage when a faint neighbour changes a lot but stays faint (Codex round 7)', () => {
+        // At 8″ the later-visit level check already hides it; at 7″ and 12″ only the change check does (81%, 74%
+        // without it). A neighbour that fades instead is the blend rule's.
+        const wrong: string[] = [];
+        for (const [d, n0, n1] of [[7, 20, 700], [8, 20, 700], [12, 20, 700], [7, 50, 900], [12, 700, 20], [8, 900, 50]]) {
+            const a = noise(grid), b = noise(grid);
+            const x2 = 60 + d! / P;
+            point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);
+            point(a, grid, x2, 60, n0!); point(b, grid, x2, 60, n1!);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }]);
+            expect(r.candidates.length, `${d}″`).toBeGreaterThan(0);
+            wrong.push(...r.candidates.filter((c) => c.fracChange !== undefined && Math.abs(c.fracChange - 0.5) > 0.075)
+                .map((c) => `${d}″: ${c.reason}`));
+        }
+        expect(wrong).toEqual([]);
+    });
+
     it('still quotes the percentage for an isolated star that brightens 50%', () => {
         const a = noise(grid), b = noise(grid);
         point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);
