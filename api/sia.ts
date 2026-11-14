@@ -76,6 +76,20 @@ export function buildUpstreamUrl(params: SiaParams): URL
     return url;
 }
 
+// IRSA writes the VOTable with an ns0: prefix on every tag. Comments, processing instructions and whitespace may
+// sit around the root element.
+const VOTABLE_TAG = '([A-Za-z_][\\w.-]*:)?VOTABLE';
+const XML_MISC = '(?:\\s|<!--[\\s\\S]*?-->|<\\?[\\s\\S]*?\\?>)*';
+const VOTABLE_START = new RegExp(`^${XML_MISC}(?:<!DOCTYPE[^>]*>${XML_MISC})?<${VOTABLE_TAG}\\b`);
+const VOTABLE_END = new RegExp(`(?:</${VOTABLE_TAG}\\s*>|<${VOTABLE_TAG}\\b[^>]*/>)${XML_MISC}$`);
+
+// True when the document's root element is VOTABLE and it is closed, so an HTML page or a reply cut short is
+// never cached as a frame list. This checks the root only, not full well-formedness.
+export function isVotable(xml: string): boolean
+{
+    return VOTABLE_START.test(xml) && VOTABLE_END.test(xml);
+}
+
 function error(status: number, message: string): Response
 {
     return new Response(JSON.stringify({ error: message }), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -133,8 +147,7 @@ export async function GET(request: Request): Promise<Response>
             offset += chunk.length;
         }
         const xml = new TextDecoder('utf-8').decode(body);
-        // A complete VOTable both opens and closes its root; a reply cut short must not be cached.
-        if (!/(<\/([A-Za-z_][\w.-]*:)?VOTABLE\s*>|<([A-Za-z_][\w.-]*:)?VOTABLE\b[^>]*\/>)\s*$/.test(xml)) {
+        if (!isVotable(xml)) {
             return error(502, 'Upstream reply was not a VOTable');
         }
         const hasError = /<([A-Za-z_][\w.-]*:)?INFO\b(?=[^>]*\sname\s*=\s*["']QUERY_STATUS["'])(?=[^>]*\svalue\s*=\s*["']ERROR["'])/i.test(xml);
