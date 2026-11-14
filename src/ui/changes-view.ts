@@ -14,7 +14,7 @@ export type Reading = 'brighter' | 'fainter' | 'laterOnly' | 'earlierOnly' | 'mo
 export interface CandidateEnd { visit: 'earlier' | 'later'; x: number; y: number; radiusPix?: number }
 export type PanelCandidate = Omit<ChangeCandidate, 'lightEnds'> & {
     sentence?: string; caveat?: string; lightVisit?: 'earlier' | 'later'; x?: number; y?: number;
-    reading?: Reading; ends?: CandidateEnd[]; lightEnds?: CandidateEnd[];
+    reading?: Reading; ends?: CandidateEnd[]; lightEnds?: CandidateEnd[]; nearCatalogue?: boolean;
 };
 export interface FinderVisits { earlier: { obsIds: string[] }; later: { obsIds: string[] } }
 
@@ -33,6 +33,24 @@ export const EMPTY_LEAD = 'The change finder lists no candidates between the fir
 export const LIST_CAP = 8;
 export const ORDER_NOTE = 'Listed by S/N, highest first.';
 
+// 0 a single spot, 1 a pair or mover (two spots), 2 near a catalogue star (finder round 11 `nearCatalogue`).
+export function groupOf(c: PanelCandidate): number
+{
+    return c.nearCatalogue ? 2 : c.reading === 'pair' || c.reading === 'moved' || c.kind === 'mover' ? 1 : 0;
+}
+
+// How the list is ordered, in words; only says "away from catalogue stars" when the finder says so.
+export function orderNote(candidates: PanelCandidate[]): string
+{
+    const groups = [...new Set(candidates.map(groupOf))].sort();
+    if (groups.length < 2) {
+        return ORDER_NOTE;
+    }
+    const away = candidates.some((c) => c.nearCatalogue === false) ? ' away from catalogue stars' : '';
+    const label = ['single spots' + away, 'pairs of spots' + away, 'spots near catalogue stars'];
+    return `Listed in groups, each by S/N, highest first: ${groups.map((g) => label[g]).join(', then ')}.`;
+}
+
 function listed<T>(v: { candidates: T[] }, all: boolean): T[]
 {
     return all ? v.candidates : v.candidates.slice(0, LIST_CAP);
@@ -44,11 +62,12 @@ export function changesView(found: ChangeResult | { error: string }): ChangesVie
     if ('error' in found) {
         return { candidates: [], notes: [found.error], ran: false };
     }
-    // Strongest first (stable; an S/N that is not a number goes last), so a capped list keeps the strongest.
-    const strength = (c: PanelCandidate) => (Number.isFinite(c.snr) ? c.snr : -Infinity);
+    // In groups (single spots, then pairs, then spots near catalogue stars), each strongest first (stable; an S/N
+    // that is not a number goes last), so a capped list keeps the strongest away from bright-star residuals.
+    const strength = (c: PanelCandidate) => (Number.isNaN(c.snr) ? -Infinity : c.snr);
     const candidates = (found.candidates as PanelCandidate[]).filter((c) => Number.isFinite(c.pix.x) && Number.isFinite(c.pix.y))
         .map((c) => ({ ...c, line: c.sentence ?? c.reason }))
-        .sort((a, b) => strength(b) - strength(a));
+        .sort((a, b) => groupOf(a) - groupOf(b) || strength(b) - strength(a));
     const lead = withCaveats(candidates);
     const visits = (found as ChangeResult & { visits?: FinderVisits }).visits;
     return {
@@ -83,9 +102,12 @@ export function changesHtml(v: ChangesView, all = false): string
 {
     const lead = (v.lead ?? []).map(s => `<p class="sk-chg-lead">${esc(s)}</p>`).join('');
     const rest = v.candidates.length - LIST_CAP;
-    const more = rest > 0
-        ? `<p class="sk-chg-more-row">${ORDER_NOTE} <button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? 'Show fewer' : `Show ${rest} more`}</button></p>`
+    const order = orderNote(v.candidates);
+    const button = rest > 0
+        ? ` <button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? 'Show fewer' : `Show ${rest} more`}</button>`
         : '';
+    // The order is said when the list is cut or grouped; a short plain list needs no explanation.
+    const more = button || order !== ORDER_NOTE ? `<p class="sk-chg-more-row">${order}${button}</p>` : '';
     const list = v.candidates.length
         ? `<ol class="sk-chg">${listed(v, all).map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(c.line)}</li>`).join('')}</ol>${more}`
         : v.ran ? `<p class="sk-chg-lead">${EMPTY_LEAD}</p>` : '';

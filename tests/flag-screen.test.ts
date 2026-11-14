@@ -17,7 +17,7 @@ describe('archive flag screen', () => {
             ['late', { obsId: 'late', names: () => ['TRANSIENT'] }]]);
         const result = screen([candidate], { earlier: [earlier], later: [later] }, flags, ['TRANSIENT']);
         expect(result.kept).toHaveLength(0);
-        expect(result.dropNote).toBe('1 candidate is not listed: in at least one frame of the visit where a spot shows more light, the brightest pixel within 12″ of that spot carries an archive flag (TRANSIENT).');
+        expect(result.dropNote).toBe('1 candidate is not listed: in at least one frame of the visit where one of its spots shows more light, that frame’s brightest pixel within 12″ of the spot carries the archive flag TRANSIENT.');
     });
 
     it('uses the light visit, header order, and lets a drop win over unread', () => {
@@ -26,7 +26,7 @@ describe('archive flag screen', () => {
         const a = { ...candidate, sign: -1 as const };
         const b = { ...a, id: 'b', pix: { x: 2, y: 1 } };
         const r = screen([a, b], { earlier: [earlier], later: [later] }, flags, ['OUTLIER', 'NONFUNC']);
-        expect(r.dropNote).toBe('2 candidates are not listed: in at least one frame of the visit where a spot shows more light, the brightest pixel within 12″ of that spot carries an archive flag (OUTLIER, NONFUNC).');
+        expect(r.dropNote).toBe('2 candidates are not listed: for each, in at least one frame of the visit where one of its spots shows more light, that frame’s brightest pixel within 12″ of the spot carries at least one of these archive flags: OUTLIER, NONFUNC.');
         expect(r.kept).toHaveLength(0);
         expect(screen([candidate], { earlier: [earlier], later: [later] }, flags, []).kept).toHaveLength(1);
     });
@@ -36,19 +36,19 @@ describe('archive flag screen', () => {
             ['late', { obsId: 'late', names: () => [] }]]);
         const r = screen([candidate, { ...candidate, id: 'b', kind: 'mover', gaiaMatch: true }],
             { earlier: [earlier], later: [later] }, flags, []);
-        expect(r.kept[0]!.line).toBe('The two visits differ here (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of the earlier visit, so the brightness comparison is not shown.');
+        expect(r.kept[0]!.line).toBe('The two visits differ here (candidate). In at least one frame of the earlier visit, the archive flags that frame’s brightest pixel within 12″ as OVERFLOW, so the finder’s reading of this spot is not shown; the overflow may account for the difference.');
         // A mover's light is only in its light visit (later here), so the earlier visit's OVERFLOW is not its own.
         expect(r.kept[1]!.line).toBe('A spot appeared.');
         flags.set('late', { obsId: 'late', names: () => ['OVERFLOW'] });
         const both = screen([candidate, { ...candidate, id: 'b', kind: 'mover' }], { earlier: [earlier], later: [later] }, flags, []);
-        expect(both.kept[0]!.line).toContain('in at least one frame of each visit');
-        expect(both.kept[1]!.line).toBe('A spot appeared. The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of the later visit.');
+        expect(both.kept[0]!.line).toContain('In at least one frame of each visit');
+        expect(both.kept[1]!.line).toBe('A spot appeared. In at least one frame of the later visit, the archive flags that frame’s brightest pixel within 12″ as OVERFLOW.');
         // A sentence with no brighter/fainter reading keeps its words and gets the flag sentence added.
         const plain = screen([{ ...candidate, reason: 'Changed at S/N 7.0 (candidate).', reading: 'differs' as const }], { earlier: [earlier], later: [later] }, flags, []);
-        expect(plain.kept[0]!.line).toBe('Changed at S/N 7.0 (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of each visit.');
-        const snr = screen([{ ...candidate, snr: 12, reason: 'A catalogue star here is brighter than in the earlier image (S/N 12.0; candidate).' }],
+        expect(plain.kept[0]!.line).toBe('Changed at S/N 7.0 (candidate). In at least one frame of each visit, the archive flags that frame’s brightest pixel within 12″ as OVERFLOW.');
+        const snr = screen([{ ...candidate, snr: 12, reading: 'brighter' as const, reason: 'A catalogue star here is brighter than in the earlier image (S/N 12.0; candidate).' }],
             { earlier: [earlier], later: [later] }, flags, []);
-        expect(snr.kept[0]!.line).toBe('The two visits differ here, at S/N 12.0 (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of each visit, so the brightness comparison is not shown.');
+        expect(snr.kept[0]!.line).toBe('The two visits differ here, at S/N 12.0 (candidate). In at least one frame of each visit, the archive flags that frame’s brightest pixel within 12″ as OVERFLOW, so the brightness comparison is not shown; the overflow may account for the difference.');
         for (const c of [...r.kept, ...both.kept, ...plain.kept, ...snr.kept]) {
             expect(c.line.replace(c.reason, '')).not.toMatch(/discovery|detected|confirmed|proves|changed|brighter/i);
         }
@@ -241,7 +241,7 @@ describe('review fixes', () => {
     it('names a catalogue star when it drops the direction for OVERFLOW', () => {
         const flags = new Map([['early', { obsId: 'early', names: () => ['OVERFLOW'] }], ['late', { obsId: 'late', names: () => [] }]]);
         const c = { ...candidate, gaiaMatch: true, snr: 60, reason: 'A catalogue star here is fainter than in the earlier image (S/N > 50; candidate).' };
-        expect(screen([c], { earlier: [earlier], later: [later] }, flags, []).kept[0]!.line).toBe('The two visits differ here at a catalogue star, at S/N > 50 (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of the earlier visit, so the brightness comparison is not shown.');
+        expect(screen([c], { earlier: [earlier], later: [later] }, flags, []).kept[0]!.line).toBe('The two visits differ here at a catalogue star, at S/N > 50 (candidate). In at least one frame of the earlier visit, the archive flags that frame’s brightest pixel within 12″ as OVERFLOW, so the finder’s reading of this spot is not shown; the overflow may account for the difference.');
     });
 });
 
@@ -261,7 +261,7 @@ describe('round 11: every end, and the finder\'s reading', () => {
     it('keeps a pair\'s explanation and names one of its two spots for OVERFLOW', () => {
         const flags = new Map([['early', at(5, ['OVERFLOW'])], ['late', at(9, [])]]);
         const kept = screen([pair], { earlier: [earlier], later: [later] }, flags, []).kept[0]!;
-        expect(kept.line).toBe('Two spots (S/N 9.0; candidate). The archive flags the brightest pixel within 12″ of one of its two spots as OVERFLOW in at least one frame of the earlier visit.');
+        expect(kept.line).toBe('Two spots (S/N 9.0; candidate). In at least one frame of the earlier visit, the archive flags that frame’s brightest pixel within 12″ of its spot in that visit as OVERFLOW.');
         expect(kept.kind).toBe('unknown');
     });
 
@@ -270,7 +270,7 @@ describe('round 11: every end, and the finder\'s reading', () => {
         const c = { ...candidate, kind: 'brightness' as const, snr: 6.25, reading: 'laterOnly' as const,
             reason: 'Light here in the later visit; the earlier visit shows none above its noise (S/N 6.3; candidate).' };
         const kept = screen([c], { earlier: [earlier], later: [later] }, flags, []).kept[0]!;
-        expect(kept.line).toBe('The two visits differ here, at S/N 6.3 (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of the earlier visit, so the brightness comparison is not shown.');
+        expect(kept.line).toBe('The two visits differ here, at S/N 6.3 (candidate). In at least one frame of the earlier visit, the archive flags that frame’s brightest pixel within 12″ as OVERFLOW, so the brightness comparison is not shown; the overflow may account for the difference.');
         expect(kept.kind).toBe('unknown');
     });
 
@@ -279,8 +279,19 @@ describe('round 11: every end, and the finder\'s reading', () => {
             lightEnds: [{ visit: 'earlier' as const, x: 1, y: 1, radiusPix: 2 }, { visit: 'later' as const, x: 5, y: 1, radiusPix: 2 }] };
         const over = new Map([['early', at(9, [])], ['late', at(5, ['OVERFLOW'])]]);
         expect(screen([mover], { earlier: [earlier], later: [later] }, over, []).kept[0]!.line)
-            .toBe('Moved (candidate). The archive flags the brightest pixel within 12″ of one of its two spots as OVERFLOW in at least one frame of the later visit.');
+            .toBe('Moved (candidate). In at least one frame of the later visit, the archive flags that frame’s brightest pixel within 12″ of its spot in that visit as OVERFLOW.');
         const hit = new Map([['early', at(1, ['OUTLIER'])], ['late', at(9, [])]]);
         expect(screen([mover], { earlier: [earlier], later: [later] }, hit, ['OUTLIER']).kept).toHaveLength(0);
+    });
+});
+
+describe('round 11 wording', () => {
+    const at = (x: number, names: string[]) => ({ obsId: '', names: (p: { x: number }) => (p.x === x ? names : []) });
+    it('names each visit with its own spot when both ends of a pair overflow', () => {
+        const pair = { ...candidate, id: 'p', kind: 'unknown' as const, snr: 9, reading: 'pair' as const, reason: 'Two spots (S/N 9.0; candidate).',
+            ends: [{ visit: 'later' as const, x: 1, y: 1 }, { visit: 'earlier' as const, x: 5, y: 1 }] };
+        const flags = new Map([['early', at(5, ['OVERFLOW'])], ['late', at(1, ['OVERFLOW'])]]);
+        expect(screen([pair], { earlier: [earlier], later: [later] }, flags, []).kept[0]!.line)
+            .toBe('Two spots (S/N 9.0; candidate). In at least one frame of each visit, the archive flags that frame’s brightest pixel within 12″ of its spot in that visit as OVERFLOW.');
     });
 });

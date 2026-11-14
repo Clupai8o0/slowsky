@@ -156,14 +156,21 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
         if (over.size) {
             const where = over.size === 2 ? 'at least one frame of each visit'
                 : `at least one frame of the ${over.has('earlier') ? 'earlier' : 'later'} visit`;
-            const pixel = ends.length > 1 ? 'the brightest pixel within 12″ of one of its two spots' : 'the brightest pixel within 12″';
-            const flagged = `The archive flags ${pixel} as OVERFLOW in ${where}`;
-            // Without the finder's `reading` (before round 11) every non-mover line is treated as a comparison:
-            // withdrawing a sound reading is safer than showing one OVERFLOW may have spoiled.
+            // Each frame has its own brightest pixel. A pair's or mover's ends sit in different visits, so each
+            // visit is named with its own spot; two ends in one visit are not told apart.
+            const split = ends.length > 1 && new Set(ends.map(end => end.visit)).size === ends.length;
+            const pixel = ends.length === 1 ? 'that frame’s brightest pixel within 12″'
+                : split ? 'that frame’s brightest pixel within 12″ of its spot in that visit'
+                    : 'that frame’s brightest pixel within 12″ of at least one of its spots';
+            const flagged = `In ${where}, the archive flags ${pixel} as OVERFLOW`;
+            // Without the finder's `reading` (before round 11) every non-mover line is withdrawn: hiding a sound
+            // reading is safer than showing one OVERFLOW may have spoiled. Only a known comparison is named as one.
             const compares = c.reading ? COMPARES.includes(c.reading) : c.kind !== 'mover';
             if (compares) {
                 const snr = snrText(c.snr);
-                line = `The two visits differ here${c.gaiaMatch ? ' at a catalogue star' : ''}${snr ? `, at ${snr}` : ''} (candidate). ${flagged}, so the brightness comparison is not shown.`;
+                const what = c.reading ? 'the brightness comparison' : 'the finder’s reading of this spot';
+                line = `The two visits differ here${c.gaiaMatch ? ' at a catalogue star' : ''}${snr ? `, at ${snr}` : ''} (candidate). `
+                    + `${flagged}, so ${what} is not shown; the overflow may account for the difference.`;
                 kind = 'unknown';
             } else {
                 line = `${line} ${flagged}.`;
@@ -189,9 +196,10 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
         }
     }
     lead.push(...withCaveats(kept));
-    const names = [...new Set([...order, ...dropped])].filter(n => dropped.has(n)).join(', ');
+    const list = [...new Set([...order, ...dropped])].filter(n => dropped.has(n));
+    const flags = list.length === 1 ? `the archive flag ${list[0]}` : `at least one of these archive flags: ${list.join(', ')}`;
     const dropNote = count === 0 ? undefined
-        : `${count} ${count === 1 ? 'candidate is' : 'candidates are'} not listed: in at least one frame of the visit where a spot `
-            + `shows more light, the brightest pixel within 12″ of that spot carries an archive flag (${names}).`;
+        : `${count === 1 ? '1 candidate is not listed:' : `${count} candidates are not listed: for each,`} in at least one frame of `
+            + `the visit where one of its spots shows more light, that frame’s brightest pixel within 12″ of the spot carries ${flags}.`;
     return { kept, dropNote, allUnread, lead };
 }

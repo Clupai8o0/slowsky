@@ -102,3 +102,30 @@ describe('round 11: list cap', () => {
         expect(changesHtml(changesView(many(8)))).not.toContain('data-chg-more');
     });
 });
+
+describe('round 11: order', () => {
+    it('puts an infinite S/N first and a NaN last', () => {
+        const v = changesView(found([{ ...cand('a', 1, 1, 'a (candidate).'), snr: 10 }, { ...cand('b', 2, 1, 'b (candidate).'), snr: Infinity },
+            { ...cand('c', 3, 1, 'c (candidate).'), snr: NaN }], []));
+        expect(v.candidates.map((c) => c.id)).toEqual(['b', 'a', 'c']);
+    });
+
+    it('groups single spots, then pairs, then spots near catalogue stars, and says so', () => {
+        const near = { ...cand('n', 1, 1, 'n (candidate).'), snr: 40, nearCatalogue: true };
+        const pair = { ...cand('p', 2, 1, 'p (candidate).'), snr: 30, nearCatalogue: false, reading: 'pair' as const };
+        const one = { ...cand('s', 3, 1, 's (candidate).'), snr: 6, nearCatalogue: false, reading: 'laterOnly' as const };
+        const v = changesView(found([near, pair, one], []));
+        expect(v.candidates.map((c) => c.id)).toEqual(['s', 'p', 'n']);
+        expect(changesHtml(v)).toContain('<p class="sk-chg-more-row">Listed in groups, each by S/N, highest first: single spots away from catalogue stars, '
+            + 'then pairs of spots away from catalogue stars, then spots near catalogue stars.</p>');
+    });
+
+    it('prints a caveat that only some lines share on those lines', () => {
+        const a = { ...cand('a', 1, 1, 'a (candidate).'), snr: 9, caveat: 'One frame only.' };
+        const b = { ...cand('b', 2, 1, 'b (candidate).'), snr: 8 };
+        const html = changesHtml(changesView(found([a, b], [])));
+        expect(html).toContain('<b>Candidate 1</b> a (candidate). One frame only.</li>');
+        expect(html).toContain('<b>Candidate 2</b> b (candidate).</li>');
+        expect(html).not.toContain('sk-chg-lead');
+    });
+});
