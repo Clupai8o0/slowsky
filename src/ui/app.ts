@@ -351,7 +351,7 @@ function shell(): string
         <p class="sk-body"><span data-sp="readBytes"></span><a class="sk-sp-link" data-sp="link" target="_blank" rel="noopener"></a><span data-sp="linkEnd"></span></p>
         <p class="sk-body" data-sp="spot"></p>
       </div>
-      <p class="sk-body" data-sp="status" aria-live="polite"></p>
+      <p class="sk-body sk-sp-status" data-sp="status" aria-live="polite"></p>
       <div class="sk-sp-actions"><button type="button" class="sk-btn2" data-sp="read"></button><button type="button" class="sk-btn2" data-sp="stop" hidden></button><button type="button" class="sk-btn2" data-sp="clear" hidden></button></div>
       <small class="sk-sp-estimate" data-sp="estimate"></small>
     </div>

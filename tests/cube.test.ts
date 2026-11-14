@@ -83,7 +83,7 @@ describe('IRSA DR1 cube range reader', () => {
         const result = await readCubeSpectrum(spot.coord, { fetcher: server.fetcher });
         expect(result.surfaceBrightness[0]).toBeNaN();
         expect(result.reasons[0]).toBe('no data');
-        expect(result.notes).toContain('A colour has no data where the cube is blank in any of the 3 × 3 pixels at the spot.');
+        expect(result.notes).toContain('A colour has no data where the cube is blank in any of the 3 × 3 pixels at the spot, or everywhere in the ring around it.');
         expect(Number.isFinite(result.surfaceBrightness[1])).toBe(true);
     });
 
@@ -122,7 +122,7 @@ describe('IRSA DR1 cube range reader', () => {
         const finite = Array.from(result.surfaceBrightness).filter(Number.isFinite).length;
         expect(finite).toBeGreaterThanOrEqual(90);
         expect(Array.from(result.noise).filter(Number.isFinite).length).toBe(finite);
-        expect(result.notes.includes('A colour has no data where the cube is blank in any of the 3 × 3 pixels at the spot.')).toBe(finite < 102);
+        expect(result.notes.includes('A colour has no data where the cube is blank in any of the 3 × 3 pixels at the spot, or everywhere in the ring around it.')).toBe(finite < 102);
     });
 
     it('requires eight finite background pixels for noise', async () => {

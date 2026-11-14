@@ -482,11 +482,11 @@ export async function readCubeSpectrum(c: SkyCoord, opts: {
         const noData = reasons.filter(reason => reason !== null).length;
         const centreCut = cx < 1 || cy < 1 || cx > width - 2 || cy > height - 2;
         const notes: string[] = [];
-        if (noData > 0) {
-            notes.push('A colour has no data where the cube is blank in any of the 3 × 3 pixels at the spot.');
+        if (noData > 0 && !centreCut) {
+            notes.push('A colour has no data where the cube is blank in any of the 3 × 3 pixels at the spot, or everywhere in the ring around it.');
         }
         if (centreCut) {
-            notes.push('The spot is on the edge of a sky tile, so its 3 × 3 pixels are cut off and no plane can be measured here');
+            notes.push('The spot is on the edge of a sky tile, so its 3 × 3 pixels are cut off and no colour can be measured here.');
         } else if (clipped) {
             notes.push('The spot is near the edge of a sky tile, so the background ring around it is cut short.');
         }

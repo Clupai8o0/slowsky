@@ -93,14 +93,15 @@ describe('spectrum panel', () => {
         expect(writes).toBe(0);
     });
 
-    it('P4 shows estimate only while idle and hides empty status', async () => {
+    it('P4 shows estimate only while idle and empties the status line without hiding the live region', async () => {
         const h = domRig(); h.slot.update(view());
-        expect(h.els.status!.hidden).toBe(true); expect(h.els.estimate!.hidden).toBe(false);
+        expect(h.els.status!.hidden).toBe(false); expect(h.els.status!.textContent).toBe(''); expect(h.els.estimate!.hidden).toBe(false);
         expect(h.els.estimate!.textContent).toBe('A live read from the public archive: about 2 MB. It can take half a minute.');
-        h.slot.press(); expect(h.els.estimate!.hidden).toBe(true); expect(h.els.status!.hidden).toBe(false);
+        h.slot.press(); expect(h.els.estimate!.hidden).toBe(true); expect(h.els.status!.textContent).toBe(SPECTRUM_TEXT.reading);
         h.calls[0]!.reject(); await settle(); expect(h.els.estimate!.hidden).toBe(true);
         h.slot.press(); h.calls[1]!.resolve(spectrum()); await settle();
-        expect(h.els.estimate!.hidden).toBe(true); expect(h.els.status!.hidden).toBe(true);
+        expect(h.els.estimate!.hidden).toBe(true); expect(h.els.status!.hidden).toBe(false); expect(h.els.status!.textContent).toBe('');
+        expect(page).toContain('class="sk-body sk-sp-status" data-sp="status" aria-live="polite"');
     });
 
     it('P6 wraps coordinates and selects bytes after rounding', async () => {
@@ -301,5 +302,24 @@ describe('spectrum panel', () => {
         expect(h.out().state).toBe('idle');
         h.slot.press();
         expect(h.calls).toHaveLength(6);
+    });
+
+    it('R3 leaves no dangling separator when the cube gives no unit', async () => {
+        const h = rig(); h.slot.update(view()); h.slot.press();
+        h.calls[0]!.resolve({ ...spectrum(), unit: '' }); await settle();
+        expect(h.out().facts!.endsWith('·')).toBe(false);
+        expect(h.out().facts!.trim().endsWith('background')).toBe(true);
+    });
+
+    it('R3 moves focus from the cube link to Read when the view moves and the result hides', async () => {
+        const h = domRig(); h.slot.update(view()); h.slot.press(); h.calls[0]!.resolve(spectrum()); await settle();
+        h.els.link!.focus();
+        h.slot.update(view(b));
+        expect(h.els.result!.hidden).toBe(true);
+        expect(h.doc.activeElement).toBe(h.els.read);
+        // Focus on the link is left alone while the result stays on screen.
+        const k = domRig(); k.slot.update(view()); k.slot.press(); k.calls[0]!.resolve(spectrum()); await settle();
+        k.els.link!.focus(); k.slot.update(view(a, 2.5));
+        expect(k.doc.activeElement).toBe(k.els.link);
     });
 });

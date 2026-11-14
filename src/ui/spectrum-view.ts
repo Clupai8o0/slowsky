@@ -98,7 +98,7 @@ export function createSpectrum(deps: SpectrumDeps): SpectrumSlot
         const svg = spectrumChartSvg(spec, { width, markLambda: view.lambda });
         const text = spectrumChartText(spec);
         deps.draw({ visible, state, svg, summary: text.summary, caption: text.caption, notes: text.notes,
-            facts: `Spot: RA ${coordinate(center.ra, true)}°, Dec ${coordinate(center.dec)}° · ${CUBE_QUANTITY} · ${spec.unit}`,
+            facts: `Spot: RA ${coordinate(center.ra, true)}°, Dec ${coordinate(center.dec)}° · ${CUBE_QUANTITY}${spec.unit ? ` · ${spec.unit}` : ''}`,
             read: `Read ${bytes(spec.bytesRead)} from `, url: spec.spot.url,
             reference: svg.includes('data-feature-label="true"') ? SPECTRUM_TEXT.reference : '' });
     }
@@ -191,7 +191,7 @@ export function mountSpectrum(section: HTMLElement, deps: { enabled: boolean; re
         const ready = out.state === 'ready';
         const reading = out.state === 'reading';
         const active = doc.activeElement;
-        const focus = out.visible && ((active === button && (reading || ready)) || (active === stop && !reading) || (active === clear && !ready))
+        const focus = out.visible && ((active === button && (reading || ready)) || (active === stop && !reading) || ((active === clear || active === link) && !ready))
             ? (reading ? stop : ready ? clear : button) : null;
         hidden(q<HTMLElement>('intro'), ready || reading || out.state === 'failed');
         text(q<HTMLElement>('intro'), SPECTRUM_TEXT.idle);
@@ -206,8 +206,8 @@ export function mountSpectrum(section: HTMLElement, deps: { enabled: boolean; re
         text(clear, SPECTRUM_TEXT.clear);
         const status = q<HTMLElement>('status');
         const statusText = reading ? SPECTRUM_TEXT.reading : out.state === 'failed' ? SPECTRUM_TEXT.failure : '';
+        // Never `hidden`: a live region that was display:none is often not announced. CSS collapses it when empty.
         text(status, statusText);
-        hidden(status, !statusText);
         hidden(q<HTMLElement>('result'), !ready);
         focus?.focus();
         if (!ready) { return; }

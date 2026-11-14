@@ -180,7 +180,7 @@ describe('spectrumChart', () => {
             reasons: Array.from({ length: 20 }, () => 'no data')
         });
         const maskedText = spectrumChartText(allMasked);
-        expect(maskedText.title).toBe('Spectrum at this spot, 0.75 to 5.00 µm');
+        expect(maskedText.title).toBe('Spectrum at this spot');
         expect(maskedText.summary).toBe('No colours have data at this spot.');
 
         const maskedSvg = spectrumChartSvg(allMasked);
@@ -538,5 +538,31 @@ describe('spectrum chart regression cases', () => {
             hash = Math.imul(hash ^ svg.charCodeAt(i), 16777619);
         }
         expect(hash >>> 0).toBe(670283175);
+    });
+
+    it('R3 title names only the wavelengths with data, and equal printed ends read "at"', () => {
+        // Barnard's case: only the last 9 of 20 planes have data.
+        const reasons: ('no data' | null)[] = Array.from({ length: 20 }, (_, i) => (i < 11 ? 'no data' : null));
+        const late = makeSpectrum({ reasons });
+        const text = spectrumChartText(late);
+        const first = LAMBDAS_20[11]!.toFixed(2);
+        expect(text.title).toBe(`Spectrum at this spot, ${first} to 5.00 µm`);
+        expect(text.summary.startsWith(`9 of 20 colours have data, from ${first} to 5.00 µm.`)).toBe(true);
+        expect(text.title).not.toContain('0.75');
+        expect(spectrumChartSvg(late)).toContain(`>${text.title}</title>`);
+
+        // One colour with data: no range in the title.
+        const one = spectrumChartText(makeSpectrum({ reasons: Array.from({ length: 20 }, (_, i) => (i === 19 ? null : 'no data')) }));
+        expect(one.title).toBe('Spectrum at this spot');
+        expect(one.summary.startsWith('1 of 20 colours has data, at 5.00 µm.')).toBe(true);
+
+        // Two colours whose wavelengths print the same: "at", never "from 4.33 to 4.33".
+        const twin = spectrumChartText(makeSpectrum({
+            lambda: Float64Array.from([4.331, 4.334]), surfaceBrightness: Float32Array.from([1, 2]),
+            noise: Float32Array.from([0.5, 0.5]), background: Float32Array.from([1, 1]), reasons: [null, null]
+        }));
+        expect(twin.title).toBe('Spectrum at this spot');
+        expect(twin.summary.startsWith('2 of 2 colours have data, at 4.33 µm.')).toBe(true);
+        expect(twin.summary).not.toContain('from 4.33 to 4.33');
     });
 });

@@ -395,8 +395,13 @@ export function spectrumChartText(spec: CubeSpectrum): {
     const { totalCount, valid, lambdaRange } = analyzeSpectrum(spec);
     const caption = typeof spec.caption === 'string' ? spec.caption : '';
     const notes = Array.isArray(spec.notes) ? spec.notes : [];
-    const title = lambdaRange !== null
-        ? `Spectrum at this spot, ${formatNumber(lambdaRange[0], 'fixed')} to ${formatNumber(lambdaRange[1], 'fixed')} µm`
+    // The title and the summary name only the wavelengths that have data: a range over every plane misleads
+    // when most of them are blank (Barnard's Star: 9 of 102, all past 4.29 µm).
+    const lambdas = valid.map(channel => channel.lambda);
+    const firstFixed = lambdas.length > 0 ? formatNumber(Math.min(...lambdas), 'fixed') : '';
+    const lastFixed = lambdas.length > 0 ? formatNumber(Math.max(...lambdas), 'fixed') : '';
+    const title = lambdas.length > 0 && firstFixed !== lastFixed
+        ? `Spectrum at this spot, ${firstFixed} to ${lastFixed} µm`
         : 'Spectrum at this spot';
 
     if (valid.length === 0 || lambdaRange === null) {
@@ -420,9 +425,7 @@ export function spectrumChartText(spec: CubeSpectrum): {
     const noDataCount = totalCount - validCount;
     const unitRaw = typeof spec.unit === 'string' ? spec.unit.trim() : '';
     const unitPart = unitRaw.length > 0 ? ` ${unitRaw}` : '';
-    const first = Math.min(...valid.map(channel => channel.lambda));
-    const last = Math.max(...valid.map(channel => channel.lambda));
-    const range = validCount === 1 ? `at ${formatNumber(first, 'fixed')}` : `from ${formatNumber(first, 'fixed')} to ${formatNumber(last, 'fixed')}`;
+    const range = firstFixed === lastFixed ? `at ${firstFixed}` : `from ${firstFixed} to ${lastFixed}`;
     const countPhrase = `${validCount} of ${totalCount} ${totalCount === 1 ? 'colour' : 'colours'} ${validCount === 1 ? 'has' : 'have'} data, ${range} µm.`;
     const brightestPhrase = `Highest value at ${formatNumber(brightest.lambda, 'fixed')} µm: ${formatSigFigs3(brightest.value)}${unitPart}.`;
     const noDataPhrase = noDataCount > 0

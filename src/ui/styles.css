@@ -169,6 +169,8 @@ button { cursor: pointer; }
 .sk-sp-notes p { margin: 0; }
 .sk-sp-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .sk-sp-estimate { color: var(--mute); font-size: var(--fs-small); }
+/* Empty status: out of the layout (no gap) but still in the accessibility tree, so the next text is announced. */
+.sk-sp-status:empty { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); }
 .sk-sp-link { position: relative; color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .3); text-underline-offset: 3px; }
 .sk-sp-link:hover, .sk-sp-link:focus-visible { color: var(--ink); text-decoration-color: currentColor; }
 @media (max-width: 720px) { .sk-sp-actions button { min-height: 44px; } .sk-sp-link::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; margin-top: -22px; } }
