@@ -182,17 +182,20 @@ export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
         // Trust the measured centre only when it agrees with the predicted one to within a few pixels.
         return c && Math.hypot(c.x - p.x, c.y - p.y) < 3 ? c : p;
     };
-    // The source already locked each frame to within half its own channel (bandwidth / 2: about 0.01 to 0.03 µm
-    // on detectors 1-3, 5 and 6, up to 0.055 µm on detector 4, where R is 35). Use the widest of those here, so
-    // the curve keeps every frame the player shows; a fixed 0.05 dropped detector 4 frames above 3.5 µm.
-    const halves = frames.map((f) => f.bandwidthAtCenter / 2).filter((h) => Number.isFinite(h) && h > 0);
-    const maxDeltaUm = halves.length === frames.length ? Math.max(...halves) : 0.05;
+    // lightCurve cuts on each frame's wavelength. The source already locked every frame at the target, each to
+    // within half its own channel (result.locked, same order). Hand lightCurve those values and a cut that keeps
+    // them all, so the curve keeps exactly the frames the player shows: the view-centre value (lambdaAtCenter)
+    // differs from the target's when the target is off centre, and a fixed cut dropped detector 4 frames (R 35).
+    const lockedLam = result.locked.length === frames.length ? result.locked.map((l) => l.lambda) : [];
+    const onTarget = lockedLam.length === frames.length && lockedLam.every((l) => Number.isFinite(l));
+    const curveFrames = onTarget ? frames.map((f, i) => ({ ...f, lambdaAtCenter: lockedLam[i]! })) : frames;
+    const maxDeltaUm = onTarget ? Math.max(0, ...lockedLam.map((l) => Math.abs(l - result.lambda))) : 0.05;
     let lc: LightCurve;
     let order: number[] = []; // lightCurve asks for the target once per kept frame, in point order
     try {
         const measure = () => {
             order = [];
-            return lightCurve(frames, (f, i) => {
+            return lightCurve(curveFrames, (f, i) => {
                 order.push(i);
                 return where(f);
             }, refs.map((r) => r.pix), { ...options, lambda: result.lambda, maxDeltaUm });

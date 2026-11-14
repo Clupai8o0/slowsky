@@ -112,18 +112,30 @@ describe('curveFor', () => {
         expect(middleMjd(r)).toBeCloseTo(MJD0 + 100, 1);
     });
 
-    it('keeps every frame the wavelength lock kept, up to half a channel on detector 4 (R 35)', () => {
+    it('keeps every frame the wavelength lock kept, cutting on the target, not the view centre', () => {
+        // Detector 4 at 3.7 µm (R 35): the lock allows half a channel, 0.053 µm, wider than a fixed 0.05.
         const r = result([100, 200, 100]);
         const lam = 3.7;
-        const half = lam / 35 / 2; // 0.053 µm: wider than a fixed 0.05
+        const half = lam / 35 / 2;
         r.lambda = lam;
+        r.locked = r.frames.map((_, i) => ({ lambda: lam + (i === 1 ? half : 0), dLambda: i === 1 ? half : 0 })) as unknown as SkyResult['locked'];
         r.frames.forEach((p, i) => {
-            p.frame.lambdaAtCenter = lam + (i === 1 ? half - 0.001 : 0);
+            p.frame.lambdaAtCenter = lam + (i === 1 ? half : 0);
             p.frame.bandwidthAtCenter = 2 * half;
         });
-        const c = curveFor(r);
+        let c = curveFor(r);
         expect(c!.frameOf).toEqual([0, 1, 2]);
         expect(c!.lc.dropped).toBe(0);
+        // Target locked at 0.911 µm (inside 0.900 ± 0.012), but the view centre reads 0.913: still kept.
+        const s = result([100, 200, 100]);
+        s.locked = s.frames.map((_, i) => ({ lambda: i === 1 ? 0.911 : 0.9, dLambda: i === 1 ? 0.011 : 0 })) as unknown as SkyResult['locked'];
+        s.frames.forEach((p, i) => {
+            p.frame.lambdaAtCenter = i === 1 ? 0.913 : 0.9;
+            p.frame.bandwidthAtCenter = 0.024;
+        });
+        c = curveFor(s);
+        expect(c!.frameOf).toEqual([0, 1, 2]);
+        expect(c!.lc.points.map((p) => p.lambda)).toEqual([0.9, 0.911, 0.9]);
     });
 
     it('keeps references with room for the scaled annulus on a coarse grid', () => {
