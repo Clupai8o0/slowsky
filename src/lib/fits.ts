@@ -361,7 +361,12 @@ export function createRangeReader(opts: RangeReaderOptions = {}): RangeReader
         {
             const hdu = index.hdu('WCS-WAVE');
             const h = hdu.header;
-            if (h.get('XTENSION') !== 'BINTABLE' || h.num('NAXIS2') !== 1 || h.num('TFIELDS') !== 3 || h.get('TTYPE1') !== 'X' || h.get('TFORM1') !== '9J' || h.get('TTYPE2') !== 'Y' || h.get('TFORM2') !== '9J' || h.get('TTYPE3') !== 'VALUES' || h.get('TFORM3') !== '162E' || String(h.get('TDIM3')).replace(/\s/g, '') !== '(2,9,9)' || h.num('NAXIS1') !== 720) {
+            // Detectors 1, 2, 4, 5 and 6 use a 9x9 grid; detector 3 uses 9 columns by 14 rows.
+            const count = (form: CardValue | undefined): number => Number(String(form ?? '').match(/^(\d+)J$/)?.[1]);
+            const nx = count(h.get('TFORM1'));
+            const ny = count(h.get('TFORM2'));
+            const sizeOk = Number.isInteger(nx) && Number.isInteger(ny) && nx >= 2 && ny >= 2 && nx <= 64 && ny <= 64;
+            if (!sizeOk || h.get('XTENSION') !== 'BINTABLE' || h.num('NAXIS2') !== 1 || h.num('TFIELDS') !== 3 || h.get('TTYPE1') !== 'X' || h.get('TTYPE2') !== 'Y' || h.get('TTYPE3') !== 'VALUES' || h.get('TFORM3') !== `${2 * nx * ny}E` || String(h.get('TDIM3')).replace(/\s/g, '') !== `(2,${nx},${ny})` || h.num('NAXIS1') !== 4 * nx + 4 * ny + 8 * nx * ny) {
                 throw new Error('Unsupported WCS-WAVE table layout');
             }
             budget(hdu.dataBytes);
@@ -369,10 +374,11 @@ export function createRangeReader(opts: RangeReaderOptions = {}): RangeReader
             const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
             // frame1.wave.json starts at FITS pixel 1 and ends at 2040: subtract
             // one to match its astropy origin=0 samples at pixels 0 and 2039.
-            const xs = Array.from({ length: 9 }, (_, i) => view.getInt32(i * 4, false) - 1);
-            const ys = Array.from({ length: 9 }, (_, i) => view.getInt32(36 + i * 4, false) - 1);
-            const lambda = Array.from({ length: 9 }, (_, y) => Array.from({ length: 9 }, (_, x) => view.getFloat32(72 + (y * 9 + x) * 8, false)));
-            const bandwidth = Array.from({ length: 9 }, (_, y) => Array.from({ length: 9 }, (_, x) => view.getFloat32(76 + (y * 9 + x) * 8, false)));
+            const base = 4 * (nx + ny);
+            const xs = Array.from({ length: nx }, (_, i) => view.getInt32(i * 4, false) - 1);
+            const ys = Array.from({ length: ny }, (_, i) => view.getInt32(4 * nx + i * 4, false) - 1);
+            const lambda = Array.from({ length: ny }, (_, y) => Array.from({ length: nx }, (_, x) => view.getFloat32(base + (y * nx + x) * 8, false)));
+            const bandwidth = Array.from({ length: ny }, (_, y) => Array.from({ length: nx }, (_, x) => view.getFloat32(base + 4 + (y * nx + x) * 8, false)));
             return { xs, ys, lambda, bandwidth };
         }
     };

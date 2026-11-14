@@ -1,0 +1,1687 @@
+{
+  "obsId": "2025W36_1A_0095_1D1",
+  "collection": "spherex_dr1",
+  "url": "https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/dr1/level2/2025W36_1A/l2b-v27-2026-232/1/level2_2025W36_1A_0095_1D1_spx_l2b-v27-2026-232.fits",
+  "createdUtc": "2026-11-14T04:13:55.582678+00:00",
+  "astropyVersion": "8.0.2",
+  "headerStart": 16675200,
+  "hduDataStart": 16692480,
+  "hduDataBytes": 11729953,
+  "theapCard": null,
+  "pcount": 11713633,
+  "layout": {
+    "width": 2040,
+    "height": 2040,
+    "tileWidth": 2040,
+    "tileHeight": 1,
+    "tilesAcross": 1,
+    "rowSize": 8,
+    "rowCount": 2040,
+    "tableStart": 16692480,
+    "tableBytes": 16320,
+    "heapStart": 16708800,
+    "heapBytes": 11713633,
+    "descriptor": "P",
+    "descriptorOffset": 0,
+    "blockSize": 32,
+    "bytePix": 4
+  },
+  "rows": [
+    0,
+    32,
+    64,
+    97,
+    129,
+    161,
+    194,
+    226,
+    258,
+    291,
+    323,
+    356,
+    388,
+    420,
+    453,
+    485,
+    517,
+    550,
+    582,
+    614,
+    647,
+    679,
+    712,
+    744,
+    776,
+    809,
+    841,
+    873,
+    906,
+    938,
+    970,
+    1003,
+    1035,
+    1068,
+    1100,
+    1132,
+    1165,
+    1197,
+    1229,
+    1262,
+    1294,
+    1326,
+    1359,
+    1391,
+    1424,
+    1456,
+    1488,
+    1521,
+    1553,
+    1585,
+    1618,
+    1650,
+    1682,
+    1715,
+    1747,
+    1780,
+    1812,
+    1844,
+    1877,
+    1909,
+    1941,
+    1974,
+    2006,
+    2039
+  ],
+  "box": {
+    "x0": 996,
+    "y0": 996,
+    "x1": 1044,
+    "y1": 1044
+  },
+  "crossBox": {
+    "x0": 983,
+    "y0": 1003,
+    "x1": 1057,
+    "y1": 1034
+  },
+  "flagNames": [
+    {
+      "bit": 0,
+      "name": "TRANSIENT"
+    },
+    {
+      "bit": 1,
+      "name": "OVERFLOW"
+    },
+    {
+      "bit": 2,
+      "name": "SUR_ERROR"
+    },
+    {
+      "bit": 6,
+      "name": "NONFUNC"
+    },
+    {
+      "bit": 7,
+      "name": "DICHROIC"
+    },
+    {
+      "bit": 9,
+      "name": "MISSING_DATA"
+    },
+    {
+      "bit": 10,
+      "name": "HOT"
+    },
+    {
+      "bit": 11,
+      "name": "COLD"
+    },
+    {
+      "bit": 12,
+      "name": "FULLSAMPLE"
+    },
+    {
+      "bit": 14,
+      "name": "PHANMISS"
+    },
+    {
+      "bit": 15,
+      "name": "NONLINEAR"
+    },
+    {
+      "bit": 17,
+      "name": "PERSIST"
+    },
+    {
+      "bit": 19,
+      "name": "OUTLIER"
+    },
+    {
+      "bit": 20,
+      "name": "CROSSTALK"
+    },
+    {
+      "bit": 21,
+      "name": "SOURCE"
+    },
+    {
+      "bit": 22,
+      "name": "GHOST"
+    },
+    {
+      "bit": 23,
+      "name": "GHOST_FPA"
+    },
+    {
+      "bit": 24,
+      "name": "GHOST_EXT"
+    },
+    {
+      "bit": 25,
+      "name": "STREAK"
+    },
+    {
+      "bit": 26,
+      "name": "BLOOM"
+    },
+    {
+      "bit": 27,
+      "name": "SNOWBALL"
+    },
+    {
+      "bit": 28,
+      "name": "HALO"
+    }
+  ],
+  "tiles": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 2040,
+      "height": 1,
+      "start": 16708800,
+      "length": 5410,
+      "expectedOffset": 0
+    },
+    {
+      "index": 32,
+      "x": 0,
+      "y": 32,
+      "width": 2040,
+      "height": 1,
+      "start": 16886882,
+      "length": 5852,
+      "expectedOffset": 8160
+    },
+    {
+      "index": 64,
+      "x": 0,
+      "y": 64,
+      "width": 2040,
+      "height": 1,
+      "start": 17071068,
+      "length": 5974,
+      "expectedOffset": 16320
+    },
+    {
+      "index": 97,
+      "x": 0,
+      "y": 97,
+      "width": 2040,
+      "height": 1,
+      "start": 17263008,
+      "length": 5404,
+      "expectedOffset": 24480
+    },
+    {
+      "index": 129,
+      "x": 0,
+      "y": 129,
+      "width": 2040,
+      "height": 1,
+      "start": 17457505,
+      "length": 6161,
+      "expectedOffset": 32640
+    },
+    {
+      "index": 161,
+      "x": 0,
+      "y": 161,
+      "width": 2040,
+      "height": 1,
+      "start": 17654669,
+      "length": 6055,
+      "expectedOffset": 40800
+    },
+    {
+      "index": 194,
+      "x": 0,
+      "y": 194,
+      "width": 2040,
+      "height": 1,
+      "start": 17855017,
+      "length": 6285,
+      "expectedOffset": 48960
+    },
+    {
+      "index": 226,
+      "x": 0,
+      "y": 226,
+      "width": 2040,
+      "height": 1,
+      "start": 18046999,
+      "length": 6141,
+      "expectedOffset": 57120
+    },
+    {
+      "index": 258,
+      "x": 0,
+      "y": 258,
+      "width": 2040,
+      "height": 1,
+      "start": 18237490,
+      "length": 6056,
+      "expectedOffset": 65280
+    },
+    {
+      "index": 291,
+      "x": 0,
+      "y": 291,
+      "width": 2040,
+      "height": 1,
+      "start": 18433803,
+      "length": 6509,
+      "expectedOffset": 73440
+    },
+    {
+      "index": 323,
+      "x": 0,
+      "y": 323,
+      "width": 2040,
+      "height": 1,
+      "start": 18629131,
+      "length": 5777,
+      "expectedOffset": 81600
+    },
+    {
+      "index": 356,
+      "x": 0,
+      "y": 356,
+      "width": 2040,
+      "height": 1,
+      "start": 18824225,
+      "length": 5929,
+      "expectedOffset": 89760
+    },
+    {
+      "index": 388,
+      "x": 0,
+      "y": 388,
+      "width": 2040,
+      "height": 1,
+      "start": 19013285,
+      "length": 5828,
+      "expectedOffset": 97920
+    },
+    {
+      "index": 420,
+      "x": 0,
+      "y": 420,
+      "width": 2040,
+      "height": 1,
+      "start": 19200446,
+      "length": 5793,
+      "expectedOffset": 106080
+    },
+    {
+      "index": 453,
+      "x": 0,
+      "y": 453,
+      "width": 2040,
+      "height": 1,
+      "start": 19390761,
+      "length": 5861,
+      "expectedOffset": 114240
+    },
+    {
+      "index": 485,
+      "x": 0,
+      "y": 485,
+      "width": 2040,
+      "height": 1,
+      "start": 19575775,
+      "length": 5880,
+      "expectedOffset": 122400
+    },
+    {
+      "index": 517,
+      "x": 0,
+      "y": 517,
+      "width": 2040,
+      "height": 1,
+      "start": 19761124,
+      "length": 5908,
+      "expectedOffset": 130560
+    },
+    {
+      "index": 550,
+      "x": 0,
+      "y": 550,
+      "width": 2040,
+      "height": 1,
+      "start": 19954575,
+      "length": 5446,
+      "expectedOffset": 138720
+    },
+    {
+      "index": 582,
+      "x": 0,
+      "y": 582,
+      "width": 2040,
+      "height": 1,
+      "start": 20147263,
+      "length": 6251,
+      "expectedOffset": 146880
+    },
+    {
+      "index": 614,
+      "x": 0,
+      "y": 614,
+      "width": 2040,
+      "height": 1,
+      "start": 20341819,
+      "length": 5824,
+      "expectedOffset": 155040
+    },
+    {
+      "index": 647,
+      "x": 0,
+      "y": 647,
+      "width": 2040,
+      "height": 1,
+      "start": 20542422,
+      "length": 5991,
+      "expectedOffset": 163200
+    },
+    {
+      "index": 679,
+      "x": 0,
+      "y": 679,
+      "width": 2040,
+      "height": 1,
+      "start": 20731250,
+      "length": 5511,
+      "expectedOffset": 171360
+    },
+    {
+      "index": 712,
+      "x": 0,
+      "y": 712,
+      "width": 2040,
+      "height": 1,
+      "start": 20924607,
+      "length": 6074,
+      "expectedOffset": 179520
+    },
+    {
+      "index": 744,
+      "x": 0,
+      "y": 744,
+      "width": 2040,
+      "height": 1,
+      "start": 21110320,
+      "length": 5709,
+      "expectedOffset": 187680
+    },
+    {
+      "index": 776,
+      "x": 0,
+      "y": 776,
+      "width": 2040,
+      "height": 1,
+      "start": 21299225,
+      "length": 5954,
+      "expectedOffset": 195840
+    },
+    {
+      "index": 809,
+      "x": 0,
+      "y": 809,
+      "width": 2040,
+      "height": 1,
+      "start": 21501760,
+      "length": 5806,
+      "expectedOffset": 204000
+    },
+    {
+      "index": 841,
+      "x": 0,
+      "y": 841,
+      "width": 2040,
+      "height": 1,
+      "start": 21690846,
+      "length": 5746,
+      "expectedOffset": 212160
+    },
+    {
+      "index": 873,
+      "x": 0,
+      "y": 873,
+      "width": 2040,
+      "height": 1,
+      "start": 21883526,
+      "length": 6099,
+      "expectedOffset": 220320
+    },
+    {
+      "index": 906,
+      "x": 0,
+      "y": 906,
+      "width": 2040,
+      "height": 1,
+      "start": 22077454,
+      "length": 6022,
+      "expectedOffset": 228480
+    },
+    {
+      "index": 938,
+      "x": 0,
+      "y": 938,
+      "width": 2040,
+      "height": 1,
+      "start": 22268451,
+      "length": 5937,
+      "expectedOffset": 236640
+    },
+    {
+      "index": 970,
+      "x": 0,
+      "y": 970,
+      "width": 2040,
+      "height": 1,
+      "start": 22458736,
+      "length": 5677,
+      "expectedOffset": 244800
+    },
+    {
+      "index": 996,
+      "x": 0,
+      "y": 996,
+      "width": 2040,
+      "height": 1,
+      "start": 22612992,
+      "length": 5819,
+      "expectedOffset": 252960
+    },
+    {
+      "index": 997,
+      "x": 0,
+      "y": 997,
+      "width": 2040,
+      "height": 1,
+      "start": 22618811,
+      "length": 5711,
+      "expectedOffset": 261120
+    },
+    {
+      "index": 998,
+      "x": 0,
+      "y": 998,
+      "width": 2040,
+      "height": 1,
+      "start": 22624522,
+      "length": 5799,
+      "expectedOffset": 269280
+    },
+    {
+      "index": 999,
+      "x": 0,
+      "y": 999,
+      "width": 2040,
+      "height": 1,
+      "start": 22630321,
+      "length": 6131,
+      "expectedOffset": 277440
+    },
+    {
+      "index": 1000,
+      "x": 0,
+      "y": 1000,
+      "width": 2040,
+      "height": 1,
+      "start": 22636452,
+      "length": 6183,
+      "expectedOffset": 285600
+    },
+    {
+      "index": 1001,
+      "x": 0,
+      "y": 1001,
+      "width": 2040,
+      "height": 1,
+      "start": 22642635,
+      "length": 6244,
+      "expectedOffset": 293760
+    },
+    {
+      "index": 1002,
+      "x": 0,
+      "y": 1002,
+      "width": 2040,
+      "height": 1,
+      "start": 22648879,
+      "length": 5937,
+      "expectedOffset": 301920
+    },
+    {
+      "index": 1003,
+      "x": 0,
+      "y": 1003,
+      "width": 2040,
+      "height": 1,
+      "start": 22654816,
+      "length": 6013,
+      "expectedOffset": 310080
+    },
+    {
+      "index": 1004,
+      "x": 0,
+      "y": 1004,
+      "width": 2040,
+      "height": 1,
+      "start": 22660829,
+      "length": 5893,
+      "expectedOffset": 318240
+    },
+    {
+      "index": 1005,
+      "x": 0,
+      "y": 1005,
+      "width": 2040,
+      "height": 1,
+      "start": 22666722,
+      "length": 5956,
+      "expectedOffset": 326400
+    },
+    {
+      "index": 1006,
+      "x": 0,
+      "y": 1006,
+      "width": 2040,
+      "height": 1,
+      "start": 22672678,
+      "length": 6069,
+      "expectedOffset": 334560
+    },
+    {
+      "index": 1007,
+      "x": 0,
+      "y": 1007,
+      "width": 2040,
+      "height": 1,
+      "start": 22678747,
+      "length": 6035,
+      "expectedOffset": 342720
+    },
+    {
+      "index": 1008,
+      "x": 0,
+      "y": 1008,
+      "width": 2040,
+      "height": 1,
+      "start": 22684782,
+      "length": 6142,
+      "expectedOffset": 350880
+    },
+    {
+      "index": 1009,
+      "x": 0,
+      "y": 1009,
+      "width": 2040,
+      "height": 1,
+      "start": 22690924,
+      "length": 5960,
+      "expectedOffset": 359040
+    },
+    {
+      "index": 1010,
+      "x": 0,
+      "y": 1010,
+      "width": 2040,
+      "height": 1,
+      "start": 22696884,
+      "length": 5886,
+      "expectedOffset": 367200
+    },
+    {
+      "index": 1011,
+      "x": 0,
+      "y": 1011,
+      "width": 2040,
+      "height": 1,
+      "start": 22702770,
+      "length": 5867,
+      "expectedOffset": 375360
+    },
+    {
+      "index": 1012,
+      "x": 0,
+      "y": 1012,
+      "width": 2040,
+      "height": 1,
+      "start": 22708637,
+      "length": 5873,
+      "expectedOffset": 383520
+    },
+    {
+      "index": 1013,
+      "x": 0,
+      "y": 1013,
+      "width": 2040,
+      "height": 1,
+      "start": 22714510,
+      "length": 5827,
+      "expectedOffset": 391680
+    },
+    {
+      "index": 1014,
+      "x": 0,
+      "y": 1014,
+      "width": 2040,
+      "height": 1,
+      "start": 22720337,
+      "length": 6206,
+      "expectedOffset": 399840
+    },
+    {
+      "index": 1015,
+      "x": 0,
+      "y": 1015,
+      "width": 2040,
+      "height": 1,
+      "start": 22726543,
+      "length": 5980,
+      "expectedOffset": 408000
+    },
+    {
+      "index": 1016,
+      "x": 0,
+      "y": 1016,
+      "width": 2040,
+      "height": 1,
+      "start": 22732523,
+      "length": 5838,
+      "expectedOffset": 416160
+    },
+    {
+      "index": 1017,
+      "x": 0,
+      "y": 1017,
+      "width": 2040,
+      "height": 1,
+      "start": 22738361,
+      "length": 5893,
+      "expectedOffset": 424320
+    },
+    {
+      "index": 1018,
+      "x": 0,
+      "y": 1018,
+      "width": 2040,
+      "height": 1,
+      "start": 22744254,
+      "length": 5819,
+      "expectedOffset": 432480
+    },
+    {
+      "index": 1019,
+      "x": 0,
+      "y": 1019,
+      "width": 2040,
+      "height": 1,
+      "start": 22750073,
+      "length": 5593,
+      "expectedOffset": 440640
+    },
+    {
+      "index": 1020,
+      "x": 0,
+      "y": 1020,
+      "width": 2040,
+      "height": 1,
+      "start": 22755666,
+      "length": 5773,
+      "expectedOffset": 448800
+    },
+    {
+      "index": 1021,
+      "x": 0,
+      "y": 1021,
+      "width": 2040,
+      "height": 1,
+      "start": 22761439,
+      "length": 5618,
+      "expectedOffset": 456960
+    },
+    {
+      "index": 1022,
+      "x": 0,
+      "y": 1022,
+      "width": 2040,
+      "height": 1,
+      "start": 22767057,
+      "length": 5877,
+      "expectedOffset": 465120
+    },
+    {
+      "index": 1023,
+      "x": 0,
+      "y": 1023,
+      "width": 2040,
+      "height": 1,
+      "start": 22772934,
+      "length": 5937,
+      "expectedOffset": 473280
+    },
+    {
+      "index": 1024,
+      "x": 0,
+      "y": 1024,
+      "width": 2040,
+      "height": 1,
+      "start": 22778871,
+      "length": 5929,
+      "expectedOffset": 481440
+    },
+    {
+      "index": 1025,
+      "x": 0,
+      "y": 1025,
+      "width": 2040,
+      "height": 1,
+      "start": 22784800,
+      "length": 5725,
+      "expectedOffset": 489600
+    },
+    {
+      "index": 1026,
+      "x": 0,
+      "y": 1026,
+      "width": 2040,
+      "height": 1,
+      "start": 22790525,
+      "length": 5681,
+      "expectedOffset": 497760
+    },
+    {
+      "index": 1027,
+      "x": 0,
+      "y": 1027,
+      "width": 2040,
+      "height": 1,
+      "start": 22796206,
+      "length": 5799,
+      "expectedOffset": 505920
+    },
+    {
+      "index": 1028,
+      "x": 0,
+      "y": 1028,
+      "width": 2040,
+      "height": 1,
+      "start": 22802005,
+      "length": 5683,
+      "expectedOffset": 514080
+    },
+    {
+      "index": 1029,
+      "x": 0,
+      "y": 1029,
+      "width": 2040,
+      "height": 1,
+      "start": 22807688,
+      "length": 5529,
+      "expectedOffset": 522240
+    },
+    {
+      "index": 1030,
+      "x": 0,
+      "y": 1030,
+      "width": 2040,
+      "height": 1,
+      "start": 22813217,
+      "length": 5395,
+      "expectedOffset": 530400
+    },
+    {
+      "index": 1031,
+      "x": 0,
+      "y": 1031,
+      "width": 2040,
+      "height": 1,
+      "start": 22818612,
+      "length": 5643,
+      "expectedOffset": 538560
+    },
+    {
+      "index": 1032,
+      "x": 0,
+      "y": 1032,
+      "width": 2040,
+      "height": 1,
+      "start": 22824255,
+      "length": 5758,
+      "expectedOffset": 546720
+    },
+    {
+      "index": 1033,
+      "x": 0,
+      "y": 1033,
+      "width": 2040,
+      "height": 1,
+      "start": 22830013,
+      "length": 5507,
+      "expectedOffset": 554880
+    },
+    {
+      "index": 1034,
+      "x": 0,
+      "y": 1034,
+      "width": 2040,
+      "height": 1,
+      "start": 22835520,
+      "length": 5710,
+      "expectedOffset": 563040
+    },
+    {
+      "index": 1035,
+      "x": 0,
+      "y": 1035,
+      "width": 2040,
+      "height": 1,
+      "start": 22841230,
+      "length": 5892,
+      "expectedOffset": 571200
+    },
+    {
+      "index": 1036,
+      "x": 0,
+      "y": 1036,
+      "width": 2040,
+      "height": 1,
+      "start": 22847122,
+      "length": 5690,
+      "expectedOffset": 579360
+    },
+    {
+      "index": 1037,
+      "x": 0,
+      "y": 1037,
+      "width": 2040,
+      "height": 1,
+      "start": 22852812,
+      "length": 5687,
+      "expectedOffset": 587520
+    },
+    {
+      "index": 1038,
+      "x": 0,
+      "y": 1038,
+      "width": 2040,
+      "height": 1,
+      "start": 22858499,
+      "length": 5759,
+      "expectedOffset": 595680
+    },
+    {
+      "index": 1039,
+      "x": 0,
+      "y": 1039,
+      "width": 2040,
+      "height": 1,
+      "start": 22864258,
+      "length": 5947,
+      "expectedOffset": 603840
+    },
+    {
+      "index": 1040,
+      "x": 0,
+      "y": 1040,
+      "width": 2040,
+      "height": 1,
+      "start": 22870205,
+      "length": 5936,
+      "expectedOffset": 612000
+    },
+    {
+      "index": 1041,
+      "x": 0,
+      "y": 1041,
+      "width": 2040,
+      "height": 1,
+      "start": 22876141,
+      "length": 5917,
+      "expectedOffset": 620160
+    },
+    {
+      "index": 1042,
+      "x": 0,
+      "y": 1042,
+      "width": 2040,
+      "height": 1,
+      "start": 22882058,
+      "length": 6044,
+      "expectedOffset": 628320
+    },
+    {
+      "index": 1043,
+      "x": 0,
+      "y": 1043,
+      "width": 2040,
+      "height": 1,
+      "start": 22888102,
+      "length": 5878,
+      "expectedOffset": 636480
+    },
+    {
+      "index": 1068,
+      "x": 0,
+      "y": 1068,
+      "width": 2040,
+      "height": 1,
+      "start": 23032602,
+      "length": 5753,
+      "expectedOffset": 644640
+    },
+    {
+      "index": 1100,
+      "x": 0,
+      "y": 1100,
+      "width": 2040,
+      "height": 1,
+      "start": 23222639,
+      "length": 6076,
+      "expectedOffset": 652800
+    },
+    {
+      "index": 1132,
+      "x": 0,
+      "y": 1132,
+      "width": 2040,
+      "height": 1,
+      "start": 23409904,
+      "length": 5831,
+      "expectedOffset": 660960
+    },
+    {
+      "index": 1165,
+      "x": 0,
+      "y": 1165,
+      "width": 2040,
+      "height": 1,
+      "start": 23602437,
+      "length": 6272,
+      "expectedOffset": 669120
+    },
+    {
+      "index": 1197,
+      "x": 0,
+      "y": 1197,
+      "width": 2040,
+      "height": 1,
+      "start": 23793881,
+      "length": 6025,
+      "expectedOffset": 677280
+    },
+    {
+      "index": 1229,
+      "x": 0,
+      "y": 1229,
+      "width": 2040,
+      "height": 1,
+      "start": 23985082,
+      "length": 5934,
+      "expectedOffset": 685440
+    },
+    {
+      "index": 1262,
+      "x": 0,
+      "y": 1262,
+      "width": 2040,
+      "height": 1,
+      "start": 24180218,
+      "length": 5799,
+      "expectedOffset": 693600
+    },
+    {
+      "index": 1294,
+      "x": 0,
+      "y": 1294,
+      "width": 2040,
+      "height": 1,
+      "start": 24366915,
+      "length": 5896,
+      "expectedOffset": 701760
+    },
+    {
+      "index": 1326,
+      "x": 0,
+      "y": 1326,
+      "width": 2040,
+      "height": 1,
+      "start": 24554448,
+      "length": 5663,
+      "expectedOffset": 709920
+    },
+    {
+      "index": 1359,
+      "x": 0,
+      "y": 1359,
+      "width": 2040,
+      "height": 1,
+      "start": 24744782,
+      "length": 5576,
+      "expectedOffset": 718080
+    },
+    {
+      "index": 1391,
+      "x": 0,
+      "y": 1391,
+      "width": 2040,
+      "height": 1,
+      "start": 24925249,
+      "length": 5629,
+      "expectedOffset": 726240
+    },
+    {
+      "index": 1424,
+      "x": 0,
+      "y": 1424,
+      "width": 2040,
+      "height": 1,
+      "start": 25107024,
+      "length": 5434,
+      "expectedOffset": 734400
+    },
+    {
+      "index": 1456,
+      "x": 0,
+      "y": 1456,
+      "width": 2040,
+      "height": 1,
+      "start": 25283305,
+      "length": 5873,
+      "expectedOffset": 742560
+    },
+    {
+      "index": 1488,
+      "x": 0,
+      "y": 1488,
+      "width": 2040,
+      "height": 1,
+      "start": 25460447,
+      "length": 5230,
+      "expectedOffset": 750720
+    },
+    {
+      "index": 1521,
+      "x": 0,
+      "y": 1521,
+      "width": 2040,
+      "height": 1,
+      "start": 25652603,
+      "length": 5977,
+      "expectedOffset": 758880
+    },
+    {
+      "index": 1553,
+      "x": 0,
+      "y": 1553,
+      "width": 2040,
+      "height": 1,
+      "start": 25839730,
+      "length": 5965,
+      "expectedOffset": 767040
+    },
+    {
+      "index": 1585,
+      "x": 0,
+      "y": 1585,
+      "width": 2040,
+      "height": 1,
+      "start": 26024486,
+      "length": 5666,
+      "expectedOffset": 775200
+    },
+    {
+      "index": 1618,
+      "x": 0,
+      "y": 1618,
+      "width": 2040,
+      "height": 1,
+      "start": 26207366,
+      "length": 5844,
+      "expectedOffset": 783360
+    },
+    {
+      "index": 1650,
+      "x": 0,
+      "y": 1650,
+      "width": 2040,
+      "height": 1,
+      "start": 26390020,
+      "length": 5311,
+      "expectedOffset": 791520
+    },
+    {
+      "index": 1682,
+      "x": 0,
+      "y": 1682,
+      "width": 2040,
+      "height": 1,
+      "start": 26573860,
+      "length": 5872,
+      "expectedOffset": 799680
+    },
+    {
+      "index": 1715,
+      "x": 0,
+      "y": 1715,
+      "width": 2040,
+      "height": 1,
+      "start": 26761817,
+      "length": 5868,
+      "expectedOffset": 807840
+    },
+    {
+      "index": 1747,
+      "x": 0,
+      "y": 1747,
+      "width": 2040,
+      "height": 1,
+      "start": 26939474,
+      "length": 5352,
+      "expectedOffset": 816000
+    },
+    {
+      "index": 1780,
+      "x": 0,
+      "y": 1780,
+      "width": 2040,
+      "height": 1,
+      "start": 27119530,
+      "length": 5028,
+      "expectedOffset": 824160
+    },
+    {
+      "index": 1812,
+      "x": 0,
+      "y": 1812,
+      "width": 2040,
+      "height": 1,
+      "start": 27282299,
+      "length": 5043,
+      "expectedOffset": 832320
+    },
+    {
+      "index": 1844,
+      "x": 0,
+      "y": 1844,
+      "width": 2040,
+      "height": 1,
+      "start": 27442556,
+      "length": 5287,
+      "expectedOffset": 840480
+    },
+    {
+      "index": 1877,
+      "x": 0,
+      "y": 1877,
+      "width": 2040,
+      "height": 1,
+      "start": 27606620,
+      "length": 5221,
+      "expectedOffset": 848640
+    },
+    {
+      "index": 1909,
+      "x": 0,
+      "y": 1909,
+      "width": 2040,
+      "height": 1,
+      "start": 27773075,
+      "length": 5245,
+      "expectedOffset": 856800
+    },
+    {
+      "index": 1941,
+      "x": 0,
+      "y": 1941,
+      "width": 2040,
+      "height": 1,
+      "start": 27934407,
+      "length": 5433,
+      "expectedOffset": 864960
+    },
+    {
+      "index": 1974,
+      "x": 0,
+      "y": 1974,
+      "width": 2040,
+      "height": 1,
+      "start": 28097363,
+      "length": 4774,
+      "expectedOffset": 873120
+    },
+    {
+      "index": 2006,
+      "x": 0,
+      "y": 2006,
+      "width": 2040,
+      "height": 1,
+      "start": 28257579,
+      "length": 5074,
+      "expectedOffset": 881280
+    },
+    {
+      "index": 2039,
+      "x": 0,
+      "y": 2039,
+      "width": 2040,
+      "height": 1,
+      "start": 28417812,
+      "length": 4621,
+      "expectedOffset": 889440
+    }
+  ],
+  "heapRanges": [
+    {
+      "start": 16708800,
+      "length": 5410,
+      "file": "heap-000.bin"
+    },
+    {
+      "start": 16886882,
+      "length": 5852,
+      "file": "heap-001.bin"
+    },
+    {
+      "start": 17071068,
+      "length": 5974,
+      "file": "heap-002.bin"
+    },
+    {
+      "start": 17263008,
+      "length": 5404,
+      "file": "heap-003.bin"
+    },
+    {
+      "start": 17457505,
+      "length": 6161,
+      "file": "heap-004.bin"
+    },
+    {
+      "start": 17654669,
+      "length": 6055,
+      "file": "heap-005.bin"
+    },
+    {
+      "start": 17855017,
+      "length": 6285,
+      "file": "heap-006.bin"
+    },
+    {
+      "start": 18046999,
+      "length": 6141,
+      "file": "heap-007.bin"
+    },
+    {
+      "start": 18237490,
+      "length": 6056,
+      "file": "heap-008.bin"
+    },
+    {
+      "start": 18433803,
+      "length": 6509,
+      "file": "heap-009.bin"
+    },
+    {
+      "start": 18629131,
+      "length": 5777,
+      "file": "heap-010.bin"
+    },
+    {
+      "start": 18824225,
+      "length": 5929,
+      "file": "heap-011.bin"
+    },
+    {
+      "start": 19013285,
+      "length": 5828,
+      "file": "heap-012.bin"
+    },
+    {
+      "start": 19200446,
+      "length": 5793,
+      "file": "heap-013.bin"
+    },
+    {
+      "start": 19390761,
+      "length": 5861,
+      "file": "heap-014.bin"
+    },
+    {
+      "start": 19575775,
+      "length": 5880,
+      "file": "heap-015.bin"
+    },
+    {
+      "start": 19761124,
+      "length": 5908,
+      "file": "heap-016.bin"
+    },
+    {
+      "start": 19954575,
+      "length": 5446,
+      "file": "heap-017.bin"
+    },
+    {
+      "start": 20147263,
+      "length": 6251,
+      "file": "heap-018.bin"
+    },
+    {
+      "start": 20341819,
+      "length": 5824,
+      "file": "heap-019.bin"
+    },
+    {
+      "start": 20542422,
+      "length": 5991,
+      "file": "heap-020.bin"
+    },
+    {
+      "start": 20731250,
+      "length": 5511,
+      "file": "heap-021.bin"
+    },
+    {
+      "start": 20924607,
+      "length": 6074,
+      "file": "heap-022.bin"
+    },
+    {
+      "start": 21110320,
+      "length": 5709,
+      "file": "heap-023.bin"
+    },
+    {
+      "start": 21299225,
+      "length": 5954,
+      "file": "heap-024.bin"
+    },
+    {
+      "start": 21501760,
+      "length": 5806,
+      "file": "heap-025.bin"
+    },
+    {
+      "start": 21690846,
+      "length": 5746,
+      "file": "heap-026.bin"
+    },
+    {
+      "start": 21883526,
+      "length": 6099,
+      "file": "heap-027.bin"
+    },
+    {
+      "start": 22077454,
+      "length": 6022,
+      "file": "heap-028.bin"
+    },
+    {
+      "start": 22268451,
+      "length": 5937,
+      "file": "heap-029.bin"
+    },
+    {
+      "start": 22458736,
+      "length": 5677,
+      "file": "heap-030.bin"
+    },
+    {
+      "start": 22612992,
+      "length": 280988,
+      "file": "heap-031.bin"
+    },
+    {
+      "start": 23032602,
+      "length": 5753,
+      "file": "heap-032.bin"
+    },
+    {
+      "start": 23222639,
+      "length": 6076,
+      "file": "heap-033.bin"
+    },
+    {
+      "start": 23409904,
+      "length": 5831,
+      "file": "heap-034.bin"
+    },
+    {
+      "start": 23602437,
+      "length": 6272,
+      "file": "heap-035.bin"
+    },
+    {
+      "start": 23793881,
+      "length": 6025,
+      "file": "heap-036.bin"
+    },
+    {
+      "start": 23985082,
+      "length": 5934,
+      "file": "heap-037.bin"
+    },
+    {
+      "start": 24180218,
+      "length": 5799,
+      "file": "heap-038.bin"
+    },
+    {
+      "start": 24366915,
+      "length": 5896,
+      "file": "heap-039.bin"
+    },
+    {
+      "start": 24554448,
+      "length": 5663,
+      "file": "heap-040.bin"
+    },
+    {
+      "start": 24744782,
+      "length": 5576,
+      "file": "heap-041.bin"
+    },
+    {
+      "start": 24925249,
+      "length": 5629,
+      "file": "heap-042.bin"
+    },
+    {
+      "start": 25107024,
+      "length": 5434,
+      "file": "heap-043.bin"
+    },
+    {
+      "start": 25283305,
+      "length": 5873,
+      "file": "heap-044.bin"
+    },
+    {
+      "start": 25460447,
+      "length": 5230,
+      "file": "heap-045.bin"
+    },
+    {
+      "start": 25652603,
+      "length": 5977,
+      "file": "heap-046.bin"
+    },
+    {
+      "start": 25839730,
+      "length": 5965,
+      "file": "heap-047.bin"
+    },
+    {
+      "start": 26024486,
+      "length": 5666,
+      "file": "heap-048.bin"
+    },
+    {
+      "start": 26207366,
+      "length": 5844,
+      "file": "heap-049.bin"
+    },
+    {
+      "start": 26390020,
+      "length": 5311,
+      "file": "heap-050.bin"
+    },
+    {
+      "start": 26573860,
+      "length": 5872,
+      "file": "heap-051.bin"
+    },
+    {
+      "start": 26761817,
+      "length": 5868,
+      "file": "heap-052.bin"
+    },
+    {
+      "start": 26939474,
+      "length": 5352,
+      "file": "heap-053.bin"
+    },
+    {
+      "start": 27119530,
+      "length": 5028,
+      "file": "heap-054.bin"
+    },
+    {
+      "start": 27282299,
+      "length": 5043,
+      "file": "heap-055.bin"
+    },
+    {
+      "start": 27442556,
+      "length": 5287,
+      "file": "heap-056.bin"
+    },
+    {
+      "start": 27606620,
+      "length": 5221,
+      "file": "heap-057.bin"
+    },
+    {
+      "start": 27773075,
+      "length": 5245,
+      "file": "heap-058.bin"
+    },
+    {
+      "start": 27934407,
+      "length": 5433,
+      "file": "heap-059.bin"
+    },
+    {
+      "start": 28097363,
+      "length": 4774,
+      "file": "heap-060.bin"
+    },
+    {
+      "start": 28257579,
+      "length": 5074,
+      "file": "heap-061.bin"
+    },
+    {
+      "start": 28417812,
+      "length": 4621,
+      "file": "heap-062.bin"
+    }
+  ],
+  "rangeRequests": [
+    {
+      "start": 0,
+      "length": 2880
+    },
+    {
+      "start": 2880,
+      "length": 2880
+    },
+    {
+      "start": 5760,
+      "length": 2880
+    },
+    {
+      "start": 8640,
+      "length": 2880
+    },
+    {
+      "start": 11520,
+      "length": 2880
+    },
+    {
+      "start": 14400,
+      "length": 2880
+    },
+    {
+      "start": 17280,
+      "length": 2880
+    },
+    {
+      "start": 20160,
+      "length": 2880
+    },
+    {
+      "start": 23040,
+      "length": 2880
+    },
+    {
+      "start": 25920,
+      "length": 2880
+    },
+    {
+      "start": 16675200,
+      "length": 2880
+    },
+    {
+      "start": 16678080,
+      "length": 2880
+    },
+    {
+      "start": 16680960,
+      "length": 2880
+    },
+    {
+      "start": 16683840,
+      "length": 2880
+    },
+    {
+      "start": 16686720,
+      "length": 2880
+    },
+    {
+      "start": 16689600,
+      "length": 2880
+    },
+    {
+      "start": 16692480,
+      "length": 11729953
+    }
+  ],
+  "downloadBytes": 11776033
+}

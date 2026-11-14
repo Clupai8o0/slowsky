@@ -27,8 +27,6 @@ describe('parseCoords', () => {
     it('preserves explicit RA hour markers', () => {
         expect(parseCoords('12h +20d')).toEqual({ ra: 180, dec: 20 });
         expect(parseCoords('12H +20d')).toEqual({ ra: 180, dec: 20 });
-        expect(parseCoords('30m +20d')).toEqual({ ra: 7.5, dec: 20 });
-        expect(parseCoords('30s +20d')).toEqual({ ra: 0.125, dec: 20 });
         expect(parseCoords('24h +20d')).toBeNull();
     });
 
@@ -43,7 +41,31 @@ describe('parseCoords', () => {
     it('always interprets Dec markers as degrees', () => {
         expect(parseCoords('12h +20d30m')).toEqual({ ra: 180, dec: 20.5 });
         expect(parseCoords('12h -20°30′')).toEqual({ ra: 180, dec: -20.5 });
-        expect(parseCoords('180 +30m')).toEqual({ ra: 180, dec: 0.5 });
+    });
+
+    it('rejects hours in declination', () => {
+        expect(parseCoords('10h, 20h')).toBeNull();
+    });
+
+    it('rejects skipped or standalone sexagesimal units', () => {
+        for (const text of ['45m, +24d', '03h 47s, +24d', '03h 47s', '30m +20d',
+            '30s +20d', '180 +30m', '12h +20d30s']) {
+            expect(parseCoords(text), text).toBeNull();
+        }
+    });
+
+    it('rejects four unsigned bare numbers as ambiguous', () => {
+        expect(parseCoords('03 47 12 24.1')).toBeNull();
+    });
+
+    it('retains supported decimal and sexagesimal coordinates', () => {
+        expect(parseCoords('56.75 24.12')).toEqual({ ra: 56.75, dec: 24.12 });
+        for (const text of ['03h47m24s +24d07m00s', '03 47 24 +24 07 00']) {
+            expect(parseCoords(text)?.ra, text).toBeCloseTo(56.85, 9);
+            expect(parseCoords(text)?.dec, text).toBeCloseTo(24 + 7 / 60, 9);
+        }
+        expect(parseCoords('03:47:24 -24:07:00')?.dec).toBeCloseTo(-24 - 7 / 60, 9);
+        expect(parseCoords('03 47 24 -00 30 00')?.dec).toBe(-0.5);
     });
 
     it('rejects RA with mixed hour and degree markers', () => {
@@ -65,6 +87,50 @@ describe('parseCoords', () => {
         const got = parseCoords(`${formatRa(RW_AUR.ra)} ${formatDec(RW_AUR.dec)}`);
         expect(got?.ra).toBeCloseTo(RW_AUR.ra, 3);
         expect(got?.dec).toBeCloseTo(RW_AUR.dec, 3);
+    });
+
+    it('reads four numbers when colons or units show where RA ends', () => {
+        expect(parseCoords('10:30 20:15')).toEqual({ ra: 157.5, dec: 20.25 });
+        expect(parseCoords('03:47 24:07')?.ra).toBeCloseTo(56.75, 9);
+        expect(parseCoords('10:30 20 15')).toEqual({ ra: 157.5, dec: 20.25 });
+        expect(parseCoords('10 30 20:15')).toEqual({ ra: 157.5, dec: 20.25 });
+        expect(parseCoords('10h30m 20 15')).toEqual({ ra: 157.5, dec: 20.25 });
+        expect(parseCoords('10 30 20d 15')).toEqual({ ra: 157.5, dec: 20.25 });
+        expect(parseCoords('10h 30m 20d 15m')).toEqual({ ra: 157.5, dec: 20.25 });
+    });
+
+    it('refuses four numbers when the split is a guess', () => {
+        // "12h 20 30 00" could be 12h20m and +30 00, or 12h and +20 30 00.
+        for (const bad of ['12h 20 30 00', '10 30:20 15', '10 30 20 15m', '10 30m 20 15', '03h 47m 24s 24.1d']) {
+            expect(parseCoords(bad), bad).toBeNull();
+        }
+    });
+
+    it('refuses a comma that could be a decimal comma', () => {
+        // 83.63 and 22, or 83 and 63 22: two different places.
+        // "03 47 24,24 07 00" has the same problem: 03 47 24.24 and 07 00, or 03 47 24 and 24 07 00.
+        for (const bad of ['83,63 22', '12,5 45', '83,63 +22', '56,75 -24,12', '10 30,20 15',
+            '03 47 24,24 07 00', '12,0 0', '83,63 .5', '83,63 -.5']) {
+            expect(parseCoords(bad), bad).toBeNull();
+        }
+        expect(parseCoords('56.75,24.12')).toEqual({ ra: 56.75, dec: 24.12 });
+        expect(parseCoords('83,63')).toEqual({ ra: 83, dec: 63 });
+        expect(parseCoords('56.75, 24.12')).toEqual({ ra: 56.75, dec: 24.12 });
+        expect(parseCoords('10 30, 20 15')).toEqual({ ra: 157.5, dec: 20.25 });
+        expect(parseCoords('10:30,20')).toEqual({ ra: 157.5, dec: 20 });
+        expect(parseCoords('10:30,20:15')).toEqual({ ra: 157.5, dec: 20.25 });
+        expect(parseCoords('03 47 24, 24 07 00')?.dec).toBeCloseTo(24.1166667, 6);
+        expect(parseCoords('03:47:24, 24:07:00')?.ra).toBeCloseTo(56.85, 9);
+    });
+
+    it('refuses units out of order, and an RA where m or s follows a bare number', () => {
+        for (const bad of ['12h12h +20d', '12h30m15m +20d', '10 20m, +30d', '10 20 30s, +30d', '56.75 20m']) {
+            expect(parseCoords(bad), bad).toBeNull();
+        }
+        expect(parseCoords('10h 30, +20d 15')).toEqual({ ra: 157.5, dec: 20.25 });
+        // Dec is always degrees, and ′ and ″ only mean arc: no guess is needed.
+        expect(parseCoords('56.75 +24 07m00s')?.dec).toBeCloseTo(24.1166667, 6);
+        expect(parseCoords('12 30\' 00", +20d')).toEqual({ ra: 12.5, dec: 20 });
     });
 
     it('returns null for text that is not a coordinate', () => {
