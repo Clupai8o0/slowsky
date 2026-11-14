@@ -6,20 +6,21 @@ import { SYSTEM_PROMPT, userMessage } from '../src/lib/insight-prompt';
 declare const process: { env: Record<string, string | undefined> };
 
 export interface Completion { text: string; refused: boolean; model: string; stopReason?: string | null }
-const MAX_GUESSES = 10;
-const MAX_ATTEMPTS = 60;
+const MAX_ATTEMPTS = 30;
 const MAX_KEYS = 20000;
 export interface LimitStore {
     hit(key: string, windowMs: number, now: number): Promise<number>;
     count(key: string, windowMs: number, now: number): Promise<number>;
+    refund(key: string, windowMs: number, now: number): Promise<void>;
 }
-export function memoryStore(): LimitStore
+export function memoryStore(): LimitStore & { size(): number }
 {
     const guesses = new Map<string, { count: number; end: number }>();
     const notes = new Map<string, { count: number; end: number }>();
+    const globals = new Map<string, { count: number; end: number }>();
     function entriesFor(key: string): typeof guesses
     {
-        return key.startsWith('try:') || key.startsWith('bad:') ? guesses : notes;
+        return key === 'global-hour' || key === 'global-day' ? globals : key.startsWith('try:') ? guesses : notes;
     }
     function lookup(key: string, windowMs: number, now: number): string
     {
@@ -27,18 +28,27 @@ export function memoryStore(): LimitStore
     }
     return {
         async hit(key, windowMs, now) {
+            for (const [oldName, old] of globals) { if (old.end <= now) { globals.delete(oldName); } }
             const name = lookup(key, windowMs, now);
             const entries = entriesFor(key);
             const entry = entries.get(name);
-            if (!entry && entries.size >= MAX_KEYS) {
+            if (!entry && entries !== globals && entries.size >= MAX_KEYS) {
                 for (const [oldName, old] of entries) { if (old.end <= now) { entries.delete(oldName); } }
-                if (entries.size >= MAX_KEYS) { entries.delete(entries.keys().next().value!); }
+                if (entries.size >= MAX_KEYS) {
+                    const disposable = Array.from(entries).find(([, old]) => old.count <= 1)?.[0];
+                    entries.delete(disposable ?? entries.keys().next().value!);
+                }
             }
             const count = (entry?.count ?? 0) + 1;
             entries.set(name, { count, end: (Math.floor(now / windowMs) + 1) * windowMs });
             return count;
         },
         async count(key, windowMs, now) { return entriesFor(key).get(lookup(key, windowMs, now))?.count ?? 0; },
+        async refund(key, windowMs, now) {
+            const entry = entriesFor(key).get(lookup(key, windowMs, now));
+            if (entry) { entry.count = Math.max(0, entry.count - 1); }
+        },
+        size() { return guesses.size + notes.size + globals.size; },
     };
 }
 export function upstashStore(url: string, token: string, fetcher: typeof fetch = fetch): LimitStore
@@ -70,6 +80,7 @@ export function upstashStore(url: string, token: string, fetcher: typeof fetch =
             return result(data[0], false);
         },
         async count(key, windowMs, now) { return result(await call('', ['GET', `${key}:${Math.floor(now / windowMs)}`]), true); },
+        async refund(key, windowMs, now) { result(await call('', ['DECR', `${key}:${Math.floor(now / windowMs)}`]), false); },
     };
 }
 export interface InsightDeps {
@@ -78,6 +89,7 @@ export interface InsightDeps {
     complete: (system: string, user: string, signal: AbortSignal) => Promise<Completion>;
     now: () => number;
     store: LimitStore;
+    local?: LimitStore;
     passcode: string | undefined;
     open: boolean;
     maxPerUserDay: number;
@@ -86,10 +98,20 @@ export interface InsightDeps {
 }
 type Answer = { text: string; model: string; dropped: number };
 const answers = new Map<string, Answer>();
-const envUrl = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? process.env.UPSTASH_REDIS_REST_URL : process.env.KV_REST_API_URL;
-const envToken = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? process.env.UPSTASH_REDIS_REST_TOKEN : process.env.KV_REST_API_TOKEN;
+export function pickStore(env: Record<string, string | undefined>): LimitStore
+{
+    const pairs = [[env.UPSTASH_REDIS_REST_URL, env.UPSTASH_REDIS_REST_TOKEN], [env.KV_REST_API_URL, env.KV_REST_API_TOKEN]];
+    for (const [url, token] of pairs) { if (url && token) { return upstashStore(url, token); } }
+    if (pairs.some(([url, token]) => Boolean(url) !== Boolean(token))) {
+        const fail = async (): Promise<never> => { throw new Error('store failure'); };
+        return { hit: fail, count: fail, refund: fail };
+    }
+    return memoryStore();
+}
 // In-memory limits are per server instance and reset on a cold start.
-const serverStore = envUrl && envToken ? upstashStore(envUrl, envToken) : memoryStore();
+const serverStore = pickStore(process.env);
+// Caps what one address can cost the shared store per server instance.
+const localStore = memoryStore();
 const limit = 4096;
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response
 {
@@ -151,32 +173,43 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
 {
     const minute = 60000, hour = 3600000, day = 86400000, guessWindow = 900000;
     const enabled = Boolean(deps.apiKey && (deps.passcode || deps.open));
+    const local = deps.local ?? localStore;
     async function counter(method: 'hit' | 'count', key: string, window: number, now: number): Promise<number> {
         try { return await deps.store[method](key, window, now); } catch { throw new StoreFailure(); }
     }
     function retry(window: number, now: number): number { return Math.max(1, Math.ceil(((Math.floor(now / window) + 1) * window - now) / 1000)); }
     async function visitor(request: Request): Promise<string> {
         const ip = request.headers.get('x-real-ip')?.trim() || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-        return (await hash(`${networkAddress(ip)}|${deps.passcode ?? ''}`)).slice(0, 16);
+        const secret = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${deps.apiKey ?? ''}|${deps.passcode ?? ''}`));
+        const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(networkAddress(ip)));
+        return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('').slice(0, 16);
+    }
+    async function refund(key: string, window: number, now: number): Promise<void> {
+        try { await deps.store.refund(key, window, now); } catch { throw new StoreFailure(); }
+    }
+    async function brake(id: string, now: number): Promise<boolean> {
+        try { return await local.hit(`local:${id}`, minute, now) > 40; } catch { throw new StoreFailure(); }
     }
     async function access(request: Request, id: string, now: number): Promise<'ok' | 'locked' | 'busy'> {
         if (!deps.passcode) { return 'ok'; }
         const supplied = request.headers.get('x-insight-passcode') ?? '';
         if (!supplied && request.method === 'GET') { return 'locked'; }
         if (await counter('hit', `try:${id}`, guessWindow, now) > MAX_ATTEMPTS) { return 'busy'; }
-        if (await counter('count', `bad:${id}`, guessWindow, now) >= MAX_GUESSES) { return 'busy'; }
         const [a, b] = await Promise.all([crypto.subtle.digest('SHA-256', new TextEncoder().encode(supplied)), crypto.subtle.digest('SHA-256', new TextEncoder().encode(deps.passcode))]);
         let diff = 0;
         const x = new Uint8Array(a), y = new Uint8Array(b);
         for (let i = 0; i < x.length; i++) { diff |= x[i]! ^ y[i]!; }
-        if (diff === 0) { return 'ok'; }
-        if (supplied) { await counter('hit', `bad:${id}`, guessWindow, now); }
+        if (diff === 0) { await refund(`try:${id}`, guessWindow, now); return 'ok'; }
         return 'locked';
     }
     const handlers = {
         async GET(request: Request): Promise<Response> {
             if (!enabled) { return json({ enabled: false, locked: false, unlocked: false, model: deps.model }); }
-            const now = deps.now(), id = await visitor(request), state = await access(request, id, now);
+            if (!request.headers.has('x-insight-passcode')) { return json({ enabled: true, locked: Boolean(deps.passcode), unlocked: !deps.passcode, model: deps.model }); }
+            const now = deps.now(), id = await visitor(request);
+            if (await brake(id, now)) { return failure(429, 'busy', { 'Retry-After': String(retry(minute, now)) }); }
+            const state = await access(request, id, now);
             if (state === 'busy') { return failure(429, 'busy', { 'Retry-After': String(retry(guessWindow, now)) }); }
             const unlocked = state === 'ok';
             return json({ enabled: true, locked: Boolean(deps.passcode), unlocked, model: deps.model, ...(unlocked ? { remaining: Math.max(0, deps.maxPerUserDay - await counter('count', `user-day:${id}`, day, now)) } : {}) });
@@ -188,9 +221,6 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
             try {
                 if ((site !== null && site !== 'same-origin') || (origin !== null && new URL(origin).host !== new URL(request.url).host)) { return failure(403, 'forbidden'); }
             } catch { return failure(403, 'forbidden'); }
-            const now = deps.now(), id = await visitor(request), state = await access(request, id, now);
-            if (state === 'busy') { return failure(429, 'busy', { 'Retry-After': String(retry(guessWindow, now)) }); }
-            if (state === 'locked') { return failure(401, 'locked'); }
             if (!/^application\/json(?:\s*;|\s*$)/i.test(request.headers.get('content-type') ?? '')) { return failure(400, 'invalid'); }
             let facts;
             try {
@@ -200,6 +230,11 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
                 if (!parsed || typeof parsed !== 'object' || !('facts' in parsed)) { return failure(400, 'invalid'); }
                 facts = validateFacts(parsed.facts);
             } catch { return failure(400, 'invalid'); }
+            const now = deps.now(), id = await visitor(request);
+            if (await brake(id, now)) { return failure(429, 'busy', { 'Retry-After': String(retry(minute, now)) }); }
+            const state = await access(request, id, now);
+            if (state === 'busy') { return failure(429, 'busy', { 'Retry-After': String(retry(guessWindow, now)) }); }
+            if (state === 'locked') { return failure(401, 'locked'); }
             const key = await hash(JSON.stringify(facts));
             const hit = answers.get(key);
             if (hit) { return json({ ...hit, cached: true }, 200, { 'X-Robots-Tag': 'noindex' }); }
@@ -214,6 +249,7 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
                 const count = await counter('hit', item.key, item.window, now);
                 hits.push(count);
                 if (count > item.max) {
+                    if (i === 2 || i === 3) { await refund(`user-day:${id}`, day, now); }
                     return json({ error: 'busy', ...(i === 1 || i === 3 ? { reason: 'daily' } : {}) }, 429, { 'Retry-After': String(retry(item.window, now)) });
                 }
             }
@@ -227,7 +263,11 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
                 const completion = await Promise.race([deps.complete(SYSTEM_PROMPT, userMessage(sheet), controller.signal), timeout]);
                 if (completion.refused) { return failure(502, 'no_note'); }
                 const endings = completion.stopReason === 'max_tokens' ? [...completion.text.matchAll(/[.!?](?=\s|$)/g)] : [];
-                const text = completion.stopReason === 'max_tokens' ? completion.text.slice(0, (endings.at(-1)?.index ?? -1) + 1).trimEnd() : completion.text;
+                let text = completion.stopReason === 'max_tokens' ? completion.text.slice(0, (endings.at(-1)?.index ?? -1) + 1).trimEnd() : completion.text;
+                if (completion.stopReason === 'max_tokens' && /\d\.$/.test(text)) {
+                    endings.pop();
+                    text = completion.text.slice(0, (endings.at(-1)?.index ?? -1) + 1).trimEnd();
+                }
                 const checked = checkNote(text, sheet);
                 const answer = { ...checked, model: completion.model };
                 if (answers.size >= 200) { answers.delete(answers.keys().next().value!); }

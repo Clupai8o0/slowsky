@@ -10,7 +10,7 @@ export interface InsightFacts {
     snapshot: boolean;
 }
 export interface InsightNote { text: string; model: string; dropped: number; cached: boolean; remaining?: number }
-export interface InsightStatus { enabled: boolean; locked: boolean; unlocked: boolean; model?: string; remaining?: number }
+export interface InsightStatus { enabled: boolean; locked: boolean; unlocked: boolean; model?: string; remaining?: number; busy?: boolean; retryAfter?: number }
 export type InsightErrorCode = 'off' | 'locked' | 'invalid' | 'busy' | 'unverified' | 'failed';
 export class InsightError extends Error {
     readonly code: InsightErrorCode;
@@ -25,7 +25,12 @@ export class InsightError extends Error {
         this.reason = reason;
     }
 }
-export const CONSTANTS: readonly number[] = [0.75, 5, 5.0, 102, 6, 6.2, 1.083, 1.875, 3.05, 3.3, 4.05, 4.27, 4.67];
+const CONSTANT_CONTEXT: readonly { value: number; context: RegExp }[] = [
+    ...[0.75, 5, 5.0, 1.083, 1.875, 3.05, 3.3, 4.05, 4.27, 4.67].map((value) => ({ value, context: /(?:\bmicrons?\b|µm\b)/i })),
+    { value: 102, context: /\bchannels?\b/i }, { value: 6.2, context: /\barcsec\b/i },
+    { value: 6, context: /\b(?:detectors?|months?)\b/i }, { value: 3, context: /\bvisits?\b/i },
+];
+export const CONSTANTS: readonly number[] = CONSTANT_CONTEXT.map(({ value }) => value);
 function object(value: unknown, keys: string[]): Record<string, unknown>
 {
     if (value === null || typeof value !== 'object' || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) || Object.keys(value).some((key) => !keys.includes(key))) {
@@ -104,22 +109,29 @@ export function factSheet(f: InsightFacts): string[]
 }
 export function checkNote(text: string, sheet: string[]): { text: string; dropped: number }
 {
-    const allowed = new Set([...CONSTANTS, ...sheet.flatMap((line) => (line.match(/\d+(?:\.\d+)?/g) ?? []).map(Number))]);
-    const unitPattern = /(\d+(?:\.\d+)?)\s*(percent\b|times\b|sigma\b|x\b|%|×|σ)/gi;
+    const sheetNumbers = new Set(sheet.flatMap((line) => (line.match(/\d+(?:\.\d+)?/g) ?? []).map(Number)));
+    const unitPattern = /((?:\d+(?:\.\d+)?\s*(?:(?:,\s*(?:and\s+)?|\s+and\s+)\d+(?:\.\d+)?\s*)*))(percent\b|times\b|sigma\b|x\b|%|×|σ)/gi;
     function unitKey(value: string, unit: string): string
     {
         const kind = unit.toLowerCase();
         return `${Number(value)}:${kind === '%' ? 'percent' : kind === 'x' || kind === '×' ? 'times' : kind === 'σ' ? 'sigma' : kind}`;
     }
-    const units = new Set(sheet.flatMap((line) => Array.from(line.matchAll(unitPattern), (match) => unitKey(match[1]!, match[2]!))));
+    function unitKeys(value: string): string[]
+    {
+        return Array.from(value.matchAll(unitPattern)).flatMap((match) => (match[1]!.match(/\d+(?:\.\d+)?/g) ?? []).map((n) => unitKey(n, match[2]!)));
+    }
+    const units = new Set(sheet.flatMap(unitKeys));
     function invalid(value: string): boolean
     {
         return /discover/i.test(value)
-            || Array.from(value).some((char) => /\p{Nd}/u.test(char) && !/[0-9]/.test(char))
+            || Array.from(value).some((char) => /\p{N}/u.test(char) && !/[0-9]/.test(char))
             || /(?<![0-9])\.\d/.test(value)
-            || /\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|dozen|half|twice|double|triple)\b/i.test(value)
-            || (value.match(/\d+(?:\.\d+)?/g) ?? []).some((n) => !allowed.has(Number(n)))
-            || Array.from(value.matchAll(unitPattern)).some((match) => !units.has(unitKey(match[1]!, match[2]!)));
+            || /\d[eE][\d+-]|\d\s*[/^]\s*\d|\d\s*[-\u2010-\u2015\u2212]\s*\d|\d(?:st|nd|rd|th)\b/i.test(value)
+            || /\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|half|halves|halve|halved|halving|twice|double(?![ -]check\b)|doubled|doubles|doubling|triple|tripled|triples|tripling|quadruple|quadrupled|quadruples|quadrupling|quarters?|\w+fold)\b/i.test(value)
+            || /\d(?:\.\d+)?\s*(?:light[ -]years?|ly|pc|parsecs?|kpc|au|km|kelvin|years?|yrs?|myr|gyr|mag|magnitudes?|jy|mjy|solar|jupiter)\b/i.test(value)
+            || /\d(?:\.\d+)?\s*K\b/.test(value)
+            || (value.match(/\d+(?:\.\d+)?/g) ?? []).some((n) => !sheetNumbers.has(Number(n)) && !CONSTANT_CONTEXT.some((entry) => entry.value === Number(n) && entry.context.test(value)))
+            || unitKeys(value).some((key) => !units.has(key));
     }
     let dropped = 0;
     let count = 0;
@@ -155,6 +167,10 @@ export async function insightStatus(opts: { passcode?: string; fetcher?: typeof 
         const headers: Record<string, string> = {};
         if (opts.passcode !== undefined) { headers['X-Insight-Passcode'] = opts.passcode; }
         const response = await (opts.fetcher ?? fetch)('/api/insight', { headers });
+        if (response.status === 429 || (response.status === 503 && (await response.json().catch(() => null))?.error === 'busy')) {
+            const raw = response.headers.get('Retry-After');
+            return { enabled: true, locked: false, unlocked: false, busy: true, ...(raw !== null && /^\d+$/.test(raw) ? { retryAfter: Number(raw) } : {}) };
+        }
         if (!response.ok) { throw new Error('status'); }
         const value: unknown = await response.json();
         if (!value || typeof value !== 'object' || !('enabled' in value) || typeof value.enabled !== 'boolean' || !('locked' in value) || typeof value.locked !== 'boolean' || !('unlocked' in value) || typeof value.unlocked !== 'boolean') { throw new Error('status'); }
@@ -180,11 +196,11 @@ export async function fetchInsight(facts: InsightFacts, opts: { signal?: AbortSi
         if (opts.passcode !== undefined) { headers['X-Insight-Passcode'] = opts.passcode; }
         const response = await (opts.fetcher ?? fetch)('/api/insight', { method: 'POST', headers, body: JSON.stringify({ facts: clean }), signal: opts.signal });
         if (!response.ok) {
-            const code: InsightErrorCode = response.status === 503 ? 'off' : response.status === 401 ? 'locked' : response.status === 400 || response.status === 413 ? 'invalid' : response.status === 429 ? 'busy' : response.status === 422 ? 'unverified' : 'failed';
+            let code: InsightErrorCode = response.status === 503 ? 'off' : response.status === 401 ? 'locked' : response.status === 400 || response.status === 413 ? 'invalid' : response.status === 429 ? 'busy' : response.status === 422 ? 'unverified' : 'failed';
             const rawRetry = response.headers.get('Retry-After');
             const retryAfter = rawRetry !== null && /^\d+$/.test(rawRetry) ? Number(rawRetry) : undefined;
             let reason: string | undefined;
-            try { const body: unknown = await response.json(); if (body && typeof body === 'object' && 'reason' in body && typeof body.reason === 'string') { reason = body.reason; } } catch { /* Error bodies are optional. */ }
+            try { const body: unknown = await response.json(); if (body && typeof body === 'object') { if ('reason' in body && typeof body.reason === 'string') { reason = body.reason; } if (response.status === 503 && 'error' in body && body.error === 'busy') { code = 'busy'; } } } catch { /* Error bodies are optional. */ }
             throw new InsightError(code, retryAfter, reason);
         }
         const data: unknown = await response.json();

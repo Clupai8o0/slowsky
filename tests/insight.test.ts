@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHandlers as createServerHandlers, memoryStore, upstashStore, type InsightDeps, type LimitStore } from '../api/insight';
+import { createHandlers as createServerHandlers, memoryStore, pickStore, upstashStore, type InsightDeps, type LimitStore } from '../api/insight';
 import { checkNote, factSheet, fetchInsight, insightEnabled, insightStatus, validateFacts, type InsightFacts } from '../src/lib/insight';
+import { SYSTEM_PROMPT } from '../src/lib/insight-prompt';
 import { TARGETS } from '../src/lib/targets';
 
 const facts: InsightFacts = { targetId: 'custom', ra: 12.34567, dec: -38, lambdaUm: 4.27, visits: [{ mjd: 61000, frames: 3 }, { mjd: 61010, frames: 4 }], lightCurve: { points: [{ mjd: 61000, relative: 1, snr: 20 }, { mjd: 61010, relative: 0.8, snr: 10 }], refScatter: [0.02, 0.03], dropped: 2 }, difference: { peakSigma: -3.4 }, motion: { arcsec: 2.3, days: 10 }, snapshot: true };
@@ -8,32 +9,175 @@ const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3
 const note = 'What this shows: The value is 4.27. It is at -38 degrees.\nHow far to trust it: More data helps.';
 function createHandlers(deps: Pick<InsightDeps, 'apiKey' | 'model' | 'complete' | 'now'> & Partial<InsightDeps>)
 {
-    return createServerHandlers({ store: memoryStore(), passcode: undefined, open: true, maxPerUserDay: 20, maxPerDay: 300, maxPerHour: 120, ...deps });
+    return createServerHandlers({ store: memoryStore(), local: memoryStore(), passcode: undefined, open: true, maxPerUserDay: 20, maxPerDay: 300, maxPerHour: 120, ...deps });
 }
 function request(value: unknown, headers: Record<string, string> = {}): Request
 {
     return new Request('https://example.test/api/insight', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(value) });
 }
+describe('round two regressions', () => {
+    it('refunds correct guesses and counts wrong guesses through a single counter', async () => {
+        let now = 0;
+        const store = memoryStore();
+        const keys: string[] = [];
+        const tracked = { ...store, hit: async (key: string, window: number, time: number) => { keys.push(key); return store.hit(key, window, time); } };
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', store: tracked, local: memoryStore(), now: () => now, complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }) });
+        const headers = { 'x-real-ip': 'round-two', 'x-insight-passcode': 'secret' };
+        for (let i = 0; i < 100; i++) { now += 3000; expect((await handler.GET(new Request('https://example.test', { headers }))).status).toBe(200); }
+        for (let i = 0; i < 100; i++) { now += 3000; expect((await handler.POST(request({ facts: { ...facts, ra: 23 } }, headers))).status).toBe(200); }
+        expect(await store.count(keys.find((k) => k.startsWith('try:'))!, 900000, now)).toBe(0);
+    });
+    it('rejects unsupported number forms and preserves listed quantities', () => {
+        const bad = ['½', 'Ⅻ', '①', '²', '5e3', '3/4', '2-5', '3rd', 'halved', 'doubling', 'quadrupled', 'threefold', 'hundreds', 'quarter', 'zero', '6 light years'];
+        for (const value of bad) {
+            expect(checkNote(`Value ${value}. Safe sentence. Another safe sentence.`, ['Value 6.']).dropped, value).toBe(1);
+        }
+        expect(checkNote('Double-check the second visit. It returns about every 6 months. There are fewer than 3 visits. SPHEREx has 6 detectors. The scatter is 1.2 percent.', ['Scatter: 1.2, 1.8, 2.5 percent.']).dropped).toBe(0);
+        expect(SYSTEM_PROMPT).toContain('about every 6 months');
+        expect(SYSTEM_PROMPT).toContain('fewer than 3 visits');
+        expect(SYSTEM_PROMPT).toContain('Write every number in digits');
+        expect(SYSTEM_PROMPT).not.toMatch(/\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|hundred|thousand|million|billion|dozen|half|twice|double|triple|quarter)\b/i);
+    });
+    it('reports a busy service to the browser', async () => {
+        for (const status of [429, 503]) {
+            const fetcher = vi.fn(async () => Response.json({ error: 'busy' }, { status, headers: { 'Retry-After': '12' } })) as typeof fetch;
+            expect(await insightStatus({ fetcher })).toEqual({ enabled: true, locked: false, unlocked: false, busy: true, retryAfter: 12 });
+        }
+        await expect(fetchInsight({ ...facts, ra: 77 }, { fetcher: vi.fn(async () => Response.json({ error: 'busy' }, { status: 503 })) as typeof fetch })).rejects.toMatchObject({ code: 'busy' });
+    });
+    it('fails closed on a half-configured store', async () => {
+        const store = pickStore({ UPSTASH_REDIS_REST_URL: 'https://redis.test' });
+        await expect(store.hit('key', 1000, 0)).rejects.toThrow();
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const complete = vi.fn();
+        try {
+            const handler = createHandlers({ apiKey: 'key', model: 'fake', store, now: () => 0, complete });
+            expect((await handler.POST(request({ facts: { ...facts, ra: 17.777 } }))).status).toBe(503);
+            expect(complete).not.toHaveBeenCalled();
+            expect(warn).toHaveBeenCalledWith('Insight limit store unavailable');
+        } finally { warn.mockRestore(); }
+    });
+    it('keeps unauthenticated GET and invalid POSTs away from both stores', async () => {
+        const store = memoryStore(), local = memoryStore();
+        const sharedHit = vi.spyOn(store, 'hit'), sharedCount = vi.spyOn(store, 'count'), localHit = vi.spyOn(local, 'hit');
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', store, local, now: () => 0, complete: vi.fn() });
+        for (let i = 0; i < 100; i++) { expect((await handler.GET(new Request('https://example.test'))).status).toBe(200); }
+        for (const req of [request({ facts }, { 'content-type': 'text/plain' }), new Request('https://example.test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' }), request({ facts: { ...facts, ra: 999 } })]) {
+            expect((await handler.POST(req)).status).toBe(400);
+        }
+        expect(sharedHit).not.toHaveBeenCalled(); expect(sharedCount).not.toHaveBeenCalled(); expect(localHit).not.toHaveBeenCalled();
+        expect((await handler.GET(new Request('https://example.test', { headers: { 'x-insight-passcode': 'secret' } }))).status).toBe(200);
+    });
+    it('brakes locally before the shared store', async () => {
+        const store = memoryStore();
+        const hit = vi.spyOn(store, 'hit');
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', store, now: () => 0, complete: vi.fn() });
+        const replies = await Promise.all(Array.from({ length: 50 }, () => handler.POST(request({ facts }, { 'x-insight-passcode': 'wrong' }))));
+        expect(replies.filter((r) => r.status === 401)).toHaveLength(30);
+        expect(replies.filter((r) => r.status === 429)).toHaveLength(20);
+        expect(hit).toHaveBeenCalledTimes(40);
+    });
+    it('returns exactly 30 wrong guesses for a serial flood', async () => {
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => 0, complete: vi.fn() });
+        const replies: number[] = [];
+        for (let i = 0; i < 200; i++) { replies.push((await handler.POST(request({ facts }, { 'x-insight-passcode': 'wrong' }))).status); }
+        expect(replies.filter((status) => status === 401)).toHaveLength(30);
+        expect(replies.filter((status) => status === 429)).toHaveLength(170);
+    });
+    it('counts GET guesses and preserves the window until it expires', async () => {
+        let now = 0;
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => now, complete: vi.fn() });
+        const wrong = () => handler.GET(new Request('https://example.test', { headers: { 'x-insight-passcode': 'wrong' } }));
+        for (let i = 0; i < 30; i++) { expect((await wrong()).status).toBe(200); }
+        now = 14 * 60000; expect((await wrong()).status).toBe(429);
+        now = 16 * 60000; expect((await wrong()).status).toBe(200);
+    });
+    it.each(['global-hour', 'global-day'])('refunds the visitor after %s refuses', async (global) => {
+        const store = memoryStore();
+        await store.hit(global, global === 'global-hour' ? 3600000 : 86400000, 0);
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', store, now: () => 0, maxPerHour: global === 'global-hour' ? 1 : 100, maxPerDay: global === 'global-day' ? 1 : 100, complete: vi.fn() });
+        for (let i = 0; i < 5; i++) { expect((await handler.POST(request({ facts: { ...facts, ra: 40 + i } }))).status).toBe(429); }
+        expect(await (await handler.GET(new Request('https://example.test', { headers: { 'x-insight-passcode': '' } }))).json()).toMatchObject({ remaining: 20 });
+    });
+    it('retains blocked guesses and global limits while bounding and sweeping memory', async () => {
+        const store = memoryStore();
+        for (let i = 0; i < 31; i++) { await store.hit('try:blocked', 900000, 0); }
+        await store.hit('global-day', 86400000, 0);
+        for (let i = 0; i < 25000; i++) { await store.hit(`try:${i}`, 900000, 0); }
+        expect(await store.count('try:blocked', 900000, 0)).toBe(31);
+        expect(await store.count('global-day', 86400000, 0)).toBe(1);
+        expect(store.size()).toBeLessThanOrEqual(40002);
+        await store.hit('try:new', 900000, 900000);
+        expect(store.size()).toBeLessThan(10);
+    });
+    it('uses a keyed address and supports complete or absent store configuration', async () => {
+        expect(await pickStore({}).hit('key', 1000, 0)).toBe(1);
+        expect(pickStore({ UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'token' })).toBeDefined();
+        const keys: string[] = [];
+        for (const apiKey of ['key-a', 'key-b']) {
+            const store = memoryStore();
+            const hit = vi.spyOn(store, 'hit').mockImplementation(async (key) => { keys.push(key); return 1; });
+            const handler = createHandlers({ apiKey, model: 'fake', passcode: 'secret', store, now: () => 0, complete: vi.fn() });
+            await handler.GET(new Request('https://example.test', { headers: { 'x-real-ip': '192.0.2.77', 'x-insight-passcode': 'wrong' } }));
+            hit.mockRestore();
+        }
+        expect(keys[0]).not.toBe(keys[1]); expect(keys.every((key) => !key.includes('192.0.2.77'))).toBe(true);
+    });
+    it('rejects a bad expiry and sends DECR for a refund', async () => {
+        const fetcher = vi.fn().mockResolvedValueOnce(Response.json([{ result: 1 }, { result: 0 }])).mockResolvedValueOnce(Response.json({ result: 0 }));
+        const store = upstashStore('https://redis.test', 'token', fetcher);
+        await expect(store.hit('key', 1000, 0)).rejects.toThrow();
+        await store.refund('key', 1000, 0);
+        expect(JSON.parse(fetcher.mock.calls[1]![1].body)).toEqual(['DECR', 'key:0']);
+    });
+    it('drops a sentence cut after a possible decimal point', async () => {
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: 'First sentence. Second sentence. Brightness is 4.', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
+        expect(await (await handler.POST(request({ facts: { ...facts, ra: 72.123 } }))).json()).toMatchObject({ text: 'First sentence. Second sentence.' });
+        const fragment = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: 'First sentence. Second sentence. Brightness is 4. unfinished', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
+        expect(await (await fragment.POST(request({ facts: { ...facts, ra: 72.124 } }))).json()).toMatchObject({ text: 'First sentence. Second sentence.' });
+    });
+    it.each(['halve', 'halved', 'halves', 'halving', 'doubled', 'doubles', 'doubling', 'tripled', 'triples', 'tripling', 'quadruple', 'quadrupled', 'quadruples', 'quadrupling', 'twofold', 'hundreds', 'thousands', 'millions', 'billions', 'dozens', 'quarter', 'quarters', 'zero'])('drops number word %s', (word) => {
+        expect(checkNote(`It is ${word}. Safe sentence. Another safe sentence.`, []).dropped).toBe(1);
+    });
+    it.each(['light-year', 'light-years', 'light year', 'light years', 'ly', 'pc', 'parsec', 'parsecs', 'kpc', 'AU', 'km', 'kelvin', 'K', 'year', 'years', 'yr', 'yrs', 'Myr', 'Gyr', 'mag', 'magnitude', 'magnitudes', 'Jy', 'mJy', 'solar', 'Jupiter'])('drops unsupported unit %s', (unit) => {
+        expect(checkNote(`It is 6 ${unit} away. Safe sentence. Another safe sentence.`, ['Count: 6.']).dropped).toBe(1);
+    });
+    it.each(['0.75', '5', '1.083', '1.875', '3.05', '3.3', '4.05', '4.27', '4.67', '102', '6.2', '6', '3'])('requires context for constant %s', (value) => {
+        expect(checkNote(`The value is ${value}. Safe sentence. Another safe sentence.`, []).dropped).toBe(1);
+    });
+    it('does not attach a sheet count to a fabricated percent', () => {
+        expect(checkNote('The change is 12 percent. Safe sentence. Another safe sentence.', ['Count: 12.']).dropped).toBe(1);
+        expect(checkNote('The scatter is 1.2, 1.8 and 2.5 percent. Another safe sentence.', ['Scatter: 1.2, 1.8, 2.5 percent.']).dropped).toBe(0);
+    });
+    it('does not evict a browser cache entry on a failed request', async () => {
+        const fetcher = vi.fn(async () => Response.json({ text: note, model: 'fake', dropped: 0 })) as unknown as typeof fetch;
+        for (let i = 0; i < 50; i++) { await fetchInsight({ ...facts, ra: 200 + i / 100 }, { fetcher }); }
+        await expect(fetchInsight({ ...facts, ra: 201 }, { fetcher: vi.fn(async () => new Response('', { status: 500 })) as typeof fetch })).rejects.toMatchObject({ code: 'failed' });
+        expect((await fetchInsight({ ...facts, ra: 200 }, { fetcher })).cached).toBe(true);
+        expect(fetcher).toHaveBeenCalledTimes(50);
+    });
+});
 describe('insight access and allowances', () => {
     it.each([false, true])('bounds parallel guesses, delayed store: %s', async (delayed) => {
         const inner = memoryStore();
         const store: LimitStore = delayed ? {
             hit: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.hit(...args); },
             count: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.count(...args); },
+            refund: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.refund(...args); },
         } : inner;
         const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: vi.fn(), now: () => 0, passcode: 'secret', store });
         const send = () => handler.POST(request({ facts }, { 'x-real-ip': 'guess-parallel', 'x-insight-passcode': 'bad' }));
         const replies = await Promise.all(Array.from({ length: 200 }, send));
-        expect(replies.filter((r) => r.status === 401).length).toBeLessThanOrEqual(60);
+        expect(replies.filter((r) => r.status === 401).length).toBe(30);
         expect(replies.every((r) => r.status === 401 || r.status === 429)).toBe(true);
         const serial = createHandlers({ apiKey: 'key', model: 'fake', complete: vi.fn(), now: () => 0, passcode: 'secret' });
-        for (let i = 0; i < 10; i++) { expect((await serial.POST(request({ facts }, { 'x-insight-passcode': 'bad' }))).status).toBe(401); }
+        for (let i = 0; i < 30; i++) { expect((await serial.POST(request({ facts }, { 'x-insight-passcode': 'bad' }))).status).toBe(401); }
         expect((await serial.POST(request({ facts }, { 'x-insight-passcode': 'bad' }))).status).toBe(429);
     });
     it('charges shared counters only after visitor counters pass under concurrency', async () => {
         const complete = vi.fn(async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }));
         const inner = memoryStore();
-        const store: LimitStore = { hit: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.hit(...args); }, count: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.count(...args); } };
+        const store: LimitStore = { hit: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.hit(...args); }, count: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.count(...args); }, refund: async (...args) => inner.refund(...args) };
         const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => 18000000, passcode: 'secret', maxPerHour: 7, maxPerDay: 7, store });
         const replies = await Promise.all(Array.from({ length: 300 }, (_, i) => handler.POST(request({ facts: { ...facts, ra: i / 10 } }, { 'x-real-ip': 'parallel-right', 'x-insight-passcode': 'secret' }))));
         expect(replies.filter((r) => r.status === 200).length).toBeLessThanOrEqual(6);
@@ -46,7 +190,7 @@ describe('insight access and allowances', () => {
         vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.test');
         vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'secret');
         try {
-            const store = { hit: async () => { throw new Error('secret'); }, count: async () => { throw new Error('secret'); } };
+            const store = { hit: async () => { throw new Error('secret'); }, count: async () => { throw new Error('secret'); }, refund: async () => { throw new Error('secret'); } };
             const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => 0, store });
             const response = await handler.POST(request({ facts: { ...facts, ra: 81 } }));
             expect(response.status).toBe(503);
@@ -61,7 +205,7 @@ describe('insight access and allowances', () => {
     ])('stops after the %s counter exceeds its limit', async (key, count, daily) => {
         const touched: string[] = [];
         const complete = vi.fn();
-        const store: LimitStore = { hit: async (name) => { touched.push(name); return name.startsWith(key) ? count : 1; }, count: async () => 0 };
+        const store: LimitStore = { hit: async (name) => { touched.push(name); return name.startsWith(key) ? count : 1; }, count: async () => 0, refund: async () => {} };
         const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => 0, store });
         const response = await handler.POST(request({ facts: { ...facts, ra: 90 } }));
         expect(response.status).toBe(429);
@@ -101,7 +245,7 @@ describe('insight access and allowances', () => {
         const handler = createHandlers({ ...base, passcode: 'secret' });
         const headers = { 'x-real-ip': '192.0.2.40' };
         expect((await handler.POST(request({ facts }, headers))).status).toBe(401);
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 29; i++) {
             expect((await handler.POST(request({ facts }, { ...headers, 'x-insight-passcode': 'wrong' }))).status).toBe(401);
         }
         expect(complete).not.toHaveBeenCalled();
@@ -116,7 +260,7 @@ describe('insight access and allowances', () => {
         let now = 0;
         const keys: string[] = [];
         const inner = memoryStore();
-        const store = { hit: async (k: string, w: number, n: number) => { keys.push(k); return inner.hit(k, w, n); }, count: async (k: string, w: number, n: number) => { keys.push(k); return inner.count(k, w, n); } };
+        const store = { hit: async (k: string, w: number, n: number) => { keys.push(k); return inner.hit(k, w, n); }, count: async (k: string, w: number, n: number) => { keys.push(k); return inner.count(k, w, n); }, refund: inner.refund };
         const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => now, passcode: 'secret', store, maxPerUserDay: 3 });
         const headers = { 'x-real-ip': '192.0.2.42', 'x-insight-passcode': 'secret' };
         for (let i = 0; i < 3; i++) {
@@ -131,7 +275,7 @@ describe('insight access and allowances', () => {
         const wrong = await (await handler.GET(new Request('https://example.test', { headers: { ...headers, 'x-insight-passcode': 'bad' } }))).json();
         expect(wrong).toMatchObject({ unlocked: false });
         expect(wrong).not.toHaveProperty('remaining');
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; i < 29; i++) {
             await handler.GET(new Request('https://example.test', { headers: { ...headers, 'x-insight-passcode': 'bad' } }));
         }
         expect((await handler.GET(new Request('https://example.test', { headers }))).status).toBe(429);
@@ -182,7 +326,7 @@ describe('insight facts and guard', () => {
         expect(checkNote(`${bad} Safe sentence. Another safe sentence.`, ['Value 10 days.', 'Value 0.5.'])).toEqual({ text: 'Safe sentence. Another safe sentence.', dropped: 1 });
     });
     it('keeps matching units, pronouns, and allowed constants', () => {
-        expect(checkNote('The star dimmed by 10 percent. No one frame stands out. Helium is at 1.083.', ['Change: 10 percent.'])).toEqual({ text: 'The star dimmed by 10 percent. No one frame stands out. Helium is at 1.083.', dropped: 0 });
+        expect(checkNote('The star dimmed by 10 percent. No one frame stands out. Helium is at 1.083 micron.', ['Change: 10 percent.'])).toEqual({ text: 'The star dimmed by 10 percent. No one frame stands out. Helium is at 1.083 micron.', dropped: 0 });
     });
     it('validates clean copies and rejects invalid shapes and values', () => {
         expect(validateFacts(facts)).toEqual(facts);
