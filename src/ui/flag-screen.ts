@@ -171,10 +171,10 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
                 const snr = said.includes('S/N') ? snrText(c.snr) : '';
                 const what = c.reading ? 'the brightness comparison' : 'the finder’s reading here';
                 line = `The two visits differ here${c.gaiaMatch ? ' at a catalogue star' : ''}${snr ? `, at ${snr}` : ''} (candidate). `
-                    + `${flagged}, so ${what} is not shown; an overflowing pixel can spoil a brightness reading.`;
+                    + `${flagged}, so ${what} is not shown; an overflowing pixel can make the reading here unreliable.`;
                 kind = 'unknown';
             } else {
-                line = `${line} ${flagged}; an overflowing pixel can spoil a brightness reading.`;
+                line = `${line} ${flagged}; an overflowing pixel can make the reading here unreliable.`;
             }
         }
         // When no frame of an end's own visit was read, the drop check never ran for it: unread in full, even if

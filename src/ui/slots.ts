@@ -274,7 +274,7 @@ export interface ChangesDeps {
     variance?: (frame: RegriddedFrame, signal: AbortSignal) => Promise<Float32Array | null>;
 }
 
-export const MAPS_NOTE = 'Reading the archive’s error maps for the two compared visits; the list shows when they are in.';
+export const MAPS_NOTE = 'Reading the archive’s error maps for the two compared visits; the list shows once that is done.';
 
 export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { render: (box: HTMLElement, marks: HTMLElement, view: SlotView) => boolean }
 {
