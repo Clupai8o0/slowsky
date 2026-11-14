@@ -260,6 +260,9 @@ export function mount(root: HTMLElement): void
         composed = {};
         strip.innerHTML = '';
         ov.innerHTML = '';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ref<HTMLElement>('dl').innerHTML = '';
+        ref<HTMLElement>('notes').innerHTML = '';
         lamInput.disabled = true;
         ref<HTMLElement>('err').hidden = true;
         ref<HTMLElement>('load').hidden = false;
