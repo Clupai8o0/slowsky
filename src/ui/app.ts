@@ -1038,13 +1038,16 @@ export function mount(root: HTMLElement): void
                 : { not: 'Its centre may be too bright for the camera, so treat any change at the centre with care.' };
         }
         if (kind === 'variable' && curve) {
-            const rel = curve.lc.points.filter((p) => p.valid && Number.isFinite(p.relative) && p.relative > 0).map((p) => p.relative);
+            const rel = curve.lc.points.filter((p) => p.valid && Number.isFinite(p.relative)).map((p) => p.relative);
+            if (rel.length >= 2 && Math.min(...rel) <= 0) {
+                return { fact: `Across ${rel.length} looks it fades to nothing measurable in at least one, against ${curve.refs} comparison stars.` };
+            }
             if (rel.length >= 2) {
                 const change = (Math.max(...rel) / Math.min(...rel) - 1) * 100;
                 const wobble = Number.isFinite(curve.noise) ? curve.noise * 100 : NaN;
                 const inside = Number.isFinite(wobble) && change < 2 * wobble;
                 return {
-                    fact: `Across ${rel.length} looks its brightest is ${change.toFixed(change < 10 ? 1 : 0)}% above its faintest, against ${curve.refs} comparison stars${Number.isFinite(wobble) ? ` that wobble by ±${wobble.toFixed(1)}%` : ''}.${inside ? ' That change is inside the noise.' : ''}`,
+                    fact: `Across ${rel.length} looks its brightest is ${change.toFixed(change < 10 ? 1 : 0)}% above its faintest, against ${curve.refs} comparison stars${Number.isFinite(wobble) ? ` whose combined light wobbles by ±${wobble.toFixed(1)}%` : ''}.${inside ? ' That change is inside the noise.' : ''}`,
                 };
             }
             return {};
