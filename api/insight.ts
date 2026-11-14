@@ -8,6 +8,8 @@ declare const process: { env: Record<string, string | undefined> };
 export interface Completion { text: string; refused: boolean; model: string; stopReason?: string | null }
 const MAX_ATTEMPTS = 30;
 const MAX_KEYS = 20000;
+// The first two failed questions each day do not spend a visitor's daily use.
+export const ASK_FREE_FAILURES = 2;
 export interface LimitStore {
     hit(key: string, windowMs: number, now: number): Promise<number>;
     count(key: string, windowMs: number, now: number): Promise<number>;
@@ -182,16 +184,17 @@ function networkAddress(ip: string): string
     } catch { return ip; }
 }
 class StoreFailure extends Error {}
-export function pickLines(replyText: string, sheet: string[]): { kind: 'answer' | 'none'; text: string; lines: number[]; trust: number[] } | null
+export function pickLines(replyText: string, sheet: string[]): { kind: 'answer' | 'none'; text: string; picked: number[]; lines: number[]; trust: number[] } | null
 {
     const reply = replyText.trim();
     if (sheet.length > 26) { return null; }
-    if (/^none$/i.test(reply)) { return { kind: 'none', text: ASK_CANNOT, lines: [], trust: [] }; }
+    if (/^none$/i.test(reply)) { return { kind: 'none', text: ASK_CANNOT, picked: [], lines: [], trust: [] }; }
     if (!/^[A-Z](?:[ \t]*,[ \t]*[A-Z]){0,2}$/.test(reply)) { return null; }
     const picked = reply.split(',').map((letter) => letter.trim().charCodeAt(0) - 64);
     if (picked.some((n) => !Number.isInteger(n) || n < 1 || n > sheet.length) || new Set(picked).size !== picked.length) { return null; }
+    picked.sort((a, b) => a - b);
     const rows = askRows(sheet, picked);
-    return { kind: 'answer', text: joinRows(sheet, rows.lines), ...rows };
+    return { kind: 'answer', text: joinRows(sheet, rows.lines), picked, ...rows };
 }
 export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Response>; POST(r: Request): Promise<Response> }
 {
@@ -319,7 +322,7 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
                 answers.set(key, answer);
                 return json({ ...answer, cached: false, remaining: Math.max(0, deps.maxPerUserDay - hits[1]!) }, 200, { 'X-Robots-Tag': 'noindex' });
             } catch (error) {
-                if (question !== undefined) { await refund(`user-day:${id}`, day, now); }
+                if (question !== undefined && await counter('hit', `user-fail-day:${id}`, day, now) <= ASK_FREE_FAILURES) { await refund(`user-day:${id}`, day, now); }
                 if (error instanceof InsightError && error.code === 'unverified') { return failure(422, 'unverified'); }
                 return failure(502, 'failed');
             } finally { if (timer !== undefined) { clearTimeout(timer); } }
