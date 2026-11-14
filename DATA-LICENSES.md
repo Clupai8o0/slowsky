@@ -10,7 +10,7 @@ Each licence and credit line was checked on the provider's own page on 14 Nov 20
 | SPHEREx DR1, IRSA | Frames, live or snapshot | IRSA terms (1) | SPHEREx, IRSA (3), doi:10.26131/IRSA678 | [DR1][dr1] |
 | SPHEREx QR3, IRSA | Frames, live or snapshot | IRSA terms (1) | SPHEREx, IRSA (3), doi:10.26131/IRSA662 | [QR3][qr3] |
 | IRSA SIA search | Lists of frames for a spot | IRSA terms (1) | IRSA line (3) | [Terms][irsa] |
-| Gaia DR3, ESA | Star rings in the snapshot | CC BY-NC 3.0 IGO (2) | "ESA/Gaia/DPAC" | [Licence][gaia] |
+| Gaia DR3, ESA | Star rings, live or snapshot | CC BY-NC 3.0 IGO (2) | "Credit: ESA, Gaia DPAC" | [Licence][gaia] |
 | SIMBAD, CfA mirror | Name lookup; target positions | ODbL, per the mirror | SIMBAD line (3) | [SIMBAD][simbad] |
 | VizieR, CfA mirror | Gaia rows, bake fallback only | Not confirmed | VizieR line (3) | [VizieR][vizier] |
 
