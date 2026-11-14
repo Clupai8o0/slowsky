@@ -9,10 +9,12 @@ export const CORE_FLAG = 'OVERFLOW';
 export type ScreenedCandidate = PanelCandidate & { line: string; snrFlagRemoved?: boolean; unreadVisit?: 'earlier' | 'later' };
 export interface FrameFlags { obsId: string; names: (pix: PixelCoord) => string[] | null; }
 
-// The picture's value at a point is a mix of a two-by-two block of detector pixels (src/lib/regrid.ts). This returns
-// the brightest pixel of that block for the frame's brightest point within 12″ of `pix`, whether or not it adds any
-// light at the point: where the grid lines up with the detector only one pixel of the block does. Its centre can lie
-// up to about 1.4 detector pixels from the point, so outside the 12″ circle. The page and the README say so.
+// Maps the frame's brightest point within 12″ of `pix` onto the detector and returns the brightest finite pixel among
+// floor(x)..floor(x)+1, floor(y)..floor(y)+1 inside the loaded box, whether or not it adds any light at the point (a
+// point exactly on a pixel centre takes all its light from that pixel). Away from the box's last row and column this is
+// the block the picture mixes at the point (src/lib/regrid.ts); exactly on the last row or column regrid moves its
+// block one pixel inwards and this does not, so only pixels of that row or column are read. The centre of the pixel
+// returned can lie up to about 1.4 detector pixels from the point, so outside the 12″ circle. The README says so.
 export function nativePeak(frame: RegriddedFrame, image: Float32Array, zodi: Float32Array, pix: PixelCoord): PixelCoord | null
 {
     const context = frame.context;

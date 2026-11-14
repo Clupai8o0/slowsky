@@ -60,11 +60,13 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   wavelengths differ by no more than 0.02 µm. The page reads the archive's error map for each frame of the two
   visits to judge how far a spot stands out from the noise. It leaves out a spot when, in a frame of a checked
   visit, the brightest of up to four detector pixels at or beside the brightest point within 12″ of it carries one
-  of the archive's TRANSIENT, OUTLIER, NONFUNC or SUR_ERROR flags, and it says how many it left out. (Each point of
-  the picture is worked out from a block of up to four detector pixels, two by two. The page reads the flags of the
-  brightest pixel of that block that holds a value, whether or not it adds any light at the point: where the
-  picture's grid lines up with the detector, only one pixel of the block does. The centre of the pixel it reads can
-  lie outside the 12″ circle, by up to about one and a half detector pixels, about 9″.) The list opens with at
+  of the archive's TRANSIENT, OUTLIER, NONFUNC or SUR_ERROR flags, and it says how many it left out. (The page
+  maps that point onto the detector and takes a two-by-two block of detector pixels: on each axis, the pixel at or
+  just before the point and the one after it. Pixels outside the part of the frame the page loaded are left out, so
+  at its last row or column the block is smaller. The page reads the flags of the brightest pixel of that block
+  that holds a value, whether or not it adds any light at the point: when the point sits exactly on a pixel, the
+  others add none. The centre of the pixel it reads can lie outside the 12″ circle, by up to about one and a half
+  detector pixels, about 9″.) The list opens with at
   most 8 spots that have no Gaia catalogue star
   within 6″; the rest stay behind a button, because a small shift between two pictures of a star can look like a
   change. Every line is a candidate only: the page cannot tell a real change in the sky from a detector hit, a
