@@ -1,8 +1,8 @@
 // Empty, feature-flagged slots for modules built in their own lanes, so those lanes edit this file and never
-// the shared UI. Both are off by default: a slot shows only when its flag is on AND it has something to show.
+// the shared UI. A slot shows only when its flag is on AND it has something to show. Flags is on; spectrum is off.
 // - spectrum: a panel under the colour step, for src/lib/spectrum-chart.ts. Ships only once the owner logs it
 //   in DECISIONS.md.
-// - flags: a "Flags" toggle in the sky legend, a layer over the sky and a line under the legend, from
+// - flags: a "Flagged pixels" toggle in the sky legend, a layer over the sky and a line under the legend, from
 //   src/lib/flags.ts (read) and src/lib/flags-view.ts (mask on the picture's grid, counts, sentence).
 import { readFlags } from '../lib/flags';
 import { flagsRgba, regridFlags, summariseFlags } from '../lib/flags-view';
