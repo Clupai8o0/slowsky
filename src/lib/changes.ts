@@ -62,6 +62,8 @@ type Measurement = { z: Float32Array; background: Float32Array; sigma: number; k
 const NATIVE = 6.15;
 const PSF_FWHM = 12; // arcsec
 const CORE_ARCSEC = PSF_FWHM / 2;
+// Registration wobble between visits: the reviews' sweeps go up to 1.4″; it moves a steady pair's light centre too.
+const WOBBLE_ARCSEC = 1.5;
 
 function settings(opts: ChangeOptions = {}): Settings
 {
@@ -668,18 +670,15 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             }
             const d = distance(positive.pix, negative.pix, grid);
             const negativeStar = nearestStar(negative.pix);
-            // Two stars closer than minShiftArcsec cannot move the light centre by the shift a pair needs, so
-            // such a pair is a mover, not the either/or (Argon M5: "0.5″ apart" for a source crossing a close pair).
             const blocked = positiveStar !== undefined && negativeStar !== undefined && !sameStar(positiveStar, negativeStar)
-                && (positiveStar.id !== undefined || negativeStar.id !== undefined)
-                && distance(positiveStar, negativeStar, grid) >= opt.minShiftArcsec;
+                && (positiveStar.id !== undefined || negativeStar.id !== undefined);
             if (d <= opt.dipoleArcsec && Math.max(positive.area, negative.area) <= 3 * Math.min(positive.area, negative.area)) {
                 partners.push({ j, d, blocked, same: positiveStar !== undefined && negativeStar !== undefined
                     && positiveStar.id !== undefined && positiveStar.id === negativeStar.id });
             }
         }
         partners.sort((a, b) => Number(b.same) - Number(a.same) || Number(a.blocked) - Number(b.blocked) || a.d - b.d);
-        for (const { j, blocked } of partners) {
+        for (const { j, blocked: onTwoStars } of partners) {
             const negative = found[j]!;
             if (positive.edge || negative.edge) {
                 continue;
@@ -691,6 +690,11 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             if (shift < opt.minShiftArcsec || shift < 3 * uncertainty) {
                 continue;
             }
+            // Two fixed stars keep the light centre between them, give or take the wobble. A shift beyond that
+            // (a source crossing a pair 0.5″ apart, Argon M5) is a mover; within it, the either/or (Codex round 7:
+            // a 2.9″ pair swapping 3000/30 under a 1.4″ wobble shifts 3.4″).
+            const blocked = onTwoStars
+                && shift <= distance(positiveStar!, nearestStar(negative.pix)!, grid) + WOBBLE_ARCSEC;
             used.add(i);
             used.add(j);
             const c = candidate(positive, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
@@ -769,20 +773,27 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     // model splits the two. A peak that cannot be measured counts as crowded. Both visits are checked: a faint
     // neighbour that brightens is in the later aperture (Codex round 7: "80% brighter" for a 50% change).
     const NEIGHBOUR = 0.25;
+    // Neighbours add up: two at 0.2 each dilute like one at 0.4 (Codex round 7: 39% quoted for a 50% change).
     const crowdedIn = (star: StarPix, data: Float32Array): boolean => {
         const own = level(star, data), sigma = PSF_FWHM / 2.35482;
-        return stars.some((s) => {
+        let share = 0;
+        for (const s of stars) {
             if (s === star || !Number.isFinite(s.x) || !Number.isFinite(s.y) || sameStar(s, star)) {
-                return false;
+                continue;
             }
             const d = distance(s, star, grid);
             if (d < CORE_ARCSEC || d > 2 * PSF_FWHM) {
-                return false;
+                continue;
             }
             const g = Math.exp(-(d * d) / (2 * sigma * sigma)), other = level(s, data);
             const mine = (own - g * other) / (1 - g * g), theirs = (other - g * own) / (1 - g * g);
-            return !(theirs < NEIGHBOUR * mine);
-        });
+            const ratio = theirs / mine;
+            if (!Number.isFinite(ratio) || !(mine > 0)) {
+                return true;
+            }
+            share += Math.max(0, ratio);
+        }
+        return !(share < NEIGHBOUR);
     };
     const crowded = (star: StarPix): boolean => crowdedIn(star, earlier.data) || crowdedIn(star, later.data);
     kept.forEach((k) => {

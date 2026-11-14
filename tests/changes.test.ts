@@ -1268,6 +1268,32 @@ describe('change finder, round 7: no number where a neighbour or an edge is in t
         expect(numbered(r)).toEqual([]);
     });
 
+    it('does not call two catalogue stars 2.9″ apart a mover when they swap brightness under a 1.4″ wobble (Codex round 7)', () => {
+        const movers: string[] = [];
+        for (let k = 0; k < 8; k++) {
+            const t = k * Math.PI / 4, wx = 1.4 * Math.cos(t) / P, wy = 1.4 * Math.sin(t) / P;
+            const a = noise(grid), b = noise(grid);
+            const x1 = 60 - 1.45 / P, x2 = 60 + 1.45 / P;
+            point(a, grid, x1, 60, 3000); point(a, grid, x2, 60, 30);
+            point(b, grid, x1 + wx, 60 + wy, 30); point(b, grid, x2 + wx, 60 + wy, 3000);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }]);
+            movers.push(...r.candidates.filter((c) => c.kind === 'mover').map((c) => `${k * 45}°: ${c.reason}`));
+        }
+        expect(movers).toEqual([]);
+    });
+
+    it('adds up neighbours: two at 0.2x each, 8″ either side, hide the percentage (Codex round 7)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);
+        for (const x of [60 - 8 / P, 60 + 8 / P]) {
+            point(a, grid, x, 60, 400); point(b, grid, x, 60, 400);
+        }
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid,
+            [{ x: 60, y: 60, id: 'a' }, { x: 60 - 8 / P, y: 60, id: 'l' }, { x: 60 + 8 / P, y: 60, id: 'r' }]);
+        expect(r.candidates.length).toBeGreaterThan(0);
+        expect(numbered(r)).toEqual([]);
+    });
+
     it('still quotes the percentage for an isolated star that brightens 50%', () => {
         const a = noise(grid), b = noise(grid);
         point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);
