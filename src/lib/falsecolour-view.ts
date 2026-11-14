@@ -1,5 +1,6 @@
 import { colourAt, falseColourLegend, falseColourRgba, pairStretch, type ColourAt } from './falsecolour';
 import { stackVisit } from './stack';
+import { aperture } from './photometry';
 import { mjdToDate, type SkyResult } from './source';
 import type { RegriddedFrame } from './types';
 
@@ -58,20 +59,22 @@ export interface ColourParts {
     method: string;
 }
 
-export function colourParts(lambdaShort: number, lambdaLong: number, reading: ColourAt, times?: [[number, number][], [number, number][]], incomplete: [boolean, boolean] = [false, false]): ColourParts
+export function colourParts(lambdaShort: number, lambdaLong: number, reading: ColourAt, times?: [[number, number][], [number, number][]], incomplete: [boolean, boolean] = [false, false], noNoise: [boolean, boolean] = [false, false]): ColourParts
 {
     const legend = falseColourLegend(lambdaShort, lambdaLong);
-    const seenShort = !incomplete[0] && (reading.seen === 'short' || reading.seen === 'both');
-    const seenLong = !incomplete[1] && (reading.seen === 'long' || reading.seen === 'both');
-    reading = { ...reading, short: incomplete[0] ? NaN : reading.short, long: incomplete[1] ? NaN : reading.long,
+    const unavailable = [incomplete[0] || noNoise[0], incomplete[1] || noNoise[1]];
+    const seenShort = !unavailable[0] && (reading.seen === 'short' || reading.seen === 'both');
+    const seenLong = !unavailable[1] && (reading.seen === 'long' || reading.seen === 'both');
+    reading = { ...reading, short: unavailable[0] ? NaN : reading.short, long: unavailable[1] ? NaN : reading.long,
         seen: seenShort && seenLong ? 'both' : seenShort ? 'short' : seenLong ? 'long' : 'neither',
-        valid: reading.valid && !incomplete[0] && !incomplete[1] };
+        valid: reading.valid && !unavailable[0] && !unavailable[1] };
     let centre: string;
     let indexPrinted = false;
     if (!Number.isFinite(reading.short) || !Number.isFinite(reading.long)) {
         const finiteShort = Number.isFinite(reading.short);
         const finiteLong = Number.isFinite(reading.long);
-        const reason = (band: number) => incomplete[band] ? 'some frames have blank pixels here' : 'blank pixels';
+        const reason = (band: number) => incomplete[band] ? 'some frames have blank pixels here'
+            : noNoise[band] ? 'the noise could not be judged' : 'blank pixels';
         if (finiteShort !== finiteLong) {
             const finiteLambda = finiteShort ? lambdaShort : lambdaLong;
             const blankLambda = finiteShort ? lambdaLong : lambdaShort;
@@ -79,7 +82,7 @@ export function colourParts(lambdaShort: number, lambdaLong: number, reading: Co
             const signal = seen ? `seen at ${finiteLambda.toFixed(2)} µm (signal-to-noise ${snr(finiteShort ? reading.snrShort : reading.snrLong)})`
                 : `no clear signal at ${finiteLambda.toFixed(2)} µm (clear means at least ${MIN_COLOUR_SNR} times the noise)`;
             centre = `At the centre: ${signal}; ${blankLambda.toFixed(2)} µm cannot be measured here (${reason(finiteShort ? 1 : 0)}).`;
-        } else if (incomplete[0] || incomplete[1]) {
+        } else if (incomplete[0] || incomplete[1] || noNoise[0] || noNoise[1]) {
             centre = `At the centre: ${lambdaShort.toFixed(2)} µm cannot be measured here (${reason(0)}); ${lambdaLong.toFixed(2)} µm cannot be measured here (${reason(1)}).`;
         } else {
             centre = 'At the centre: cannot be measured here (blank pixels).';
@@ -102,7 +105,9 @@ export function colourParts(lambdaShort: number, lambdaLong: number, reading: Co
         : times && !sameTimes(times[0], times[1])
             ? 'The two colours were not taken at the same times, so anything that moved or changed in between shows a false tint.' : '';
     const indexMethod = indexPrinted ? 'The colour index is (long − short) / (long + short) of the two brightness sums. ' : '';
-    return { labels, note: legend.note, warning, reading: centre, method: `${indexMethod}The reading adds up a small circle of pixels and takes off the sky just around it, so it need not match the tint of the middle pixels.` };
+    const method = Number.isFinite(reading.short) || Number.isFinite(reading.long)
+        ? `${indexMethod}The reading adds up a small circle of pixels and takes off the sky just around it, so it need not match the tint of the middle pixels.` : '';
+    return { labels, note: legend.note, warning, reading: centre, method };
 }
 
 export function colourSentence(lambdaShort: number, lambdaLong: number, reading: ColourAt, times?: [[number, number][], [number, number][]], incomplete: [boolean, boolean] = [false, false]): string
@@ -144,10 +149,9 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     const bands = [a, b].map(result => {
         const frames = result.frames.map(item => item.frame);
         const { covered, partial } = coverage(frames, grid.width, grid.height, radii.radius, radii.annulusIn, radii.annulusOut);
-        const wavelengths = !partial && covered.length ? covered : frames;
-        const lambda = wavelengths.reduce((sum, frame) => sum + frame.lambdaAtCenter, 0) / wavelengths.length;
-        const { data } = stackVisit(frames, { clipSigma: Infinity, background: 'none' });
-        return { lambda, data, partial, times: frameTimes(wavelengths) };
+        const lambda = frames.reduce((sum, frame) => sum + frame.lambdaAtCenter, 0) / frames.length;
+        const { data } = stackVisit(frames, { clipSigma: Infinity, background: 'median' });
+        return { lambda, data, partial, times: frameTimes(frames), used: covered.length, total: frames.length };
     }).sort((x, y) => x.lambda - y.lambda);
     const short = bands[0]!;
     const long = bands[1]!;
@@ -156,6 +160,18 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     const reading = colourAt(short.data, long.data, grid.width, grid.height,
         { x: (grid.width - 1) / 2, y: (grid.height - 1) / 2 }, { pixelArcsec: grid.pixelArcsec, ...radii, minSnr: MIN_COLOUR_SNR });
     const incomplete: [boolean, boolean] = [Number.isFinite(reading.short) && short.partial, Number.isFinite(reading.long) && long.partial];
-    const parts = colourParts(short.lambda, long.lambda, reading, [short.times, long.times], incomplete);
+    const at = { x: (grid.width - 1) / 2, y: (grid.height - 1) / 2 };
+    const noiseUnknown = (data: Float32Array) => {
+        const result = aperture(data, grid.width, grid.height, at, radii);
+        return result.valid && (!Number.isFinite(result.noise) || result.noise <= 0);
+    };
+    const noNoise: [boolean, boolean] = [noiseUnknown(short.data), noiseUnknown(long.data)];
+    const parts = colourParts(short.lambda, long.lambda, reading, [short.times, long.times], incomplete, noNoise);
+    for (const [band, value, invalid] of [[short, reading.short, incomplete[0] || noNoise[0]], [long, reading.long, incomplete[1] || noNoise[1]]] as const) {
+        if (!invalid && Number.isFinite(value) && band.used > 0 && band.used < band.total) {
+            const missing = band.total - band.used;
+            parts.reading += ` The ${band.lambda.toFixed(2)} µm reading uses ${band.used} of ${band.total} frames; ${missing === 1 ? 'the other is' : 'the others are'} blank here.`;
+        }
+    }
     return { rgba, width: grid.width, height: grid.height, parts, sentence: Object.values(parts).filter(Boolean).join(' ') };
 }
