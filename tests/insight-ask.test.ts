@@ -177,8 +177,9 @@ at 4.67 micron.
 You get a fact sheet. Every line on it was measured by the tool's own code.
 
 Rules:
-- Write every number in digits, exactly as the fact sheet prints it, followed by the sheet's unit, and next to the words the sheet uses for it (for example "shifted 10.4 arcsec", "3 visits", "12 percent above the median"). Never convert a unit, and never work out a rate, a ratio, a count or a date.
-- The "Largest change" line is a distance from the median, not a change over time. Write it as "N percent above the median", "N percent below the median", "N percent either side of the median" or "less than 1 percent from the median", in a sentence of its own with no words about change over time, visits or dates, and take the direction over time only from the time-order line.
+- Write every number in digits, exactly as the fact sheet prints it, followed by the sheet's unit, and next to the words the sheet uses for it (for example "shifted 10.4 arcsec", "3 visits", "The largest change from the median brightness is 12 percent above the median."). Never convert a unit, and never work out a rate, a ratio, a count or a date.
+- Give the "Largest change" line only as this sentence, with the sheet's own number and direction: "The largest change from the median brightness is N percent above the median." (or "below the median", "either side of the median", or "is less than 1 percent from the median"). It is a distance from the median, not a change over time: never put that number in any other sentence, and take the direction over time only from the time-order line.
+- Give the reference stars' scatter only in a sentence of its own that names the reference stars and their scatter, such as "The 2 reference stars scatter by 1.2 and 2.0 percent.", with no word about the target.
 - Use numbers only from the fact sheet or from the text above, written exactly as they appear there. Never work
   out a new number, and never quote a distance, age, mass, date or catalogue value from memory.
 - You may say in words what is widely known about a named target, with no numbers, and say that it is background

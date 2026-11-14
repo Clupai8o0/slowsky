@@ -173,9 +173,16 @@ export function factSheet(f: InsightFacts): string[]
 }
 type Bound = 'min' | 'max' | undefined;
 type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound; medianDirection?: 'above' | 'below' | 'either' | 'less'; scatter?: boolean };
-const CHANGE_VERBS = /\b(?:got|became|grew|rose|ris|climb|increas|brighten|gain|fell|fall|drop|fad|dimm|decreas|declin|lost|went|jump|spik|surg|soar|shot|shoot|grow|becom|dims?\b|dip|sank|sink|slip|slid|plung|plummet|reach|stay|remain|swing|swung|shift|leap)/i;
-const MEDIAN_TIME_WORDS = /\b(?:first|last\b|latest|final|earl|later\b|now\b|end|finish|start|recent|visit|second\b|third|fourth|fifth)/i;
-const OTHER_SUBJECT = /\b(?:reference|comparison|scatter|spread|nois|signal|snr|s\/n|difference|frame|shift)/i;
+const CHANGE_VERBS = /\b(?:got|became|grew|rose|ris|climb|increas|brighten|gain|fell|fall|drop|fad|dimm|decreas|declin|lost|went|jump|spik|surg|soar|shot|shoot|grow|becom|dims?\b|dip|sank|sink|slip|slid|plung|plummet|reach|swing|swung|shift|leap|brighter|fainter|dimmer|higher|lower|chang|vari|fluctuat|peak|differ|now\b)/i;
+const SCATTER_BOUND = /\b(?:below|under|above|over|less than|more than|at least|at most|up to)\s*$/i;
+function medianSentence(value: string, fact: NumberFact): boolean
+{
+    const referent = '(?:it|the median|its median)';
+    const ending = fact.medianDirection === 'less' ? `less than 1 percent(?: from ${referent})?`
+        : fact.medianDirection === 'either' ? `${fact.value} percent either side(?: of ${referent})?`
+        : `${fact.value} percent ${fact.medianDirection} ${referent}`;
+    return new RegExp(`^(?:the|its) largest change from (?:the|its) median(?: brightness)? (?:is|was) ${ending}\\.?$`, 'i').test(value.trim());
+}
 // The direction of a bound written just before a number: "more than 100" is a floor, "below 1" a ceiling.
 function boundBefore(text: string, ai: boolean): Bound
 {
@@ -299,15 +306,9 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
                 if (!facts.some((fact) => {
                     if (fact.bound && fact.bound !== bound) { return false; }
                     if (fact.value !== val || (integer && !fact.integer) || !fact.words.test(fact.required && noun ? value : context)) { return false; }
-                    if (fact.scatter && CHANGE_VERBS.test(context)) { return false; }
-                    if (fact.medianDirection) {
-                        if (!/\bmedian\b/i.test(value) || CHANGE_VERBS.test(value) || MEDIAN_TIME_WORDS.test(value) || OTHER_SUBJECT.test(context)) { return false; }
-                        const down = /\b(?:below|beneath|dimmer|fainter|lower)\b|\bunder\s+(?:(?:the|its)\s+median|it)\b/i.test(value);
-                        const up = /\b(?:above|brighter|higher)\b|\bover\s+(?:(?:the|its)\s+median|it)\b/i.test(value);
-                        if ((fact.medianDirection === 'above' && down) || (fact.medianDirection === 'below' && up)
-                            || (fact.medianDirection === 'either' && (up || down) && !/\beither side\b/i.test(value))
-                            || (fact.medianDirection === 'less' && (up || down) && !/\bless than\b/i.test(value))) { return false; }
-                    }
+                    if (fact.scatter && (!/scatter/i.test(value) || !/reference|comparison/i.test(value) || /target/i.test(value)
+                        || CHANGE_VERBS.test(value) || SCATTER_BOUND.test(value.slice(0, list.start)))) { return false; }
+                    if (fact.medianDirection && !medianSentence(value, fact)) { return false; }
                     if (noun && (!fact.nouns?.test(noun) || (fact.required && !fact.required.test(value)))) { return false; }
                     if (fact.unit) { return list.unit === fact.unit; }
                     if (unitlessBlocked) { return false; }
