@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     boxForView, createLiveSource, createSnapshotSource, frameLabel, headerFromCards, mjdToDate, SkyUnavailable, thinFrames,
     type SkyProgress,
@@ -149,6 +149,16 @@ describe('helpers', () => {
 });
 
 describe('live source (fake SIA and S3)', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', async (input: string | URL | Request) => {
+            throw new Error(`no fake for ${String(input)}`);
+        });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
     it('keeps a visit when only the farther frame contains the chosen wavelength', async () => {
         const fakes = [fakeBand('narrowD1', 60900, 1.000), fakeBand('wideD1', 60900.1, 1.0303, 0.031)];
         const source = createLiveSource({ reader: fakeReader(fakes), search: async () => fakes.map((f) => f.record) });
@@ -235,6 +245,263 @@ describe('live source (fake SIA and S3)', () => {
         ctl.abort();
         const live = createLiveSource({ reader: fakeReader(), search: async () => FAKES.map((f) => f.record) });
         await expect(live.load({ center: CENTER, fovDeg: 0.05, detector: 1, signal: ctl.signal })).rejects.toThrow();
+    });
+});
+
+describe('live Gaia catalogue (fake hosts)', () => {
+    const csv = [
+        'source_id,ra,dec,phot_g_mean_mag,pmra,pmdec,parallax,ref_epoch',
+        `1000000000000000002,${STAR.ra},${STAR.dec},15,,,,`,
+        `1000000000000000003,${CENTER.ra + 0.035},${CENTER.dec},10,1,2,3,2016`,
+        `1000000000000000001,${CENTER.ra},${CENTER.dec},12,1000,-2000,3,2015.5`,
+    ].join('\n');
+    const tsv = [
+        'Source\tRA_ICRS\tDE_ICRS\tpmRA\tpmDE\tPlx\tGmag',
+        '\tdeg\tdeg\tmas/yr\tmas/yr\tmas\tmag',
+        '---\t---\t---\t---\t---\t---\t---',
+        `1000000000000000004\t${CENTER.ra}\t${CENTER.dec}\t1\t2\t3\t11`,
+    ].join('\n');
+    const request = { center: CENTER, fovDeg: 0.05, detector: 1 } as const;
+
+    function catalogueFetcher(reply: (host: string, url: URL, init?: RequestInit) => Response | Promise<Response>): typeof fetch
+    {
+        return async (input, init) => {
+            const url = new URL(String(input));
+            if (!['gsss.stsci.edu', 'vizier.cfa.harvard.edu'].includes(url.hostname)) {
+                throw new Error(`no fake for ${url.hostname}`);
+            }
+            return reply(url.hostname, url, init);
+        };
+    }
+
+    function source(fetcher: typeof fetch)
+    {
+        return createLiveSource({ fetch: fetcher, reader: fakeReader(), search: async () => FAKES.map((f) => f.record) });
+    }
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('projects Gaia epoch positions, drops off-grid stars and credits the sorted catalogue', async () => {
+        const urls: URL[] = [];
+        const fetcher = catalogueFetcher((host, url) => {
+            expect(host).toBe('gsss.stsci.edu');
+            urls.push(url);
+            return new Response(csv);
+        });
+        const res = await source(fetcher).load(request);
+        expect(res.frames).toHaveLength(2);
+        expect(res.stars.map((s) => s.sourceId)).toEqual(['1000000000000000001', '1000000000000000002']);
+        const center = res.stars[0]!;
+        expect(Math.abs(center.pix.x - (res.grid.width - 1) / 2)).toBeLessThan(0.01);
+        expect(Math.abs(center.pix.y - (res.grid.height - 1) / 2)).toBeLessThan(0.01);
+        expect(center).toMatchObject({ ra: CENTER.ra, dec: CENTER.dec, g: 12, pmRa: 1000, pmDec: -2000, parallax: 3, epochJyear: 2015.5 });
+        expect(res.stars[1]).toMatchObject({ epochJyear: 2016 });
+        expect(res.stars[1]).not.toHaveProperty('pmRa');
+        expect(res.stars[1]).not.toHaveProperty('pmDec');
+        expect(res.stars[1]).not.toHaveProperty('parallax');
+        expect(res.credits).toContain('ESA/Gaia/DPAC, Gaia DR3, CC BY-NC 3.0 IGO');
+        expect(res.notes).not.toContain('Gaia stars are not available for this view.');
+        expect(urls).toHaveLength(1);
+        expect(Number(urls[0]!.searchParams.get('SR'))).toBeCloseTo(request.fovDeg * Math.SQRT1_2, 6);
+    });
+
+    it('uses the CfA TSV fallback when STScI answers 503', async () => {
+        const hosts: string[] = [];
+        const fetcher = catalogueFetcher((host) => {
+            hosts.push(host);
+            return host === 'gsss.stsci.edu' ? new Response('unavailable', { status: 503 }) : new Response(tsv);
+        });
+        const res = await source(fetcher).load(request);
+        expect(hosts).toEqual(['gsss.stsci.edu', 'vizier.cfa.harvard.edu']);
+        expect(res.stars.map((s) => s.sourceId)).toEqual(['1000000000000000004']);
+        expect(res.stars[0]).toMatchObject({ pmRa: 1, pmDec: 2, parallax: 3, epochJyear: 2016 });
+    });
+
+    it.each(['http', 'throw'])('keeps the picture when both catalogue servers fail (%s)', async (failure) => {
+        const fetcher = catalogueFetcher(() => {
+            if (failure === 'throw') {
+                throw new Error('unknown host');
+            }
+            return new Response('unavailable', { status: 503 });
+        });
+        const res = await source(fetcher).load(request);
+        expect(res.frames).toHaveLength(2);
+        expect(res.stars).toEqual([]);
+        expect(res.notes.filter((note) => note === 'Gaia stars are not available for this view.')).toHaveLength(1);
+        expect(res.credits.join(' ')).not.toContain('Gaia');
+    });
+
+    it('propagates a caller abort while the catalogue is pending', async () => {
+        let finishFrames!: () => void;
+        const framesFinished = new Promise<void>((resolve) => { finishFrames = resolve; });
+        const fetcher = catalogueFetcher((_host, _url, init) => new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+        }));
+        const ctl = new AbortController();
+        const reason = new Error('view cancelled');
+        const loading = source(fetcher).load({
+            ...request, signal: ctl.signal,
+            onProgress: (p) => {
+                if (p.stage === 'regrid' && p.done === p.total) {
+                    finishFrames();
+                }
+            },
+        });
+        const settled = loading.then((result) => ({ result }), (error: unknown) => ({ error }));
+        await framesFinished;
+        ctl.abort(reason);
+        expect(await settled).toEqual({ error: reason });
+    });
+
+    it('starts the catalogue before a deferred frame search finishes', async () => {
+        const order: string[] = [];
+        let finishSearch!: (frames: FrameRecord[]) => void;
+        const pendingSearch = new Promise<FrameRecord[]>((resolve) => { finishSearch = resolve; });
+        const fetcher = catalogueFetcher(() => {
+            order.push('catalogue');
+            return new Response(csv);
+        });
+        const live = createLiveSource({
+            fetch: fetcher, reader: fakeReader(),
+            search: async () => {
+                order.push('search');
+                const frames = await pendingSearch;
+                order.push('search finished');
+                return frames;
+            },
+        });
+        const loading = live.load(request);
+        expect(order).toEqual(['catalogue', 'search']);
+        finishSearch(FAKES.map((f) => f.record));
+        const res = await loading;
+        expect(order).toEqual(['catalogue', 'search', 'search finished']);
+        expect(res.stars).toHaveLength(2);
+    });
+
+    it('clamps wide-field catalogue cones to 0.2 degrees', async () => {
+        let radius: number | undefined;
+        const fetcher = catalogueFetcher((_host, url) => {
+            radius = Number(url.searchParams.get('SR'));
+            return new Response(csv);
+        });
+        const live = createLiveSource({ fetch: fetcher, reader: fakeReader(), search: async () => [] });
+        const res = await live.load({ ...request, fovDeg: 1 });
+        expect(radius).toBe(0.2);
+        expect(res.stars).toHaveLength(3);
+        expect(res.notes).toContain('Gaia stars are shown only within 0.2° of the centre.');
+        const narrow = await source(fetcher).load(request);
+        expect(narrow.notes.join(' ')).not.toContain('only within');
+    });
+
+    it('waits at most 1.5 s for a slow catalogue once the picture is ready', async () => {
+        const signals: AbortSignal[] = [];
+        const fetcher = catalogueFetcher((_host, _url, init) => new Promise<Response>((_resolve, reject) => {
+            signals.push(init!.signal!);
+            init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), { once: true });
+        }));
+        vi.useFakeTimers();
+        try {
+            let settled = false;
+            const loading = source(fetcher).load(request);
+            void loading.then(() => { settled = true; });
+            await vi.advanceTimersByTimeAsync(1400);
+            expect(settled).toBe(false);
+            await vi.advanceTimersByTimeAsync(200);
+            expect(settled).toBe(true);
+            const res = await loading;
+            expect(res.frames).toHaveLength(2);
+            expect(res.stars).toEqual([]);
+            expect(res.notes.filter((note) => note === 'Gaia stars are not available for this view.')).toHaveLength(1);
+            // The abandoned catalogue request is cancelled, not left running.
+            expect(signals.length).toBeGreaterThan(0);
+            expect(signals.every((signal) => signal.aborted)).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not hold an empty sky back for the full catalogue timeout', async () => {
+        const fetcher = catalogueFetcher((_host, _url, init) => new Promise<Response>((_resolve, reject) => {
+            init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), { once: true });
+        }));
+        vi.useFakeTimers();
+        try {
+            const live = createLiveSource({ fetch: fetcher, reader: fakeReader(), search: async () => [] });
+            const loading = live.load(request);
+            await vi.advanceTimersByTimeAsync(1600);
+            const res = await loading;
+            expect(res.frames).toEqual([]);
+            expect(res.stars).toEqual([]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not credit Gaia when every catalogue star lies outside the grid', async () => {
+        const fetcher = catalogueFetcher(() => new Response([
+            'source_id,ra,dec,phot_g_mean_mag',
+            `1000000000000000003,${CENTER.ra + 1},${CENTER.dec},10`,
+        ].join('\n')));
+        const res = await source(fetcher).load(request);
+        expect(res.stars).toEqual([]);
+        expect(res.credits.join(' ')).not.toContain('Gaia');
+        expect(res.notes).not.toContain('Gaia stars are not available for this view.');
+    });
+
+    it('handles a late catalogue rejection after the frame work fails', async () => {
+        const hosts: string[] = [];
+        let failCatalogue!: (error: Error) => void;
+        const pendingCatalogue = new Promise<Response>((_resolve, reject) => { failCatalogue = reject; });
+        const frameError = new Error('frame search failed');
+        const fetcher = catalogueFetcher((host) => {
+            hosts.push(host);
+            return host === 'gsss.stsci.edu' ? pendingCatalogue : new Response('unavailable', { status: 503 });
+        });
+        const live = createLiveSource({
+            fetch: fetcher, reader: fakeReader(),
+            search: async () => { throw frameError; },
+        });
+        await expect(live.load(request)).rejects.toBe(frameError);
+        failCatalogue(new Error('late catalogue failure'));
+        await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+        expect(hosts).toEqual(['gsss.stsci.edu', 'vizier.cfa.harvard.edu']);
+        // Vitest reports an unhandled rejection as a failing run even if this test returns.
+    });
+
+    it('shares the injected fetcher with the default SIA search', async () => {
+        const hosts: string[] = [];
+        const fetcher: typeof fetch = async (input) => {
+            const url = new URL(String(input), 'https://slowsky.test');
+            hosts.push(url.hostname);
+            if (url.pathname === '/api/sia') {
+                return new Response('<VOTABLE><RESOURCE><TABLE><DATA><TABLEDATA/></DATA></TABLE></RESOURCE></VOTABLE>');
+            }
+            if (url.hostname === 'gsss.stsci.edu') {
+                return new Response(csv);
+            }
+            throw new Error(`no fake for ${url.hostname}`);
+        };
+        const res = await createLiveSource({ fetch: fetcher, reader: fakeReader() }).load(request);
+        expect(hosts).toEqual(['gsss.stsci.edu', 'slowsky.test']);
+        expect(res.stars).toHaveLength(2);
+    });
+
+    it('shares the injected fetcher with the default S3 reader', async () => {
+        const hosts: string[] = [];
+        const fetcher: typeof fetch = async (input) => {
+            const url = new URL(String(input));
+            hosts.push(url.hostname);
+            if (url.hostname === 'gsss.stsci.edu') {
+                return new Response(csv);
+            }
+            return new Response('unavailable', { status: 503 });
+        };
+        const live = createLiveSource({ fetch: fetcher, search: async () => [FAKES[0]!.record] });
+        await expect(live.load(request)).rejects.toThrow();
+        expect(hosts).toContain('nasa-irsa-spherex.s3.us-east-1.amazonaws.com');
+        expect(hosts[0]).toBe('gsss.stsci.edu');
     });
 });
 
