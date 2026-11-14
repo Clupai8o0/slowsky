@@ -306,7 +306,9 @@ describe('false colour slot', () => {
         h.slot.update(v, true);
         h.calls[0]!.resolve(sky([b]));
         await flush();
-        expect(h.slot.update(v, true).note).toContain('At the centre: seen at both wavelengths');
+        expect(h.slot.update(v, true).note).toContain('At the centre: seen at 1.25 µm');
+        expect(h.slot.update(v, true).note).toContain('seen at 4.60 µm');
+        expect(h.slot.update(v, true).note).toContain('one frame only, so a detector hit cannot be ruled out');
         expect(measure).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 97, 97, centre,
             { pixelArcsec: grid.pixelArcsec, ...radii, minSnr: 3 });
         measure.mockRestore();
