@@ -4,6 +4,9 @@
 
 import type { OutputGrid, RegriddedFrame } from './types';
 
+// Shown wherever an averaged visit is compared: the Subtract hint and the saved picture.
+export const AVERAGED_VISIT_NOTE = 'An averaged visit can show a spot that was in only one of its looks.';
+
 export class StackError extends Error
 {
     constructor(message: string)

@@ -1,5 +1,5 @@
 import { formatDec, formatRa } from './coords';
-import { AVERAGED_VISIT_NOTE } from '../ui/subtract';
+import { AVERAGED_VISIT_NOTE } from './stack';
 
 export const AI_CREDIT = 'Made with AI-written code (Claude, Codex, Gemini)';
 export const SIMULATED_CREDIT = 'Simulated sky made by this page. Not NASA data.';
@@ -21,6 +21,12 @@ export interface ShareCardInput {
     simulated?: boolean;
 }
 
+// One line per release: two collections of one release (spherex_dr1 and spherex_dr1_deep) share a citation.
+export function releaseCredits(cites: string[]): string[]
+{
+    return [...new Set(cites)];
+}
+
 export function shareCardText(input: ShareCardInput)
 {
     return {
@@ -28,7 +34,7 @@ export function shareCardText(input: ShareCardInput)
         labels: [`A · ${input.labelA}`, `B · ${input.labelB}`, 'B − A · later minus earlier'],
         details: `${input.simulated ? 'Simulated sky · ' : ''}${input.wavelength.toFixed(2)} µm · Field ${Number(input.field.toFixed(3))}°`,
         credits: [DIFF_KEY, ...(input.averaged ? [AVERAGED_VISIT_NOTE] : []),
-            ...(input.simulated ? [SIMULATED_CREDIT] : input.releases), ...(input.rings ? ['Gaia DR3, CC BY-NC 3.0 IGO'] : []), AI_CREDIT,
+            ...(input.simulated ? [SIMULATED_CREDIT] : releaseCredits(input.releases)), ...(input.rings ? ['Gaia DR3, CC BY-NC 3.0 IGO'] : []), AI_CREDIT,
             'A difference between two visits is a candidate only, not a confirmed change.', input.url],
     };
 }

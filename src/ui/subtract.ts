@@ -1,6 +1,6 @@
 // Visit grouping, per-visit plain averaging, and two-visit combination for Subtract mode.
 // Pure functions only (no DOM globals).
-import { StackError, stackVisit, subtract } from '../lib/stack';
+import { AVERAGED_VISIT_NOTE, StackError, stackVisit, subtract } from '../lib/stack';
 import type { SkyResult } from '../lib/source';
 import { frameMjd } from './measure';
 
@@ -12,8 +12,6 @@ export interface Visit {
 }
 
 export type SubOp = 'diff' | 'sum';
-
-export const AVERAGED_VISIT_NOTE = 'An averaged visit can show a spot that was in only one of its looks.';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

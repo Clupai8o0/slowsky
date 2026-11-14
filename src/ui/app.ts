@@ -25,6 +25,7 @@ import { mountEpoch } from './epoch-view';
 import { mountSpectrum } from './spectrum-view';
 import { mountUpTonight } from './uptonight-slot';
 import { saveShareCard } from './share-view';
+import { releaseCredits } from '../lib/sharecard';
 import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
 
@@ -1691,15 +1692,14 @@ export function mount(root: HTMLElement): void
                 const slug = name.normalize('NFKD').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'position';
                 const date = (mjd: number) => new Date((mjd - 40587) * 86400000).toISOString().slice(0, 10);
                 const records = [...pair.a.ks, ...pair.b.ks].map(k => result!.frames[k]!.frame.frame);
-                const releases = records.filter((r, i) => records.findIndex(o => o.collection === r.collection) === i)
-                    .map(r => RELEASE_DOI[r.release]?.cite ?? r.collection);
+                const releases = releaseCredits(records.map(r => RELEASE_DOI[r.release]?.cite ?? r.collection));
+                // Everything that can throw is built before the lock is taken, so the button cannot stay stuck.
+                const card = { name, position: st.center, labelA: visitLabel(pair.a), labelB: visitLabel(pair.b), averaged: pair.a.n > 1 || pair.b.n > 1, releases, wavelength: result.lambda,
+                    field: result.grid.fovDeg, rings: false, url: url.toString(), simulated: sourceKind === 'demo' };
+                const filename = `slowsky-${slug}-${date(pair.a.mjd)}-${date(pair.b.mjd)}.png`;
                 savingPicture = true;
                 b.disabled = true;
-                void saveShareCard({ result, a: pair.a, b: pair.b, stretch,
-                    card: { name, position: st.center, labelA: visitLabel(pair.a), labelB: visitLabel(pair.b), averaged: pair.a.n > 1 || pair.b.n > 1, releases, wavelength: result.lambda,
-                        field: result.grid.fovDeg, rings: false, url: url.toString(), simulated: sourceKind === 'demo' },
-                    filename: `slowsky-${slug}-${date(pair.a.mjd)}-${date(pair.b.mjd)}.png`,
-                }, toast).finally(() => {
+                void saveShareCard({ result, a: pair.a, b: pair.b, stretch, card, filename }, toast).finally(() => {
                     savingPicture = false;
                     b.disabled = !!root.dataset.loading || !activeVisits() || !result;
                 });

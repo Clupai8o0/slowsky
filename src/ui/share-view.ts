@@ -1,5 +1,5 @@
 import { renderRgba } from '../lib/player';
-import { AI_CREDIT, SIMULATED_CREDIT, layoutShareCard, pngWithText, shareCardText, type ShareCardInput } from '../lib/sharecard';
+import { AI_CREDIT, SIMULATED_CREDIT, layoutShareCard, pngWithText, releaseCredits, shareCardText, type ShareCardInput } from '../lib/sharecard';
 import type { SkyResult } from '../lib/source';
 import type { Stretch } from '../lib/types';
 import { diffScale, fillCores, renderDiverging } from './compose';
@@ -73,7 +73,7 @@ export async function saveShareCard(input: ShareViewInput, toast: (message: stri
         const blob = await canvasBlob(canvas);
         const png = pngWithText(new Uint8Array(await blob.arrayBuffer()), [
             { key: 'Software', text: 'Slowsky' },
-            { key: 'Comment', text: [AI_CREDIT, ...(input.card.simulated ? [SIMULATED_CREDIT] : input.card.releases)].join('\n') },
+            { key: 'Comment', text: [AI_CREDIT, ...(input.card.simulated ? [SIMULATED_CREDIT] : releaseCredits(input.card.releases))].join('\n') },
             { key: 'Source', text: input.card.url },
         ]);
         const file = new File([new Uint8Array(png)], input.filename, { type: 'image/png' });

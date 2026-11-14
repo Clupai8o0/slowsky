@@ -1,13 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AI_CREDIT, DIFF_KEY, layoutShareCard, pngWithText, shareCardText } from '../src/lib/sharecard';
+import { AI_CREDIT, DIFF_KEY, layoutShareCard, pngWithText, releaseCredits, shareCardText } from '../src/lib/sharecard';
 import { saveShareCard } from '../src/ui/share-view';
-import { AVERAGED_VISIT_NOTE } from '../src/ui/subtract';
+import { AVERAGED_VISIT_NOTE } from '../src/lib/stack';
 
 const dr1 = 'SPHEREx DR1, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA678';
 const input = { name: 'Barnard’s Star', position: { ra: 20, dec: 30 }, labelA: '9 Jul 2025 · 1 look', labelB: '10 Aug 2026 · 1 look', averaged: false, releases: [dr1],
     wavelength: 2.123, field: 0.1, rings: false, url: 'https://example.org/?x=1' };
 
 describe('share card text', () => {
+    it('names a release once when two of its collections are in the pair (spherex_dr1 and spherex_dr1_deep)', () => {
+        const qr3 = 'SPHEREx QR3, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA662';
+        expect(releaseCredits([dr1, dr1, qr3, dr1])).toEqual([dr1, qr3]);
+        const text = shareCardText({ ...input, releases: [dr1, dr1, qr3] });
+        expect(text.credits.filter(line => line === dr1)).toHaveLength(1);
+        expect(text.credits.filter(line => line === qr3)).toHaveLength(1);
+    });
+
     it('names the target and describes both visits and the credits', () => {
         const text = shareCardText(input);
         expect(text.title).toBe('Slowsky · Barnard’s Star');
