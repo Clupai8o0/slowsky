@@ -18,7 +18,7 @@ describe('offline snapshots', () => {
             const gaia = JSON.parse(readFileSync(join(dir, 'gaia.json'), 'utf8'));
             expect(index.target.id).toBe(target.id);
             expect(index.frames.length).toBeGreaterThan(0);
-            expect(gaia.credit).toBe('ESA/Gaia/DPAC, CC BY-NC 3.0 IGO');
+            expect(gaia.credit).toBe('ESA, Gaia DPAC; CC BY-NC 3.0 IGO');
             const visits = new Set(index.frames.map((f: { record: { obsId: string } }) => f.record.obsId.split('_').slice(0, 3).join('_')));
             expect(visits.size).toBeGreaterThan(Math.min(index.frames.length, 24) / 2);
             let previous = -Infinity;

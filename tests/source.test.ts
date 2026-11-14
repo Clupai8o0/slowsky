@@ -902,7 +902,7 @@ describe('live Gaia catalogue (fake hosts)', () => {
         expect(res.stars[1]).not.toHaveProperty('pmRa');
         expect(res.stars[1]).not.toHaveProperty('pmDec');
         expect(res.stars[1]).not.toHaveProperty('parallax');
-        expect(res.credits).toContain('ESA/Gaia/DPAC, Gaia DR3, CC BY-NC 3.0 IGO');
+        expect(res.credits).toContain('ESA, Gaia DPAC; Gaia DR3; CC BY-NC 3.0 IGO');
         expect(res.notes).not.toContain('Gaia stars are not available for this view.');
         expect(urls).toHaveLength(1);
         expect(Number(urls[0]!.searchParams.get('SR'))).toBeCloseTo(request.fovDeg * Math.SQRT1_2, 6);
@@ -1132,7 +1132,7 @@ describe('snapshot source (fake site)', () => {
         }
         const index = { target: { id: 'rwaur' }, madeBy: 'test', madeAt: 'now', frames };
         const gaia = {
-            credit: 'ESA/Gaia/DPAC, CC BY-NC 3.0 IGO',
+            credit: 'ESA, Gaia DPAC; CC BY-NC 3.0 IGO',
             sources: [
                 { source_id: 1, ra: CENTER.ra, dec: CENTER.dec, pmra: 1, pmdec: null, parallax: 2, phot_g_mean_mag: 12, ref_epoch: 2016 },
                 { source_id: 2, ra: CENTER.ra + 1, dec: CENTER.dec, phot_g_mean_mag: 12 },

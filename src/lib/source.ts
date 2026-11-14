@@ -221,7 +221,7 @@ function credits(records: FrameRecord[], withGaia: boolean): string[]
         out.push('SPHEREx QR3, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA662');
     }
     if (withGaia) {
-        out.push('ESA/Gaia/DPAC, Gaia DR3, CC BY-NC 3.0 IGO');
+        out.push('ESA, Gaia DPAC; Gaia DR3; CC BY-NC 3.0 IGO');
     }
     return out;
 }
