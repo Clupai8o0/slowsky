@@ -291,6 +291,63 @@ describe('stackVisit', () => {
         expect(() => stackVisit([mkFrame(d()), mkFrame(d(), { pipelineVersion: 'b' })])).not.toThrow();
     });
 
+    it('wraps RA modulo 360 when comparing grids', () => {
+        const d = () => new Float32Array([2, 4, 6, 8]);
+        const atRa = (ra: number) => mkFrame(d(), {
+            grid: { ...mkGrid(2), center: { ra, dec: -20 } },
+        });
+        const wrap360 = stackVisit([atRa(0), atRa(360)], { background: 'none' });
+        expect(Array.from(wrap360.data)).toEqual([2, 4, 6, 8]);
+        expect(Array.from(wrap360.n)).toEqual([2, 2, 2, 2]);
+
+        const wrapNeg = stackVisit([atRa(-0.5), atRa(359.5)], { background: 'none' });
+        expect(Array.from(wrapNeg.data)).toEqual([2, 4, 6, 8]);
+        expect(Array.from(wrapNeg.n)).toEqual([2, 2, 2, 2]);
+
+        expect(() => stackVisit([atRa(0), atRa(0.001)])).toThrow(StackError);
+    });
+
+    it('rejects a first frame with invalid pixelArcsec or non-finite centre', () => {
+        const d = () => new Float32Array(4);
+        for (const badScale of [NaN, 0, -6.15, Infinity, -Infinity]) {
+            expect(() => stackVisit([mkFrame(d(), { grid: { ...mkGrid(2), pixelArcsec: badScale } })]))
+                .toThrow(StackError);
+        }
+        const badCentres = [
+            { ra: NaN, dec: -20 },
+            { ra: 10, dec: NaN },
+            { ra: Infinity, dec: -20 },
+            { ra: 10, dec: -Infinity },
+        ];
+        for (const center of badCentres) {
+            expect(() => stackVisit([mkFrame(d(), { grid: { ...mkGrid(2), center } })]))
+                .toThrow(StackError);
+        }
+    });
+
+    it('clips the frame background and each pixel by the same rule on both sides of the limit', () => {
+        const sigma = 1.4826;
+        // For [-1, 0, 1, x] with x >= 2: median 0.5, MAD 1, so the 3-sigma limit is 0.5 + 3 * 1.4826.
+        // Keeping x leaves the background median at 0.5; dropping x moves it to 0.
+        const hiInside = mkFrame(new Float32Array([-1, 0, 1, 0.5 + 3 * sigma - 1e-4]));
+        expect(stackVisit([hiInside]).data[1]).toBe(-0.5);
+        const hiOutside = mkFrame(new Float32Array([-1, 0, 1, 0.5 + 3 * sigma + 1e-4]));
+        expect(stackVisit([hiOutside]).data[1]).toBe(0);
+
+        const loInside = mkFrame(new Float32Array([-0.5 - 3 * sigma + 1e-4, -1, 0, 1]));
+        expect(stackVisit([loInside]).data[2]).toBe(0.5);
+        const loOutside = mkFrame(new Float32Array([-0.5 - 3 * sigma - 1e-4, -1, 0, 1]));
+        expect(stackVisit([loOutside]).data[2]).toBe(0);
+
+        // The per-pixel clip, at 3 sigma and at the default 4 sigma.
+        for (const [k, opts] of [[3, { background: 'none', clipSigma: 3 }], [4, { background: 'none' }]] as const) {
+            const inside = [-1, 0, 1, 0.5 + k * sigma - 1e-4].map((v) => mkFrame(new Float32Array([v])));
+            expect(stackVisit(inside, opts).n[0]).toBe(4);
+            const outside = [-1, 0, 1, 0.5 + k * sigma + 1e-4].map((v) => mkFrame(new Float32Array([v])));
+            expect(stackVisit(outside, opts).n[0]).toBe(3);
+        }
+    });
+
     it('stacks 9 frames of 721x721 in under 1500 ms', () => {
         const rng = mulberry32(6);
         const size = 721 * 721;
@@ -373,6 +430,14 @@ describe('subtract', () => {
         const mixed = subtract(a, new Float32Array([1, 1, 1, 1]));
         expect(Array.from(mixed.n)).toEqual([1, 1, 0, 1]);
         expect(() => subtract(new Float32Array(2), new Float32Array(3))).toThrow(StackError);
+    });
+
+    it('computes later minus earlier so brightening is positive', () => {
+        const earlier: StackResult = { data: new Float32Array([10]), n: new Uint16Array([3]) };
+        const later: StackResult = { data: new Float32Array([15]), n: new Uint16Array([4]) };
+        const diff = subtract(later, earlier);
+        expect(diff.data[0]).toBe(5);
+        expect(diff.n[0]).toBe(3);
     });
 });
 
