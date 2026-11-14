@@ -34,14 +34,15 @@ export function planetxRows(): ChartRow[]
         return range(entry[key], `${start}–${end} µm`, style);
     });
     const remaining = REMAINING.vMag.value;
+    const model = modelExample();
     return [
         { id: 'p9-predicted', label: 'Planet Nine, predicted', band: P9.envelope.unit, marks: [range(P9.envelope, 'Published envelope', 'light'), range(P9.percentileCurveExtents, 'Percentile-curve extents', 'solid')] },
         { id: 'p9-remaining', label: 'Not yet ruled out', band: REMAINING.vMag.unit, marks: [{ ...point(remaining.value, 'Remaining estimate', REMAINING.vMag.source), low: remaining.value + remaining.lower, high: remaining.value + remaining.upper }] },
-        { id: 'model', label: "This repo's model, one example", band: 'V band', marks: [point(modelExample().vMag, `model, at ${P9.semiMajorAxis.value} AU`, P9.semiMajorAxis.source, 'outline')] },
-        { id: 'searches', label: 'Optical searches already done', band: 'Multiple optical bands', marks: [...SURVEYS.map(survey => ({ ...point(survey.limit.value, `${survey.name} ${survey.band}`, survey.limit.source), kind: 'tick' as const })), { ...point(PS1_HALF_COMPLETE.value, 'PS1 search half complete', PS1_HALF_COMPLETE.source), kind: 'tick' as const }] },
+        { id: 'model', label: "This repo's model, one example", band: 'V band', marks: [point(model.vMag, `model, at ${P9.semiMajorAxis.value} AU`, `${model.label}; computed in this repo from the published mass, albedo range and semi-major axis`, 'outline')] },
+        { id: 'searches', label: 'Optical searches already done', band: 'Multiple optical bands', marks: [...SURVEYS.map(survey => ({ ...point(survey.limit.value, `${survey.name} ${survey.band}`, survey.limit.source), kind: 'tick' as const })), { ...point(PS1_HALF_COMPLETE.value, `PS1 search half complete, ${PS1_HALF_COMPLETE.unit.split(';')[0]}`, PS1_HALF_COMPLETE.source), kind: 'tick' as const }] },
         { id: 'spherex-4', label: 'SPHEREx depth, 4 observations per channel', band: 'AB, per channel', marks: depth('fourObservations', 'solid') },
         { id: 'spherex-1', label: 'SPHEREx depth, one observation (derived)', band: 'AB, per channel', marks: depth('oneObservation', 'outline') },
-        { id: 'wise0855', label: 'WISE 0855 at 4.6 µm, a real cold neighbour', band: 'W2, AB', marks: [point(WISE0855.w2AB.value, 'WISE 0855', WISE0855.w2AB.source)] },
+        { id: 'wise0855', label: `WISE 0855 at ${WISE0855.bandMicrometres.value} µm, a real cold neighbour`, band: 'W2, AB', marks: [point(WISE0855.w2AB.value, 'WISE 0855', WISE0855.w2AB.source)] },
     ];
 }
 
@@ -61,19 +62,28 @@ function sentence(value: string): string
     return text.endsWith('.') ? text : `${text}.`;
 }
 
+function markValue(mark: ChartMark): string
+{
+    const format = (value: number, decimals: number): string => String(Number(value.toFixed(decimals)));
+    const value = mark.kind === 'range' ? `${format(mark.from, 2)}–${format(mark.to, 2)}` : format(mark.from, 1);
+    const uncertainty = mark.low !== undefined && mark.high !== undefined ? ` (${format(mark.low, 2)}–${format(mark.high, 2)})` : '';
+    return `${value}${uncertainty}`;
+}
+
 export function planetxChartText(): { title: string; caption: string; notes: string[]; references: ReturnType<typeof references> }
 {
     return {
         title: 'How faint would Planet Nine be, and how deep do the searches go?',
-        caption: 'The rows are in different bands and cannot be compared to better than roughly a magnitude. This is an estimate from published numbers, not a search result.',
-        notes: [TEXT.bandNote, TEXT.caveat, TEXT.wiseNote, TEXT.stackGain, modelExample().label, `Optical searches have ruled out about ${Math.round(EXCLUDED_FRACTION.value * 100)}% of the published reference population`].map(sentence),
+        caption: 'The rows are in different bands, so their numbers are not interchangeable. This is an estimate from published numbers, not a search result.',
+        notes: [TEXT.bandNote, TEXT.caveat, TEXT.wiseNote, TEXT.stackGain, modelExample().label, `Optical searches have ruled out about ${Math.round(EXCLUDED_FRACTION.value * 100)}% of the synthetic reference population`].map(sentence),
         references: references(),
     };
 }
 
 export function planetxChartSvg(opts: { width?: number } = {}): string
 {
-    const width = opts.width ?? 720;
+    const requestedWidth = opts.width ?? 720;
+    const width = typeof requestedWidth === 'number' && Number.isFinite(requestedWidth) && requestedWidth >= 320 ? requestedWidth : 320;
     const left = Math.min(230, Math.round(width * 0.42));
     const right = 20;
     const plotWidth = width - left - right;
@@ -119,8 +129,6 @@ export function planetxChartSvg(opts: { width?: number } = {}): string
             const end = xFor(mark.to);
             const currentY = markY + (mark.kind === 'tick' ? lineIndex * 15 : 0);
             const color = colors[rowIndex];
-            const value = mark.kind === 'range' ? `${mark.from.toFixed(1)}–${mark.to.toFixed(1)}` : mark.from.toFixed(1);
-            const uncertainty = mark.low !== undefined && mark.high !== undefined ? ` (${mark.low.toFixed(1)}–${mark.high.toFixed(1)})` : '';
             const paint = mark.style === 'outline' ? `fill="none" stroke="${color}" stroke-width="1.5"` : `fill="${color}"${mark.style === 'light' ? ' fill-opacity="0.28"' : ''}`;
             let shape = '';
             if (mark.kind === 'range') {
@@ -155,14 +163,23 @@ export function planetxChartSvg(opts: { width?: number } = {}): string
             }
             const mono = /^\d/.test(mark.text) ? ' font-family="var(--mono, ui-monospace, monospace)"' : '';
             const survey = row.id === 'searches' ? ' data-survey-label="true"' : '';
-            groups.push(`<g data-mark="${row.id}" data-index="${index}"><title>${escapeText(`${value}${uncertainty}; ${mark.source}`)}</title>${whisker}${shape}<text${survey} x="${textX}" y="${textY}"${anchor}${baseline} fill="${color}" font-size="11"${mono}>${escapeText(mark.text)}</text></g>`);
+            groups.push(`<g data-mark="${row.id}" data-index="${index}"><title>${escapeText(`${markValue(mark)}; ${mark.source}`)}</title>${whisker}${shape}<text${survey} x="${textX}" y="${textY}"${anchor}${baseline} fill="${color}" font-size="11"${mono}>${escapeText(mark.text)}</text></g>`);
         });
         groups.push('</g>');
         const marksBottom = markY + (row.id === 'searches' ? (row.marks.length - 1) * 15 + 6 : row.marks[0]?.kind === 'range' ? 16 : 6);
         y = Math.max(y + 46, marksBottom + 10, bandY + 10);
     });
     const axisY = y + 5;
-    const height = axisY + 48;
+    const footerLines: string[] = [];
+    for (const word of 'apparent magnitude (fainter to the right; each row in its own band)'.split(' ')) {
+        const last = footerLines.length - 1;
+        if (last < 0 || `${footerLines[last]} ${word}`.length * 6.6 > width - 16) {
+            footerLines.push(word);
+        } else {
+            footerLines[last] += ` ${word}`;
+        }
+    }
+    const height = axisY + 35 + footerLines.length * 13;
     const ticks: string[] = [];
     const grid: string[] = [];
     for (let mag = AXIS.min; mag <= AXIS.max; mag += AXIS.step) {
@@ -170,5 +187,7 @@ export function planetxChartSvg(opts: { width?: number } = {}): string
         grid.push(`<line data-grid="true" x1="${x}" y1="20" x2="${x}" y2="${axisY}" stroke="${mute}" stroke-opacity="0.14"/>`);
         ticks.push(`<line x1="${x}" y1="${axisY}" x2="${x}" y2="${axisY + 5}" stroke="${mute}"/><text x="${x}" y="${axisY + 18}" text-anchor="middle" fill="${mute}" font-size="11" font-family="var(--mono, ui-monospace, monospace)">${mag}</text>`);
     }
-    return `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="planetx-title planetx-desc" viewBox="0 0 ${width} ${height}"><title id="planetx-title">Planet Nine brightness and survey depths</title><desc id="planetx-desc">Estimated Planet Nine brightness, optical search limits, SPHEREx depths and the brightness of a nearby cold object. Rows use different bands.</desc>${grid.join('')}${groups.join('')}<line x1="${left}" y1="${axisY}" x2="${width - right}" y2="${axisY}" stroke="${mute}"/>${ticks.join('')}<text x="${width / 2}" y="${height - 5}" text-anchor="middle" fill="${mute}" font-size="10">apparent magnitude (fainter to the right; each row in its own band)</text></svg>`;
+    const description = rows.map(row => `${row.label} (${row.band}): ${row.marks.map(mark => `${mark.text} ${markValue(mark)}`).join('; ')}.`).join(' ');
+    const footer = footerLines.map((line, index) => `<text x="${width / 2}" y="${axisY + 43 + index * 13}" text-anchor="middle" fill="${mute}" font-size="10">${escapeText(line)}</text>`).join('');
+    return `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="planetx-title planetx-desc" viewBox="0 0 ${width} ${height}"><title id="planetx-title">Planet Nine brightness and survey depths</title><desc id="planetx-desc">${escapeText(description)}</desc>${grid.join('')}${groups.join('')}<line x1="${left}" y1="${axisY}" x2="${width - right}" y2="${axisY}" stroke="${mute}"/>${ticks.join('')}${footer}</svg>`;
 }

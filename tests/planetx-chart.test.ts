@@ -29,9 +29,39 @@ describe('Planet Nine depth chart', () => {
         expect(text.notes.join(' ')).toContain(`${Math.round(EXCLUDED_FRACTION.value * 100)}%`);
         expect(text.notes.join(' ').toLowerCase()).toContain(TEXT.bandNote.toLowerCase());
         expect(JSON.stringify(text)).not.toMatch(/\b(discover|confirm|detect)\b/i);
+        expect(text.caption).not.toMatch(/magnitude/i);
+        expect(text.notes.join(' ')).toContain('synthetic reference population');
     });
 
-    it.each([480, 720, 1080])('renders valid accessible geometry at %i pixels', width => {
+    it('describes every mark with the same values as its tooltip', () => {
+        const rows = planetxRows();
+        const model = rows.find(row => row.id === 'model')!.marks[0]!;
+        expect(model.source).toContain(modelExample().label);
+        expect(model.source).not.toMatch(/[-+]\d+\s*\/\s*[-+]\d+|\b\d{4}\b/);
+        expect(rows.find(row => row.id === 'searches')!.marks.at(-1)!.text).toMatch(/V mag$/);
+        expect(rows.find(row => row.id === 'wise0855')!.label).toContain(String(WISE0855.bandMicrometres.value));
+        const svg = planetxChartSvg();
+        const desc = svg.match(/<desc id="planetx-desc">(.*?)<\/desc>/)![1]!;
+        for (const row of rows) {
+            expect(desc).toContain(`${row.label} (${row.band}):`);
+            for (const mark of row.marks) {
+                const title = [...svg.matchAll(/<g data-mark="([^"]+)" data-index="(\d+)"><title>(.*?)<\/title>/g)]
+                    .find(match => match[1] === row.id && row.marks[Number(match[2])] === mark)![3]!;
+                expect(desc).toContain(`${mark.text} ${title.split(';')[0]}`);
+            }
+        }
+        expect(svg).toContain('<title>18.75–19.15;');
+    });
+
+    it('normalizes invalid and undersized widths', () => {
+        const expected = planetxChartSvg({ width: 320 });
+        for (const width of [0, NaN, 'nope' as never]) {
+            expect(planetxChartSvg({ width })).toBe(expected);
+            expect(planetxChartSvg({ width })).not.toContain('NaN');
+        }
+    });
+
+    it.each([320, 480, 720, 1080, 1600])('renders valid accessible geometry at %i pixels', width => {
         const svg = planetxChartSvg({ width });
         const stack: string[] = [];
         for (const match of svg.matchAll(/<\/?([\w-]+)\b[^>]*>/g)) {
@@ -46,6 +76,20 @@ describe('Planet Nine depth chart', () => {
         expect(svg).toContain('role="img"');
         expect(svg).toContain('<title');
         expect(svg).toContain('<desc');
+        const height = Number(svg.match(/viewBox="0 0 [\d.]+ ([\d.]+)"/)![1]);
+        for (const match of svg.matchAll(/<text\b([^>]*)>([^<]*)<\/text>/g)) {
+            const attrs = match[1]!;
+            const x = Number(attrs.match(/\bx="([\d.]+)"/)![1]);
+            const y = Number(attrs.match(/\by="([\d.]+)"/)![1]);
+            const size = Number(attrs.match(/font-size="([\d.]+)"/)![1]);
+            const textWidth = match[2]!.replace(/&(?:amp|lt|gt|quot);/g, 'x').length * 6.6;
+            const start = attrs.includes('text-anchor="middle"') ? x - textWidth / 2 : attrs.includes('text-anchor="end"') ? x - textWidth : x;
+            const middle = attrs.includes('dominant-baseline="middle"');
+            expect(start).toBeGreaterThanOrEqual(0);
+            expect(start + textWidth).toBeLessThanOrEqual(width);
+            expect(y - (middle ? size / 2 : size)).toBeGreaterThanOrEqual(0);
+            expect(y + (middle ? size / 2 : 0)).toBeLessThanOrEqual(height);
+        }
         expect(svg).not.toMatch(/\b(discover|confirm|detect)\b/i);
         for (const match of svg.matchAll(/\brx="([\d.]+)"/g)) {
             expect(Number(match[1])).toBeLessThanOrEqual(2);
