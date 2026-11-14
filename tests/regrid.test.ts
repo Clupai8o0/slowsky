@@ -195,6 +195,25 @@ describe('real fixture', () => {
     const zodi = f32('frame1.box.zodi.f32');
     const cut = mkCutout(params, box, image, zodi);
 
+    it('samples the coarse-grid centre within 0.05 native px of exact skyToPix', () => {
+        const center = wcs.pixToSky({ x: (box.x0 + box.x1 - 1) / 2, y: (box.y0 + box.y1 - 1) / 2 });
+        const grid = gridForView(center, 2, 4, 9);
+        const pixel = { x: (grid.width - 1) / 2, y: (grid.height - 1) / 2 };
+        const exact = wcs.skyToPix(gridPixToSky(grid, pixel));
+        const sampled: number[] = [];
+        for (const axis of ['x', 'y'] as const) {
+            const ramp = new Float32Array(cut.width * cut.height);
+            for (let y = 0; y < cut.height; y++) {
+                for (let x = 0; x < cut.width; x++) {
+                    ramp[y * cut.width + x] = axis === 'x' ? box.x0 + x : box.y0 + y;
+                }
+            }
+            const out = regridNorthUp(mkCutout(params, box, ramp), wcs, grid);
+            sampled.push(out[pixel.y * grid.width + pixel.x] ?? NaN);
+        }
+        expect(Math.hypot((sampled[0] ?? NaN) - exact.x, (sampled[1] ?? NaN) - exact.y)).toBeLessThan(0.05);
+    });
+
     it('brightest pixel lands within 1 native pixel; NaN outside the footprint', () => {
         let best = -Infinity;
         let bi = 0;
