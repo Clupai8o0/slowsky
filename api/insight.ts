@@ -1,7 +1,7 @@
 // The AI note is written by Anthropic's Claude from numbers this app measured. See README, "AI tools used".
 import Anthropic from '@anthropic-ai/sdk';
-import { checkNote, factSheet, InsightError, validateFacts } from '../src/lib/insight';
-import { SYSTEM_PROMPT, userMessage } from '../src/lib/insight-prompt';
+import { checkNote, factSheet, InsightError, validateFacts } from '../src/lib/insight.js';
+import { SYSTEM_PROMPT, userMessage } from '../src/lib/insight-prompt.js';
 
 declare const process: { env: Record<string, string | undefined> };
 

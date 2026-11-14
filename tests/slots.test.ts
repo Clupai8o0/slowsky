@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FEATURES, FLAGS_TEXT, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
+import { DEFAULT_FEATURES, FEATURES, FLAGS_TEXT, featuresFrom, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
 import { DETECTORS } from '../src/ui/copy';
 import { apertureFor } from '../src/ui/measure';
 import { colourAt } from '../src/lib/falsecolour';
@@ -167,7 +167,12 @@ describe('slots for modules still in their lanes', () => {
         expect(FEATURES.halo).toBe(false);
         const v = view(sky([frame('a')]));
         const el = {} as HTMLElement;
-        expect(renderChanges(el, el, v)).toBe(false);
+        // The change panel is wired (switch off): one visit shows only the finder's own message.
+        const box = {} as HTMLElement;
+        const marks = {} as HTMLElement;
+        expect(renderChanges(box, marks, v)).toBe(true);
+        expect(box.innerHTML).toBe('<ul class="sk-chg-notes"><li>Change finding needs two visits; these frames make 1.</li></ul>');
+        expect(marks.innerHTML).toBe('');
         expect(renderHalo(el, v)).toBe(false);
         const none = { key: false, layer: false, note: '' };
         expect(mountFalseColour(el, () => {}).update(v, true)).toEqual(none);
@@ -487,5 +492,19 @@ describe('false colour slot', () => {
             expect(req.lambda).toBeGreaterThanOrEqual(low);
             expect(req.lambda).toBeLessThanOrEqual(high);
         }
+    });
+});
+
+describe('preview switch', () => {
+    it('keeps the defaults when unset or empty, and flips only known names', () => {
+        expect(featuresFrom(undefined)).toEqual(DEFAULT_FEATURES);
+        expect(featuresFrom('')).toEqual(DEFAULT_FEATURES);
+        expect(featuresFrom(' halo , falseColour,-flags,nonsense,constructor,__proto__')).toEqual({ ...DEFAULT_FEATURES, halo: true, falseColour: true, flags: false });
+        expect(featuresFrom('halo,-halo')).toEqual(DEFAULT_FEATURES);
+    });
+
+    it('ships with the build defaults when the variable is not set', () => {
+        expect(import.meta.env.VITE_PREVIEW_FEATURES).toBeUndefined();
+        expect(FEATURES).toEqual(DEFAULT_FEATURES);
     });
 });

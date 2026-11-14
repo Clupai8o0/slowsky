@@ -1,4 +1,4 @@
-import { TARGETS } from './targets';
+import { TARGETS } from './targets.js';
 
 export interface InsightFacts {
     targetId: string;

@@ -68,7 +68,7 @@ button { cursor: pointer; }
 .sk-split:hover::before { opacity: .45; }
 .sk[data-drag] .sk-split::before { opacity: .7; }
 .sk-split:focus-visible { outline: none; }
-.sk-split:focus-visible::before { opacity: 1; left: 5px; width: 3px; }
+.sk-split:focus-visible::before { opacity: 1; left: 4px; width: 5px; border-radius: 1px; box-shadow: 0 0 0 2px var(--void), 0 0 10px 2px rgba(150, 180, 255, .75); }
 .sk-fold { position: absolute; z-index: 3; left: 50%; top: calc(var(--head) + var(--gap) - 5px); width: 26px; height: 26px; margin-left: -12.5px; padding: 0;
     display: grid; place-items: center; border: 1px solid var(--hair2); border-radius: 3px; background: var(--void); color: var(--mute);
     transition: border-color 160ms var(--ease), color 160ms var(--ease); }
@@ -123,7 +123,7 @@ button { cursor: pointer; }
     .sk[data-side] .sk-seg { flex: none; }
     .sk[data-side] .sk-seg button { flex: 1; min-width: 0; padding: 0 8px; }
     .sk[data-side] .sk-seg .ic { display: inline-block; }
-    .sk[data-side] .sk-hint { order: 2; margin-top: 12px; }
+    .sk[data-side] .sk-sub, .sk[data-side] .sk-hint { order: 2; margin-top: 12px; }
     .sk[data-side] .sk-strip { order: 3; flex-wrap: wrap; padding-top: 16px; }
     .sk[data-side] .sk-legrow { order: 4; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 18px; padding-top: 0; }
     .sk[data-side] .sk-leg { flex-direction: column; align-items: flex-start; gap: 6px; }
@@ -204,9 +204,10 @@ button { cursor: pointer; }
     .sk-mhrow .sk-mh .w { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .sk-focus > span:last-child { display: none; }
 }
-/* Wraps (right-aligned) rather than cut: the dates are never hidden behind an ellipsis. */
+/* Wraps (right-aligned) rather than cut: the dates are never hidden behind an ellipsis. Subtract's visit dates
+   use no-break spaces, so they wrap only at the − or + between the two visits. */
 .sk-read { min-width: 0; margin: 0 0 0 auto; font: 11px/16px var(--mono); letter-spacing: .04em; color: var(--mute); text-align: right; }
-.sk-read b, .sk-read span { white-space: nowrap; }
+.sk-read b { white-space: nowrap; }
 .sk-read b { font-weight: 400; color: var(--ink); }
 .sk-read b:not(:empty) + span::before { content: "  ·  "; white-space: pre; color: var(--faint); }
 .sk-focus { flex: none; align-self: center; display: inline-flex; align-items: center; gap: 7px; height: 26px; margin: -5px 0; padding: 0 9px; border: 1px solid var(--hair2); border-radius: 3px;
@@ -214,6 +215,13 @@ button { cursor: pointer; }
 .sk-focus:hover { border-color: rgba(255, 255, 255, .4); color: var(--ink); }
 .sk-focus[aria-pressed=true] { border-color: rgba(255, 255, 255, .55); color: #fff; }
 .sk-focus .ic svg { width: 13px; height: 13px; }
+/* Subtract: two visit pickers and the B − A / A + B choice. */
+.sk-sub { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-top: 10px; }
+.sk-sub[hidden] { display: none; }
+.sk-seg2 { display: inline-flex; gap: 4px; }
+.sk-seg2 button { height: 28px; padding: 0 12px; border: 1px solid var(--hair2); border-radius: 2px; background: none; color: var(--mute); font: 12px var(--mono); transition: background 160ms var(--ease), color 160ms var(--ease); }
+.sk-seg2 button:hover { color: var(--ink); border-color: rgba(255, 255, 255, .4); }
+.sk-seg2 button[aria-pressed=true] { background: #fff; border-color: #fff; color: #000; }
 .sk-hint { margin: 10px 0 0; font-size: 13px; line-height: 20px; color: var(--mute); min-height: 20px; }
 
 .sk-sky { position: relative; width: 100%; aspect-ratio: 1 / 1; background: #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, .06); }
@@ -266,6 +274,14 @@ button { cursor: pointer; }
 .sk-key.c .sw { width: 10px; height: 10px; border-radius: 1px; background: linear-gradient(90deg, #4f8bff, #ff7a45); }
 .sk-key.c[aria-pressed=false] .sw { opacity: .5; }
 .sk-flagnote { margin: 2px 0 6px; font-size: 12px; line-height: 1.5; color: var(--ink2); }
+.sk-more { display: inline; }
+.sk-more summary { display: none; }
+@media (max-width: 1080px) {
+    .sk-more { display: block; margin-top: 4px; color: var(--mute); }
+    .sk-more summary { display: flex; align-items: center; min-height: 44px; width: max-content; color: var(--ink2); cursor: pointer;
+        text-decoration: underline dotted; text-underline-offset: 3px; }
+    .sk-more summary:focus-visible { outline: 2px solid rgba(255, 255, 255, .6); outline-offset: 2px; border-radius: 2px; }
+}
 .sk-key .ring, .sk-key.t::before { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--gold); }
 .sk-key.t { align-items: flex-start; color: var(--ink2); }
 .sk-key.t::before { content: ""; flex: none; border-width: 2px; margin-top: 4px; }
@@ -277,6 +293,7 @@ button { cursor: pointer; }
 .sk-key.d .o { background: var(--pos); }
 .sk[data-mode=diff] .sk-key.g, .sk[data-mode=diff] .sk-key.t { display: none; }
 .sk[data-mode=diff] .sk-key.d { display: inline-flex; }
+.sk[data-mode=diff][data-subop=sum] .sk-key.d { display: none; } /* A + B is drawn in grey, not blue and orange */
 
 .sk-fov { flex: none; display: inline-flex; align-items: center; gap: 8px; font: 10.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
 .sk-fov select { -webkit-appearance: none; appearance: none; height: 28px; padding: 0 20px 0 2px; border: 0; border-radius: 0; color: var(--ink); font: 12px var(--mono); letter-spacing: 0; text-transform: none; cursor: pointer;
@@ -316,7 +333,7 @@ button { cursor: pointer; }
 .sk-strip canvas { width: 52px; height: 52px; display: block; background: #000; image-rendering: pixelated; outline: 1px solid var(--hair); transition: transform 240ms var(--ease), outline-color 200ms var(--ease), opacity 200ms var(--ease); }
 .sk-strip button[aria-current=true] canvas { opacity: 1; }
 .sk-strip button[aria-current=true] canvas { outline: 1px solid #fff; outline-offset: 3px; transform: translateY(-3px); }
-.sk[data-mode=stack] .sk-strip canvas, .sk[data-mode=diff] .sk-strip button:first-child canvas, .sk[data-mode=diff] .sk-strip button:last-child canvas { opacity: 1; }
+.sk[data-mode=stack] .sk-strip canvas, .sk[data-mode=diff] .sk-strip button[data-in-sub] canvas { opacity: 1; }
 .sk-strip small { font: 10.5px/1.35 var(--mono); color: var(--faint); white-space: nowrap; }
 .sk-strip small b { display: block; font-weight: 400; color: var(--ink2); }
 
@@ -375,6 +392,16 @@ button { cursor: pointer; }
 .sk-lcy { position: relative; }
 .sk-lcy span { position: absolute; right: 0; transform: translateY(-50%); font: 10px/1 var(--mono); color: var(--faint); white-space: nowrap; }
 .sk-lcx { display: flex; justify-content: space-between; margin-right: 44px; font: 10px/1 var(--mono); color: var(--faint); }
+.sk-halo-t { width: 100%; border-collapse: collapse; margin: 12px 0 6px; font: 12px var(--mono); color: var(--ink2); }
+.sk-halo-t th { padding: 0 10px 6px 0; color: var(--mute); font-weight: 400; text-align: left; }
+.sk-halo-t td { padding: 4px 10px 4px 0; white-space: nowrap; }
+.sk-halo-t th:last-child, .sk-halo-t td:last-child { padding-right: 0; text-align: right; }
+.sk-halo-k { padding: 0; border: 0; border-radius: 2px; background: none; color: inherit; font: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.sk-halo-k.on { color: var(--ink); text-decoration-style: solid; }
+.sk-halo-k:focus-visible { outline: 2px solid rgba(255, 255, 255, .6); outline-offset: 2px; }
+@media (max-width: 1080px) {
+    .sk-halo-k { min-height: 44px; }
+}
 .sk-lcx .b { display: inline-flex; align-items: center; gap: 6px; }
 .sk-lcx .b i { width: 12px; height: 7px; border-radius: 1px; background: rgba(255, 255, 255, .14); }
 .sk-m-details { margin-top: 44px; gap: 14px; flex: none; }
@@ -391,6 +418,13 @@ button { cursor: pointer; }
 .sk-gk .sk-src { font: 10px/24px var(--mono); color: var(--faint); }
 .sk-notes { margin: 0; padding: 0 0 0 14px; font-size: 12px; line-height: 1.5; color: var(--mute); }
 .sk-notes:empty { display: none; }
+/* Candidate changes (FEATURES.changes): the finder's own sentences, then its notes. */
+.sk-chg { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--ink2); }
+.sk-chg b { display: block; font: 10.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); font-weight: 400; }
+.sk-chg-lead { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink2); }
+.sk-chg-notes { margin: 12px 0 0; padding: 0 0 0 14px; font-size: 12px; line-height: 1.5; color: var(--mute); }
+.sk-chg-marks circle { fill: none; stroke: #fff; stroke-width: 1.5px; vector-effect: non-scaling-stroke; stroke-dasharray: 3 2; }
+.sk-chg-marks text { fill: #fff; font-family: var(--mono); text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 2px; vector-effect: non-scaling-stroke; }
 .sk-credit { margin-top: auto; padding-top: 28px; font: 10px/1.6 var(--mono); color: var(--faint); flex: none; }
 .sk-credit p { margin: 0; }
 .sk-credit p + p { margin-top: 4px; }
@@ -460,7 +494,7 @@ button { cursor: pointer; }
     .sk-brand { order: 0; height: auto; padding-top: 20px; }
     .sk-m-pick { order: 1; margin-top: 22px; }
     .sk-m-watch { order: 2; width: 100%; margin-top: 30px; padding: 0; }
-    .sk-mhrow, .sk-hint { padding-left: 18px; padding-right: 18px; }
+    .sk-mhrow, .sk-sub, .sk-hint { padding-left: 18px; padding-right: 18px; }
     .sk-glow { display: none; }
     .sk-status { order: 3; height: auto; margin-top: 18px; align-items: center; }
     .sk-status p { margin: 0; }
@@ -472,8 +506,8 @@ button { cursor: pointer; }
     .sk-m-halo { order: 6; margin-top: 40px; }
     .sk-m-details { order: 6; margin-top: 40px; }
     .sk-credit { order: 7; margin-top: 36px; padding-top: 0; }
-    .sk-tg { flex-direction: row; overflow-x: auto; margin: 14px -18px 0; padding: 0 18px; gap: 6px; scrollbar-width: none; }
-    .sk-tg::-webkit-scrollbar { display: none; }
+    /* All five targets in view: the row wraps instead of scrolling sideways with no hint that more are hidden. */
+    .sk-tg { flex-direction: row; flex-wrap: wrap; margin: 14px 0 0; gap: 6px; }
     .sk-tg button { flex: none; flex-direction: row; align-items: center; gap: 7px; padding: 9px 13px; border: 1px solid var(--hair2); border-radius: 3px; }
     .sk-tg small { display: none; }
     .sk-tg .k { position: static; }
@@ -494,11 +528,12 @@ button { cursor: pointer; }
 }
 /* Phones: every control is at least 44 px tall to tap, and no label is under 12 px. */
 @media (max-width: 1080px) {
-    .sk-fov select { min-height: 44px; padding: 0 6px; }
+    .sk-fov select { min-height: 44px; padding: 0 22px 0 6px; } /* room for the arrow */
     .sk-key.g { min-height: 44px; }
     .sk-gk .sk-src { line-height: 44px; padding: 0 4px; }
     .sk-btn2 { min-height: 44px; }
     .sk-seg, .sk-seg button { min-height: 44px; }
+    .sk-seg2 button { min-height: 44px; padding: 0 16px; }
     .sk-rng { height: 44px; top: -8px; } /* same centre line as the 28 px desktop slider */
     .sk-search input { min-height: 44px; }
     .sk-ai-lock label { height: 44px; }

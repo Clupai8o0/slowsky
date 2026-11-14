@@ -5,6 +5,8 @@ targets, and it shows how that patch of sky looked on each visit by NASA's SPHER
 real NASA frames. SPHEREx is a NASA space telescope that maps the whole sky in infrared light and comes back to
 each part of it again and again, so the same spot is pictured on many dates.
 
+Live site: https://slowsky.vercel.app (code: https://github.com/Clupai8o0/slowsky).
+
 Built by team Clupai (Melbourne) for the NASA Space Apps Challenge 2026, challenge "Planet X and SPHEREx".
 The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; the table under
 "AI tools used" names them.
@@ -28,13 +30,16 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 - Change the field of view: 0.1°, 0.25°, 0.5° or 1°.
 - For a preset target, see a marker where the target should be on each frame's date (a ring for Barnard's Star
   and Epsilon Indi B, corner marks for the others).
-- See rings that mark stars from ESA's Gaia DR3 catalogue that are brighter than G magnitude 19 (live: within 0.2°
-  of the centre, the 400 brightest at most; offline copy: within 0.1° of the centre), and turn them off or on.
-- On a live view in Blink, switch on **Flags** to paint the pixels that the frame's own quality layer marks
+- See rings that mark stars from ESA's Gaia DR3 catalogue that are brighter than G magnitude 19, and turn them off
+  or on. Live views fetch up to the 400 brightest within 0.2° of the centre; the offline copy holds those within
+  0.1°. Each frame rings only the 40 brightest of the stars in the picture.
+- On a live view in Blink, switch on **Flagged pixels** to paint the pixels that the frame's own quality layer marks
   (cosmic-ray hits, for example), and read how many pixels are flagged and which three kinds are most common.
-- Read each frame's details: when it was taken, its wavelength at the centre, detector, data release, file name,
+- Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode.
+- Use it on a phone: on a narrow screen the page becomes one column, and its web app manifest lets you add it to
+  the home screen.
 
 ## How it works
 
@@ -78,7 +83,11 @@ npm install
 npm run dev      # local site
 npm test         # unit tests and test gates
 npm run build    # typecheck and production build
+npm run smoke    # browser check of the five presets with the archive blocked
 ```
+
+`npm run smoke` builds the site, serves it and opens it in headless Chromium. It needs Python 3 with Playwright and
+its Chromium installed.
 
 `npm run dev` does not serve the server function in `api/`, so live search fails there and the preset targets load
 from the snapshot. To try the live path on your own machine, run the site with the Vercel CLI (`vercel dev`).
@@ -153,13 +162,16 @@ in it.
 - At very busy spots, such as near the ecliptic poles, the archive can cut its frame list short. The page then
   says some visits may be missing.
 - Gaia rings are moved from the stars' catalogue positions for 2016.0 to each frame's date using the stars' proper
-  motion (Stack uses the middle date). The source keeps only stars that were on the field in 2016, so a fast star
+  motion (Stack uses the average of the frames' dates). The source keeps only stars that were on the field in 2016, so a fast star
   that walked in from just outside it since then has no ring. Live views ask the catalogue only for stars within
   0.2° of the centre, and skip the rings if the catalogue is slow to answer.
-- The brightness curve (RW Aurigae and WISE 0855; none is drawn for Epsilon Indi B) divides the target by two to
-  four Gaia comparison stars in the field, of G magnitude 9 to 15 (a range we chose ourselves). They are not
-  checked for steadiness, so a variable one shows up as wobble. The curve appears only when the field holds at least two such stars; in the offline copy that is
-  RW Aurigae only. The shaded band shows how much those comparison stars wobble; a faint target can wobble more.
+- The page tries a brightness curve only for RW Aurigae and WISE 0855; the other three presets never get one. The
+  curve divides the target by two to four Gaia comparison stars in the field, of G magnitude 9 to 15 (a range we
+  chose ourselves). While more than two remain, the page drops one whose brightness scatters more than three times
+  as much as the others'; beyond that they are not checked for steadiness, so a variable one shows up as wobble.
+  The curve appears only when at least two such stars are slow-moving and sit clear of the target, of other nearby
+  stars and of the picture's edge. Of those two targets, only RW Aurigae has two in the offline copy; WISE 0855's
+  field has fewer, so it gets a curve only on a live view whose field holds enough. The shaded band shows how much those comparison stars wobble; a faint target can wobble more.
   It is a rough check, not calibrated photometry.
 - For Barnard's Star the page measures how far the star moved between two frames and shows the distance its
   catalogue proper motion predicts beside it. The prediction leaves out parallax (the small back-and-forth shift
@@ -169,7 +181,7 @@ in it.
   for the presets. Gaia rings move in every view.
 - Bad-pixel flags are only shown, and only when you switch them on, on live frames in Blink. No measurement uses
   them, so hot pixels and cosmic-ray hits show as they are, and one can upset a point on the brightness curve.
-  The Flags layer leaves out three kinds: SOURCE (set on every pixel mapped to a known source, so it would cover
+  The Flagged pixels layer leaves out three kinds: SOURCE (set on every pixel mapped to a known source, so it would cover
   the stars themselves), FULLSAMPLE (for information only) and GHOST_FPA (not in use at present). The TRANSIENT
   flag marks cosmic-ray hits, and near a very bright star it can also mark charge spilling into neighbouring
   pixels, so a flagged pixel beside a bright star is not always a cosmic ray. Hits in the first ten seconds of
