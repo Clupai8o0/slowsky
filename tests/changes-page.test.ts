@@ -133,7 +133,7 @@ describe('page change list is the plain list', () => {
             'Earlier visit at 2.000 µm, later at 2.000 µm.',
             "Noise estimated using the frames' pixel uncertainty maps.",
             'No source above 5 times the noise at the centre of the view in either visit.',
-            '2 candidates are not listed: for each, in at least one frame of a checked visit, the detector pixel at that frame’s brightest point within 12″ of its spot carries the archive flag TRANSIENT.',
+            '2 candidates are not listed: for each, in at least one frame of a checked visit, the brightest of up to four detector pixels at or beside that frame’s brightest point within 12″ of its spot carries the archive flag TRANSIENT.',
         ]);
         expect(html.includes('Every spot listed')).toBe(false);
     });
@@ -143,7 +143,7 @@ describe('page change list is the plain list', () => {
         const lines = [...html.matchAll(/<li><b>Candidate \d+<\/b> (.*?)<\/li>/g)].map(m => m[1]!);
         expect(lines).toEqual([
             "Measured against the change in the sky around it, there is more light here in the later visit than in the earlier one (S/N &gt; 50; candidate).",
-            "The light here differs between the two visits, and which visit has more is not clear (candidate). In at least one frame of the later visit, the archive flags the detector pixel at that frame’s brightest point within 12″ of the spot as OVERFLOW; an overflowing pixel can make the reading here unreliable.",
+            "The light here differs between the two visits, and which visit has more is not clear (candidate). In at least one frame of the later visit, the archive flags the brightest of up to four detector pixels at or beside that frame’s brightest point within 12″ of the spot as OVERFLOW; an overflowing pixel can make the reading here unreliable.",
         ]);
         expect(pageNotes(html)).toEqual([
             'Earlier visit at 2.000 µm, later at 2.000 µm.',
@@ -177,7 +177,7 @@ describe('page change list is the plain list', () => {
             'No source above 5 times the noise at the centre of the view in either visit.',
             'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.',
             'No catalogue stars for this view: every spot is listed without a catalogue match.',
-            '1 candidate is not listed: in at least one frame of a checked visit, the detector pixel at that frame’s brightest point within 12″ of its spot carries the archive flag TRANSIENT.',
+            '1 candidate is not listed: in at least one frame of a checked visit, the brightest of up to four detector pixels at or beside that frame’s brightest point within 12″ of its spot carries the archive flag TRANSIENT.',
         ]);
     });
 

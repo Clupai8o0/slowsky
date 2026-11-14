@@ -59,9 +59,13 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   last visit, each marked on the sky with a numbered dashed ring. The two visits are compared only when their
   wavelengths differ by no more than 0.02 µm. The page reads the archive's error map for each frame of the two
   visits to judge how far a spot stands out from the noise. It leaves out a spot when, in a frame of a checked
-  visit, the detector pixel at the brightest point within 12″ of it carries one of the archive's TRANSIENT,
-  OUTLIER, NONFUNC or SUR_ERROR flags, and it says how many it left out. (The pixel it reads is the brightest of
-  the four detector pixels around that point, so it can lie up to one pixel outside the 12″ circle.) The list opens with at most 8 spots that have no Gaia catalogue star
+  visit, the brightest of up to four detector pixels at or beside the brightest point within 12″ of it carries one
+  of the archive's TRANSIENT, OUTLIER, NONFUNC or SUR_ERROR flags, and it says how many it left out. (Each point of
+  the picture is worked out from a block of up to four detector pixels, two by two. The page reads the flags of the
+  brightest pixel of that block that holds a value, whether or not it adds any light at the point: where the
+  picture's grid lines up with the detector, only one pixel of the block does. The centre of the pixel it reads can
+  lie outside the 12″ circle, by up to about one and a half detector pixels, about 9″.) The list opens with at
+  most 8 spots that have no Gaia catalogue star
   within 6″; the rest stay behind a button, because a small shift between two pictures of a star can look like a
   change. Every line is a candidate only: the page cannot tell a real change in the sky from a detector hit, a
   sharper star image in one visit or a small shift between the two pictures, and it says so above the list. A
@@ -223,7 +227,8 @@ in it.
   a point on the brightness curve. Only the Candidate changes list uses them: it leaves some spots out and adds a caution to others (next point).
 - The Candidate changes list compares only the first and the last visit, at one wavelength, and it cannot confirm
   any spot it lists. When a visit has fewer than 3 frames the page cannot rule out a detector hit, and it says so.
-  An OVERFLOW flag near a spot does not remove it: the line says the reading there can be unreliable.
+  An OVERFLOW flag near a spot does not remove it: the line says the reading there can be unreliable, and a line
+  that said which visit is brighter no longer says so.
   The Flagged pixels layer leaves out three kinds: SOURCE (set on every pixel mapped to a known source, so it would cover
   the stars themselves), FULLSAMPLE (for information only) and GHOST_FPA (not in use at present). The TRANSIENT
   flag marks cosmic-ray hits, and near a very bright star it can also mark charge spilling into neighbouring

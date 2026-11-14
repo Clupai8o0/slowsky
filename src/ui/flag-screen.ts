@@ -9,6 +9,10 @@ export const CORE_FLAG = 'OVERFLOW';
 export type ScreenedCandidate = PanelCandidate & { line: string; snrFlagRemoved?: boolean; unreadVisit?: 'earlier' | 'later' };
 export interface FrameFlags { obsId: string; names: (pix: PixelCoord) => string[] | null; }
 
+// The picture's value at a point is a mix of a two-by-two block of detector pixels (src/lib/regrid.ts). This returns
+// the brightest pixel of that block for the frame's brightest point within 12″ of `pix`, whether or not it adds any
+// light at the point: where the grid lines up with the detector only one pixel of the block does. Its centre can lie
+// up to about 1.4 detector pixels from the point, so outside the 12″ circle. The page and the README say so.
 export function nativePeak(frame: RegriddedFrame, image: Float32Array, zodi: Float32Array, pix: PixelCoord): PixelCoord | null
 {
     const context = frame.context;
@@ -160,9 +164,9 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
             // Each frame has its own brightest pixel. A pair's or mover's ends sit in different visits, so each
             // visit is named with its own spot; two ends in one visit are not told apart.
             const split = ends.length > 1 && new Set(ends.map(end => end.visit)).size === ends.length;
-            const pixel = ends.length === 1 ? 'the detector pixel at that frame’s brightest point within 12″ of the spot'
-                : split ? 'the detector pixel at that frame’s brightest point within 12″ of its spot in that visit'
-                    : 'the detector pixel at that frame’s brightest point within 12″ of at least one of its spots';
+            const pixel = ends.length === 1 ? 'the brightest of up to four detector pixels at or beside that frame’s brightest point within 12″ of the spot'
+                : split ? 'the brightest of up to four detector pixels at or beside that frame’s brightest point within 12″ of its spot in that visit'
+                    : 'the brightest of up to four detector pixels at or beside that frame’s brightest point within 12″ of at least one of its spots';
             const flagged = `In ${where}, the archive flags ${pixel} as OVERFLOW`;
             // Without the finder's `reading` (before round 11) every non-mover line is withdrawn: hiding a sound
             // reading is safer than showing one OVERFLOW may have spoiled. Only a known comparison is named as one.
@@ -212,7 +216,7 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
     const flags = list.length === 1 ? `the archive flag ${list[0]}` : `at least one of these archive flags: ${list.join(', ')}`;
     const dropNote = count === 0 ? undefined
         : `${count === 1 ? '1 candidate is not listed:' : `${count} candidates are not listed: for each,`} in at least one frame of `
-            + (plainDropped ? `a checked visit, the detector pixel at that frame’s brightest point within 12″ of its spot carries ${flags}.`
-                : `the visit where its spot${two ? ', or one of its two spots,' : ''} shows more light, the detector pixel at that frame’s brightest point within 12″ of that spot carries ${flags}.`);
+            + (plainDropped ? `a checked visit, the brightest of up to four detector pixels at or beside that frame’s brightest point within 12″ of its spot carries ${flags}.`
+                : `the visit where its spot${two ? ', or one of its two spots,' : ''} shows more light, the brightest of up to four detector pixels at or beside that frame’s brightest point within 12″ of that spot carries ${flags}.`);
     return { kept, dropNote, allUnread, lead };
 }
