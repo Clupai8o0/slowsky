@@ -68,7 +68,7 @@ export function factsInput(v: NoteView): FactsInput
         }
     }
     const sh = v.shift;
-    if (sh && sh.significant && sh.measured) {
+    if (sh && sh.significant && sh.measured && sh.measured.measuredArcsec >= 2 * sh.errArcsec) {
         const a = regs[sh.from];
         const b = regs[sh.to];
         if (a && b) {

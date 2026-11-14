@@ -62,6 +62,7 @@ describe('factsInput', () => {
         expect(factsInput({ result: res, center: grid.center, curve: null, shift: base }).shift).toEqual({ measuredArcsec: 4.6, days: 180 });
         expect(factsInput({ result: res, center: grid.center, curve: null, shift: { ...base, significant: false } }).shift).toBeUndefined();
         expect(factsInput({ result: res, center: grid.center, curve: null, shift: { ...base, measured: null } }).shift).toBeUndefined();
+        expect(factsInput({ result: res, center: grid.center, curve: null, shift: { ...base, errArcsec: 3 } }).shift).toBeUndefined();
     });
 
     it('leaves the difference out with a single frame', () => {
