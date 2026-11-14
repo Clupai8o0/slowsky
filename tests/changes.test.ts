@@ -1825,7 +1825,7 @@ describe('round 10b source identity and blends', () => {
             const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, stars);
             expect(r.candidates.some((c) => c.kind === 'unknown' && near(x, y, c, 8)), measured(r)).toBe(true);
             if (offset === 10) {
-                expect(r.candidates.some((c) => /brighter catalogue stars.*too blended/.test(c.reason)), measured(r)).toBe(true);
+                expect(r.candidates.some((c) => /near brighter catalogue stars whose light overlaps here, so this reading may be their light/.test(c.reason)), measured(r)).toBe(true);
             }
         });
     }
