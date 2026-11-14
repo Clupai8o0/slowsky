@@ -19,7 +19,7 @@ import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
 import { coreBlank, curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
-import { FEATURES, renderFlags, renderSpectrum } from './slots';
+import { FEATURES, mountFlags, renderSpectrum } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -268,13 +268,14 @@ function shell(): string
     <div class="sk-ctrl">
     <div class="sk-legrow">
       <div class="sk-leg">
-        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
-        <button type="button" class="sk-key f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i>Flags</button>
+        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA, Gaia DPAC; Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
+        <button type="button" class="sk-key g f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Flagged pixels</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
       <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
     </div>
+    <p class="sk-flagnote" data-ref="flagsNote" hidden></p>
     <div class="sk-player">
       <div class="sk-tr">
         <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
@@ -316,7 +317,7 @@ function shell(): string
     <button type="button" class="sk-btn2 sk-ai-go" data-ai="go" hidden>Write an AI note</button>
     <p class="sk-ai-msg sk-sr" data-ai="msg" role="status"></p>
     <div class="sk-ai-out" data-ai="out" aria-live="polite"></div>
-    <details class="sk-ai-given" data-ai="given" hidden><summary>What the AI was given</summary><ul data-ai="givenList"></ul></details>
+    <details class="sk-ai-given" data-ai="given" hidden><summary>What this page told the AI</summary><ul data-ai="givenList"></ul></details>
     <p class="sk-ai-disc" data-ai="disc"></p>
     <p class="sk-ai-left" data-ai="left" hidden></p>
   </section>
@@ -345,6 +346,7 @@ export function mount(root: HTMLElement): void
     const qa = <T extends Element>(sel: string) => [...root.querySelectorAll(sel)] as T[];
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
     const aiNote = mountAiNote(ref<HTMLElement>('ai'));
+    const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const glow = ref<HTMLCanvasElement>('glow');
@@ -693,15 +695,16 @@ export function mount(root: HTMLElement): void
         const H = 100;
         const noise = Number.isFinite(c.noise) ? c.noise : 0;
         const name = st.target ? COPY[st.target].display : 'the target';
-        // A catalogued star inside the measuring circle mixes its light in. A cold brown dwarf is fainter than that
-        // star below 4.4 µm, so its chart stays hidden there; for other targets the note just says so.
+        // A catalogued star inside the measuring circle mixes its light in. For a cold brown dwarf with such a star
+        // in the circle the chart stays hidden below 4.4 µm, where the brown dwarf is faint (Luhman 2014,
+        // arXiv:1404.6501, Table 1); for other targets the note just says so. Nothing here measures which is brighter.
         const blendAt = c.blend ? `A Gaia star (G ${c.blend.g.toFixed(1)}) sits ${(c.blend.px * result.grid.pixelArcsec).toFixed(1)}″ from ${name}` : '';
         const cold = st.target ? COPY[st.target].kind === 'cold' : false;
         const hideChart = c.blend !== null && cold && c.lc.lambda < 4.4;
         ref<HTMLElement>('lcwrap').hidden = hideChart;
         ref<HTMLElement>('lcx').hidden = hideChart;
         if (hideChart) {
-            bind('lcNote', `${blendAt}, inside the measuring circle. At ${c.lc.lambda.toFixed(2)} µm that star outshines it, so no curve is drawn. Try 4.4 µm or longer, where ${name} is the brighter one.`);
+            bind('lcNote', `${blendAt}, close enough that its light may reach the measuring circle. No curve is drawn below 4.4 µm; slide the colour to 4.4 µm or longer.`);
             return;
         }
         const ys = pts.map((o) => o.p.relative);
@@ -888,16 +891,20 @@ export function mount(root: HTMLElement): void
     // Feature-flagged slots (src/ui/slots.ts): hidden unless the flag is on and the module has something to show.
     function renderSlots(): void
     {
-        const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode } : null;
+        const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode, source: sourceKind } : null;
         const spec = ref<HTMLElement>('spec');
         spec.hidden = !(FEATURES.spectrum && view && renderSpectrum(ref<HTMLElement>('specBox'), view));
-        // The layer is filled even when switched off, so the key shows only when there is a mask to show.
-        const layer = ref<HTMLElement>('flags');
-        const hasFlags = Boolean(FEATURES.flags && view && renderFlags(layer, view));
+        // FLAGS are read only once the key is switched on (Blink, live frames); a finished read renders again.
+        const fs = flagLayer.update(view, flagsOn);
         const key = ref<HTMLButtonElement>('flagsKey');
-        key.hidden = !hasFlags;
+        key.hidden = !fs.key;
         key.setAttribute('aria-pressed', String(flagsOn));
-        layer.hidden = !(hasFlags && flagsOn);
+        ref<HTMLElement>('flags').hidden = !fs.layer;
+        const note = ref<HTMLElement>('flagsNote');
+        if (note.textContent !== fs.note) {
+            note.textContent = fs.note;
+        }
+        note.hidden = !(fs.key && fs.note);
     }
 
     function renderText(): void
@@ -1152,13 +1159,12 @@ export function mount(root: HTMLElement): void
         }
         if (kind === 'cold') {
             const visits = visitsOf(result).map((v) => `${v.n} in ${monthYear(v.mjd)}`);
-            // Expected from its spectrum, not measured here, so it sits in the description, not under "Measured here".
-            const colour = st.detector <= 4
-                ? `At this colour (detector ${st.detector} of 6) expect the light at its spot to be a background star.`
-                : st.detector === 5 ? 'At this colour expect the background star and WISE 0855 both to add light.'
-                    : 'At this colour (detector 6 of 6) WISE 0855 should outshine the background star.';
+            // From earlier telescopes, not measured here, so it sits in the description, not under "Measured here".
+            // Luhman 2014 (arXiv:1404.6501, Table 1): [3.6] 17.44, [4.5] 13.92, W2 (4.6 µm) 13.89 mag. Detector 6
+            // covers 4.42 to 5.00 µm. Other detectors get no sentence here; the card's own line covers 3.6 vs 4.5 µm.
+            const colour = st.detector === 6 ? ' WISE detected it at 4.6 µm, inside this detector’s range (detector 6 of 6).' : '';
             return {
-                show: `${COPY[st.target].show} ${colour}`,
+                show: `${COPY[st.target].show}${colour}`,
                 fact: `This view has ${n} look${n === 1 ? '' : 's'}${visits.length > 1 ? `: ${visits.join(', ')}` : ''}.`,
             };
         }

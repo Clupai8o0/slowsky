@@ -8,8 +8,9 @@ import type { SkyResult, TrackPoint } from '../lib/source';
 import type { Astrometry, OutputGrid, PixelCoord, RegriddedFrame } from '../lib/types';
 
 export const NATIVE_ARCSEC = 6.15; // SPHEREx detector pixel
-// SPHEREx saturates on stars brighter than about G 9, and stars fainter than G 15 are lost in the noise
-// of one frame at 0.1°. References come from between.
+// Our own cuts, not instrument limits: we skip stars brighter than about G 9 because their centres are often
+// blank in these frames, and stars fainter than G 15 because one frame measures them poorly. References come from
+// between.
 const REF_G_MIN = 9;
 const REF_G_MAX = 15;
 const MAX_REFS = 4;

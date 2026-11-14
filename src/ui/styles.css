@@ -127,6 +127,7 @@ button { cursor: pointer; }
     .sk[data-side] .sk-strip { order: 3; flex-wrap: wrap; padding-top: 16px; }
     .sk[data-side] .sk-legrow { order: 4; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 18px; padding-top: 0; }
     .sk[data-side] .sk-leg { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .sk[data-side] .sk-flagnote { order: 4; }
 }
 
 /* The centre does not clip, so the sky's glow can spill into the void around it. */
@@ -224,6 +225,7 @@ button { cursor: pointer; }
     -webkit-mask-image: radial-gradient(closest-side, #000 35%, transparent); mask-image: radial-gradient(closest-side, #000 35%, transparent); }
 .sk-img, .sk-ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .sk-slot-flags { position: absolute; inset: 0; pointer-events: none; }
+.sk-slot-flags canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
 .sk-img { image-rendering: pixelated; image-rendering: crisp-edges; transition: opacity 240ms var(--ease), filter 240ms var(--ease); }
 .sk[data-loading] .sk-img { opacity: .25; filter: blur(2px); }
 .sk-ov circle, .sk-ov path { stroke-width: 1.5; }
@@ -255,6 +257,9 @@ button { cursor: pointer; }
 .sk-key.g[aria-pressed=true] .box { background: var(--ink); border-color: var(--ink); }
 .sk-key.g[aria-pressed=true] .box::after { content: ""; position: absolute; left: 3.5px; top: .5px; width: 4px; height: 8px; border: solid var(--void); border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
 .sk-key.g[aria-pressed=false] { color: var(--mute); }
+.sk-key.f .sw { width: 10px; height: 10px; border-radius: 1px; background: rgb(255, 79, 216); }
+.sk-key.f[aria-pressed=false] .sw { opacity: .5; }
+.sk-flagnote { margin: 2px 0 6px; font-size: 12px; line-height: 1.5; color: var(--ink2); }
 .sk-key .ring, .sk-key.t::before { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--gold); }
 .sk-key.t { align-items: flex-start; color: var(--ink2); }
 .sk-key.t::before { content: ""; flex: none; border-width: 2px; margin-top: 4px; }
@@ -426,6 +431,7 @@ button { cursor: pointer; }
 .sk-ai-lock label:focus-within { border-color: rgba(255, 255, 255, .5); outline: 2px solid rgba(255, 255, 255, .85); outline-offset: 2px; }
 /* The ring is drawn on the framed label around the field (above), so the field itself needs none. */
 .sk-ai-lock input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font-size: 13.5px; }
+.sk .sk-ai-lock input:focus-visible { outline: none; } /* the label's ring already shows focus */
 .sk-ai-msg { margin: 0; font-size: 12.5px; color: var(--ink2); }
 .sk-ai-out { display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.55; color: var(--ink2); }
 .sk-ai-out p { margin: 0; }
@@ -465,7 +471,7 @@ button { cursor: pointer; }
     .sk-tg b { font-size: 14px; }
     .sk-tg button[aria-pressed=true] { border-color: #fff; background: var(--fill2); }
     .sk-search { margin-left: 0; }
-    .sk-legrow, .sk-player, .sk-strip { padding-left: 18px; padding-right: 18px; }
+    .sk-legrow, .sk-player, .sk-strip, .sk-flagnote { padding-left: 18px; padding-right: 18px; }
     .sk-legrow { flex-wrap: wrap; }
     .sk-sky { box-shadow: none; }
     .sk-player { gap: 10px; }

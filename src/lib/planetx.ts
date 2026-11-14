@@ -6,7 +6,6 @@ export interface Cited<T> {
 }
 
 const orbit = 'https://arxiv.org/abs/2108.09868';
-const orbitV2 = 'https://arxiv.org/abs/2108.09868v2';
 const mission = 'https://arxiv.org/abs/2511.02985';
 const ps1 = 'https://arxiv.org/abs/2401.17977';
 const ztf = 'https://arxiv.org/abs/2110.13117';
@@ -26,8 +25,8 @@ export const P9 = {
     massRadiusRule: { value: 'radius / Earth radius = mass / (3 Earth masses)', unit: 'ratio', source: `Brown & Batygin 2021, section 5, ${orbit}; assumed for 4–20 Earth masses`, kind: 'published' },
     earthRadius: { value: 6371, unit: 'km', source: `NASA Earth Fact Sheet, volumetric mean radius, ${earth}`, kind: 'published' },
     diameterMagnitudeConstant: { value: 1329, unit: 'km', source: `Masiero et al. 2011, section 1, ${diameter}`, kind: 'published' },
-    percentileCurveExtents: { value: [18, 23] as [number, number], unit: 'approximate R mag', source: `Brown & Batygin 2021, arXiv:2108.09868v2, Figure 9, ${orbitV2}; approximate outer extents of conditional 16th and 84th percentile curves read by eye across right ascension, not global percentiles`, kind: 'read-from-figure' },
-    envelope: { value: [17, 25.5] as [number, number], unit: 'approximate R mag', source: `Brown & Batygin 2021, arXiv:2108.09868v2, Figure 9, ${orbitV2}; approximate plotted colored extent read by eye, not a hard bound`, kind: 'read-from-figure' },
+    percentileCurveExtents: { value: [18, 23] as [number, number], unit: 'approximate R mag', source: `Brown & Batygin 2021, arXiv:2108.09868v2, Figure 9, ${orbit}; approximate outer extents of conditional 16th and 84th percentile curves read by eye across right ascension, not global percentiles`, kind: 'read-from-figure' },
+    envelope: { value: [17, 25.5] as [number, number], unit: 'approximate R mag', source: `Brown & Batygin 2021, arXiv:2108.09868v2, Figure 9, ${orbit}; approximate plotted colored extent read by eye, not a hard bound`, kind: 'read-from-figure' },
 } satisfies Record<string, Cited<unknown>>;
 
 const depthSource = `Bock et al. 2025, abstract and Figure 19 caption, ${mission}; 5 sigma point source, per spectral channel, 4 observations per channel at the median sky, Galactic plane excluded`;
@@ -70,18 +69,29 @@ export const WISE0855 = {
 
 export const TEXT = {
     stackGain: 'stacking frames goes deeper for a source that stays put; the gain is not measured here, and shift-and-stack for a moving source is not tested',
-    bandNote: 'optical R only; brightness in SPHEREx bands is not modelled here',
-    caveat: 'An estimate only: the one-observation depth assumes four equal independent observations. The model is reflected sunlight in the V band and is compared with R-band curves without a colour term; W2 and SPHEREx bands are not interchangeable.',
+    bandNote: "Rows are in different bands (optical R and V, survey g, r, i, z and y, SPHEREx AB per channel, WISE W2) on one axis with no colour correction, so compare them only roughly. Only the model row is this repo's own estimate (reflected sunlight, V band); the others come from the papers listed, with the one-observation SPHEREx depth and the WISE 0855 AB value worked out here from published numbers, and the Planet Nine ranges read by eye from Figure 9 of Brown & Batygin 2021.",
+    caveat: 'An estimate only: the one-observation depth assumes four equal independent observations. The model assumes the object is seen at opposition, fully lit.',
     wiseNote: "W2 is a broadband average and WISE 0855's spectrum changes steeply across 3.8 to 5 µm, so its brightness in one SPHEREx channel can differ from W2.",
 };
 
+function roundMarginPair(a: number, b: number): [number, number]
+{
+    const first = Math.round(a * 100) / 100 + 0;
+    const second = Math.round(b * 100) / 100 + 0;
+    return first <= second ? [first, second] : [second, first];
+}
+
+/**
+ * Apparent magnitude minus depth, in magnitudes (WISE 0855 W2 AB magnitude minus SPHEREx 3.8–5 µm depth:
+ * negative means WISE 0855 is brighter than that depth), rounded to 2 decimals in ascending order.
+ */
 export function wise0855Margin(): { fourObservations: [number, number]; oneObservation: [number, number] }
 {
     const depth = SPHEREX_DEPTH[1];
     const mag = WISE0855.w2AB.value;
     return {
-        fourObservations: [mag - depth.fourObservations.value[0], mag - depth.fourObservations.value[1]],
-        oneObservation: [mag - depth.oneObservation.value[0], mag - depth.oneObservation.value[1]],
+        fourObservations: roundMarginPair(mag - depth.fourObservations.value[0], mag - depth.fourObservations.value[1]),
+        oneObservation: roundMarginPair(mag - depth.oneObservation.value[0], mag - depth.oneObservation.value[1]),
     };
 }
 
@@ -89,7 +99,7 @@ export function modelExample(): { vMag: number; label: string }
 {
     const distance = P9.semiMajorAxis.value;
     const albedo = (P9.albedo.value[0] + P9.albedo.value[1]) / 2;
-    return { vMag: apparentMag(P9.mass.value, albedo, distance), label: `model, V band, if it were at ${distance} AU (its fitted semi-major axis, not its likely current distance)` };
+    return { vMag: apparentMag(P9.mass.value, albedo, distance), label: `model, V band, if it were at ${distance} AU (its fitted semi-major axis, not its likely current distance), with albedo ${albedo}, the middle of the published range` };
 }
 
 function positive(value: number): void
@@ -116,33 +126,39 @@ export function absoluteMag(radius: number, albedo: number): number
     return 5 * (Math.log10(P9.diameterMagnitudeConstant.value) - Math.log10(2) - Math.log10(radius) - Math.log10(albedo) / 2);
 }
 
-export function apparentMag(massEarth: number, albedo: number, distanceAu: number): number
+function oppositionDistanceModulus(distanceAu: number): number
 {
     positive(distanceAu);
     if (distanceAu <= 1) {
         throw new RangeError('Heliocentric distance must exceed one AU');
     }
-    return absoluteMag(radiusKm(massEarth), albedo) + 5 * (Math.log10(distanceAu) + Math.log10(distanceAu - 1));
+    return 5 * (Math.log10(distanceAu) + Math.log10(distanceAu - 1));
 }
 
-// At large distances both Sun-object and observer-object distances scale with distance.
-// Chen et al. 2025, abstract, https://arxiv.org/abs/2506.12854 states the inverse-fourth approximation.
-// The exact zero-phase two-distance relation is in Belyakov et al. 2022, eq. 2: https://arxiv.org/abs/2203.07642
+/**
+ * V-band apparent magnitude from reflected sunlight for an object seen at opposition, fully lit
+ * (Earth between it and the Sun, full phase).
+ */
+export function apparentMag(massEarth: number, albedo: number, distanceAu: number): number
+{
+    const modulus = oppositionDistanceModulus(distanceAu);
+    return absoluteMag(radiusKm(massEarth), albedo) + modulus;
+}
+
+// Opposition geometry uses distance * (distance - 1 AU); far from the Sun this tends to the
+// inverse-fourth-power law (Chen et al. 2025, abstract, https://arxiv.org/abs/2506.12854).
+// The exact zero-phase two-distance relation is in Belyakov et al. 2022, eq. 3: https://arxiv.org/abs/2203.07642
 export function magChangeWithDistance(fromAu: number, toAu: number): number
 {
-    positive(fromAu);
-    positive(toAu);
-    if (fromAu <= 1 || toAu <= 1) {
-        throw new RangeError('Heliocentric distances must exceed one AU');
-    }
-    return 10 * (Math.log10(toAu) - Math.log10(fromAu));
+    const fromModulus = oppositionDistanceModulus(fromAu);
+    const toModulus = oppositionDistanceModulus(toAu);
+    return toModulus - fromModulus;
 }
 
 export function references(): { key: string; text: string; url: string }[]
 {
     return [
         { key: 'orbit', text: 'Brown & Batygin 2021, The Orbit of Planet Nine', url: orbit },
-        { key: 'orbit-v2', text: 'Brown & Batygin 2021, The Orbit of Planet Nine, version 2', url: orbitV2 },
         { key: 'mission', text: 'Bock et al. 2025, The SPHEREx Satellite Mission', url: mission },
         { key: 'ps1', text: 'Brown, Holman & Batygin 2024, Pan-STARRS1 search', url: ps1 },
         { key: 'ztf', text: 'Brown & Batygin 2022, ZTF search, AJ 163, 102, doi:10.3847/1538-3881/ac32dd', url: ztf },

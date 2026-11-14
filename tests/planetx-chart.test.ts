@@ -26,6 +26,17 @@ describe('Planet Nine depth chart', () => {
         const text = planetxChartText();
         expect(text.caption).toMatch(/estimate/i);
         expect(text.references).toEqual(references());
+        expect(text.references.find(ref => ref.key === 'orbit-v2')).toBeUndefined();
+        const refIndexByUrl = new Map(text.references.map((ref, index) => [ref.url, index + 1]));
+        for (const mark of planetxRows().flatMap(row => row.marks)) {
+            for (const url of mark.source.match(/https?:\/\/[^\s;]+/g) ?? []) {
+                const refNumber = refIndexByUrl.get(url);
+                expect(refNumber).toBeDefined();
+                expect(refNumber).toBeGreaterThanOrEqual(1);
+                expect(refNumber).toBeLessThanOrEqual(text.references.length);
+            }
+        }
+        expect(text.notes.filter(note => /one axis/i.test(note))).toHaveLength(1);
         expect(text.notes.join(' ')).toContain(`${Math.round(EXCLUDED_FRACTION.value * 100)}%`);
         expect(text.notes.join(' ').toLowerCase()).toContain(TEXT.bandNote.toLowerCase());
         expect(JSON.stringify(text)).not.toMatch(/\b(discover|confirm|detect)\b/i);
@@ -51,6 +62,50 @@ describe('Planet Nine depth chart', () => {
             }
         }
         expect(svg).toContain('<title>18.75–19.15;');
+        expect(svg).toContain('<title>17.23;');
+        expect(svg).toContain('<title>20.12;');
+        expect(svg).not.toContain('<title>17.2;');
+        expect(svg).not.toContain('<title>20.1;');
+    });
+
+    it('clamps far-left range labels to the plot left edge so they never sit over row names', () => {
+        for (const width of [320, 720]) {
+            const left = Math.min(230, Math.round(width * 0.42));
+            const svg = planetxChartSvg({
+                width,
+                rows: [
+                    {
+                        id: 'far-left',
+                        label: 'Far-left range row',
+                        band: 'V mag',
+                        marks: [
+                            { kind: 'range', from: AXIS.min - 0.5, to: AXIS.min + 1, text: 'Far-left range', source: P9.envelope.source, style: 'solid' },
+                        ],
+                    },
+                ],
+            });
+            const markText = svg.match(/<g data-mark="far-left" data-index="0">[\s\S]*?<text\b([^>]*)>Far-left range<\/text><\/g>/);
+            expect(markText).not.toBeNull();
+            const labelX = Number(markText![1]!.match(/\bx="([\d.]+)"/)![1]);
+            expect(labelX).toBe(left);
+        }
+        const narrowLeft = Math.min(230, Math.round(320 * 0.42));
+        const wideLabelSvg = planetxChartSvg({
+            width: 320,
+            rows: [
+                {
+                    id: 'far-left-wide',
+                    label: 'Far-left wide label',
+                    band: 'V mag',
+                    marks: [
+                        { kind: 'range', from: AXIS.min, to: AXIS.min + 2, text: 'Wide range label at axis start', source: P9.envelope.source, style: 'solid' },
+                    ],
+                },
+            ],
+        });
+        const wideMarkText = wideLabelSvg.match(/<g data-mark="far-left-wide" data-index="0">[\s\S]*?<text\b([^>]*)>Wide range label at axis start<\/text><\/g>/);
+        expect(wideMarkText).not.toBeNull();
+        expect(Number(wideMarkText![1]!.match(/\bx="([\d.]+)"/)![1])).toBe(narrowLeft);
     });
 
     it('normalizes invalid and undersized widths', () => {

@@ -10,6 +10,7 @@ interface Token {
     sign: string;
     digits: string;
     unit: string;
+    joined: boolean; // a colon ties this number to the one before it
 }
 
 // Accepts "56.75 24.1", "56.75, +24.1", "03h47m00s +24d07m00s", "03 47 00 +24 07 00".
@@ -18,6 +19,17 @@ interface Token {
 export function parseCoords(text: string): SkyCoord | null
 {
     const s = text.trim().replace(/[−–—]/g, '-');
+    // "83,63 22" reads as 83.63 and 22 with a decimal comma, or as 83 and 63 22 with the comma as the
+    // separator: two different places, so it is refused. So is any comma tight between two digits when
+    // the text also has numbers split by a space. "56.75,24.12", "10:30,20" and "10 30, 20 15" are fine.
+    if (/\d,\d/.test(s) && /\d\s+[+-]?\.?\d/.test(s)) {
+        return null;
+    }
+    return read(s);
+}
+
+function read(s: string): SkyCoord | null
+{
     const groups = splitGroups(s);
     if (groups === null) {
         return null;
@@ -33,8 +45,11 @@ export function parseCoords(text: string): SkyCoord | null
 function tokensOf(part: string): Token[] | null
 {
     const tokens: Token[] = [];
+    let end = 0;
     for (const m of part.matchAll(TOKEN)) {
-        tokens.push({ sign: m[1] ?? '', digits: m[2] ?? '', unit: (m[3] ?? '').toLowerCase() });
+        const joined = tokens.length > 0 && part.slice(end, m.index).includes(':');
+        tokens.push({ sign: m[1] ?? '', digits: m[2] ?? '', unit: (m[3] ?? '').toLowerCase(), joined });
+        end = m.index + m[0].length;
     }
     const leftover = part.replace(TOKEN, '');
     if (tokens.length === 0 || !/^[\s:]*$/.test(leftover)) {
@@ -44,7 +59,9 @@ function tokensOf(part: string): Token[] | null
 }
 
 // Splits the text into the RA and Dec groups. A comma splits first. Otherwise a signed number starts
-// the Dec group. Without signs, the number count decides (2, 4 or 6 numbers split in half).
+// the Dec group. Without signs, the number count decides. Four numbers split two and two only when the
+// text shows where RA ends: a colon pair ("10:30 20:15"), units on both RA parts ("10h30m 20 15"), or a
+// degree mark on the third number ("10 30 20d 15"). "10 30 20 15" and "12h 20 30 00" are refused.
 function splitGroups(s: string): Token[][] | null
 {
     const comma = s.indexOf(',');
@@ -73,6 +90,14 @@ function splitGroups(s: string): Token[][] | null
     if (n !== 2 && n !== 4 && n !== 6) {
         return null;
     }
+    if (n === 4) {
+        const colons = (tokens[1]?.joined || tokens[3]?.joined) && !tokens[2]?.joined;
+        const raUnits = tokens[0]?.unit !== '' && tokens[1]?.unit !== '';
+        const decUnit = ['d', '°'].includes(tokens[2]?.unit ?? '');
+        if (!colons && !raUnits && !decUnit) {
+            return null;
+        }
+    }
     const half = n / 2;
     return [tokens.slice(0, half), tokens.slice(half)];
 }
@@ -91,6 +116,9 @@ function component(group: Token[], kind: 'ra' | 'dec'): number | null
     }
     const units = group.map((t) => t.unit).join('');
     const degrees = /[d°′″'"]/.test(units);
+    if (kind === 'dec' && units.includes('h')) {
+        return null;
+    }
     if (kind === 'ra' && degrees && units.includes('h')) {
         return null;
     }
@@ -98,11 +126,18 @@ function component(group: Token[], kind: 'ra' | 'dec'): number | null
     const values = group.map((t) => Number(t.digits));
     let value = 0;
     let previousRank = -1;
+    let bare = false;
     for (let i = 0; i < group.length; i++) {
         const unit = (group[i]?.unit ?? '').replace(/''/g, '"');
+        // An RA of "10 20m" could be hours and minutes or degrees and arcminutes, so it is refused.
+        // Dec is always degrees, and the marks ′ and ″ only mean arc, so those stay readable.
+        if (kind === 'ra' && bare && (unit === 'm' || unit === 's')) {
+            return null;
+        }
+        bare = bare || unit === '';
         const rank = unit === '' ? i : 'hd°'.includes(unit) ? 0 : "m′'".includes(unit) ? 1 : 's″"'.includes(unit) ? 2 : -1;
         const part = values[i] ?? NaN;
-        if (unit.length > 1 || rank <= previousRank || (rank > 0 && part >= 60)
+        if (unit.length > 1 || rank !== previousRank + 1 || (rank > 0 && part >= 60)
             || (i < group.length - 1 && !Number.isInteger(part))) {
             return null;
         }
