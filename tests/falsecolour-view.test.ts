@@ -1650,9 +1650,8 @@ describe('round 9c: fixes from the second review of round 9', () => {
     it('does not call months of closely spaced frames one visit', () => {
         const read = (days: number[]) => falseColourView(sky(lookFrames(days.map(() => 30), days, 1.25)), sky(lookFrames(days.map(() => 30), days)), radii).parts.reading;
         const chained = read([0, 9, 18]);
-        expect(chained).toContain('its 3 frames span 18 days with no gap of 10 days or more between them, so they are not counted as separate visits');
+        expect(chained).toContain('its 3 frames span 18 days with no gap of 10 days or more between them, so they are not counted as separate visits and something passing through or a detector effect cannot be ruled out');
         expect(chained).not.toContain('from one visit');
-        expect(chained).not.toContain('passing through');
         expect(read([0, 4, 9])).toContain('all 3 frames come from one visit, so something passing through or a detector effect cannot be ruled out');
     });
 
@@ -1661,6 +1660,46 @@ describe('round 9c: fixes from the second review of round 9', () => {
         const result = falseColourView(sky(lookFrames([10], [0], 1.25)), sky(lookFrames([1.12, 1.29, 1177.54, 1689.28], days)), radii);
         expect(result.parts.reading).toContain('4.60 µm shows light that differs between frames');
         expect(result.parts.method).toContain('Position is compared only between frames with a signal-to-noise of at least 10.');
+    });
+});
+
+describe('round 9c: fixes from the recheck of round 9b', () => {
+    it('keeps the hedge when chained frames lean on one frame', () => {
+        const days = [0, 5, 10];
+        const reading = falseColourView(sky(lookFrames([30, 30, 30], days, 1.25)), sky(lookFrames([5.5, 1.9, 1.9], days)), radii).parts.reading;
+        expect(reading).toContain('seen at 4.60 µm (signal-to-noise 3.2, its 3 frames span 10 days with no gap of 10 days or more between them, so they are not counted as separate visits and something passing through or a detector effect cannot be ruled out, and without its strongest frame the rest is below 3 times the noise)');
+    });
+
+    it('says both when off-centre light also sits in different places in different frames', () => {
+        const g = { ...grid, pixelArcsec: 4 };
+        const make = (lambda: number, xs: number[]) => xs.map((x, i) => {
+            const f = sourceFrame(lambda, x, 3000);
+            return { ...f, grid: g, frame: { ...f.frame, tMin: 60000 + [0, 200, 400][i]!, tMax: 60000.001 + [0, 200, 400][i]! } };
+        });
+        const reading = falseColourView({ ...sky(make(1.25, [17, 17, 13])), grid: g }, { ...sky(make(4.6, [15, 15, 15])), grid: g }, radii).parts.reading;
+        expect(reading).toContain('1.25 µm shows light here that is brightest 8.00″ from the centre and its brightest point sits in different places in different frames, so it may be a moving source or a neighbouring one and is not counted as seen at the centre');
+        expect(reading).not.toContain('seen at 1.25 µm');
+    });
+
+    it('keeps the entry that can be placed when a star is listed twice', () => {
+        const s = sky([sourceFrame(1.25)]);
+        const l = sky([sourceFrame(4.6)]);
+        const good = { sourceId: 'twice', ...gridPixToSky(grid, { x: 15, y: 15 }), g: 15, epochJyear: 2016, pmRa: 0, pmDec: 0, pix: { x: 15, y: 15 } };
+        s.stars = [{ ...good, ra: NaN, dec: NaN, pix: { x: NaN, y: NaN } }];
+        l.stars = [good];
+        const method = falseColourView(s, l, radii).parts.method;
+        expect(method).toContain('1 of the Gaia stars this page loads lies inside that circle');
+        expect(method).not.toContain('could not be placed');
+    });
+
+    it('places a star at its catalogue position when no frame date and no saved pixel can be used', () => {
+        const undated = (lambda: number) => lookFrames([30], [NaN], lambda);
+        const s = sky(undated(1.25));
+        const l = sky(undated(4.6));
+        l.stars = [{ sourceId: 'undated', ...gridPixToSky(grid, { x: 15, y: 15 }), g: 15, epochJyear: 2016, pmRa: 5000, pmDec: 0, pix: { x: NaN, y: NaN } }];
+        const method = falseColourView(s, l, radii).parts.method;
+        expect(method).toContain('1 of the Gaia stars this page loads lies inside that circle');
+        expect(method).not.toContain('could not be placed');
     });
 });
 

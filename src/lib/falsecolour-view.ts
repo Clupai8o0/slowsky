@@ -347,13 +347,14 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
             }
             if (stackSeen[i] && offCentre[i]) {
                 // Light that peaks away from the centre is most likely a neighbour's: say where, and claim nothing here.
-                return `${wavelength} shows light here that is brightest ${peakDistances[i]!.toFixed(2)}″ from the centre, so it may belong to a neighbouring source and is not counted as seen at the centre`;
+                const source = displaced[i] ? 'and its brightest point sits in different places in different frames, so it may be a moving source or a neighbouring one' : 'so it may belong to a neighbouring source';
+                return `${wavelength} shows light here that is brightest ${peakDistances[i]!.toFixed(2)}″ from the centre${displaced[i] ? ' ' : ', '}${source} and is not counted as seen at the centre`;
             }
             if (stackSeen[i]) {
                 const ratio = i === 0 ? reading.snrShort : reading.snrLong;
                 const oneLook = checks[i]!.oneLook ? checks[i]!.datesUnknown
                     ? `, ${noDates(band)}, so something passing through or a detector effect cannot be ruled out`
-                    : `, ${oneVisit(band, i)}${chained(i) ? '' : ', so something passing through or a detector effect cannot be ruled out'}` : '';
+                    : `, ${oneVisit(band, i)}${chained(i) ? ' and' : ', so'} something passing through or a detector effect cannot be ruled out` : '';
                 const two = band.frames.length === 2 && !checks[i]!.oneLook;
                 // Say what was measured (the rest falls below the limit), not "too weak" beside a high signal-to-noise.
                 // With one visit there is no second date to speak of: say only that it leans on one frame.
@@ -371,7 +372,10 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
         parts.reading = `At the centre: ${descriptions.join('; ')}.`;
     }
     const ids = new Set<string>();
-    const catalogue = [a, b].flatMap(result => result.stars ?? []).filter(star => {
+    const placeable = (star: { ra: number; dec: number; pix: { x: number; y: number } }) => (Number.isFinite(star.ra) && Number.isFinite(star.dec))
+        || (Number.isFinite(star.pix.x) && Number.isFinite(star.pix.y));
+    // Of two entries for one star, keep one that can be placed.
+    const catalogue = [a, b].flatMap(result => result.stars ?? []).sort((x, y) => Number(placeable(y)) - Number(placeable(x))).filter(star => {
         const id = typeof star.sourceId === 'string' ? star.sourceId.trim() : '';
         if (!id) { return true; }
         if (ids.has(id)) { return false; }
@@ -397,7 +401,9 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
             const placed = catalogue.map(star => {
                 const dated = times.map(mjd => gridSkyToPix(grid, starAt(star, mjd))).map(p => Math.hypot(p.x - at.x, p.y - at.y)).filter(Number.isFinite);
                 // A star whose motion cannot be worked out still sits where the catalogue put it.
-                const values = dated.length ? dated : [Math.hypot(star.pix.x - at.x, star.pix.y - at.y)].filter(Number.isFinite);
+                const fixed = gridSkyToPix(grid, star);
+                const values = dated.length ? dated
+                    : [Math.hypot(star.pix.x - at.x, star.pix.y - at.y), Math.hypot(fixed.x - at.x, fixed.y - at.y)].filter(Number.isFinite).slice(0, 1);
                 return values.length ? { min: Math.min(...values), max: Math.max(...values) } : null;
             });
             // A star with no usable position at all cannot be ruled out of the circle, so it is counted and said.
