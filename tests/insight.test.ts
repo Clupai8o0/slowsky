@@ -744,3 +744,33 @@ describe('checkNote: round six', () => {
         expect(storeMissing(env)).toBe(missing);
     });
 });
+
+describe('checkNote: round seven', () => {
+    const sheet = ['Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Reference stars: 3.', 'Frames left out: 3.', 'Difference image at the target: 3.4 sigma.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
+    const pad = 'Safe sentence. Another safe sentence.';
+    it.each([
+        'The visits span about a year.', 'RW Aur faded by about a magnitude.', 'RW Aur fades by a full magnitude in its dimming events.',
+        'The visits were a few months apart.', 'The 12 percent rise came a fortnight after the first visit.',
+        'eps Indi B shifted 10.4 arcsec over 182.5 days, a week shorter than expected.',
+        'Between the visits, 3 full months passed.', 'The 3 visits span decades.', 'The frames were taken minutes apart.',
+        'It dims every few hours.', 'The visits were in october.',
+    ])('drops a time unit other than days, or a magnitude: %s', (sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+    });
+    it.each([
+        'The fourth visit was brighter, which could mean a flare.', 'Later on, the star faded and the fourth visit was brighter.',
+        'Across the frames, the star was seen in 12 high-cadence visits.', 'The frames were compared with 12 references.',
+        'The frames use 16 comparisons.', 'The upper limit is 12 percent.', 'The error is 12 percent upon inspection.',
+    ])('drops a number beside the wrong word: %s', (sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+    });
+    it.each([
+        'With a degree of caution, call it a candidate change of 12 percent.', '3 of the frames were left out.',
+        'A later fourth visit could test it.', 'A fourth visit would show whether the brightening holds.',
+        'It would help if a fourth visit were taken.', 'In one visit the star was 12 percent brighter.',
+        'The brightness went up by 12 percent.', 'One more visit would help.', 'The star is 12 percent brighter in the third visit.',
+        'There are 3 reference stars.', 'Each of the 3 visits has 14, 12 and 16 frames.', 'The shift may be real.',
+    ])('keeps: %s', (sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(0);
+    });
+});

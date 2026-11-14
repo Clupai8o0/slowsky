@@ -118,13 +118,13 @@ const countNouns: [RegExp, RegExp, RegExp?][] = [
     [/^Reference stars$/i, /^(?:stars?|references?|comparisons?)$/i],
 ];
 const meanings: [RegExp, string][] = [
-    [/^Position\b/i, 'position|coordinat|located|lies|sits|centred|centered|ra|dec|right ascension|declination'],
-    [/^Wavelength\b/i, 'wavelength|micron|µm|um|band|channel|colour|color|infrared'],
+    [/^Position\b/i, 'position|coordinat|located|lies|sits|centred|centered|ra(?!\\p{L})|dec(?!\\p{L})|right ascension|declination'],
+    [/^Wavelength\b/i, 'wavelength|micron|µm|um(?!\\p{L})|band|channel|colour|color|infrared'],
     [/^Visits\b/i, 'visit|epoch|pass|return|observ'],
     [/^Frames in each visit\b/i, 'frame|image|exposure'],
     [/^Time from first to last visit\b/i, 'visit|span|apart|baseline|over|across|within|between|period|separat|later|after|first|last|cover|shift|mov'],
     [/^Brightness relative\b/i, 'bright|flux|relative|ratio|level|value|reading|measure|point|went|rise|rose|climb|drop|fell|fall|dip|chang|from|increas|decreas|dim|fade|light'],
-    [/^Largest change\b/i, 'chang|differ|bright|dim|faint|fade|fading|rise|rose|drop|fell|fall|dip|swing|jump|median|largest|peak|increas|decreas|light|went|up|down|grew|gain|lost|vari'],
+    [/^Largest change\b/i, 'chang|differ|bright|dim|faint|fade|fading|rise|rose|drop|fell|fall|dip|swing|jump|median|largest|peak|increas|decreas|light|went|up(?!\\p{L})|down|grew|gain|lost|vari'],
     [/^Lowest signal-to-noise\b/i, 'signal|noise|s/n|snr'],
     [/^Reference stars\b/i, 'reference|comparison|control|star'],
     [/^Scatter of each\b/i, 'scatter|spread|reference|comparison|control|steady|stable'],
@@ -203,7 +203,7 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     const escapedNames = [...new Set(names)].sort((a, b) => b.length - a.length).map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(new RegExp(dash, 'g'), dash));
     const namePattern = escapedNames.length ? new RegExp('(?<!\\w)(?:' + escapedNames.join('|') + ')(?!\\w)', 'gi') : undefined;
     const foreign = /^(?:hours?|hrs?|minutes?|mins?|seconds?|secs?|weeks?|months?|nm|mm|cm|metres?|meters?|kilometres?|kilometers?|miles?|arcmin|arcminutes?|mas|milliarcsec(?:onds?)?|radians?|celsius|fahrenheit|kg|grams?|watts?|hz|ev|photons?|electrons?|counts?|pixels?|times|x|trillion)\b/i;
-    const countingNoun = /^(?:visits?|epochs?|passes?|frames?|images?|exposures?|points?|readings?|values?|measurements?|observations?|stars?|channels?|bands?|colours?|colors?|wavelengths?|detectors?|times?)$/i;
+    const countingNoun = /^(?:visits?|epochs?|passes?|frames?|images?|exposures?|points?|readings?|values?|measurements?|observations?|stars?|references?|comparisons?|channels?|bands?|colours?|colors?|wavelengths?|detectors?|times?)$/i;
     function unsupportedNumbers(value: string): boolean
     {
         for (const list of lists(value)) {
@@ -212,7 +212,7 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             const context = [...before.slice(-8), ...after.slice(0, 3)].join(' ');
             const follower = list.follower.trimStart().replace(/^-\s*/, '');
             const nounFollower = follower.replace(/^of\s+(?:the|its|their|these|those)\s+/i, '');
-            const followingWords = nounFollower.match(/^[a-z]+(?:\s+[a-z]+)?/i)?.[0].split(/\s+/) ?? [];
+            const followingWords = nounFollower.match(/^[a-z]+(?:-[a-z]+)*(?:\s+[a-z]+(?:-[a-z]+)*)?/i)?.[0].split(/\s+/) ?? [];
             const noun = list.unit ? undefined : followingWords.find((word) => countingNoun.test(word));
             const unitlessBlocked = Boolean(list.unit) || /^[°′″$€£±×^/]/.test(follower) || /^[A-Z]/.test(follower) || foreign.test(follower);
             for (const raw of list.values) {
@@ -236,6 +236,11 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
         if (namePattern) { value = value.replace(namePattern, 'NAME'); }
         if (/\b[OBAFGKMLTY]\d(?:\.\d)?(?:IV|I{1,3}|V)?[a-z]*\b/.test(value)) { return true; }
         value = value.replace(/\b(?:CO2|H2O|H2|CH4|2MASS|W[1-4]|DR[1-3]|QR3)\b/gi, 'NAME').replace(/−/g, '-');
+        // The sheet gives time in days only and never a magnitude, so any other time unit, or a magnitude, is the
+        // model's own knowledge: "about a year", "a fortnight later", "by a full magnitude", "a few months apart".
+        if (/\b(?:magnitudes?|mags?|minutes|seconds|hours?|hourly|weeks?|weekly|fortnights?|months?|monthly|years?|yrs?|yearly|annual|annually|decades?|centur(?:y|ies)|millenni(?:um|a))\b/i.test(value)) { return true; }
+        // "A degree of caution" is not an angle.
+        value = value.replace(/\b(?:a|some|any)\s+degree\s+of\b/gi, 'some');
         const unitWords = '(?:percent|per\\s+cent|%|sigma|σ|standard\\s+deviations?|arcsec(?:onds?)?|″|degrees?|deg|°|microns?|micrometres?|micrometers?|µm|um|days?)';
         if (new RegExp(`\\b(?:a couple|a few|several|a handful|some|many|dozens)(?:\\s+of)?\\s+${unitWords}(?![\\p{L}])`, 'iu').test(value)) { return true; }
         value = value.replace(new RegExp(`\\b(?:one|a|an)(?=[\\s-]+${unitWords}(?![\\p{L}]))`, 'giu'), '1');
@@ -269,9 +274,12 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             || /\d(?:\.\d+)?\s*-?\s*(?:[a-zµ]+|%|″|°|σ)\s*\//i.test(value)
             || /\d(?:\.\d+)?\s+(?:out\s+of|of|in)\s+(?:(?:the|its|their|all|every)\s+)*(?:\d|a\s+kind\b)/i.test(value)
             || /\b(?:factor\s+of|orders?\s+of\s+magnitude)\b/i.test(value)
-            || /\b(?:January|February|March|April|June|July|August|September|October|November|December)\b/.test(value)
+            || /\b(?:January|February|April|June|July|August|September|October|November|December)\b/i.test(value)
+            || /\bMarch\b/.test(value)
             || /(?:\d\s+May\b|\bMay\s+\d)/.test(value)
-            || Array.from(value.matchAll(ordinal)).some((match) => ordinals.indexOf(match[1]!.toLowerCase()) + 1 > visitCount && !/\b(?:would|could|will|should|might|next|later|another|one more)\b/i.test(value))
+            || Array.from(value.matchAll(ordinal)).some((match) => ordinals.indexOf(match[1]!.toLowerCase()) + 1 > visitCount
+                && !/^\s+(?:would|could|will|should|might)\b/i.test(value.slice(match.index + match[0].length))
+                && !/\b(?:would|could|will|should|might|next|later|another|one more)(?:\s+[\p{L}-]+){0,4}\s*$/iu.test(value.slice(0, match.index)))
             || unsupportedNumbers(value);
     }
     let dropped = 0;
