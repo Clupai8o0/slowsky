@@ -53,6 +53,31 @@ describe('fillCores', () => {
         expect(fillCores(data, 30, 30, px)).toBe(0);
     });
 
+    it('treats infinite pixels as blank too', () => {
+        const { data, px } = scene(5, 5, [12], true);
+        data[12] = Infinity;
+        expect(fillCores(data, 5, 5, px)).toBe(1);
+        expect(px[12 * 4 + 3]).toBe(255);
+    });
+
+    it('leaves a pocket next to a blank detector edge alone', () => {
+        // A blank band down the left (no data off a tilted detector) and a 1-pixel pocket 2 px from it.
+        const nan: number[] = [];
+        for (let y = 0; y < 9; y++) {
+            nan.push(y * 9);
+        }
+        nan.push(4 * 9 + 2);
+        const { data, px } = scene(9, 9, nan, true);
+        expect(fillCores(data, 9, 9, px)).toBe(0);
+        expect(px[(4 * 9 + 2) * 4 + 3]).toBe(0);
+    });
+
+    it('joins diagonal steps into one blank area', () => {
+        // A diagonal staircase that reaches the border is edge, not a core.
+        const { data, px } = scene(7, 7, [0, 8, 16, 24], true);
+        expect(fillCores(data, 7, 7, px)).toBe(0);
+    });
+
     it('ignores mismatched sizes', () => {
         expect(fillCores(new Float32Array(4), 3, 3, new Uint8ClampedArray(36))).toBe(0);
     });

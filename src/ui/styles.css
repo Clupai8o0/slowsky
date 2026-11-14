@@ -459,6 +459,12 @@ button { cursor: pointer; }
     .sk-mh, .sk-fov, .sk-bar b, .sk-strip small, .sk-readout > span, .sk-ticks, .sk-axl, .sk-sim { font-size: 12px; }
     .sk-coord, .sk-read, .sk-m-details dl, .sk-credit, .sk-gk .sk-src, .sk-fig figcaption, .sk-lcy span, .sk-lcx { font-size: 12px; }
     .sk-mh { letter-spacing: .1em; }
+    .sk-key, .sk-key.g { font-size: 12px; }
+    .sk-key.g { min-height: 40px; height: auto; }
+    .sk-tr .sk-btn { height: 44px; }
+    .sk-strip button { min-height: 40px; }
+    .sk-coord .sk-src { display: inline-flex; align-items: center; min-height: 40px; }
+    .sk-focus { min-height: 40px; } /* hidden on phones today; sized in case it shows */
 }
 /* Small phones: the view buttons get their own row so "Subtract" never spills out. */
 @media (max-width: 380px) {

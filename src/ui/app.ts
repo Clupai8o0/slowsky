@@ -262,7 +262,7 @@ function shell(): string
     <div class="sk-ctrl">
     <div class="sk-legrow">
       <div class="sk-leg">
-        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-SA 3.0 IGO)">Gaia DR3</a></span>
+        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
@@ -411,6 +411,9 @@ export function mount(root: HTMLElement): void
     {
         lookup?.abort();
         lookup = null;
+        // Take the shared link's frame once: an aborted load must not leave it for the next view.
+        const wantFrame = st.wantFrame;
+        st.wantFrame = undefined;
         ctrl?.abort();
         ctrl = new AbortController();
         const signal = ctrl.signal;
@@ -433,7 +436,7 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('load').hidden = false;
         root.dataset.loading = 'true';
         progress({ stage: 'search', done: 0, total: 1 });
-        if (st.wantFrame === undefined) {
+        if (wantFrame === undefined) {
             // The address bar names the spot being opened, not the last one (no stale f=).
             writeUrl();
         }
@@ -464,7 +467,7 @@ export function mount(root: HTMLElement): void
                 res = await loadFrom(kind, req);
                 got = kind;
                 if (kind === 'snapshot' && savedFirst) {
-                    const wanted = st.wantFrame;
+                    const wanted = wantFrame;
                     if (res.frames.length === 0 || (wanted !== undefined && !res.frames.some((f) => f.frame.frame.obsId === wanted))) {
                         spare = res.frames.length > 0 ? res : null;
                         res = null;
@@ -515,7 +518,6 @@ export function mount(root: HTMLElement): void
             const why = res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${plainError(lastErr)}`;
             bind('err', why);
             ref<HTMLElement>('err').hidden = false;
-            st.wantFrame = undefined;
             writeUrl();
             return;
         }
@@ -533,10 +535,9 @@ export function mount(root: HTMLElement): void
         composed = {};
         st.index = 0;
         let hold = false; // a shared link named this frame: open paused on it
-        if (st.wantFrame) {
-            const k = res.frames.findIndex((f) => f.frame.frame.obsId === st.wantFrame);
+        if (wantFrame) {
+            const k = res.frames.findIndex((f) => f.frame.frame.obsId === wantFrame);
             st.index = Math.max(0, k);
-            st.wantFrame = undefined;
             hold = k >= 0;
         }
         if (st.mode !== 'blink') {
@@ -832,6 +833,7 @@ export function mount(root: HTMLElement): void
         if (!result) {
             return;
         }
+        ref<HTMLElement>('bar').style.visibility = '';
         const skyPx = ref<HTMLElement>('sky').clientWidth;
         const fovArcsec = result.grid.pixelArcsec * result.grid.width;
         // The source may show less than was asked for (the saved copy caps at 0.1°), so size from the grid.
@@ -902,6 +904,10 @@ export function mount(root: HTMLElement): void
         if (!result) {
             bind('frame', '');
             bind('when', '');
+            ref<HTMLElement>('dl').innerHTML = '';
+            ref<HTMLElement>('notes').innerHTML = '';
+            ref<HTMLElement>('bar').style.visibility = 'hidden';
+            bind('status', reading ? 'Loading frames from NASA’s SPHEREx mission.' : 'No frames are showing.');
             bind('statusShort', reading === 'live' ? 'Reading live from NASA’s archive · about 30 s'
                 : reading === 'snapshot' ? 'Opening the saved copy' : reading === 'demo' ? 'Building the simulated sky' : 'Nothing to show');
             return;
@@ -1012,7 +1018,7 @@ export function mount(root: HTMLElement): void
         if (/\b[45]\d\d\b|request failed|http|timed? ?out/i.test(msg)) {
             return 'NASA’s archive is busy or down right now. Try again in a minute.';
         }
-        return msg;
+        return 'Something went wrong reading the frames. Try again, or pick another spot.';
     }
 
     function play(on: boolean): void
