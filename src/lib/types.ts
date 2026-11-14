@@ -50,17 +50,24 @@ export type Release = 'dr1' | 'qr3'; // R7 only. QR2 is refused everywhere.
 export type Detector = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface FrameRecord {
-    obsId: string; // e.g. 2025W19_1B_0241_1D1
+    // SIA obs_id plus 'D' and the detector, as in the file name: 2025W36_1A_0095_1D1.
+    // SIA's own obs_id has no detector, and all 6 detectors share it, so never key on it alone.
+    obsId: string;
     collection: string; // spherex_dr1, spherex_dr1_deep, spherex_qr3, spherex_qr3_deep
     release: Release;
-    detector: Detector;
-    url: string; // https S3 URL of the FITS file, taken from the SIA access_url
+    detector: Detector; // from energy_bandpassname 'SPHEREx-D1' .. 'SPHEREx-D6'
+    // https S3 URL of the FITS file, from the SIA cloud_access JSON
+    // {"aws": {"bucket_name": "nasa-irsa-spherex", "key": "...", "region": "us-east-1"}}:
+    // https://<bucket>.s3.<region>.amazonaws.com/<key>. Only bucket nasa-irsa-spherex is accepted.
+    url: string;
+    // SIA access_url: IRSA's own server (no CORS, no use from the browser). Shown as a link only.
+    irsaUrl?: string;
     tMin: number; // MJD
     tMax: number; // MJD
-    lambdaMin: number; // µm, whole detector
+    lambdaMin: number; // µm, whole detector (SIA em_min is metres)
     lambdaMax: number; // µm, whole detector
     center?: SkyCoord; // s_ra, s_dec
-    sizeBytes?: number; // access_estsize if given
+    estSizeBytes?: number; // approximate: SIA access_estsize is kilobytes, times 1024. FitsIndex has the exact size.
     pipelineVersion?: string; // filled from the FITS header once read
 }
 
