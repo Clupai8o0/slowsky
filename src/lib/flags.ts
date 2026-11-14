@@ -310,6 +310,9 @@ export async function readFlags(url: string, layout: FlagsLayout, box: PixelBox,
     }
     const imageWidth = integer(layout.width, 'image width', 1);
     const imageHeight = integer(layout.height, 'image height', 1);
+    if (imageWidth > MAX_AXIS || imageHeight > MAX_AXIS) {
+        throw new FlagsError('FLAGS image is too large');
+    }
     if (box.x1 <= box.x0 || box.y1 <= box.y0 || box.x1 > imageWidth || box.y1 > imageHeight) {
         throw new FlagsError('Invalid FLAGS pixel box');
     }
@@ -320,6 +323,9 @@ export async function readFlags(url: string, layout: FlagsLayout, box: PixelBox,
     }
     const tileWidth = integer(layout.tileWidth, 'tile width', 1);
     const tileHeight = integer(layout.tileHeight, 'tile height', 1);
+    if (tileWidth > MAX_AXIS || tileHeight > MAX_AXIS) {
+        throw new FlagsError('FLAGS tile is too large');
+    }
     if (tileWidth > MAX_DECODED_PIXELS / tileHeight) {
         throw new FlagsError('FLAGS cutout would decode too many pixels');
     }

@@ -284,6 +284,51 @@ describe('FLAGS layouts and safety', () => {
         expect(parseFlagsLayout(oneRow({ ZNAXIS1: 1024, ZTILE1: 1024, ZVAL1: 1024 }), 0).blockSize).toBe(1024);
     });
 
+    it('rejects forged oversized image axes before fetching', async () => {
+        const layout: FlagsLayout = {
+            width: 4194304, height: 4096, tileWidth: 1024, tileHeight: 4096, tilesAcross: 4096,
+            rowSize: 8, rowCount: 4096, tableStart: 0, tableBytes: 32768, heapStart: 32768, heapBytes: 5,
+            descriptor: 'P', descriptorOffset: 0, blockSize: 32, bytePix: 4,
+        };
+        let calls = 0;
+        const fetcher: typeof fetch = async () => { calls++; throw new Error('unexpected fetch'); };
+        for (const [candidate, box] of [
+            [layout, { x0: 0, y0: 0, x1: 4193281, y1: 1 }],
+            [{ ...layout, width: 1, height: MAX_AXIS + 1, tileWidth: 1, tileHeight: 1, tilesAcross: 1 },
+                { x0: 0, y0: 0, x1: 1, y1: 1 }],
+        ] as const) {
+            const result = readFlags('x', candidate, box, { fetcher });
+            await expect(result).rejects.toThrow(FlagsError);
+            await expect(result).rejects.toThrow('FLAGS image is too large');
+        }
+        expect(calls).toBe(0);
+    });
+
+    it('rejects forged oversized tile axes before fetching', async () => {
+        const layout = synthetic().layout;
+        let calls = 0;
+        const fetcher: typeof fetch = async () => { calls++; throw new Error('unexpected fetch'); };
+        for (const key of ['tileWidth', 'tileHeight'] as const) {
+            await expect(readFlags('x', { ...layout, [key]: MAX_AXIS + 1 },
+                { x0: 0, y0: 0, x1: 1, y1: 1 }, { fetcher })).rejects.toThrow(FlagsError);
+        }
+        expect(calls).toBe(0);
+    });
+
+    it('reads a tile from a real-size image', async () => {
+        const heap = riceEscape(Array<number>(2040).fill(0));
+        const layout: FlagsLayout = {
+            width: 2040, height: 2040, tileWidth: 2040, tileHeight: 1, tilesAcross: 1,
+            rowSize: 8, rowCount: 2040, tableStart: 0, tableBytes: 16320, heapStart: 16320, heapBytes: heap.length,
+            descriptor: 'P', descriptorOffset: 0, blockSize: 32, bytePix: 4,
+        };
+        const table = new Uint8Array(8);
+        new DataView(table.buffer).setInt32(0, heap.length);
+        const fake = server([{ start: 0, bytes: table }, { start: 16320, bytes: heap }]);
+        expect(await readFlags('x', layout, { x0: 0, y0: 0, x1: 1, y1: 1 }, fake))
+            .toEqual({ data: Int32Array.of(0), width: 1, height: 1 });
+    });
+
     it('refuses a forged huge tile before fetching its heap', async () => {
         const huge = 2_147_483_647;
         const layout: FlagsLayout = {
@@ -298,7 +343,7 @@ describe('FLAGS layouts and safety', () => {
         };
         const started = performance.now();
         await expect(readFlags('x', layout, { x0: 0, y0: 0, x1: 1, y1: 1 }, { fetcher }))
-            .rejects.toThrow('FLAGS cutout would decode too many pixels');
+            .rejects.toThrow('FLAGS image is too large');
         expect(performance.now() - started).toBeLessThan(1000);
         expect(calls).toEqual([]);
     });
@@ -316,7 +361,7 @@ describe('FLAGS layouts and safety', () => {
             return new Response(new Uint8Array(5));
         };
         await expect(readFlags('x', layout, { x0: 0, y0: 0, x1: side, y1: side * 2 }, { fetcher }))
-            .rejects.toThrow('FLAGS cutout would decode too many pixels');
+            .rejects.toThrow('FLAGS image is too large');
         expect(calls).toBe(0);
     });
 
