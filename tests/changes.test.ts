@@ -1258,6 +1258,16 @@ describe('change finder, round 7: no number where a neighbour or an edge is in t
         expect(wrong).toEqual([]);
     });
 
+    it('quotes no wrong percentage when a faint neighbour 8″ away brightens too (Codex round 7)', () => {
+        const a = noise(grid), b = noise(grid);
+        const x1 = 60 - 4 / P, x2 = 60 + 4 / P;
+        point(a, grid, x1, 60, 2000); point(b, grid, x1, 60, 3000);
+        point(a, grid, x2, 60, 200); point(b, grid, x2, 60, 1000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }]);
+        expect(r.candidates.length).toBeGreaterThan(0);
+        expect(numbered(r)).toEqual([]);
+    });
+
     it('still quotes the percentage for an isolated star that brightens 50%', () => {
         const a = noise(grid), b = noise(grid);
         point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);

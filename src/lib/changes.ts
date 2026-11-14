@@ -745,8 +745,8 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         }
         return { b, star, isBlended, floor, mismatch };
     });
-    // Peak above the local background (24-36″ ring) in the earlier image, to compare a star with its neighbours.
-    const level = (p: PixelCoord): number => {
+    // Peak above the local background (24-36″ ring) in one image, to compare a star with its neighbours.
+    const level = (p: PixelCoord, data: Float32Array): number => {
         const x = Math.round(p.x), y = Math.round(p.y);
         if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) {
             return NaN;
@@ -754,22 +754,23 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         const inner = 24 / grid.pixelArcsec, outer = 36 / grid.pixelArcsec, ring: number[] = [];
         for (let j = Math.max(0, Math.floor(p.y - outer)); j <= Math.min(grid.height - 1, Math.ceil(p.y + outer)); j++) {
             for (let i = Math.max(0, Math.floor(p.x - outer)); i <= Math.min(grid.width - 1, Math.ceil(p.x + outer)); i++) {
-                const r = Math.hypot(i - p.x, j - p.y), v = earlier.data[j * grid.width + i]!;
+                const r = Math.hypot(i - p.x, j - p.y), v = data[j * grid.width + i]!;
                 if (r >= inner && r <= outer && Number.isFinite(v)) {
                     ring.push(v);
                 }
             }
         }
-        return ring.length ? earlier.data[y * grid.width + x]! - median(ring) : NaN;
+        return ring.length ? data[y * grid.width + x]! - median(ring) : NaN;
     };
     // Another catalogue star 6-24″ away with at least NEIGHBOUR of this one's peak puts its own light (and its
     // wobble) in the 12″ aperture, so the fraction is not this star's alone (Opus round 6 High 1 and 2: 13% on
     // a steady star, 35% for a 50% change). A neighbour inside the 6″ core is measured together with it (a
     // close pair such as RW Aur A/B), as the blend rule does. Each peak includes the other's wing; the 12″ PSF
-    // model splits the two. A peak that cannot be measured counts as crowded.
+    // model splits the two. A peak that cannot be measured counts as crowded. Both visits are checked: a faint
+    // neighbour that brightens is in the later aperture (Codex round 7: "80% brighter" for a 50% change).
     const NEIGHBOUR = 0.25;
-    const crowded = (star: StarPix): boolean => {
-        const own = level(star), sigma = PSF_FWHM / 2.35482;
+    const crowdedIn = (star: StarPix, data: Float32Array): boolean => {
+        const own = level(star, data), sigma = PSF_FWHM / 2.35482;
         return stars.some((s) => {
             if (s === star || !Number.isFinite(s.x) || !Number.isFinite(s.y) || sameStar(s, star)) {
                 return false;
@@ -778,11 +779,12 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             if (d < CORE_ARCSEC || d > 2 * PSF_FWHM) {
                 return false;
             }
-            const g = Math.exp(-(d * d) / (2 * sigma * sigma)), other = level(s);
+            const g = Math.exp(-(d * d) / (2 * sigma * sigma)), other = level(s, data);
             const mine = (own - g * other) / (1 - g * g), theirs = (other - g * own) / (1 - g * g);
             return !(theirs < NEIGHBOUR * mine);
         });
     };
+    const crowded = (star: StarPix): boolean => crowdedIn(star, earlier.data) || crowdedIn(star, later.data);
     kept.forEach((k) => {
         if (!k) {
             return;
