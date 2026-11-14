@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FEATURES, FLAGS_TEXT, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
+import { DETECTORS } from '../src/ui/copy';
 import { makeWcs } from '../src/lib/wcs';
 import type { FlagsLayout } from '../src/lib/flags';
 import type { SkyRequest, SkyResult } from '../src/lib/source';
@@ -306,5 +307,55 @@ describe('false colour slot', () => {
         p.calls[0]!.resolve(sky([partner]));
         await flush();
         expect(p.slot.update(v, true).layer).toBe(false);
+    });
+
+    it('says nothing on the saved copy until the toggle is on', () => {
+        const h = colourHarness();
+        const snap = view(sky([frame('a')]), 0, { source: 'snapshot' });
+        expect(h.slot.update(snap, false)).toEqual({ key: true, layer: false, note: '' });
+        expect(h.slot.update(snap, true).note).toMatch(/live read/i);
+    });
+
+    it('keeps a finished picture when switched off and on, and across Blink and Stack', async () => {
+        const h = colourHarness();
+        const partner = frame('p');
+        partner.lambdaAtCenter = 4.5;
+        const r = sky([frame('a')]);
+        const v = view(r, 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([partner]));
+        await flush();
+        expect(h.slot.update(v, true).layer).toBe(true);
+        expect(h.slot.update(v, false)).toEqual({ key: true, layer: false, note: '' });
+        expect(h.slot.update(view(r, 0, { mode: 'blink' }), true).layer).toBe(false);
+        const back = h.slot.update(v, true);
+        expect(back.layer).toBe(true);
+        expect(back.note).toContain('At the centre');
+        expect(h.calls).toHaveLength(1);
+        expect(h.paint).toHaveBeenCalledTimes(1);
+    });
+
+    it('tries a failed read again after the toggle goes off and on', async () => {
+        const h = colourHarness();
+        const v = view(sky([frame('a')]), 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.reject(new Error('offline'));
+        await flush();
+        expect(h.slot.update(v, true).note).toMatch(/could not be read/);
+        expect(h.calls).toHaveLength(1);
+        h.slot.update(v, false);
+        expect(h.slot.update(v, true).note).toMatch(/Reading/);
+        expect(h.calls).toHaveLength(2);
+    });
+
+    it('asks each partner wavelength of the detector that carries it', () => {
+        for (const lambda of [1.0, 4.0]) {
+            const h = colourHarness();
+            h.slot.update(view({ ...sky([frame('a')]), lambda }, 0, { mode: 'stack' }), true);
+            const req = h.calls[0]!.req;
+            const [low, high] = DETECTORS[(req.detector as number) - 1]!;
+            expect(req.lambda).toBeGreaterThanOrEqual(low);
+            expect(req.lambda).toBeLessThanOrEqual(high);
+        }
     });
 });

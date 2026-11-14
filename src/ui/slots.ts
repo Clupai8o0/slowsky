@@ -226,6 +226,9 @@ export interface FalseColourDeps {
 const COLOUR_THRESHOLD = 2.42;
 const COLOUR_SHORT = 1.25;
 const COLOUR_LONG = 4.60;
+// The detectors that carry those two wavelengths (nominal ranges: 2 covers 1.10 to 1.62 µm, 6 covers 4.42 to 5.00).
+const COLOUR_SHORT_DETECTOR = 2;
+const COLOUR_LONG_DETECTOR = 6;
 
 export const FALSE_COLOUR_TEXT = Object.freeze({
     snapshot: 'False colour needs a live read. Go live to load a second wavelength; the saved copy holds one wavelength per target.',
@@ -266,7 +269,7 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
         try {
             const source = deps.source ?? createLiveSource();
             source.load({ center: current.grid.center, fovDeg: current.grid.fovDeg,
-                detector: partner === COLOUR_SHORT ? 2 : 6, lambda: partner,
+                detector: partner === COLOUR_SHORT ? COLOUR_SHORT_DETECTOR : COLOUR_LONG_DETECTOR, lambda: partner,
                 ...(view.targetId ? { target: view.targetId as TargetId } : {}), signal: controller.signal }).then(other => {
                 if (mine !== generation) {
                     return;
@@ -305,11 +308,13 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                 reset(view.result);
             }
             if (!on || view.source !== 'live' || view.mode !== 'stack') {
-                if (entry) {
+                // A finished picture is kept for this view, so switching back does not read the archive again.
+                // A read still running is dropped, and a failed one is forgotten so switching on again retries.
+                if (entry && entry.status !== 'ready') {
                     reset(view.result);
                 }
-                const note = view.source === 'snapshot' ? FALSE_COLOUR_TEXT.snapshot
-                    : on && view.mode !== 'stack' ? FALSE_COLOUR_TEXT.stack : '';
+                const note = !on ? '' : view.source === 'snapshot' ? FALSE_COLOUR_TEXT.snapshot
+                    : view.mode !== 'stack' ? FALSE_COLOUR_TEXT.stack : '';
                 return { key: true, layer: false, note };
             }
             if (!entry) {

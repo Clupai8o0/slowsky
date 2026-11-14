@@ -13,7 +13,22 @@ describe('false colour sentence', () => {
         expect(text).toContain('Orange: 4.57 µm');
         expect(text).toContain('At the centre: seen at both wavelengths, colour index +0.42 (signal-to-noise 14 and 31).');
         expect(text).toContain('(long − short) / (long + short)');
-        expect(colourSentence(1.234, 4.567, { ...both, index: -0.125 })).toContain('index -0.13');
+        expect(colourSentence(1.234, 4.567, { ...both, index: -0.125 })).toContain('index −0.13 (');
+    });
+
+    it('prints an index that rounds to zero without a sign', () => {
+        for (const index of [-0.004, 0.004, 0, -0]) {
+            const text = colourSentence(1.25, 4.6, { ...both, index });
+            expect(text).toContain('colour index 0.00 (');
+        }
+        expect(colourSentence(1.25, 4.6, { ...both, index: -0.005 })).toContain('colour index −0.01 (');
+        expect(colourSentence(1.25, 4.6, { ...both, index: 0.006 })).toContain('colour index +0.01 (');
+    });
+
+    it('rounds signal-to-noise before choosing one decimal or none', () => {
+        const text = colourSentence(1.25, 4.6, { ...both, snrShort: 9.96, snrLong: 9.94 });
+        expect(text).toContain('(signal-to-noise 10 and 9.9)');
+        expect(colourSentence(1.25, 4.6, { ...both, snrShort: 10.4, snrLong: 3 })).toContain('(signal-to-noise 10 and 3.0)');
     });
 
     it.each(['short', 'long'] as const)('describes %s only without an index', seen => {
@@ -29,6 +44,9 @@ describe('false colour sentence', () => {
             .toContain('At the centre: nothing stands above the noise at either wavelength.');
         expect(colourSentence(1.25, 4.6, { ...both, short: NaN, seen: 'long', valid: false }))
             .toContain('At the centre: cannot be measured here (blank pixels).');
+        const blankLong = colourSentence(1.25, 4.6, { ...both, long: NaN, seen: 'short', valid: false });
+        expect(blankLong).toContain('At the centre: cannot be measured here (blank pixels).');
+        expect(blankLong).not.toContain('colour index +');
     });
 
     it('keeps public strings free of overclaims', () => {

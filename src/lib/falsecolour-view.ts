@@ -4,9 +4,21 @@ import type { SkyResult } from './source';
 
 export class ColourGridError extends Error {}
 
+// One decimal below 10, whole numbers from 10 up. Rounded first, so 9.96 prints "10", not "10.0".
 function snr(value: number): string
 {
-    return value < 10 ? value.toFixed(1) : value.toFixed(0);
+    const one = value.toFixed(1);
+    return Number(one) < 10 ? one : value.toFixed(0);
+}
+
+// Two decimals with a sign. A value that rounds to zero prints "0.00", never "-0.00".
+function signed(index: number): string
+{
+    const size = Math.abs(index).toFixed(2);
+    if (Number(size) === 0) {
+        return size;
+    }
+    return `${index > 0 ? '+' : '−'}${size}`;
 }
 
 export function colourSentence(lambdaShort: number, lambdaLong: number, reading: ColourAt): string
@@ -16,8 +28,7 @@ export function colourSentence(lambdaShort: number, lambdaLong: number, reading:
     if (!Number.isFinite(reading.short) || !Number.isFinite(reading.long)) {
         centre = 'At the centre: cannot be measured here (blank pixels).';
     } else if (reading.seen === 'both' && reading.valid && Number.isFinite(reading.index)) {
-        const sign = reading.index >= 0 ? '+' : '-';
-        centre = `At the centre: seen at both wavelengths, colour index ${sign}${Math.abs(reading.index).toFixed(2)} (signal-to-noise ${snr(reading.snrShort)} and ${snr(reading.snrLong)}).`;
+        centre = `At the centre: seen at both wavelengths, colour index ${signed(reading.index)} (signal-to-noise ${snr(reading.snrShort)} and ${snr(reading.snrLong)}).`;
     } else if (reading.seen === 'short' || reading.seen === 'long') {
         const isShort = reading.seen === 'short';
         const seen = isShort ? lambdaShort : lambdaLong;
