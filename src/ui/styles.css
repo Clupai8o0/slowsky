@@ -267,6 +267,10 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
     transition: transform var(--t-press) var(--ease); }
 .sk-seg2 button:hover { color: #fff; border-color: rgba(255, 255, 255, .45); }
 .sk-seg2 button[aria-pressed=true] { background: #fff; border-color: #fff; color: #000; }
+.sk-save { height: 32px; padding: 0 12px; border: 1px solid var(--hair2); border-radius: 2px; background: none; color: var(--ink2); font: var(--fs-label) var(--mono); }
+.sk-save:hover { color: #fff; border-color: rgba(255, 255, 255, .45); }
+.sk-save:disabled { opacity: .5; }
+@media (max-width: 1080px), (pointer: coarse) { .sk-save { min-height: 44px; } }
 /* Two lines reserved, so a longer hint never shoves the frames below it. */
 .sk-hint { margin: 8px 0 0; font-size: var(--fs-small); line-height: 20px; color: var(--mute); min-height: 40px; text-wrap: pretty; }
 

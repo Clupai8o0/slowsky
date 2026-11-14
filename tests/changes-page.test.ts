@@ -8,6 +8,18 @@ import type { FrameRecord, OutputGrid, RangeReader, RegriddedFrame, Wcs } from '
 import { changesFor, mountChanges, PAGE_CHANGE_OPTIONS } from '../src/ui/slots';
 import { HELPER_LABEL } from '../src/lib/classify';
 import weights from '../public/models/change-classifier.json';
+import { shell } from '../src/ui/app';
+
+describe('share picture switch', () => {
+    it('leaves the page HTML unchanged while disabled', () => {
+        const fetcher = vi.spyOn(globalThis, 'fetch');
+        expect(shell()).toBe(shell(false));
+        expect(shell()).not.toContain('Save picture');
+        expect(shell(true)).toContain('Save picture');
+        expect(fetcher).not.toHaveBeenCalled();
+        fetcher.mockRestore();
+    });
+});
 // Fixtures as in tests/change-input.test.ts.
 
 const grid: OutputGrid = { center: { ra: 20, dec: 30 }, fovDeg: 0.1, pixelArcsec: 1.5375, width: 121, height: 121 };

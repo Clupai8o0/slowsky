@@ -24,8 +24,9 @@ import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, type 
 import { mountEpoch } from './epoch-view';
 import { mountSpectrum } from './spectrum-view';
 import { mountUpTonight } from './uptonight-slot';
+import { saveShareCard } from './share-view';
 import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
-import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
+import { combineVisits, defaultPicks, subtractText, headerDates, visitDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
 
 type Mode = 'blink' | 'stack' | 'diff';
 type SourceKind = 'live' | 'snapshot' | 'demo';
@@ -235,7 +236,7 @@ const LAM_MAX = (DETECTORS[DETECTORS.length - 1] as [number, number])[1];
 const AXIS_MIN = 0.4;
 const axisPct = (lam: number) => ((lam - AXIS_MIN) / (LAM_MAX - AXIS_MIN)) * 100;
 
-function shell(): string
+export function shell(shareCard = FEATURES.shareCard): string
 {
     const targets = ORDER.map((id) => `<button type="button" data-target="${id}" aria-pressed="false"><span class="ic k">${ICON[COPY[id].kind]}</span><b>${esc(COPY[id].display)}</b><small>${esc(COPY[id].short)}</small></button>`).join('');
     const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
@@ -316,7 +317,7 @@ function shell(): string
     <div class="sk-sub" data-ref="sub" hidden>
       <label class="sk-fov">A <select data-ref="subA" aria-label="Earlier visit (A)"></select></label>
       <label class="sk-fov">B <select data-ref="subB" aria-label="Later visit (B)"></select></label>
-      <div class="sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true">B − A</button><button type="button" data-subop="sum" aria-pressed="false">A + B</button></div>
+      <div class="sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true">B − A</button><button type="button" data-subop="sum" aria-pressed="false">A + B</button></div>${shareCard ? '<button type="button" class="sk-save" data-act="save-picture">Save picture</button>' : ''}
     </div>
     <p class="sk-hint" data-bind="hint"></p>
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
@@ -468,6 +469,7 @@ export function mount(root: HTMLElement): void
     let stretch: ReturnType<typeof sharedStretch> | null = null;
     let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale; sumStretch?: Stretch; subKey?: string } = {};
     let timer = 0;
+    let savingPicture = false;
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
     let flagsOn = false; // the Flags layer over the sky
@@ -599,6 +601,9 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('err').hidden = true;
         ref<HTMLElement>('load').hidden = false;
         root.dataset.loading = 'true';
+        if (FEATURES.shareCard) {
+            q<HTMLButtonElement>('[data-act="save-picture"]').disabled = true;
+        }
         progress({ stage: 'search', done: 0, total: 1 });
         if (wantFrame === undefined && wantSub === undefined) {
             // The address bar names the spot being opened, not the last one (no stale f=).
@@ -1228,6 +1233,9 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('fact').hidden = !card.fact;
         bind('hint', fcState.layer ? FALSE_COLOUR_HINT : st.mode === 'diff' && pair ? subtractText(pair.a, pair.b, st.subOp) : MODE_HINT[st.mode]);
         subBox.hidden = !(st.mode === 'diff' && pair !== null);
+        if (FEATURES.shareCard) {
+            q<HTMLButtonElement>('[data-act="save-picture"]').disabled = !pair || !result || !!root.dataset.loading || savingPicture;
+        }
         if (pair) {
             const aHtml = visits.slice(0, -1).map((v, i) => `<option value="${i}">${esc(visitLabel(v))}</option>`).join('');
             if (aHtml !== subAHtml) {
@@ -1674,6 +1682,25 @@ export function mount(root: HTMLElement): void
         } else if (b.dataset.act === 'copy') {
             const url = linkFor(true);
             navigator.clipboard?.writeText(url).then(() => toast('Link copied. It opens this exact view.'), () => toast(url));
+        } else if (b.dataset.act === 'save-picture' && FEATURES.shareCard && !savingPicture && !root.dataset.loading) {
+            const pair = activeVisits();
+            if (pair && result && stretch && st.mode === 'diff') {
+                const url = new URL(linkFor(false));
+                url.searchParams.delete('op');
+                const name = st.target ? COPY[st.target].display : st.label;
+                const slug = name.normalize('NFKD').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'position';
+                const date = (mjd: number) => new Date((mjd - 40587) * 86400000).toISOString().slice(0, 10);
+                savingPicture = true;
+                b.disabled = true;
+                void saveShareCard({ result, a: pair.a, b: pair.b, stretch,
+                    card: { name, position: st.center, dateA: visitDates(pair.a), dateB: visitDates(pair.b), wavelength: result.lambda,
+                        field: result.grid.fovDeg, rings: false, url: url.toString(), simulated: sourceKind === 'demo' },
+                    filename: `slowsky-${slug}-${date(pair.a.mjd)}-${date(pair.b.mjd)}.png`,
+                }, toast).finally(() => {
+                    savingPicture = false;
+                    b.disabled = !!root.dataset.loading || !activeVisits();
+                });
+            }
         } else if (b.dataset.act === 'retry') {
             void load();
         } else if (b.dataset.act === 'live') {
