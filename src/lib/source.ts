@@ -378,16 +378,37 @@ function knownTarget(id: TargetId | undefined): Target | undefined
 
 // ---------- live ----------
 
-export function createLiveSource(opts: LiveOptions = {}): SkySource
+import { fetchGaia, type GaiaRow } from './gaia';
+
+const GAIA_UNAVAILABLE_NOTE = 'Gaia stars are not available for this view.';
+
+function gaiaStarsOnGrid(rows: GaiaRow[], grid: OutputGrid): GaiaStar[]
 {
-    const reader = opts.reader ?? createRangeReader();
-    const search = opts.search ?? ((q: FrameQuery, signal?: AbortSignal) => searchFrames(q, signal));
+    return rows.flatMap((row): GaiaStar[] => {
+        const pix = gridSkyToPix(grid, { ra: row.ra, dec: row.dec });
+        if (!(pix.x >= -0.5 && pix.y >= -0.5 && pix.x <= grid.width - 0.5 && pix.y <= grid.height - 0.5)) {
+            return [];
+        }
+        return [{ ...row, pix }];
+    }).sort((a, b) => a.g - b.g);
+}
+
+export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = {}): SkySource
+{
+    const fetcher = opts.fetch ?? globalThis.fetch.bind(globalThis);
+    const reader = opts.reader ?? createRangeReader({ fetch: fetcher });
+    const search = opts.search ?? ((q: FrameQuery, signal?: AbortSignal) => searchFrames(q, signal, fetcher));
     const gap = opts.visitGapDays ?? 10;
     return {
         async load(req: SkyRequest): Promise<SkyResult>
         {
+            req.signal?.throwIfAborted();
             const notes: string[] = [];
             const target = knownTarget(req.target);
+            const radiusDeg = Math.max(0.000001, Math.min(0.2, req.fovDeg * Math.SQRT1_2));
+            // Handle rejection immediately, even if the frame work fails before we await the catalogue.
+            const catalogue = fetchGaia(req.center, radiusDeg, { signal: req.signal, fetcher, timeoutMs: 6000 })
+                .then(({ rows }) => rows, () => undefined);
             req.onProgress?.({ stage: 'search', done: 0, total: 1 });
             const found = await search({ center: req.center, radiusDeg: 0.001, detector: req.detector }, req.signal);
             const onDetector = found.filter((f) => f.detector === req.detector);
@@ -451,8 +472,22 @@ export function createLiveSource(opts: LiveOptions = {}): SkySource
                 notes.push(`${plural(candidates.length - usable.length, 'frame')} left out: the spot is at the detector edge.`);
             }
             const core = await assemble(req, usable, visits, opts, notes);
+            const rows = await catalogue;
+            req.signal?.throwIfAborted();
+            let stars: GaiaStar[] = [];
+            let available = rows !== undefined;
+            if (rows) {
+                try {
+                    stars = gaiaStarsOnGrid(rows, core.grid);
+                } catch {
+                    available = false;
+                }
+            }
+            if (!available) {
+                notes.push(GAIA_UNAVAILABLE_NOTE);
+            }
             const records = core.frames.map((f) => f.frame.frame);
-            return { source: 'live', stars: [], credits: credits(records, false), ...core };
+            return { source: 'live', stars, credits: credits(records, stars.length > 0), ...core };
         },
     };
 }
