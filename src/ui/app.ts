@@ -1342,6 +1342,12 @@ export function mount(root: HTMLElement): void
             setSpot(c, `${formatRa(c.ra)} ${formatDec(c.dec)}`);
             return;
         }
+        // Only numbers, signs and units, yet parseCoords refused it: it reads more than one way ("10 30 20 15").
+        // Say how to write it instead of sending numbers to the name lookup.
+        if (/^[+-]?[\d.]/.test(text) && /^[\d\s.,:;+\-hdms°′″'"]+$/i.test(text)) {
+            toast('Write RA and Dec with a comma between them, like 269.45, 4.69, or with units, like 17h57m +4d41m.');
+            return;
+        }
         toast(`Looking up “${text}”…`);
         lookup?.abort();
         const mine = new AbortController();
