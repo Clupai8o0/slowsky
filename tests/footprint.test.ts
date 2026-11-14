@@ -79,6 +79,14 @@ describe('predictPixel', () => {
 });
 
 describe('pickByWavelength', () => {
+    it('breaks equal wavelength and time ties by observation ID before applying capacity', () => {
+        const a = frame('a', 1);
+        const b = frame('b', 1);
+        for (const visit of [[a, b], [b, a]]) {
+            expect(pickByWavelength([visit], () => 2, 2, () => 0, 1).frames).toEqual([a]);
+        }
+    });
+
     it('skips far visits and picks the closest eligible frames in time order', () => {
         const a = [frame('a1', 4), frame('a2', 1), frame('a3', 3)];
         const b = [frame('b1', 5)];

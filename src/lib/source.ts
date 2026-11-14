@@ -461,16 +461,20 @@ async function pickByGuess(
     reader: RangeReader,
     opts: SourceOptions,
     max: number,
+    probeRead: { url?: string },
 ): Promise<{ frames: FrameRecord[]; skippedVisits: number } | undefined>
 {
-    const depth = (f: FrameRecord): number => {
-        const p = f.footprint ? predictPixel(f.footprint, [DETECTOR_PX, DETECTOR_PX], lookPoint(target, req, f)) : null;
-        return p ? Math.min(p.x, p.y, DETECTOR_PX - 1 - p.x, DETECTOR_PX - 1 - p.y) : -Infinity;
-    };
+    if (max < 1) {
+        return undefined;
+    }
     let probe: FrameRecord | undefined;
     let probeDepth = 0;
     for (const f of frames) {
-        const d = depth(f);
+        const p = f.footprint ? predictPixel(f.footprint, [DETECTOR_PX, DETECTOR_PX], lookPoint(target, req, f)) : null;
+        if (!p) {
+            return undefined;
+        }
+        const d = Math.min(p.x, p.y, DETECTOR_PX - 1 - p.x, DETECTOR_PX - 1 - p.y);
         if (d > probeDepth) {
             probe = f;
             probeDepth = d;
@@ -480,13 +484,22 @@ async function pickByGuess(
         return undefined;
     }
     try {
+        probeRead.url = probe.url;
         const index = await reader.index(probe.url, req.signal);
         const wcs = makeWcs(wcsFromHeader(index.hdu('IMAGE').header));
         const naxis = wcs.params.naxis;
         const look = lookPoint(target, req, probe);
         const truth = safeSkyToPix(wcs, look);
         const guess = predictPixel(probe.footprint, naxis, look);
-        if (!truth || !guess || Math.hypot(truth.x - guess.x, truth.y - guess.y) > GUESS_MAX_ERROR_PX) {
+        if (!truth || !inside(truth, naxis, 0) || !guess
+            || Math.hypot(truth.x - guess.x, truth.y - guess.y) > GUESS_MAX_ERROR_PX) {
+            return undefined;
+        }
+        // The footprint order is (-0.5,-0.5), (nx-0.5,-0.5), (nx-0.5,ny-0.5), (-0.5,ny-0.5).
+        const corner0 = safeSkyToPix(wcs, probe.footprint[0]!);
+        const corner1 = safeSkyToPix(wcs, probe.footprint[1]!);
+        if (!corner0 || !corner1 || Math.hypot(corner0.x + 0.5, corner0.y + 0.5) > GUESS_MAX_ERROR_PX
+            || Math.hypot(corner1.x - (naxis[0] - 0.5), corner1.y + 0.5) > GUESS_MAX_ERROR_PX) {
             return undefined;
         }
         const wave = await reader.readWaveGrid(index, req.signal);
@@ -494,7 +507,7 @@ async function pickByGuess(
         for (const f of frames) {
             const p = f.footprint ? predictPixel(f.footprint, naxis, lookPoint(target, req, f)) : null;
             if (!p) {
-                continue;
+                return undefined;
             }
             if (!inside(p, naxis, -GUESS_EDGE_PX)) {
                 // Off the detector: never near any wavelength.
@@ -511,11 +524,12 @@ async function pickByGuess(
         if (!Number.isFinite(chosen)) {
             return undefined;
         }
+        // Reserve one header for the probe, even if it is not among the picked frames.
         const pick = pickByWavelength(visits, (f) => {
             const l = lambdaOf(f);
             // Off-detector guesses are known to be useless: a huge finite value makes their visit "far", not "unknown".
             return l === Infinity ? 1e9 : l;
-        }, chosen, limitOf, max);
+        }, chosen, limitOf, max - 1);
         return pick.frames.length > 0 ? pick : undefined;
     } catch (err) {
         if (req.signal?.aborted) {
@@ -554,8 +568,13 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
             let candidates = onDetector;
             let skippedVisits = 0;
             if (onDetector.length > maxHeaders) {
-                const pick = await pickByGuess(onDetector, visits, target, req, reader, opts, maxHeaders);
-                candidates = pick?.frames ?? thinVisits(visits, maxHeaders);
+                const probeRead: { url?: string } = {};
+                const pick = await pickByGuess(onDetector, visits, target, req, reader, opts, maxHeaders, probeRead);
+                const fallback = thinVisits(visits, maxHeaders);
+                // The FITS reader caches the probe URL; otherwise reserve a read for it, including failed reads.
+                const fallbackBudget = !probeRead.url || fallback.some((frame) => frame.url === probeRead.url)
+                    ? maxHeaders : Math.max(0, maxHeaders - 1);
+                candidates = pick?.frames ?? (fallbackBudget === maxHeaders ? fallback : thinVisits(visits, fallbackBudget));
                 skippedVisits = pick?.skippedVisits ?? 0;
             }
             if (candidates.length < onDetector.length) {

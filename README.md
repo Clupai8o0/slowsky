@@ -135,6 +135,7 @@ Sam chose the idea and makes every product decision (see `DECISIONS.md`).
 - Live loading reads many files from the archive and takes 20 to 45 seconds. It reads at most 60 frames per view
   and says so when it does. To choose them it guesses each frame's wavelength at the spot from the frame's corner
   positions in the archive list (about 10 pixels off), then reads the frames nearest the chosen wavelength.
+  When a frame has no corner positions, or the guess does not check out against the first header, frames are spread evenly in time as before.
 - At very busy spots, such as near the ecliptic poles, the archive can cut its frame list short. The page then
   says some visits may be missing.
 - Gaia rings are moved from the 2016 catalogue to each frame's date using the stars' proper motion (Stack uses

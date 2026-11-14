@@ -173,7 +173,7 @@ export function pickByWavelength(
         } else if (!ranked.some(item => item.near)) {
             skippedVisits++;
         } else {
-            ranked.sort((a, b) => a.delta - b.delta || a.frame.tMin - b.frame.tMin);
+            ranked.sort((a, b) => a.delta - b.delta || a.frame.tMin - b.frame.tMin || a.frame.obsId.localeCompare(b.frame.obsId));
             offers.push({ time, frames: ranked.filter((item, index) => index === 0 || item.near).map(item => item.frame) });
         }
     }

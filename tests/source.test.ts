@@ -265,6 +265,115 @@ describe('live source (fake SIA and S3)', () => {
         });
     }
 
+    function corners(f: Fake): SkyCoord[]
+    {
+        const wcs = makeWcs(wcsFromHeader(headerFromCards(f.cards)));
+        return [[-0.5, -0.5], [2039.5, -0.5], [2039.5, 2039.5], [-0.5, 2039.5]]
+            .map(([x, y]) => wcs.pixToSky({ x: x!, y: y! }));
+    }
+
+    it('counts the probe in the 60 distinct header URL budget', async () => {
+        const fakes = Array.from({ length: 61 }, (_, i) => fakeBand(`budget${i}D1`, 60000 + 20 * i, 1));
+        for (const [i, f] of fakes.entries()) {
+            if (i !== 30) {
+                f.cards.CRPIX2 = Number(f.cards.CRPIX2) + 100;
+            }
+            f.record.footprint = corners(f);
+        }
+        const reader = counting(fakes);
+        const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 60 });
+        await source.load({ center: CENTER, fovDeg: 0.005, detector: 1, lambda: 1 });
+        expect(reader.headers[0]).toBe(fakes[30]!.record.url);
+        expect(thinFrames(fakes.map(f => f.record), 10, 60)).not.toContain(fakes[30]!.record);
+        expect(new Set(reader.headers).size).toBeLessThanOrEqual(60);
+    });
+
+    it('does not probe when the header budget is zero', async () => {
+        const fakes = [fakeBand('zeroD1', 60900, 1)];
+        fakes[0]!.record.footprint = corners(fakes[0]!);
+        const reader = counting(fakes);
+        await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 0 })
+            .load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1 });
+        expect(reader.headers).toEqual([]);
+    });
+
+    it('uses the old thinning when any visit lacks a footprint or a prediction', async () => {
+        for (const invalid of ['missing', 'degenerate']) {
+            const fakes = [...stepped('a', 60900, false), ...stepped('b', 61080, true)];
+            fakes[15]!.record.footprint = invalid === 'missing' ? undefined : Array(4).fill(CENTER);
+            const records = fakes.map(f => f.record);
+            const reader = counting(fakes);
+            const source = createLiveSource({ reader, search: async () => records, maxHeaders: 6 });
+            const req = { center: CENTER, fovDeg: 0.01, detector: 1 as const, lambda: lambdaAtCentre(fakes[6]!) };
+            const actual = await source.load(req);
+            const expectedReader = counting(fakes);
+            const stripped = records.map(f => ({ ...f, footprint: undefined }));
+            const expected = await createLiveSource({ reader: expectedReader, search: async () => stripped, maxHeaders: 6 }).load(req);
+            expect(reader.headers).toEqual(expectedReader.headers);
+            expect(actual.locked.map(l => l.frame.obsId)).toEqual(expected.locked.map(l => l.frame.obsId));
+        }
+    });
+
+    it('falls back when the probe truth is off detector despite a nearby guess', async () => {
+        const fakes = Array.from({ length: 4 }, (_, i) => fake(`off${i}D1`, 60900 + i * 0.01, -1029.5, false));
+        for (const f of fakes) {
+            const shifted = { ...f, cards: { ...f.cards, CRPIX2: Number(f.cards.CRPIX2) + 30 } };
+            f.record.footprint = corners(shifted);
+        }
+        const reader = counting(fakes);
+        const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 2 });
+        await source.load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1 });
+        expect(reader.headers).toEqual([fakes[0]!.record.url, fakes[2]!.record.url]);
+    });
+
+    it('falls back when the probe corners are reversed even at the centre', async () => {
+        const fakes = Array.from({ length: 4 }, (_, i) => fakeBand(`reverse${i}D1`, 60900 + i * 0.01, 1));
+        for (const f of fakes) {
+            f.record.footprint = corners(f).reverse();
+        }
+        const reader = counting(fakes);
+        const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 2 });
+        await source.load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1 });
+        expect(reader.headers).toEqual([fakes[0]!.record.url, fakes[2]!.record.url]);
+    });
+
+    it('falls back after a failed probe header and still returns frames', async () => {
+        const fakes = Array.from({ length: 4 }, (_, i) => fakeBand(`fail${i}D1`, 60900 + i * 0.01, 1));
+        for (const f of fakes) {
+            f.record.footprint = corners(f);
+        }
+        const reader = counting(fakes);
+        const index = reader.index;
+        let first = true;
+        reader.index = async (url, signal) => {
+            if (first) {
+                first = false;
+                reader.headers.push(url);
+                throw new Error('header fetch failed');
+            }
+            return index(url, signal);
+        };
+        const result = await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 2 })
+            .load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1 });
+        expect(result.frames.length).toBeGreaterThan(0);
+    });
+
+    it('propagates an abort during the probe read', async () => {
+        const fakes = Array.from({ length: 4 }, (_, i) => fakeBand(`abort${i}D1`, 60900 + i * 0.01, 1));
+        for (const f of fakes) {
+            f.record.footprint = corners(f);
+        }
+        const ctl = new AbortController();
+        const reason = new Error('probe aborted');
+        const reader = counting(fakes);
+        reader.index = async () => {
+            ctl.abort(reason);
+            throw reason;
+        };
+        const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 2 });
+        await expect(source.load({ center: CENTER, fovDeg: 0.01, detector: 1, signal: ctl.signal })).rejects.toBe(reason);
+    });
+
     it('spends header reads on the frames whose guessed wavelength is nearest the chosen one', async () => {
         const fakes = [...stepped('a', 60900, false), ...stepped('b', 61080, true)];
         const chosen = lambdaAtCentre(fakes[7]!);
