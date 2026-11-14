@@ -4,6 +4,9 @@ export const DARK_SUN_ALT_DEG = -12;
 export interface UpTonight {
     darkStart: Date;
     darkEnd: Date;
+    from: Date;
+    inside: boolean;
+    sinking: boolean;
     best: Date;
     bestAltDeg: number;
     bestAzDeg: number;
@@ -126,8 +129,10 @@ export function upTonight(raDeg: number, decDeg: number, now: Date, observer: Ob
         return null;
     }
     const altitude = (at: number) => altAz(raDeg, decDeg, new Date(at), observer).altDeg;
-    let best = start;
-    let bestAltitude = altitude(start);
+    const from = Math.max(time, start);
+    const inside = time > start && time < end;
+    let best = from;
+    let bestAltitude = altitude(from);
     const consider = (at: number) => {
         const value = altitude(at);
         if (value > bestAltitude) {
@@ -137,7 +142,7 @@ export function upTonight(raDeg: number, decDeg: number, now: Date, observer: Ob
     };
     // Bracket all local maxima, including windows with a transit near either edge.
     const sampleStep = 600000;
-    for (let a = start; a < end; a += sampleStep) {
+    for (let a = from; a < end; a += sampleStep) {
         const b = Math.min(a + sampleStep, end);
         consider(b);
         let lo = a;
@@ -157,9 +162,10 @@ export function upTonight(raDeg: number, decDeg: number, now: Date, observer: Ob
     const position = altAz(raDeg, decDeg, bestDate, observer);
     const dateDec = precess(raDeg, decDeg, +bestDate).decDeg;
     const maxAltDeg = 90 - Math.abs(observer.latDeg - dateDec);
+    const sinking = inside && best - from <= 1000 && altitude(from) - altitude(Math.min(from + 600000, end)) > 0.01;
     if (![start, end, +bestDate, position.altDeg, position.azDeg, maxAltDeg].every(Number.isFinite)) {
         return null;
     }
-    return { darkStart: new Date(start), darkEnd: new Date(end), best: bestDate,
+    return { darkStart: new Date(start), darkEnd: new Date(end), from: new Date(from), inside, sinking, best: bestDate,
         bestAltDeg: position.altDeg, bestAzDeg: position.azDeg, maxAltDeg };
 }

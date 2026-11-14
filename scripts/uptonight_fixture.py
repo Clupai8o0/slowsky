@@ -3,7 +3,8 @@
 
 Run: python scripts/uptonight_fixture.py > tests/fixtures/uptonight-astropy.json
 For each sky position and each "now", it finds the dark window (Sun more than 12 degrees below the horizon) that
-ends after "now", then the highest point of the position inside that window, as seen from Melbourne.
+ends after "now", then the highest point of the position in what is left of that window (from "now" when "now" is
+already inside it), as seen from Melbourne.
 Written with AI help (Claude); the numbers come from astropy, not from a model.
 """
 import json
@@ -41,6 +42,7 @@ SPOTS = [
 NOWS = [
     '2026-11-15T02:00:00Z', '2026-11-15T12:00:00Z', '2026-11-15T19:30:00Z', '2026-06-21T05:00:00Z',
     '2026-12-21T13:30:00Z', '2026-04-04T10:00:00Z', '2026-10-03T15:00:00Z', '2027-02-10T00:00:00Z',
+    '2026-11-14T16:00:00Z', '2026-11-15T11:30:00Z',
 ]
 
 
@@ -83,7 +85,10 @@ def main():
             i += 1
         if start is None:
             sys.exit(f'no dark window for {now_iso}')
-        inside = (jd >= start) & (jd <= end)
+        # What is left of the dark window: the grid holds "now" itself, so the first sample is "now" when it is dark.
+        dark_now = bool(now.utc.jd > start)
+        left = max(now.utc.jd, start)
+        inside = (jd >= left - 1e-9) & (jd <= end)
         idx = np.where(inside)[0]
         # One full sidereal day from the start of the dark window, on its own grid: the search grid above
         # stops 32 h after "now" and can end before the spot's highest point.
@@ -98,7 +103,9 @@ def main():
                 'id': name, 'ra': ra, 'dec': dec, 'now': now_iso,
                 'darkStart': iso(start), 'darkEnd': iso(end),
                 'best': iso(jd[best]), 'bestAltDeg': round(float(alt[best]), 3), 'bestAzDeg': round(float(az[best]), 2),
-                'bestAtEdge': bool(best == idx[0] or best == idx[-1]),
+                'inside': dark_now, 'from': iso(left),
+                'bestAtStart': bool(best == idx[0]), 'bestAtEnd': bool(best == idx[-1]),
+                'altAfter10': round(float(alt[min(best + 10, len(alt) - 1)]), 3),
                 'dayMaxAltDeg': round(float(spot.transform_to(day_frame).alt.deg.max()), 3),
             })
     json.dump({'observer': {'name': 'Melbourne', 'latDeg': LAT, 'lonDeg': LON, 'timeZone': 'Australia/Melbourne'},

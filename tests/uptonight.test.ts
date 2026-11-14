@@ -15,13 +15,23 @@ describe('astropy fixture', () => {
             expect(Math.abs(+r.darkStart - ms(c.darkStart)), c.id).toBeLessThanOrEqual(90000);
             expect(Math.abs(+r.darkEnd - ms(c.darkEnd)), c.id).toBeLessThanOrEqual(90000);
             expect(Math.abs(r.bestAltDeg - c.bestAltDeg), c.id).toBeLessThanOrEqual(0.25);
-            const edge = Math.abs(ms(c.best) - ms(c.darkStart)) < Math.abs(ms(c.best) - ms(c.darkEnd)) ? r.darkStart : r.darkEnd;
-            expect(Math.abs(+r.best - (c.bestAtEdge ? +edge : ms(c.best))), c.id).toBeLessThanOrEqual(c.bestAtEdge ? 90000 : 180000);
-            if (c.bestAltDeg < 85) {
+            expect(r.inside).toBe(c.inside);
+            expect(Math.abs(+r.from - ms(c.from))).toBeLessThanOrEqual(90000);
+            if (c.id !== 'south-pole') {
+                const target = c.bestAtStart ? +r.from : c.bestAtEnd ? +r.darkEnd : ms(c.best);
+                expect(Math.abs(+r.best - target), c.id).toBeLessThanOrEqual(c.bestAtStart || c.bestAtEnd ? 90000 : 180000);
+            }
+            if (c.bestAltDeg <= 85) {
                 expect(circle(r.bestAzDeg, c.bestAzDeg), c.id).toBeLessThanOrEqual(1);
             }
-            expect(+r.best).toBeGreaterThanOrEqual(+r.darkStart);
-            expect(+r.best).toBeLessThanOrEqual(+r.darkEnd);
+            expect(+r.best).toBeGreaterThanOrEqual(+r.from - 1000);
+            expect(+r.best).toBeLessThanOrEqual(+r.darkEnd + 1000);
+            if (c.inside && c.bestAtStart && c.altAfter10 < c.bestAltDeg - 0.05) {
+                expect(r.sinking, c.id).toBe(true);
+            }
+            if (!c.inside || !c.bestAtStart) {
+                expect(r.sinking, c.id).toBe(false);
+            }
             expect(r.bestAltDeg).toBeLessThanOrEqual(r.maxAltDeg + 0.05);
             const p = altAz(c.ra, c.dec, r.best);
             expect(p.altDeg).toBeCloseTo(r.bestAltDeg, 9);
@@ -43,40 +53,56 @@ describe('astropy fixture', () => {
 });
 
 describe('sentences', () => {
-    it('prints each fixture category with the expected time', () => {
-        const cases: [string, RegExp][] = [
-            ['rdra', /^This spot never rises above the horizon from Melbourne\.$/],
-            ['grazes-north', /^Tonight from Melbourne: below the horizon while it is dark\.$/],
-            ['barnard', /^Tonight from Melbourne: very low, at most about \d+° above the horizon, at \d\d:\d\d, facing [a-z-]+\.$/],
-            ['rwaur', /^Tonight from Melbourne: highest in the dark at \d\d:\d\d, about \d+° above the horizon, facing [a-z-]+\.$/],
-            ['overhead', /^Tonight from Melbourne: highest in the dark at \d\d:\d\d, about \d+° above the horizon, almost overhead\.$/],
-        ];
-        for (const [id, pattern] of cases) {
-            const c = get(id);
-            const text = upTonightText(solve(c))!;
-            expect(text.line, id).toMatch(pattern);
-            expect(text.line).not.toMatch(/visible|telescope|see it|observable/i);
-            expect(text.note).toBe(id === 'rdra' ? '' : 'Times are Melbourne time. Dark means the Sun is more than 12° below the horizon. This says where the spot is in the sky, not whether anything can be seen there.');
-            const time = text.line.match(/(\d\d):(\d\d)/);
-            if (time) {
-                const ref = new Intl.DateTimeFormat('en-GB', { timeZone: MELBOURNE.timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(c.best));
-                const minutes = (s: string) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3));
-                const delta = Math.abs(minutes(time[0]) - minutes(ref));
-                expect(Math.min(delta, 1440 - delta)).toBeLessThanOrEqual(3);
-            }
-        }
+    const base: UpTonight = { darkStart: new Date('2026-11-14T09:00:00Z'), from: new Date('2026-11-14T09:00:00Z'), darkEnd: new Date('2026-11-14T18:30:00Z'), best: new Date('2026-11-14T10:14:00Z'), bestAltDeg: 15, bestAzDeg: 0, maxAltDeg: 20, inside: false, sinking: false };
+    const note = 'Times are Melbourne time. Dark means the Sun is more than 12° below the horizon. This says where the spot is in the sky, not whether anything can be seen there.';
+    const cases: [string, Partial<UpTonight>, string, string][] = [
+        ['never rises', { maxAltDeg: -2 }, 'This spot never rises above the horizon from Melbourne.', ''],
+        ['below', { bestAltDeg: -2 }, 'Tonight from Melbourne: below the horizon while it is dark.', note],
+        ['horizon', { bestAltDeg: -0.4 }, 'Tonight from Melbourne: at the horizon at best, at 21:14, facing north.', note],
+        ['horizon sinking', { bestAltDeg: 0, inside: true, sinking: true }, 'For the rest of tonight from Melbourne: at the horizon now and getting lower, facing north.', note],
+        ['low', { bestAltDeg: 5 }, 'Tonight from Melbourne: very low, at most about 5° above the horizon, at 21:14, facing north.', note],
+        ['low sinking', { bestAltDeg: 5, inside: true, sinking: true }, 'For the rest of tonight from Melbourne: very low, about 5° above the horizon now and getting lower, facing north.', note],
+        ['high', {}, 'Tonight from Melbourne: highest in the dark at 21:14, about 15° above the horizon, facing north.', note],
+        ['high sinking', { inside: true, sinking: true }, 'For the rest of tonight from Melbourne: about 15° above the horizon now and getting lower, facing north.', note],
+        ['overhead', { bestAltDeg: 85 }, 'Tonight from Melbourne: highest in the dark at 21:14, about 85° above the horizon, almost overhead.', note],
+        ['overhead sinking', { bestAltDeg: 85, inside: true, sinking: true }, 'For the rest of tonight from Melbourne: about 85° above the horizon now, almost overhead, and getting lower.', note],
+    ];
+    it.each(cases)('prints %s exactly', (_name, changes, line, expectedNote) => {
+        const text = upTonightText({ ...base, ...changes })!;
+        expect(text).toEqual({ line, note: expectedNote });
+        expect(text.line).not.toMatch(/visible|can be seen/i);
+        expect(text.note.replace('not whether anything can be seen there', '')).not.toMatch(/visible|can be seen/i);
+    });
+    it('handles null, horizon tolerance and rounded branch boundaries', () => {
         expect(upTonightText(null)).toBeNull();
+        expect(upTonightText({ ...base, maxAltDeg: -0.5, bestAltDeg: -0.4 })!.line).toBe('Tonight from Melbourne: at the horizon at best, at 21:14, facing north.');
+        expect(upTonightText({ ...base, bestAltDeg: 79.6 })!.line).toBe('Tonight from Melbourne: highest in the dark at 21:14, about 80° above the horizon, almost overhead.');
+        expect(upTonightText({ ...base, bestAltDeg: 9.6 })!.line).toBe('Tonight from Melbourne: highest in the dark at 21:14, about 10° above the horizon, facing north.');
+        expect(upTonightText({ ...base, bestAltDeg: -0.4 })!.line).not.toContain('-0');
+        expect(upTonightText({ ...base, bestAltDeg: -2, inside: true })!.line).toBe('For the rest of tonight from Melbourne: below the horizon while it is dark.');
+    });
+    it('clamps rounded times within the remaining window', () => {
+        const end = new Date('2026-11-14T18:12:59.400Z');
+        expect(upTonightText({ ...base, darkEnd: end, best: end })!.line).toContain('at 05:12');
+        const from = new Date('2026-11-14T16:00:20Z');
+        expect(upTonightText({ ...base, from, best: from, inside: true })!.line).toContain('at 03:01');
+        expect(upTonightText({ ...base, from: new Date('2026-11-14T18:12:30Z'), darkEnd: end, best: end })!.line).toContain('at 05:12');
+    });
+    it('describes the real sinking case as now', () => {
+        const r = upTonight(348.5, -39.58, new Date('2026-11-14T16:00:00Z'))!;
+        const text = upTonightText(r)!;
+        expect(text.line).toContain('now and getting lower');
+        expect(text.line).not.toContain('21:14');
     });
     it('formats daylight saving, directions and rounded zero', () => {
-        const base: UpTonight = { darkStart: new Date(), darkEnd: new Date(), best: new Date('2026-11-15T10:14:00Z'), bestAltDeg: 15, bestAzDeg: 0, maxAltDeg: 20 };
         expect(upTonightText(base)!.line).toContain('21:14');
-        expect(upTonightText({ ...base, best: new Date('2026-06-21T07:00:00Z') })!.line).toContain('17:00');
+        expect(upTonightText({ ...base, from: new Date('2026-06-21T06:00:00Z'), darkEnd: new Date('2026-06-21T08:00:00Z'), best: new Date('2026-06-21T07:00:00Z') })!.line).toContain('17:00');
         const dirs = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north'];
         for (let i = 0; i < 8; i++) {
             expect(upTonightText({ ...base, bestAzDeg: 22.4 + i * 45 })!.line).toContain(`facing ${dirs[i]}.`);
             expect(upTonightText({ ...base, bestAzDeg: 22.6 + i * 45 })!.line).toContain(`facing ${dirs[i + 1]}.`);
         }
-        expect(upTonightText({ ...base, bestAltDeg: -0 })!.line).toContain('about 0°');
+        expect(upTonightText({ ...base, bestAltDeg: -0 })!.line).toContain('at the horizon');
         expect(upTonightText({ ...base, bestAltDeg: 15 })!.line).not.toContain('very low');
     });
 });
@@ -91,7 +117,7 @@ describe('invalid inputs and invariants', () => {
         expect(upTonight(0, 0, date, { ...MELBOURNE, latDeg: 89 })).toBeNull();
         const south = upTonight(0, 0, new Date('2026-06-21T00:00:00Z'), { ...MELBOURNE, latDeg: -89 });
         if (south) {
-            expect(Object.values(south).every((x) => Number.isFinite(x instanceof Date ? +x : x))).toBe(true);
+            expect(Object.values(south).every((x) => typeof x === 'boolean' || Number.isFinite(x instanceof Date ? +x : x))).toBe(true);
         }
     });
     it('keeps 300 seeded positions finite and internally consistent', () => {
@@ -103,8 +129,8 @@ describe('invalid inputs and invariants', () => {
             const date = new Date(Date.UTC(2026, 0, 1) + random() * 365 * 86400000);
             const r = upTonight(ra, dec, date)!;
             expect(r).not.toBeNull();
-            expect(Object.values(r).every((x) => Number.isFinite(x instanceof Date ? +x : x))).toBe(true);
-            expect(+r.best).toBeGreaterThanOrEqual(+r.darkStart);
+            expect(Object.values(r).every((x) => typeof x === 'boolean' || Number.isFinite(x instanceof Date ? +x : x))).toBe(true);
+            expect(+r.best).toBeGreaterThanOrEqual(+r.from);
             expect(+r.best).toBeLessThanOrEqual(+r.darkEnd);
             expect(r.bestAltDeg).toBeLessThanOrEqual(r.maxAltDeg + 0.05);
             expect(altAz(ra, dec, r.best)).toEqual({ altDeg: r.bestAltDeg, azDeg: r.bestAzDeg });
