@@ -452,6 +452,8 @@ button { cursor: pointer; }
     .sk-key.g { min-height: 40px; }
     .sk-gk .sk-src { line-height: 40px; padding: 0 4px; }
     .sk-btn2 { min-height: 40px; }
+    .sk-seg, .sk-seg button { min-height: 40px; }
+    .sk-rng { height: 40px; top: -6px; } /* same centre line as the 28 px desktop slider */
     .sk-search input { min-height: 40px; }
     .sk-m-details dd a { display: inline-flex; align-items: center; min-height: 40px; }
     .sk-mh, .sk-fov, .sk-bar b, .sk-strip small, .sk-readout > span, .sk-ticks, .sk-axl, .sk-sim { font-size: 12px; }

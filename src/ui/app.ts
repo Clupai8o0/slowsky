@@ -901,10 +901,8 @@ export function mount(root: HTMLElement): void
         if (!result) {
             bind('frame', '');
             bind('when', '');
-            if (reading) {
-                bind('statusShort', reading === 'live' ? 'Reading live from NASA’s archive · about 30 s'
-                    : reading === 'snapshot' ? 'Opening the saved copy' : 'Building the simulated sky');
-            }
+            bind('statusShort', reading === 'live' ? 'Reading live from NASA’s archive · about 30 s'
+                : reading === 'snapshot' ? 'Opening the saved copy' : reading === 'demo' ? 'Building the simulated sky' : 'Nothing to show');
             return;
         }
         const n = result.frames.length;
