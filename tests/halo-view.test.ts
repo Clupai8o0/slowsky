@@ -146,6 +146,8 @@ describe('haloFor', () => {
         const one = haloFor(r, { ring, curve: fake([point(MJD0, { caveats: [c] }), point(MJD0 + 0.3, { ...bad, caveats: [c] }), point(MJD0 + 100, bad)]) })!;
         const html1 = haloHtml(one, 'R Draconis', -1);
         expect(html1).toContain('one reading, nothing to compare (noise ± 2.0%)');
+        expect(html1).toContain('so the one reading is listed instead.');
+        expect(html1).toMatch(/^<p class="sk-body mute">Near 0\.90 µm, /);
         expect(html1).not.toContain('+0.0%');
         expect(html1.match(/\d+ \w+ \d{4}(, \d+ \w+ \d{4})*: Ring brightness/)![0].split(',').length).toBe(1);
         const edge = haloFor(r, { ring, curve: fake([point(MJD0, { lambda: 1 }), point(MJD0 + 8, { lambda: 1.005 })]) })!;

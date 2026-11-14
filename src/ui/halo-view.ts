@@ -171,10 +171,10 @@ export function haloHtml(h: HaloView, name: string, on: number): string
         : '';
     const visits = visitCount(h.points.map((p) => p.mjd));
     if (h.kind === 'none' || h.kind === 'table') {
-        const head = `At ${h.lambda.toFixed(2)} µm, ${where}, could be measured in ${h.points.length} of ${plural(h.looks, 'look', 'looks')}`
+        const head = `Near ${h.lambda.toFixed(2)} µm, ${where}, could be measured in ${h.points.length} of ${plural(h.looks, 'look', 'looks')}`
             + `${h.points.length ? `, taken on ${plural(visits, 'visit', 'visits')}` : ''}.`
             + ` A curve is drawn only from looks on at least ${MIN_VISITS} visits, all within ${CURVE_WIDTH_UM} µm of colour;`
-            + ` these looks do not meet that, so ${h.kind === 'table' ? 'each reading is listed instead' : 'there is no curve'}.${off}`;
+            + ` these looks do not meet that, so ${h.kind === 'none' ? 'there is no curve' : h.points.length === 1 ? 'the one reading is listed instead' : 'each reading is listed instead'}.${off}`;
         if (h.kind === 'none') {
             return `<p class="sk-body mute">${head}</p>${notes}`;
         }
