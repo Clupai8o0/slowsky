@@ -167,7 +167,12 @@ describe('slots for modules still in their lanes', () => {
         expect(FEATURES.halo).toBe(false);
         const v = view(sky([frame('a')]));
         const el = {} as HTMLElement;
-        expect(renderChanges(el, el, v)).toBe(false);
+        // The change panel is wired (switch off): one visit shows only the finder's own message.
+        const box = {} as HTMLElement;
+        const marks = {} as HTMLElement;
+        expect(renderChanges(box, marks, v)).toBe(true);
+        expect(box.innerHTML).toBe('<ul class="sk-chg-notes"><li>Change finding needs two visits; these frames make 1.</li></ul>');
+        expect(marks.innerHTML).toBe('');
         expect(renderHalo(el, v)).toBe(false);
         const none = { key: false, layer: false, note: '' };
         expect(mountFalseColour(el, () => {}).update(v, true)).toEqual(none);

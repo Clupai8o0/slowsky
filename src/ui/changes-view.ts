@@ -13,7 +13,7 @@ export interface ChangesView {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 
-export const EMPTY_LEAD = 'The change finder lists no candidates for these two visits.';
+export const EMPTY_LEAD = 'The change finder lists no candidates between the first and last visit.';
 
 // From what findChanges returns, or the message of the error it threw (for example "needs two visits").
 export function changesView(found: ChangeResult | { error: string }): ChangesView
