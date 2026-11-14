@@ -128,15 +128,30 @@ describe('haloFor', () => {
         const h = haloFor(r, { ring, curve: fake([point(MJD0, { lambda: 0.82 }), point(MJD0 + 3, { lambda: 0.84, relative: 1.06 })]) })!;
         expect(h.kind).toBe('table');
         const html = haloHtml(h, 'R Draconis', -1);
-        expect(html).toContain('could be measured in 2 of 2 looks (1 visit). Not enough looks at this colour to draw a curve: it needs at least 3.');
+        expect(html).toContain('could be measured in 2 of 2 looks, taken on 1 visit. Not enough measured looks at this colour to draw a curve: it needs at least 3.');
         expect(html).toContain('<table');
         expect(html).not.toContain('<svg');
-        expect(html).toContain('0.82 µm');
+        expect(html).toContain('0.820 µm');
         expect(html).toContain('+6.0% ± 2.0%');
-        expect(html).toContain('from 0.82 to 0.84 µm; looks at slightly different colours can read differently for that reason alone.');
+        expect(html).toContain('from 0.820 to 0.840 µm; looks at slightly different colours can read differently for that reason alone.');
         const none = haloFor(r, { ring, curve: fake([point(MJD0, bad), point(MJD0 + 100, bad)]) })!;
         expect(none.kind).toBe('none');
-        expect(haloHtml(none, 'R Draconis', -1)).toContain('could be measured in 0 of 2 looks (0 visits).');
+        expect(haloHtml(none, 'R Draconis', -1)).toContain('could be measured in 0 of 2 looks. Not enough');
+    });
+
+    it('handles one reading, float edges of the colour span, chained visits and repeated caveat dates', () => {
+        const r = result([5000, 5000, 5000]);
+        const bad = { valid: false, relative: NaN, relativeNoise: NaN };
+        const c = 'Ring brightness is sensitive to the catalogue position.';
+        const one = haloFor(r, { ring, curve: fake([point(MJD0, { caveats: [c] }), point(MJD0 + 0.3, { ...bad, caveats: [c] }), point(MJD0 + 100, bad)]) })!;
+        const html1 = haloHtml(one, 'R Draconis', -1);
+        expect(html1).toContain('one reading, nothing to compare (noise ± 2.0%)');
+        expect(html1).not.toContain('+0.0%');
+        expect(html1.match(/\d+ \w+ \d{4}(, \d+ \w+ \d{4})*: Ring brightness/)![0].split(',').length).toBe(1);
+        const edge = haloFor(r, { ring, curve: fake([point(MJD0, { lambda: 1 }), point(MJD0 + 8, { lambda: 1.005 })]) })!;
+        expect(haloHtml(edge, 'R Draconis', -1)).toContain('from 1.000 to 1.005 µm');
+        const chain = haloFor(r, { ring, curve: fake([point(MJD0), point(MJD0 + 8), point(MJD0 + 16)]) })!;
+        expect(haloHtml({ ...chain, kind: 'table' }, 'R Draconis', -1)).toContain('taken on 2 visits');
     });
 
     it('asks for a wider field when the ring does not fit, and hides on other module errors', () => {

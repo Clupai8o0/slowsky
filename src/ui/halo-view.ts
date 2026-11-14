@@ -126,8 +126,17 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
 // Looks less than 10 days apart count as one visit (as visitsOf in measure.ts).
 function visitCount(mjds: number[]): number
 {
+    // A visit starts at its first look; every look within 10 days of that start belongs to it.
     const t = [...mjds].sort((a, b) => a - b);
-    return t.filter((v, i) => i === 0 || v - t[i - 1]! >= 10).length;
+    let visits = 0;
+    let start = -Infinity;
+    for (const v of t) {
+        if (v - start >= 10) {
+            visits++;
+            start = v;
+        }
+    }
+    return visits;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -143,27 +152,30 @@ export function haloHtml(h: HaloView, name: string, on: number): string
     const where = `the light in a ring ${arcsec(h.ringIn)} to ${arcsec(h.ringOut)} from ${who}’s centre, outside the part the frames leave blank`;
     const off = h.dropped > 0 ? ` ${plural(h.dropped, 'frame was', 'frames were')} too far off this colour.` : '';
     const notes = h.caveats.length
-        ? `<ul class="sk-notes">${h.caveats.map((c) => `<li>${esc(c.mjds.map((t) => date(t, true)).join(', '))}: ${esc(c.text)}</li>`).join('')}</ul>`
+        ? `<ul class="sk-notes">${h.caveats.map((c) => `<li>${esc([...new Set([...c.mjds].sort((a, b) => a - b).map((t) => date(t, true)))].join(', '))}: ${esc(c.text)}</li>`).join('')}</ul>`
         : '';
     const pct = (v: number) => `${v >= 1 ? '+' : '−'}${Math.abs((v - 1) * 100).toFixed(Math.abs(v - 1) < 0.1 ? 1 : 0)}%`;
     const lams = h.points.map((p) => p.lambda).filter(Number.isFinite);
     const lamLo = Math.min(...lams);
     const lamHi = Math.max(...lams);
     // The ring and the comparison stars need not share a colour, so looks a little apart in wavelength can differ.
-    const colours = lams.length > 1 && lamHi - lamLo >= 0.005
-        ? ` These looks were taken from ${lamLo.toFixed(2)} to ${lamHi.toFixed(2)} µm; looks at slightly different colours can read differently for that reason alone.`
+    const colours = lams.length > 1 && lamHi - lamLo >= 0.005 - 1e-9
+        ? ` These looks were taken from ${lamLo.toFixed(3)} to ${lamHi.toFixed(3)} µm; looks at slightly different colours can read differently for that reason alone.`
         : '';
     const visits = visitCount(h.points.map((p) => p.mjd));
     if (h.kind === 'none' || h.kind === 'table') {
         const head = `At ${h.lambda.toFixed(2)} µm, ${where}, could be measured in ${h.points.length} of ${plural(h.looks, 'look', 'looks')}`
-            + ` (${plural(visits, 'visit', 'visits')}). Not enough looks at this colour to draw a curve: it needs at least ${MIN_CURVE}.${off}`;
+            + `${h.points.length ? `, taken on ${plural(visits, 'visit', 'visits')}` : ''}.`
+            + ` Not enough measured looks at this colour to draw a curve: it needs at least ${MIN_CURVE}.${off}`;
         if (h.kind === 'none') {
             return `<p class="sk-body mute">${head}</p>${notes}`;
         }
-        const rows = h.points.map((p) => `<tr><td>${date(p.mjd, true)}</td><td>${p.lambda.toFixed(2)} µm</td>`
-            + `<td>${pct(p.relative)} ± ${(p.err * 100).toFixed(1)}%</td></tr>`).join('');
+        // One reading compared with its own median always reads +0.0%, so show only its noise.
+        const one = h.points.length === 1;
+        const rows = h.points.map((p) => `<tr><td>${date(p.mjd, true)}</td><td>${p.lambda.toFixed(3)} µm</td>`
+            + `<td>${one ? `one reading, nothing to compare (noise ± ${(p.err * 100).toFixed(1)}%)` : `${pct(p.relative)} ± ${(p.err * 100).toFixed(1)}%`}</td></tr>`).join('');
         const table = `<table class="sk-halo-t"><caption class="sk-sr">Light in the ring, each look</caption>`
-            + '<thead><tr><th scope="col">Look</th><th scope="col">Colour</th><th scope="col">Ring light vs their median</th></tr></thead>'
+            + '<thead><tr><th scope="col">Look</th><th scope="col">Colour</th><th scope="col">Ring light vs the median of these looks</th></tr></thead>'
             + `<tbody>${rows}</tbody></table>`;
         return `<p class="sk-body mute">${head}</p>${table}<p class="sk-body mute">Measured against ${h.refs} nearby comparison stars from Gaia. `
             + `The ± is each reading’s noise: the sky around the ring and around the comparison stars, and how far off the star’s catalogue position could be.${colours}</p>${notes}`;
