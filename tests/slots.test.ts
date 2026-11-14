@@ -745,8 +745,8 @@ describe('preview switch', () => {
         expect(featuresFrom('')).toEqual(DEFAULT_FEATURES);
         expect(featuresFrom(' halo , falseColour,-flags,nonsense,constructor,__proto__')).toEqual({ ...DEFAULT_FEATURES, halo: true, falseColour: true, flags: false });
         expect(featuresFrom('halo,-halo')).toEqual(DEFAULT_FEATURES);
-        expect(DEFAULT_FEATURES.epoch).toBe(false);
-        expect(featuresFrom('epoch')).toEqual({ ...DEFAULT_FEATURES, epoch: true });
+        expect(DEFAULT_FEATURES.epoch).toBe(true);
+        expect(featuresFrom('-epoch')).toEqual({ ...DEFAULT_FEATURES, epoch: false });
     });
 
     it('ships with the build defaults when the variable is not set', () => {

@@ -13,6 +13,7 @@ Each licence and credit line was checked on the provider's own page on 14 Nov 20
 | Gaia DR3, ESA | Star rings, live or snapshot | CC BY-NC 3.0 IGO (2) | "Credit: ESA, Gaia DPAC" | [Licence][gaia] |
 | SIMBAD, CfA mirror | Name lookup; target positions | ODbL, per the mirror | SIMBAD line (3) | [SIMBAD][simbad] |
 | VizieR, CfA mirror | Gaia rows, bake fallback only | Not confirmed | VizieR line (3) | [VizieR][vizier] |
+| 2MASS K image tiles (HiPS), IRSA | The older picture, read live | IRSA terms (1); the tile set's own properties file names no licence | 2MASS line (3); tiles: CNRS/Unistra | [2MASS][2mass] |
 
 Where each one is used:
 
@@ -25,6 +26,8 @@ Where each one is used:
   (`gsss.stsci.edu`), with the CfA VizieR mirror as fallback. For live views the page calls the same two services.
 - SIMBAD answers name searches typed into the page. `scripts/targets.py` took the five targets' positions and
   proper motions from it into `src/data/targets.json`.
+- The older picture is read from IRSA's copy of the 2MASS K HiPS tiles (`irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K`)
+  when a visitor switches it on. No 2MASS pixels are stored in this repository or in the snapshot.
 - QR2 (doi:10.26131/IRSA652) is never used.
 
 Notes:
@@ -44,6 +47,10 @@ Notes:
      (Wenger et al. 2000, A&AS 143, 9).
    - VizieR: "This research has made use of the VizieR catalogue access tool, CDS, Strasbourg, France
      (DOI: 10.26093/cds/vizier)." Its usage rules sit on a CDS page that could not be reached: not confirmed.
+   - 2MASS (in our words, checked 15 Nov 2026): the Two Micron All Sky Survey is a joint project of the University
+     of Massachusetts and IPAC/Caltech, funded by NASA and the National Science Foundation (Skrutskie et al. 2006,
+     AJ 131, 1163). The full acknowledgement wording is on IRSA's 2MASS page. The page shows the credit that the
+     tiles' own properties file gives: "University of Massachusetts & IPAC/Caltech", tiles by CNRS/Unistra.
 
 [dr1]: https://irsa.ipac.caltech.edu/data/SPHEREx/docs/overview_dr1.html
 [qr3]: https://irsa.ipac.caltech.edu/data/SPHEREx/docs/overview_qr.html
@@ -51,6 +58,7 @@ Notes:
 [gaia]: https://www.cosmos.esa.int/web/gaia-users/license
 [simbad]: https://simbad.cfa.harvard.edu/simbad/
 [vizier]: https://vizier.cfa.harvard.edu/viz-bin/VizieR
+[2mass]: https://irsa.ipac.caltech.edu/Missions/2mass.html
 
 ## Fonts
 

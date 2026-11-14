@@ -113,7 +113,7 @@ The README's "Limits" section uses these. The chart in `src/lib/planetx.ts` is n
 | Size from brightness: D = 1329 km ÷ √albedo × 10^(−H/5) | `src/lib/planetx.ts` | [Masiero et al. 2011][masiero], section 1 | This relation |
 | Reflected sunlight falls with the fourth power of distance | `src/lib/planetx.ts` | [arXiv:2506.12854][d4] | This rule |
 
-## Older picture (2MASS K), switched off
+## Older picture (2MASS K)
 
 All read from the HiPS properties file on 14 Nov 2026, as `src/lib/epoch.ts` records them (`TWO_MASS_K`).
 
@@ -121,6 +121,7 @@ All read from the HiPS properties file on 14 Nov 2026, as `src/lib/epoch.ts` rec
 |---|---|---|---|
 | The older picture was taken between June 1997 and February 2001 | `src/ui/epoch-view.ts` (the note, the tag `Then: 2MASS, 1997 to 2001`, the bracket legend) | [2MASS K HiPS properties][2massk], `t_min`, `t_max` | t_min 50600 and t_max 51941 (MJD), which are 1 June 1997 and 1 February 2001; months only, not the night of any one field |
 | It is the K band, at 2.16 µm | `src/ui/epoch-view.ts` (the note) | [2MASS K HiPS properties][2massk], `em_min`, `em_max`; the survey name in `src/lib/epoch.ts` | 2.015 to 2.303 µm; the library names the survey `2MASS K (2.16um)` |
+| 2MASS is a joint project of the University of Massachusetts and IPAC/Caltech, funded by NASA and the National Science Foundation | `README.md` (Data and credits), `DATA-LICENSES.md` | [IRSA's 2MASS page][2mass], "Acknowledgement" | The standard acknowledgement, which names both institutions and both funders; the survey paper is Skrutskie et al. 2006, AJ 131, 1163 |
 | Credit: 2MASS, University of Massachusetts & IPAC/Caltech; HiPS tiles CNRS/Unistra, served by IRSA | `src/ui/epoch-view.ts` (the note, built by `epochCredit` in `src/lib/epoch.ts`) | [2MASS K HiPS properties][2massk], `obs_copyright`; tile host from `baseUrl` | The survey's credit holder and its web page; the tiles come from `irsa.ipac.caltech.edu` |
 
 ## What the page does (from this repo's own code and files)
@@ -213,3 +214,4 @@ The licences in [DATA-LICENSES.md](DATA-LICENSES.md) were read from each package
 [masiero]: https://arxiv.org/abs/1109.4096
 [d4]: https://arxiv.org/abs/2506.12854
 [2massk]: https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/properties
+[2mass]: https://irsa.ipac.caltech.edu/Missions/2mass.html

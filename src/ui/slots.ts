@@ -30,7 +30,7 @@ import { readVariance } from './error-maps';
 
 export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: false });
+    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
