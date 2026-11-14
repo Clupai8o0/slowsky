@@ -67,7 +67,7 @@ describe('buildFacts', () => {
         expect(validateFacts(f)).toEqual(f);
         expect(f.lightCurve!.refScatter).toEqual([0.02]);
         const line = factSheet(f).find((s) => s.startsWith('Visits:'))!;
-        expect(line).toContain('Visits: 12 shown.');
+        expect(line).toContain('Visits: at least 12.');
         expect(line).toContain('at least 500');
     });
     it('does not round a sub-one signal-to-noise into a brightness measurement', () => {
@@ -85,7 +85,7 @@ describe('buildFacts', () => {
         const sheet = factSheet(facts).join('\n');
         expect(sheet).toContain('RA 269.4521 deg, Dec 4.6934 deg');
         expect(sheet).toContain('Wavelength: 1.235 micron');
-        expect(sheet).toContain('Visits: 2 shown. Frames in each visit: 2, 3. Time from first to last visit: 180.2 days');
+        expect(sheet).toContain('Visits: 2. Frames in each visit: 2, 3. Time from first to last visit: 180.2 days');
         expect(sheet).toContain('1.00, 0.87');
         expect(sheet).toContain('Scatter of each: 1.2, 4.6 percent');
         expect(sheet).toContain('did not match: 3');
