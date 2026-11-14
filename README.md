@@ -55,9 +55,11 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
    stored in each file's header.
 7. **Drawing.** All frames share one brightness scale, so a frame that looks brighter really is brighter in the
    data.
-8. **Offline fallback.** If the live archive does not answer, the five preset targets load from a snapshot: a small
-   copy of real SPHEREx frames saved with the site in `public/snapshot/`. The same steps run on it. The status
-   line says which source you are looking at.
+8. **Saved copy first.** A live read takes 20 to 45 seconds, so the five preset targets open from a snapshot: a
+   small copy of real SPHEREx frames saved with the site in `public/snapshot/`. The same steps run on it. **Go live**
+   reads the same target from the archive. Any other spot, or a colour on another detector, is read live. If the
+   archive does not answer, a preset falls back to the snapshot. The status line says which source you are
+   looking at.
 
 The snapshot holds 24 frames for each of the 5 targets, as 112 × 112 pixel cutouts on one detector per target,
 plus Gaia DR3 stars brighter than magnitude 19 within 0.1° (counts from `public/snapshot/manifest.json` and the
@@ -129,8 +131,10 @@ Sam chose the idea and makes every product decision (see `DECISIONS.md`).
   bright enough for SPHEREx has already been searched by ZTF, DES and Pan-STARRS1; what is left is fainter than
   these frames can show (Brown, Holman & Batygin 2024, arXiv:2401.17977; SPHEREx depths: Bock et al. 2025,
   arXiv:2511.02985). This repo does not compute that limit itself.
-- Live loading reads many files from the archive and can be slow. It reads at most 60 frames per view, spread
-  evenly across visits, and says so when it does.
+- Live loading reads many files from the archive and takes 20 to 45 seconds. It reads at most 60 frames per view,
+  spread evenly across visits, and says so when it does.
+- At very busy spots, such as near the ecliptic poles, the archive can cut its frame list short. The page then
+  says some visits may be missing.
 - Gaia rings appear only in the offline copy. They sit at the stars' Gaia positions for 2016 and are not moved to
   each frame's date.
 - The offline copy has only the five preset targets, one detector each, and a field of at most 0.1°.
