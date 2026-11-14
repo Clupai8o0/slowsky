@@ -1,4 +1,4 @@
-// Callers must pass stars at both visit dates (join gaia.ts ringsAt results).
+// Callers must pass stars at both visit dates (join gaia.ts ringsAt results), with the same optional id at each date.
 // Gaia coordinates are for 2016; proper motion otherwise moves stars far off.
 // Candidate counts are not science numbers. S/N uses background noise only;
 // displayed S/N is capped at "S/N > 50".
@@ -6,7 +6,7 @@ import { gridPixToSky } from './regrid';
 import type { OutputGrid, PixelCoord, RegriddedFrame, SkyCoord } from './types';
 
 export type ChangeKind = 'mover' | 'brightness' | 'unknown';
-export interface StarPix { x: number; y: number; }
+export interface StarPix { x: number; y: number; id?: string; }
 export interface ChangeCandidate {
     id: string;
     kind: ChangeKind;
@@ -55,7 +55,7 @@ export interface ChangeOptions {
 export interface VisitImage { data: Float32Array; lambda: number; mjd: number; obsIds: string[]; variance?: Float32Array; }
 type Image = VisitImage;
 type Settings = Required<ChangeOptions>;
-type Blob = { pix: PixelCoord; snr: number; sign: 1 | -1; area: number };
+type Blob = { pix: PixelCoord; snr: number; sign: 1 | -1; area: number; edge: boolean };
 type Measurement = { z: Float32Array; sigma: number; k: number; width: number; height: number };
 const NATIVE = 6.15;
 const PSF_FWHM = 12; // arcsec
@@ -225,6 +225,71 @@ function measure(diff: Float32Array, grid: OutputGrid, varSum?: Float32Array): M
         }
     }
     const logNoise = smooth.map((value) => value > 0 ? Math.log(value) : NaN);
+    // A noisy patch smaller than a tile hides inside the tile's median. Look again in a window of about 31″
+    // around each binned pixel: estimate the scatter separately from the values below and above the
+    // tile's centre and keep the smaller. A star that brightened or faded raises one side only, so it does not
+    // count as noise; noise raises both. A window counts only when it is 1.8 times as noisy as its tile (chance
+    // alone rarely gets there), and then it raises the noise over the whole window, edges of the patch included.
+    const half = Math.max(1, Math.round(31 / (grid.pixelArcsec * k) / 2));
+    const tileAt = (x: number, y: number): number => Math.min(th - 1, Math.floor(y / tile)) * tw + Math.min(tw - 1, Math.floor(x / tile));
+    const raisedNoise = new Float32Array(bins.length);
+    const side = (2 * half + 1) ** 2;
+    const below = new Float64Array(side), above = new Float64Array(side);
+    const middle = (values: Float64Array, n: number): number => {
+        const part = values.subarray(0, n).sort();
+        return n % 2 ? part[(n - 1) / 2]! : (part[n / 2 - 1]! + part[n / 2]!) / 2;
+    };
+    // Quick screen first: the window's mean absolute deviation (a summed-area table) must already be high.
+    const sumDev = new Float64Array((width + 1) * (height + 1)), sumCount = new Float64Array((width + 1) * (height + 1));
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const v = bins[y * width + x]!, finite = Number.isFinite(v);
+            const at = (y + 1) * (width + 1) + x + 1;
+            sumDev[at] = (finite ? Math.abs(v - centers[tileAt(x, y)]!) : 0) + sumDev[at - 1]! + sumDev[at - width - 1]! - sumDev[at - width - 2]!;
+            sumCount[at] = (finite ? 1 : 0) + sumCount[at - 1]! + sumCount[at - width - 1]! - sumCount[at - width - 2]!;
+        }
+    }
+    const boxSum = (table: Float64Array, x0: number, y0: number, x1: number, y1: number): number =>
+        table[(y1 + 1) * (width + 1) + x1 + 1]! - table[y0 * (width + 1) + x1 + 1]! - table[(y1 + 1) * (width + 1) + x0]! + table[y0 * (width + 1) + x0]!;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const t = tileAt(x, y), center = centers[t]!, tileNoise = smooth[t]!;
+            if (!(tileNoise > 0)) {
+                continue;
+            }
+            const x0 = Math.max(0, x - half), y0 = Math.max(0, y - half);
+            const x1 = Math.min(width - 1, x + half), y1 = Math.min(height - 1, y + half);
+            const n = boxSum(sumCount, x0, y0, x1, y1);
+            if (n < 16 || boxSum(sumDev, x0, y0, x1, y1) / n < 1.5 * 0.798 * tileNoise) {
+                continue;
+            }
+            let nb = 0, na = 0;
+            for (let j = Math.max(0, y - half); j <= Math.min(height - 1, y + half); j++) {
+                for (let i = Math.max(0, x - half); i <= Math.min(width - 1, x + half); i++) {
+                    const v = bins[j * width + i]!;
+                    // Values past 8 tile sigmas are sources, not noise: leave them out so a bright mover's
+                    // two halves do not raise its own noise.
+                    if (v < center && center - v < 8 * tileNoise) {
+                        below[nb++] = center - v;
+                    } else if (v > center && v - center < 8 * tileNoise) {
+                        above[na++] = v - center;
+                    }
+                }
+            }
+            if (nb < 8 || na < 8) {
+                continue;
+            }
+            const local = 1.4826 * Math.min(middle(below, nb), middle(above, na));
+            if (local > 1.8 * tileNoise) {
+                for (let j = Math.max(0, y - half); j <= Math.min(height - 1, y + half); j++) {
+                    for (let i = Math.max(0, x - half); i <= Math.min(width - 1, x + half); i++) {
+                        raisedNoise[j * width + i] = Math.max(raisedNoise[j * width + i]!, local);
+                    }
+                }
+            }
+        }
+    }
+    const raised = (x: number, y: number): number => raisedNoise[y * width + x]!;
     const z = new Float32Array(bins.length);
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
@@ -253,7 +318,7 @@ function measure(diff: Float32Array, grid: OutputGrid, varSum?: Float32Array): M
                 return weight ? sum / weight : NaN;
             };
             const fromFrames = errorMap ? errorMap[y * width + x]! : NaN;
-            const noise = Number.isFinite(fromFrames) && fromFrames > 0 ? fromFrames : Math.exp(interpolate(logNoise));
+            const noise = Math.max(Math.exp(interpolate(logNoise)), Number.isFinite(fromFrames) ? fromFrames : 0, raised(x, y));
             const value = bins[y * width + x]!;
             z[y * width + x] = Number.isFinite(value) && noise > 0 ? (value - interpolate(centers)) / noise : NaN;
         }
@@ -328,10 +393,6 @@ function blobs(diff: Float32Array, grid: OutputGrid, opt: Settings, result: Chan
         if (peak < opt.threshold) {
             continue;
         }
-        if (nearEdge) {
-            result.rejected.edge++;
-            continue;
-        }
         if (queue.length < 2 || queue.length * (m.k * grid.pixelArcsec) ** 2 < opt.minAreaArcsec2) {
             result.rejected.single++;
             continue;
@@ -350,13 +411,24 @@ function blobs(diff: Float32Array, grid: OutputGrid, opt: Settings, result: Chan
             result.rejected.streaks++;
             continue;
         }
-        // Refine the binned centroid using the original grid within the component.
+        // Refine the binned centroid using the original grid within the component. Only the core (at least
+        // half the component's peak) counts: with the whole component, a very bright spot's centre drifts
+        // into its wide wings, and the two halves of a bright mover end up too far apart to pair.
+        let top = 0;
+        for (const p of queue) {
+            const bx = p % m.width, by = Math.floor(p / m.width);
+            for (let y = by * m.k; y < Math.min((by + 1) * m.k, grid.height); y++) {
+                for (let x = bx * m.k; x < Math.min((bx + 1) * m.k, grid.width); x++) {
+                    top = Math.max(top, sign * diff[y * grid.width + x]!);
+                }
+            }
+        }
         let fullX = 0, fullY = 0, fullWeight = 0;
         for (const p of queue) {
             const bx = p % m.width, by = Math.floor(p / m.width);
             for (let y = by * m.k; y < Math.min((by + 1) * m.k, grid.height); y++) {
                 for (let x = bx * m.k; x < Math.min((bx + 1) * m.k, grid.width); x++) {
-                    const w = Math.max(0, sign * diff[y * grid.width + x]!);
+                    const w = Math.max(0, sign * diff[y * grid.width + x]! - 0.5 * top);
                     fullX += x * w;
                     fullY += y * w;
                     fullWeight += w;
@@ -364,7 +436,7 @@ function blobs(diff: Float32Array, grid: OutputGrid, opt: Settings, result: Chan
             }
         }
         out.push({ pix: fullWeight > 0 ? { x: fullX / fullWeight, y: fullY / fullWeight }
-            : { x: cx * m.k + (m.k - 1) / 2, y: cy * m.k + (m.k - 1) / 2 }, snr: peak, sign, area: queue.length });
+            : { x: cx * m.k + (m.k - 1) / 2, y: cy * m.k + (m.k - 1) / 2 }, snr: peak, sign, area: queue.length, edge: nearEdge });
     }
     return out;
 }
@@ -445,6 +517,22 @@ function sourceCentroid(data: Float32Array, center: PixelCoord, grid: OutputGrid
     return sum > 0 ? { x: sx / sum, y: sy / sum } : undefined;
 }
 
+// Sum of later − earlier within half a PSF FWHM of pix (pixels off the grid or not finite are skipped).
+function lobe(earlier: Float32Array, later: Float32Array, pix: PixelCoord, grid: OutputGrid): number
+{
+    const radius = PSF_FWHM / 2 / grid.pixelArcsec;
+    let sum = 0;
+    for (let y = Math.max(0, Math.ceil(pix.y - radius)); y <= Math.min(grid.height - 1, Math.floor(pix.y + radius)); y++) {
+        for (let x = Math.max(0, Math.ceil(pix.x - radius)); x <= Math.min(grid.width - 1, Math.floor(pix.x + radius)); x++) {
+            const d = later[y * grid.width + x]! - earlier[y * grid.width + x]!;
+            if (Math.hypot(x - pix.x, y - pix.y) <= radius && Number.isFinite(d)) {
+                sum += d;
+            }
+        }
+    }
+    return sum;
+}
+
 function fractionalChange(earlier: Float32Array, later: Float32Array, pix: PixelCoord, grid: OutputGrid): number | undefined
 {
     const radius = 12 / grid.pixelArcsec;
@@ -511,7 +599,8 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
 {
     const opt = settings(opts), result = empty(opt);
     const diff = difference(earlier.data, later.data, grid);
-    result.notes.push(`Wavelengths: ${earlier.lambda.toFixed(3)} µm and ${later.lambda.toFixed(3)} µm.`);
+    const wavelength = (value: number): string => Number.isFinite(value) ? `${value.toFixed(3)} µm` : 'unknown';
+    result.notes.push(`Wavelengths: ${wavelength(earlier.lambda)} and ${wavelength(later.lambda)}.`);
     const singleFrame = earlier.obsIds.length === 1 || later.obsIds.length === 1;
     const warning = 'each visit is one frame; artefacts not ruled out';
     if (singleFrame) { result.notes.push(warning); }
@@ -521,22 +610,43 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         return result;
     }
     let varSum: Float32Array | undefined;
+    if ((earlier.variance && earlier.variance.length !== diff.length)
+        || (later.variance && later.variance.length !== diff.length)) {
+        throw new Error('Variance input length does not match output grid');
+    }
     if (earlier.variance && later.variance) {
-        validate(earlier.variance, grid);
-        validate(later.variance, grid);
         varSum = new Float32Array(diff.length);
         for (let i = 0; i < varSum.length; i++) {
             varSum[i] = earlier.variance[i]! + later.variance[i]!;
         }
         result.notes.push('Noise from the frames\' own error maps.');
+    } else if (earlier.variance || later.variance) {
+        result.notes.push('Error map on only one visit; noise from the difference image only.');
     } else {
-        result.notes.push('Noise from the difference image only (no error maps given); a noisy patch smaller than about 1′ can give false candidates.');
+        result.notes.push('Noise from the difference image only (no error maps given).');
     }
     const found = blobs(diff, grid, opt, result, 3.75, varSum);
     const used = new Set<number>();
     const nearestStar = (p: PixelCoord): StarPix | undefined => stars
         .filter((s) => Number.isFinite(s.x) && Number.isFinite(s.y) && distance(p, s, grid) <= opt.matchArcsec)
         .sort((a, b) => distance(p, a, grid) - distance(p, b, grid))[0];
+    if (stars.some((s) => s.id === undefined)) {
+        result.notes.push('Catalogue stars have no ids: two nearby catalogue stars that change in opposite ways can look like one mover.');
+    }
+    const sameStar = (a: StarPix, b: StarPix): boolean => a.id !== undefined && b.id !== undefined
+        ? a.id === b.id : distance(a, b, grid) <= opt.matchArcsec;
+    // Two catalogue stars that change in opposite ways inside one aperture cancel in the measured fraction,
+    // so that fraction is not measurable. Steady neighbours do not count: they subtract out. Nor does a much
+    // weaker spot (a shadow, 5x rule below) or one inside the same PSF core (a close pair such as RW Aur A/B
+    // cannot be split, and the change is measured for both together).
+    const blended = (blob: Blob, star: StarPix): boolean => found.some((other) => {
+        if (other === blob || other.sign === blob.sign || distance(other.pix, star, grid) > PSF_FWHM
+            || other.snr * 5 < blob.snr || distance(other.pix, blob.pix, grid) < PSF_FWHM / 2) {
+            return false;
+        }
+        const otherStar = nearestStar(other.pix);
+        return otherStar !== undefined && !sameStar(otherStar, star);
+    });
     for (let i = 0; i < found.length; i++) {
         const positive = found[i]!;
         if (positive.sign !== 1 || used.has(i)) {
@@ -546,8 +656,10 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         for (let j = 0; j < found.length; j++) {
             const negative = found[j]!;
             const d = distance(positive.pix, negative.pix, grid);
-            // Pairs are judged by the measured centroid shift below, not by which catalogue entry is nearest:
-            // the caller passes each star at both visit dates, so one moving star has two entries.
+            const positiveStar = nearestStar(positive.pix), negativeStar = nearestStar(negative.pix);
+            if (positiveStar?.id !== undefined && negativeStar?.id !== undefined && positiveStar.id !== negativeStar.id) {
+                continue;
+            }
             if (negative.sign === -1 && !used.has(j) && d <= opt.dipoleArcsec && d < closest
                 && Math.max(positive.area, negative.area) <= 3 * Math.min(positive.area, negative.area)) {
                 best = j;
@@ -555,17 +667,20 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             }
         }
         if (best >= 0) {
-            used.add(i);
-            used.add(best);
             const negative = found[best]!;
+            if (positive.edge || negative.edge) {
+                used.add(i); used.add(best); result.rejected.edge += 2;
+                continue;
+            }
             const center = { x: (positive.pix.x + negative.pix.x) / 2, y: (positive.pix.y + negative.pix.y) / 2 };
             const before = sourceCentroid(earlier.data, center, grid), after = sourceCentroid(later.data, center, grid);
             const shift = before && after ? distance(before, after, grid) : 0;
             const uncertainty = Math.hypot(PSF_FWHM / (2.35 * positive.snr), PSF_FWHM / (2.35 * negative.snr));
             if (shift < opt.minShiftArcsec || shift < 3 * uncertainty) {
-                result.rejected.residual += 2;
                 continue;
             }
+            used.add(i);
+            used.add(best);
             const c = candidate(positive, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
             c.kind = 'mover';
             c.reason = `Source centroids shifted ${shift.toFixed(1)}″ between visits (${snrText(c.snr)}; candidate).`;
@@ -577,9 +692,20 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         if (used.has(i)) {
             return;
         }
-        const star = nearestStar(blob.pix);
+        if (blob.edge) {
+            used.add(i); result.rejected.edge++;
+            return;
+        }
+        const own = nearestStar(blob.pix);
+        // A spot a little further out (up to dipoleArcsec) is a wobble leftover of that star only when the
+        // opposite lobe sits on the far side of it; otherwise it may be a real new source beside a steady star.
+        const star = own ?? stars.filter((s) => Number.isFinite(s.x) && Number.isFinite(s.y)
+            && distance(blob.pix, s, grid) <= opt.dipoleArcsec
+            && blob.sign * lobe(earlier.data, later.data, { x: 2 * s.x - blob.pix.x, y: 2 * s.y - blob.pix.y }, grid)
+                <= -0.3 * blob.sign * lobe(earlier.data, later.data, blob.pix, grid))
+            .sort((a, b) => distance(blob.pix, a, grid) - distance(blob.pix, b, grid))[0];
         if (star) {
-            const frac = fractionalChange(earlier.data, later.data, star, grid);
+            const frac = blended(blob, star) ? undefined : fractionalChange(earlier.data, later.data, star, grid);
             if (frac !== undefined && Math.abs(frac) < opt.minFracChange) {
                 used.add(i); result.rejected.residual++;
             }
@@ -587,7 +713,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     });
     found.forEach((b, i) => {
         if (!used.has(i)) {
-            let frac = fractionalChange(earlier.data, later.data, b.pix, grid);
+            const star = nearestStar(b.pix);
+            const isBlended = star !== undefined && blended(b, star);
+            let frac = isBlended ? undefined : fractionalChange(earlier.data, later.data, b.pix, grid);
             const signMismatch = frac !== undefined && Math.sign(frac) !== b.sign;
             if (signMismatch) { frac = undefined; }
             if (frac !== undefined && Math.abs(frac) < opt.minFracChange) {
@@ -601,6 +729,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 c.reason = c.kind === 'brightness'
                     ? `A catalogue star here is ${change} than in the earlier image (candidate).`
                     : `A source here is ${change} than in the earlier image, with no catalogue star here (candidate).`;
+            } else if (isBlended) {
+                c.reason = `A catalogue star here is ${b.sign === 1 ? 'brighter' : 'fainter'} than in the earlier image; `
+                    + `by how much could not be measured, because a nearby catalogue star changed the other way (${snrText(c.snr)}; candidate).`;
             } else {
                 c.kind = 'unknown';
                 c.reason = b.sign === 1 && !c.gaiaMatch && !signMismatch
@@ -709,7 +840,8 @@ export function findTracklets(visit: RegriddedFrame[], templates: RegriddedFrame
         if (Number.isFinite(result.sigma)) {
             sigmas.push(result.sigma);
         }
-        const spots = found.filter((b) => b.sign === 1 && match(b.pix, stars, grid, opt.matchArcsec) === undefined)
+        result.rejected.edge += found.filter((b) => b.edge).length;
+        const spots = found.filter((b) => !b.edge && b.sign === 1 && match(b.pix, stars, grid, opt.matchArcsec) === undefined)
             .sort((a, b) => b.snr - a.snr);
         const cap = Math.max(0, Math.floor(opt.maxSpotsPerFrame));
         if (spots.length > cap && !result.notes.includes(`Spots limited to ${cap} brightest per frame for linking.`)) {
@@ -738,15 +870,15 @@ export function findTracklets(visit: RegriddedFrame[], templates: RegriddedFrame
                     }
                 }
             }
-            for (let c = 0; c < groups.length; c++) {
-                if (c !== a && c !== b && areas[c]! > 0) {
+            for (let c = a + 1; c < b; c++) {
+                if (areas[c]! > 0) {
                     chanceLines += pairs * groups[c]!.reduce((sum, p) => sum + Math.PI
                         * pointTolerance(p.blob.snr, opt.lineTolArcsec) ** 2, 0) / areas[c]!;
                 }
             }
         }
     }
-    const minPoints = chanceLines > 0.05 ? 4 : 3;
+    const minPoints = chanceLines > 0.1 ? 4 : 3;
     if (minPoints === 4) {
         result.notes.push(`Many spots per frame: random spots would make about ${chanceLines.toFixed(1)} 3-frame lines by chance, so tracks here need at least 4 frames.`);
     }

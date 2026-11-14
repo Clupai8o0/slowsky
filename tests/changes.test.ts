@@ -109,6 +109,67 @@ function near(x: number, y: number, a: { pix: { x: number; y: number } }, radius
 
 describe('change finder', () => {
     beforeEach(() => { seed = 918273; });
+    it('keeps opposite changes on distinct catalogue stars', () => {
+        for (const separation of [4, 6]) {
+            for (const fraction of [0.6, 0.9]) {
+                for (const ids of [false, true]) {
+                    const a = noise(grid), b = noise(grid);
+                    const x1 = 60 - separation / 2, x2 = 60 + separation / 2;
+                    point(a, grid, x1, 60, 2000); point(a, grid, x2, 60, 2000);
+                    point(b, grid, x1, 60, 2000 * (1 - fraction));
+                    point(b, grid, x2, 60, 2000 * (1 + fraction));
+                    const stars = [{ x: x1, y: 60, ...(ids ? { id: 'a' } : {}) },
+                        { x: x2, y: 60, ...(ids ? { id: 'b' } : {}) }];
+                    const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, stars);
+                    const label = `${separation} px, ${fraction}, ids ${ids}`;
+                    if (ids) {
+                        expect(r.candidates.filter((c) => c.kind === 'mover'), label).toHaveLength(0);
+                        expect(r.candidates.map((c) => c.sign).sort(), label).toEqual([-1, 1]);
+                        expect(r.candidates.every((c) => c.kind === 'brightness' && c.gaiaMatch
+                            && /could not be measured, because a nearby catalogue star changed/.test(c.reason)), label).toBe(true);
+                    } else {
+                        // Without ids two stars cannot always be told from one moving star; the result must say so.
+                        expect(r.candidates.length, label).toBeGreaterThan(0);
+                        expect(r.notes.join(' '), label).toMatch(/no ids.*look like one mover/);
+                    }
+                }
+            }
+        }
+    });
+
+    it('does not label edge wobble as an uncatalogued source', () => {
+        for (const x of [10, 14, 18]) {
+            for (const amplitude of [300, 1000, 3000]) {
+                const a = noise(grid), b = noise(grid);
+                point(a, grid, x, 60, amplitude);
+                point(b, grid, x - 1.4 / grid.pixelArcsec, 60, amplitude);
+                const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x, y: 60 }]);
+                expect(r.candidates.some((c) => c.reason.includes('no catalogue star here'))).toBe(false);
+            }
+        }
+    });
+
+    it('reports nonfinite wavelengths as unknown', () => {
+        const a = noise(grid), b = noise(grid);
+        for (const lambda of [NaN, Infinity]) {
+            expect(compareVisits(image(a, 'a', 60000, lambda), image(b, 'b'), grid, []).notes.join(' '))
+                .toMatch(/Wavelengths: unknown/);
+        }
+    });
+
+    it('reports a single variance map accurately', () => {
+        const a = noise(grid), b = noise(grid);
+        const one = compareVisits({ ...image(a, 'a'), variance: new Float32Array(a.length) }, image(b, 'b'), grid, []);
+        expect(one.notes.join(' ')).toMatch(/error map on only one visit; noise from the difference image only/i);
+    });
+
+    it('identifies a malformed variance input', () => {
+        const a = noise(grid), b = noise(grid);
+        expect(() => compareVisits({ ...image(a, 'a'), variance: new Float32Array(2) },
+            { ...image(b, 'b'), variance: new Float32Array(b.length) }, grid, [])).toThrow(/variance/i);
+        expect(() => compareVisits({ ...image(a, 'a'), variance: new Float32Array(2) },
+            image(b, 'b'), grid, [])).toThrow(/variance/i);
+    });
     it('rejects sub-threshold catalogue wobble as a mover', () => {
         const a = noise(grid), b = noise(grid);
         point(a, grid, 60, 60, 2000);
@@ -274,7 +335,8 @@ describe('change finder', () => {
         }
         let count = 0;
         let blind = 0;
-        let notes = '';
+        let understated = 0;
+        const lowVariance = new Float32Array(grid.width * grid.height).fill(0.25);
         for (let trial = 0; trial < 30; trial++) {
             const a = noise(grid), b = noise(grid);
             for (let y = 48; y <= 71; y++) {
@@ -285,11 +347,15 @@ describe('change finder', () => {
             count += compareVisits({ ...image(a, 'a'), variance }, { ...image(b, 'b'), variance }, grid, []).candidates.length;
             const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
             blind += r.candidates.length;
-            notes = r.notes.join(' ');
+            understated += compareVisits({ ...image(a, 'a'), variance: lowVariance },
+                { ...image(b, 'b'), variance: lowVariance }, grid, []).candidates.length;
         }
-        console.log(`Noisy patch, 30 trials: ${count} candidates with error maps, ${blind} without`);
+        console.log(`Noisy patch, 30 trials: ${count} correct map, ${blind} no map, ${understated} understated map`);
         expect(count).toBeLessThanOrEqual(1);
-        expect(notes).toMatch(/difference image only.*noisy patch/);
+        // Without error maps the noise comes from the difference alone; a 37″ patch at 5x noise is close in size
+        // to a cluster of real faint changes. The one-sided window estimate cuts 67 to 14; error maps cut it to 0.
+        expect(blind).toBeLessThanOrEqual(20);
+        expect(understated).toBeLessThanOrEqual(blind);
     });
 
     it('keeps sensitivity with flat error maps', () => {
@@ -326,6 +392,50 @@ describe('change finder', () => {
         });
         const r = findTracklets(visit, [frame(template, g, 't', 60000)], g, [], { maxSpotsPerFrame: 3 });
         expect(r.notes.join(' ')).toMatch(/spots.*3/i);
+        const moving = [0, 20, 40].map((minutes, i) => {
+            const data = noise(g);
+            for (let j = 0; j < 3; j++) {
+                point(data, g, 40 + j * 100, 50, 100);
+            }
+            point(data, g, 80 + i * 20, 250, 30);
+            return frame(data, g, `m${i}`, 60010 + minutes / 1440);
+        });
+        const capped = findTracklets(moving, [frame(template, g, 't', 60000)], g, [], { maxSpotsPerFrame: 3 });
+        expect(capped.candidates.some((c) => c.track?.some((p) => near(80, 250, { pix: p.pix }, 6)))).toBe(false);
+        const uncapped = findTracklets(moving, [frame(template, g, 't', 60000)], g, [], { maxSpotsPerFrame: 4 });
+        expect(uncapped.candidates.some((c) => c.track?.length === 3)).toBe(true);
+    });
+
+    it('links a three-frame mover in a crowded small field', () => {
+        let recovered = 0;
+        for (let trial = 0; trial < 5; trial++) {
+            seed = 918273 + trial;
+            const template = noise(grid);
+            const visit = [0, 2.1, 4.2].map((minutes, i) => {
+                const data = noise(grid);
+                // Clutter stays at least 2 FWHM off the mover's row: a spot on top of the mover merges with it
+                // into one long blob (a streak), which is a different limit from the one tested here.
+                for (let j = 0; j < 5; j++) {
+                    const y = 15 + random() * 70;
+                    injectSnr(template, data, grid, 15 + random() * 91, y < 44 ? y : y + 32, 6 + random() * 10);
+                }
+                injectSnr(template, data, grid, 45 + 400 * (minutes / 60) / grid.pixelArcsec, 60, 20);
+                return frame(data, grid, `v${i}`, 60010 + minutes / 1440);
+            });
+            if (findTracklets(visit, [frame(template, grid, 't', 60000)], grid, [])
+                .candidates.some((c) => c.track && Math.abs(c.speedArcsecPerHour! - 400) < 80)) {
+                recovered++;
+            }
+        }
+        expect(recovered).toBeGreaterThanOrEqual(4);
+    });
+    it('keeps a new source beside a steady catalogue star', () => {
+        const earlier = noise(grid), later = noise(grid);
+        point(earlier, grid, 60, 60, 2000);
+        point(later, grid, 60, 60, 2000);
+        point(later, grid, 60 + 14 / grid.pixelArcsec, 60, 100);
+        const result = compareVisits(image(earlier, 'a'), image(later, 'b'), grid, [{ x: 60, y: 60, id: 's1' }]);
+        expect(result.candidates.some((c) => c.sign === 1 && near(60 + 14 / grid.pixelArcsec, 60, c))).toBe(true);
     });
     it('rejects a weak wing leftover near a much stronger change', () => {
         const earlier = noise(grid), later = noise(grid);
@@ -621,9 +731,9 @@ describe('real snapshot changes', () => {
             const lastFrame = last[last.length - 1]!.frame;
             const lastMjd = (lastFrame.tMin + lastFrame.tMax) / 2;
             const track = gridSkyToPix(result.grid, positionAt(target.astrometry, lastMjd));
-            const stars = [mid(first), mid(last)].flatMap((date) => result.stars.map((s) => gridSkyToPix(result.grid, positionAt({
+            const stars = [mid(first), mid(last)].flatMap((date) => result.stars.map((s) => ({ ...gridSkyToPix(result.grid, positionAt({
                 ra: s.ra, dec: s.dec, epochJyear: s.epochJyear, pmRa: s.pmRa ?? 0, pmDec: s.pmDec ?? 0,
-            }, date))));
+            }, date)), id: s.sourceId })));
             const a = stackVisit(first), b = stackVisit(last);
             const changes = compareVisits({ data: a.data, lambda: first[0]!.lambdaAtCenter, mjd: mid(first),
                 obsIds: first.map((f) => f.frame.obsId) },
@@ -636,7 +746,9 @@ describe('real snapshot changes', () => {
                 expect(c.fracChange === undefined || c.fracChange >= -1).toBe(true);
                 expect(c.reason).not.toMatch(/fainter by (1\d\d|[2-9]\d\d)%|\d{3,}% fainter/);
                 if (c.kind === 'mover' && c.gaiaMatch) {
-                    expect(Number(c.reason.match(/shifted ([\d.]+)″/)?.[1])).toBeGreaterThanOrEqual(3);
+                    const shift = c.reason.match(/shifted ([\d.]+)″/);
+                    expect(shift).not.toBeNull();
+                    expect(Number(shift![1])).toBeGreaterThanOrEqual(3);
                 }
             }
             if (id === 'rwaur') {
