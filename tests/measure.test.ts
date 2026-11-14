@@ -161,7 +161,8 @@ describe('curveFor', () => {
         expect(sumNoise([1000, 10], [0.1, 0.1], [0.0001, 0.1])).toBeLessThan(0.002);
         expect(sumNoise([1000, 10], [0.1, 0.1], [0.1, 0.0001])).toBeGreaterThan(0.09);
         // Non-positive fluxes are skipped and never give a negative noise.
-        expect(sumNoise([400, -450], [0.05, 0.05])).toBeGreaterThanOrEqual(0);
+        // With the negative one skipped, the one star left is the whole sum: its own scatter.
+        expect(sumNoise([400, -450], [0.05, 0.05])).toBeCloseTo(0.05, 6);
         expect(sumNoise([], [])).toBe(0);
     });
 
@@ -178,16 +179,17 @@ describe('curveFor', () => {
 
     it('weights comparison noise by median reference flux over valid frames', () => {
         const r = result([100, 100, 100, 100, 100, 100]);
-        r.frames = [800, 1200, 1000, 900, 1100, 100000].map((flux, k) => ({
+        // Skewed so the median (900) is not the mean (1044): the weight must be the median.
+        r.frames = [800, 820, 1000, 900, 1700, 100000].map((flux, k) => ({
             frame: frame(k, [{ at: TARGET, flux: 100 }, ...REFS.map((at, i) => ({ at, flux: i === 0 ? flux : 20 }))], k === 5 ? TARGET : undefined),
             label: '',
         }));
         const c = curveFor(r);
         expect(c?.refs).toBe(4);
         expect(c!.lc.points.filter((p) => p.valid)).toHaveLength(5);
-        const fluxes = [1000, 20, 20, 20];
         // Aperture sums are proportional to the injected fluxes, and sumNoise depends only on their ratios.
-        expect(c!.noise).toBeCloseTo(sumNoise(fluxes, c!.lc.refScatter), 3);
+        expect(c!.noise).toBeCloseTo(sumNoise([900, 20, 20, 20], c!.lc.refScatter), 3);
+        expect(Math.abs(c!.noise - sumNoise([1044, 20, 20, 20], c!.lc.refScatter))).toBeGreaterThan(1e-3);
         expect(c!.noise).toBeGreaterThan(0.1);
     });
 
@@ -258,6 +260,8 @@ describe('shiftFor', () => {
         expect(s?.to).toBe(2);
         expect(s?.predictedArcsec).toBeCloseTo(expected, 8);
         expect(s?.errArcsec).toBeCloseTo(3.9975, 10);
+        // Significant means the expected shift is at least twice the measuring error: 5.5″ is not, 11″ is.
+        expect(s!.predictedArcsec >= 2 * s!.errArcsec).toBe(significant);
         expect(s?.significant).toBe(significant);
     });
 
