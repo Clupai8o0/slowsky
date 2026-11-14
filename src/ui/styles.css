@@ -273,6 +273,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
    cuts only (a blink is a swap, never a fade). The corner tag says which picture shows; square corners, keyboard
    reachable. The bracket beside the target's catalogue path is cyan, apart from the gold rings and white marks. */
 .sk-slot-ep > canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+.sk-slot-ep > svg { position: absolute; inset: 0; }
 .sk-slot-ep .path { stroke: #7fd8ff; stroke-width: 1.75; }
 .sk-ep-tag { position: absolute; z-index: 2; top: 10px; left: 10px; display: inline-flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 10px;
     border: 1px solid rgba(255, 255, 255, .22); border-radius: 2px; background: rgba(3, 5, 11, .82); color: var(--ink);

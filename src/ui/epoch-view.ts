@@ -5,7 +5,8 @@
 // - nothing is read before the first press; a new result (target, field, colour) aborts and drops the picture;
 // - display values are drawn straight to grey, never through the SPHEREx stretch; NaN is hatched, never black;
 // - no number from the result (pixelArcsec, order, covered) is printed;
-// - the older picture and frame playback are never on together.
+// - the older picture and frame playback are never on together: pressing the key pauses playback, and Play or a
+//   frame step switches the older picture off.
 import { EPOCH_NOTE, TWO_MASS_K, epochCredit, readEpoch, type EpochDecoded, type EpochResult } from '../lib/epoch';
 import { gridSkyToPix } from '../lib/regrid';
 import { positionAt, targetById } from '../lib/targets';
@@ -322,6 +323,9 @@ export function createEpoch(deps: EpochDeps): EpochSlot
         ctrl = new AbortController();
         status = { s: 'loading' };
         const result = v.result;
+        // Playback pauses at the press, so any frame change from here on is the user stepping: it switches this off.
+        anchor = v.index;
+        deps.pause();
         let got: Promise<EpochResult>;
         try {
             got = read(result.grid, { signal: ctrl.signal, ...(deps.decode ? { decode: deps.decode } : {}) });
@@ -337,8 +341,6 @@ export function createEpoch(deps: EpochDeps): EpochSlot
                     bracket: epochBracket(result, view?.targetId) };
                 phase = 'then';
                 hand = deps.reducedMotion;
-                anchor = view?.index ?? null;
-                deps.pause();
                 runTimer();
                 if (!hand && deps.visibility && !unlisten) {
                     unlisten = deps.visibility.listen(() => {
@@ -374,7 +376,7 @@ export function createEpoch(deps: EpochDeps): EpochSlot
                 tooLarge = false;
             }
             view = v;
-            if (on && (!offered(v) || (anchor !== null && status.s === 'ready' && v.index !== anchor))) {
+            if (on && (!offered(v) || (anchor !== null && v.index !== anchor))) {
                 stop();
             }
             render();

@@ -274,6 +274,21 @@ describe('older picture: pressing it', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it('pauses at the press, and a frame step while it loads switches it off and aborts', async () => {
+        const r = rig();
+        const s = sky();
+        r.slot.update(view(s));
+        r.slot.press();
+        expect(r.pause).toHaveBeenCalledTimes(1);
+        r.slot.update(view(s, { index: 1 }));
+        expect(r.slot.on).toBe(false);
+        expect(r.signals[0]!.aborted).toBe(true);
+        r.resolve(okResult(s.grid));
+        await settle();
+        expect(r.last()).toMatchObject({ pressed: false, picture: null });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it('a refused read prints the reason and shows no picture', async () => {
         const r = rig();
         r.slot.update(view(sky()));
@@ -283,7 +298,7 @@ describe('older picture: pressing it', () => {
         expect(noteText(r.last().note)).toBe('The older picture could not be read for this view (Some tiles are missing). The SPHEREx frames are not affected.');
         expect(r.last()).toMatchObject({ picture: null, then: false, tag: null });
         expect(vi.getTimerCount()).toBe(0);
-        expect(r.pause).not.toHaveBeenCalled();
+        expect(r.pause).toHaveBeenCalledTimes(1);
     });
 });
 

@@ -1480,8 +1480,10 @@ export function mount(root: HTMLElement): void
     {
         window.clearTimeout(timer);
         st.playing = on && !!result && result.frames.length > 1;
-        if (st.playing) {
+        if (on) {
             epochSlot.off(); // the older picture and frame playback are never on together
+        }
+        if (st.playing) {
             if (st.mode !== 'blink') {
                 st.mode = 'blink';
                 draw();
