@@ -276,8 +276,9 @@ describe('change finder', () => {
         point(a, grid, 30, 30, 200); point(b, grid, 30, 30, 120);           // fade, catalogue star
         point(a, grid, 90, 30, 300); point(b, grid, 96, 30, 300);           // mover, 9″
         point(b, grid, 60, 90, 300);                                         // appeared
-        const stars = [{ x: 30, y: 30 }, { x: 90, y: 30 }, { x: 96, y: 30 }];
-        const r = compareVisits({ ...image(a, 'a'), obsIds: ['a', 'a2'] }, { ...image(b, 'b'), obsIds: ['b', 'b2'] }, grid, stars);
+        // A5: the mover's two date entries have one id; distinct stars without ids are now ambiguous.
+        const stars = [{ x: 30, y: 30, id: 'fade' }, { x: 90, y: 30, id: 'm' }, { x: 96, y: 30, id: 'm' }];
+        const r = compareVisits({ ...image(a, 'a'), obsIds: ['a', 'a2'] }, { ...image(b, 'b', 60500), obsIds: ['b', 'b2'] }, grid, stars);
         const g = { ...grid, width: 241, height: 241 };
         const template = noise(g);
         const visit = [0, 20, 40, 60].map((minutes, i) => {
@@ -383,11 +384,12 @@ describe('change finder', () => {
         expect(recovered).toBeGreaterThanOrEqual(18);
     });
 
-    it('reports rounded cutoff percentages', () => {
+    it('reports a small-change count without a cutoff percentage', () => {
         const a = noise(grid), b = noise(grid);
         point(a, grid, 60, 60, 200); point(b, grid, 60, 60, 210);
         const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60 }], { minFracChange: 0.07 });
-        expect(r.notes.join(' ')).toContain('under 7%');
+        expect(r.notes.join(' ')).toContain('1 small change on a steady source ignored.');
+        expect(r.notes.join(' ')).not.toContain('%');
     });
 
     it('limits the number of spots used for track linking', () => {
@@ -801,7 +803,7 @@ describe('change finder', () => {
         const ignored = compareVisits(image(earlier, 'a'), image(small, 'b'), grid, [{ x: 60, y: 60 }]);
         expect(ignored.candidates).toHaveLength(0);
         expect(ignored.rejected.residual).toBeGreaterThanOrEqual(1);
-        expect(ignored.notes.join(' ')).toMatch(/small changes \(under 10%/);
+        expect(ignored.notes.join(' ')).toMatch(/small changes? on (a )?steady sources? ignored/);
         const kept = compareVisits(image(earlier, 'a'), image(large, 'b'), grid, [{ x: 60, y: 60 }]);
         expect(kept.candidates[0]?.kind).toBe('brightness');
         expect(kept.candidates[0]!.reason).toMatch(/is brighter than in the earlier image \(S\/N/);
@@ -810,7 +812,7 @@ describe('change finder', () => {
         expect(custom.candidates[0]?.reason).toMatch(/A source here is brighter/);
         const strict = compareVisits(image(earlier, 'a'), image(large, 'b'), grid, [], { minFracChange: 0.4 });
         expect(strict.candidates).toHaveLength(0);
-        expect(strict.notes.join(' ')).toContain('under 40%');
+        expect(strict.notes.join(' ')).toMatch(/small changes? on (a )?steady sources? ignored\./);
     });
     it('rejects malformed image shapes', () => {
         expect(() => significance(new Float32Array(3), grid)).toThrow(/length/i);
@@ -1275,7 +1277,7 @@ describe('round 8 measurement guards', () => {
         // Every reason and note is a literal in changes.ts, so check the source as well as the outputs above.
         const source = readFileSync(`${process.cwd()}/src/lib/changes.ts`, 'utf8');
         const literals = source.match(/'[^'\n]*'|`[^`]*`/g) ?? [];
-        expect(literals.filter((s: string) => /detected a|confirmed|proves|discovery/i.test(s))).toEqual([]);
+        expect(literals.filter((s: string) => /detected a|confirmed|proves|discovery|%/i.test(s))).toEqual([]);
     });
 
     it('hedges a catalogue brightening beside an uncatalogued fade (Codex 3)', () => {
@@ -1373,7 +1375,7 @@ describe('round 8 measurement guards', () => {
         point(a, grid, 60, 60, 1000); point(b, grid, 60, 60, 1050);
         const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
         expect(r.candidates).toHaveLength(0);
-        expect(r.notes.join(' ')).toMatch(/\d+ small changes \(under 10%\) ignored/);
+        expect(r.notes.join(' ')).toMatch(/\d+ small changes? on (a )?steady sources? ignored/);
         expect(r.notes.join(' ')).not.toMatch(/steady stars|0 shadows|0 spots/);
     });
 
@@ -1437,14 +1439,15 @@ describe('round 8 pair and nearby-star guards', () => {
         expect(r.notes.join(' ')).toMatch(/2 spots explained by a shift of up to 1\.5″/);
     });
 
-    it('describes an opposite change near a star without claiming its image shifted', () => {
+    it('describes a brighter-star blend without claiming its image shifted (A3)', () => {
         const a = noise(grid), b = noise(grid);
         point(a, grid, 60, 60, 1000); point(b, grid, 60, 60, 1000);
         point(a, grid, 52, 60, 300); point(b, grid, 68, 60, 300);
         const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60, id: 's' }]);
         expect(r.candidates).toHaveLength(2);
         for (const c of r.candidates) {
-            expect(c.reason).toContain('with an opposite change near that star');
+            expect(c.kind).toBe('unknown');
+            expect(c.reason).toMatch(/^A change near a brighter catalogue star \d+\.\d″ away; too blended here to say what changed/);
             expect(c.reason).not.toContain('whose image shifted');
         }
     });
@@ -1453,7 +1456,7 @@ describe('round 8 pair and nearby-star guards', () => {
 describe('round 8 edge-opposite guard', () => {
     beforeEach(() => { seed = 918273; });
 
-    it('keeps the hedge when an opposite spot was rejected at the edge', () => {
+    it('uses the single-star sentence when an opposite spot was rejected at the edge (C3)', () => {
         const a = noise(grid), b = noise(grid), P = grid.pixelArcsec;
         point(a, grid, 15 / P, 60, 500);
         point(a, grid, 27 / P, 60, 2000); point(b, grid, 27 / P, 60, 3000);
@@ -1461,8 +1464,9 @@ describe('round 8 edge-opposite guard', () => {
         expect(r.rejected.edge).toBeGreaterThan(0);
         const c = r.candidates.find((c) => c.gaiaMatch);
         expect(c).toBeDefined();
-        expect(c!.kind).toBe('unknown');
-        expect(c!.reason).toMatch(/^Brighter at this catalogue star, with a fainter spot/);
+        expect(c!.kind).toBe('brightness');
+        expect(c!.reason).toMatch(/^A catalogue star here is brighter than in the earlier image/);
+        expect(c!.reason).not.toMatch(/fainter spot|opposite/);
     });
 });
 
@@ -1480,6 +1484,309 @@ describe('round 8 shadow chain guard', () => {
             expect(r.candidates, `direction ${direction}`).toHaveLength(1);
             expect(near(x, 60, r.candidates[0]!, 6)).toBe(true);
             expect(r.notes.join(' ')).toMatch(/2 shadows near stronger changes ignored/);
+        }
+    });
+});
+
+describe('round 9 wobble and coverage guards', () => {
+    beforeEach(() => { seed = 918273; });
+    const P = grid.pixelArcsec;
+    const measured = (r: ReturnType<typeof compareVisits>): string => JSON.stringify({
+        candidates: r.candidates.map((c) => ({ kind: c.kind, snr: c.snr, sign: c.sign, pix: c.pix, reason: c.reason })),
+        rejected: r.rejected, notes: r.notes,
+    });
+
+    it('deduplicates date entries before the four-anchor limit in a steady three-star field (A2 slots)', () => {
+        const a = noise(grid).map((v) => v * 0.001), b = noise(grid);
+        const stars = [];
+        for (const [i, dx, dy] of [[0, 1.4, 0], [1, -1.2, 0.3], [2, 0.2, -1.3]]) {
+            const x = 60.3 + (i! - 1) * 4 / P, y = 60.2;
+            point(a, grid, x, y, 1000); point(b, grid, x + dx! / P, y + dy! / P, 1000);
+            stars.push({ x: x - 0.05 / P, y, id: `s${i}` }, { x: x + 0.05 / P, y, id: `s${i}` });
+        }
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, stars);
+        expect(r.candidates, measured(r)).toHaveLength(0);
+        expect(r.notes.join(' '), measured(r)).not.toContain('small changes');
+    });
+
+
+    it('converges on two steady stars 4″ apart with opposing wobbles (C1)', () => {
+        const a = noise(grid), b = noise(grid), x1 = 60.3 - 2 / P, x2 = 60.3 + 2 / P, y = 60.2;
+        point(a, grid, x1, y, 2000); point(a, grid, x2, y, 2000);
+        point(b, grid, x1 + 1.4 / P, y, 2000); point(b, grid, x2 - 1.2 / P, y + 0.3 / P, 2000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y, id: 'a' }, { x: x2, y, id: 'b' }]);
+        expect(r.candidates, measured(r)).toHaveLength(0);
+    });
+
+    it('does not lend a rejected wobble or a rising core to an opposite explanation (C3)', () => {
+        const a = noise(grid), b = noise(grid), x1 = 60.3 - 3 / P, x2 = 60.3 + 3 / P, y = 60.2;
+        point(a, grid, x1, y, 1000); point(a, grid, x2, y, 3000);
+        point(b, grid, x1 - 1.4 / P, y, 2500); point(b, grid, x2 - 1.4 / P, y, 3000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y, id: 'a' }, { x: x2, y, id: 'b' }]);
+        expect(r.candidates.length, measured(r)).toBeGreaterThan(0);
+        expect(r.candidates.map((c) => c.reason), measured(r)).not.toEqual(expect.arrayContaining([
+            expect.stringMatching(/opposite at a nearby|with a fainter spot|other fainter/),
+        ]));
+    });
+
+    it('hedges a single-source shift close to the wobble bound, with and without a catalogue (A4)', () => {
+        let retained = 0;
+        for (const catalogued of [false, true]) {
+            for (const offset of [1.6, 1.7, 1.8, 2.0]) {
+                const a = noise(grid), b = noise(grid);
+                point(a, grid, 60.3, 60.2, 100); point(b, grid, 60.3 + offset / P, 60.2, 100);
+                const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, catalogued ? [{ x: 60.3, y: 60.2, id: 's' }] : [],
+                    { minShiftArcsec: 0.1 });
+                expect(r.candidates.filter((c) => c.kind === 'mover'), `${catalogued}, ${offset}: ${measured(r)}`).toHaveLength(0);
+                for (const c of r.candidates) {
+                    retained++;
+                    expect(c.kind, measured(r)).toBe('unknown');
+                    expect(c.reason, measured(r)).toMatch(/^Light moved about \d\.\d″ between visits; this could be a slow mover or a registration error/);
+                }
+            }
+        }
+        expect(retained).toBeGreaterThan(0);
+    });
+
+    it('keeps an unresolved shift below the default mover cutoff and quotes the measured distance (A4 cutoff)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60.3, 60.2, 300); point(b, grid, 60.3 + 2 / P, 60.2, 300);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60.3, y: 60.2, id: 's' }]);
+        expect(r.candidates, measured(r)).toHaveLength(1);
+        expect(r.candidates[0]!.kind).toBe('unknown');
+        const value = r.candidates[0]!.reason.match(/^Light moved about ([\d.]+)″/);
+        expect(value, measured(r)).not.toBeNull();
+        expect(Number(value![1])).toBeGreaterThanOrEqual(1.5);
+        expect(Number(value![1])).toBeLessThan(2);
+    });
+
+    it('checks ordinary wobble before pairing an uncatalogued dipole with a low shift cutoff (A4 ordinary)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 2000); point(b, grid, 60 + 1.4 / P, 60, 2000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [], { minShiftArcsec: 0.1 });
+        expect(r.candidates, measured(r)).toHaveLength(0);
+    });
+
+    it('blocks opposite changes on two catalogue stars without ids (A5)', () => {
+        const a = noise(grid), b = noise(grid), x1 = 60 - 7.5 / P, x2 = 60 + 7.5 / P;
+        point(a, grid, x1, 60, 1000); point(b, grid, x2, 60, 1000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y: 60 }, { x: x2, y: 60 }], { dipoleArcsec: 20 });
+        expect(r.candidates, measured(r)).toHaveLength(1);
+        expect(r.candidates[0]!.kind, measured(r)).toBe('unknown');
+        expect(r.candidates[0]!.reason, measured(r)).toMatch(/^Either a source moved between two catalogue stars 15\.0″ apart/);
+    });
+
+    it('validates the whole patch before discarding a new source 8″ from a steady star (C2)', () => {
+        const a = noise(grid), b = noise(grid), x = 60.3, y = 60.2;
+        point(a, grid, x, y, 3000); point(b, grid, x, y, 3000); point(b, grid, x + 8 / P, y, 300);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x, y, id: 's' }]);
+        const c = r.candidates.find((c) => near(x + 8 / P, y, c, 6));
+        expect(c, measured(r)).toBeDefined();
+        expect(c!.snr).toBeGreaterThan(20);
+        expect(c!.kind).toBe('unknown');
+    });
+
+    it('does not discard a wobbling-star patch with a faint new source (C2 patch)', () => {
+        const a = noise(grid), b = noise(grid), x = 60.3, y = 60.2;
+        point(a, grid, x, y, 1000); point(b, grid, x + 0.7 / P, y, 1000);
+        point(b, grid, x + 12 / P, y, 10);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x, y, id: 's' }]);
+        expect(r.candidates.length, measured(r)).toBeGreaterThan(0);
+        expect(r.notes.join(' '), measured(r)).not.toContain('spots explained by a shift');
+    });
+
+    it('keeps a marginal new source when only noise was present earlier (C2 blank sky)', () => {
+        const a = noise(grid), b = noise(grid);
+        injectSnr(a, b, grid, 60, 60, 5.2);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
+        expect(r.candidates.some((c) => near(60, 60, c, 6)), measured(r)).toBe(true);
+    });
+
+    it('keeps the measured 5.2-sigma blank-sky change that noise shifting used to erase (C2 noise)', () => {
+        // Fixed noise realisation 18; the original code erases this source as wobble.
+        for (let n = 0; n < 18; n++) {
+            noise(grid); noise(grid);
+        }
+        const a = noise(grid), b = noise(grid);
+        injectSnr(a, b, grid, 60, 60, 5.2);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
+        const c = r.candidates.find((c) => near(60, 60, c, 6));
+        expect(c, measured(r)).toBeDefined();
+        expect(c!.snr).toBeCloseTo(5.1566, 3);
+        expect(c!.kind).toBe('unknown');
+    });
+
+    it('does not explain a distant lobe by shifting a source outside the matching radius (C2 source)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 300, 16); point(b, grid, 60 + 1.4 / P, 60, 300, 16);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [], { minFracChange: 0 });
+        expect(r.candidates.length, measured(r)).toBeGreaterThan(0);
+        expect(r.notes.join(' '), measured(r)).not.toContain('spots explained by a shift');
+    });
+
+    it('requires a clear improvement before crossing the cutoff (C2 half)', () => {
+        for (let n = 0; n < 10; n++) {
+            noise(grid); noise(grid);
+        }
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60.3, 60.2, 20); point(b, grid, 60.3, 60.2, 16);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid,
+            [{ x: 60.3, y: 60.2, id: 's' }, { x: 60.3 + 0.1 / P, y: 60.2, id: 's' }]);
+        expect(r.candidates.some((c) => c.sign === -1), measured(r)).toBe(true);
+    });
+
+    it('checks the measured core sign with two kept opposing catalogue spots (C6)', () => {
+        const a = noise(grid), b = noise(grid), x1 = 60.3 - 3 / P, x2 = 60.3 + 3 / P, y = 60.2;
+        point(a, grid, x1, y, 1000); point(a, grid, x2, y, 3000);
+        point(b, grid, x1 - 1.4 / P, y, 2500); point(b, grid, x2 - 1.4 / P, y, 3000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y, id: 'a' }, { x: x2, y, id: 'b' }]);
+        expect(r.candidates, measured(r)).toHaveLength(2);
+        const positive = r.candidates.find((c) => c.sign === 1)!;
+        const negative = r.candidates.find((c) => c.sign === -1)!;
+        // These conditions reach the blended-core guard: neither the distance nor the strength check excludes it.
+        expect(positive.gaiaMatch && negative.gaiaMatch).toBe(true);
+        expect(negative.snr * 5).toBeGreaterThan(positive.snr);
+        expect(Math.hypot(positive.pix.x - negative.pix.x, positive.pix.y - negative.pix.y) * P).toBeGreaterThan(6);
+        expect(positive.reason, measured(r)).toMatch(/^A catalogue star here is brighter than in the earlier image/);
+        expect(negative.reason, measured(r)).toMatch(/^Changed at/);
+    });
+
+    it('keeps a new source beside one isolated missing pixel (C4)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 60, 60, 300); a[60 * grid.width + 67] = NaN;
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
+        expect(r.rejected.edge, measured(r)).toBe(0);
+        expect(r.candidates.some((c) => near(60, 60, c, 6)), measured(r)).toBe(true);
+    });
+
+    it('rejects wobble despite an isolated missing pixel in its interpolation stencil (A7 wobble)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 2000); point(b, grid, 60 + 1.4 / P, 60, 2000);
+        a[60 * grid.width + 67] = NaN;
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60, id: 's' }], { edgeArcsec: 0 });
+        expect(r.candidates, measured(r)).toHaveLength(0);
+        expect(r.notes.join(' '), measured(r)).toMatch(/spots explained by a shift/);
+    });
+
+    it('still applies the small-change floor beside one missing pixel (A7 floor)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 1000); point(b, grid, 60, 60, 1050);
+        a[60 * grid.width + 67] = NaN;
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60, id: 's' }], { edgeArcsec: 0 });
+        expect(r.candidates, measured(r)).toHaveLength(0);
+        expect(r.notes.join(' '), measured(r)).toMatch(/small changes? on (a )?steady sources? ignored/);
+    });
+
+    it('keeps an isolated fade when the same catalogue star is supplied at both dates (A2)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60.3, 60.2, 2000); point(b, grid, 60.3, 60.2, 1600);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid,
+            [{ x: 60.3, y: 60.2, id: 's' }, { x: 60.3 + 0.1 / P, y: 60.2, id: 's' }]);
+        expect(r.candidates.some((c) => c.sign === -1 && near(60.3, 60.2, c, 6)), measured(r)).toBe(true);
+    });
+
+    it('keeps a smaller fade at a lowered floor despite two date entries for one star (A2 fade)', () => {
+        for (const amp of [150, 200, 250]) {
+            const a = noise(grid), b = noise(grid);
+            point(a, grid, 60.3, 60.2, amp); point(b, grid, 60.3, 60.2, 0.95 * amp);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid,
+                [{ x: 60.3 - 0.05 / P, y: 60.2, id: 's' }, { x: 60.3 + 0.05 / P, y: 60.2, id: 's' }],
+                { minFracChange: 0.01 });
+            expect(r.candidates.some((c) => c.sign === -1), `${amp}: ${measured(r)}`).toBe(true);
+        }
+    });
+
+    it('does not let four faint catalogue entries displace influential wobbling anchors (A8)', () => {
+        const a = noise(grid), b = noise(grid), x1 = 60.3 - 2 / P, x2 = 60.3 + 2 / P, y = 60.2;
+        point(a, grid, x1, y, 2000); point(a, grid, x2, y, 2000);
+        point(b, grid, x1 + 1.4 / P, y, 2000); point(b, grid, x2 - 1.2 / P, y + 0.3 / P, 2000);
+        const faint = [-2, -1, 1, 2].map((dy, i) => ({ x: 60.3 - 8 / P, y: y + dy / P, id: `f${i}` }));
+        for (const s of faint) {
+            point(a, grid, s.x, s.y, 1); point(b, grid, s.x, s.y, 1);
+        }
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [...faint, { x: x1, y, id: 'a' }, { x: x2, y, id: 'b' }]);
+        expect(r.candidates, measured(r)).toHaveLength(0);
+        expect(r.notes.join(' '), measured(r)).toContain('3 spots explained by a shift');
+        expect(r.notes.join(' '), measured(r)).not.toContain('small changes');
+    });
+
+    for (const scenario of ['mover', 'new']) {
+        it(`keeps a ${scenario} blended with a brighter steady catalogue star as unknown (A3/A9)`, () => {
+            const a = noise(grid), b = noise(grid), x = 60, y = 60;
+            point(a, grid, x, y, 5000); point(b, grid, x, y, 5000);
+            if (scenario === 'mover') {
+                point(a, grid, x, y + 9 / P, 400); point(b, grid, x + 6 / P, y + 9 / P, 400);
+            } else {
+                point(b, grid, x + 9 / P, y, 400);
+            }
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x, y, id: 's' }]);
+            expect(r.candidates.length, measured(r)).toBeGreaterThan(0);
+            expect(r.candidates.every((c) => c.kind === 'unknown'), measured(r)).toBe(true);
+            expect(r.candidates.every((c) => /^A change near a brighter catalogue star \d+\.\d″ away; too blended here to say what changed/.test(c.reason)), measured(r)).toBe(true);
+        });
+    }
+
+    it('keeps new sources just beyond the matching radius of a brighter star (A3 close)', () => {
+        for (const separation of [6.5, 7, 7.4]) {
+            const a = noise(grid), b = noise(grid), x = 60 + separation / P;
+            point(a, grid, 60, 60, 5000); point(b, grid, 60, 60, 5000); point(b, grid, x, 60, 400);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60, id: 's' }]);
+            const c = r.candidates.find((c) => near(x, 60, c, 3));
+            expect(c, `${separation}″: ${measured(r)}`).toBeDefined();
+            expect(c!.kind).toBe('unknown');
+            expect(c!.reason).toMatch(/^A change near a brighter catalogue star \d+\.\d″ away; too blended here to say what changed/);
+        }
+    });
+
+    it('keeps a faint new source between steady catalogue cores instead of inventing inward shifts (C2 cores)', () => {
+        for (const amplitude of [8, 10, 15]) {
+            const a = noise(grid), b = noise(grid), x = 60.3, y = 60.2;
+            const stars = [-10, 10].map((dx, i) => ({ x: x + dx / P, y, id: `s${i}` }));
+            for (const s of stars) {
+                point(a, grid, s.x, s.y, 500); point(b, grid, s.x, s.y, 500);
+            }
+            point(b, grid, x, y, amplitude);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, stars);
+            const c = r.candidates.find((c) => near(x, y, c, 6));
+            expect(c, `${amplitude}: ${measured(r)}`).toBeDefined();
+            expect(c!.kind).toBe('unknown');
+        }
+    });
+
+    it('keeps asymmetric marginal new sources beside steady catalogue cores (C2 asymmetric)', () => {
+        for (const separation of [8, 10, 12]) {
+            for (const second of [false, true]) {
+                const a = noise(grid), b = noise(grid), x = 60.3, y = 60.2;
+                const stars = [{ x, y, id: 'a' }];
+                point(a, grid, x, y, 5000); point(b, grid, x, y, 5000);
+                if (second) {
+                    stars.push({ x: x - 16 / P, y, id: 'b' });
+                    point(a, grid, x - 16 / P, y, 500); point(b, grid, x - 16 / P, y, 500);
+                }
+                point(b, grid, x + separation / P, y, 10);
+                const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, stars);
+                const c = r.candidates.find((c) => near(x + separation / P, y, c, 6));
+                expect(c, `${separation}″, second ${second}: ${measured(r)}`).toBeDefined();
+                expect(c!.kind).toBe('unknown');
+            }
+        }
+    });
+
+    it('does not treat a new source between closer steady stars as core registration evidence (C2 tails)', () => {
+        for (const [offset, amplitude] of [[8, 7], [9, 12]]) {
+            seed = 918273;
+        for (let trial = 0; trial < 3; trial++) {
+            const a = noise(grid), b = noise(grid), x = 60.3, y = 60.2;
+            const stars = [-offset!, offset!].map((dx, i) => ({ x: x + dx / P, y, id: `s${i}` }));
+            for (const s of stars) {
+                point(a, grid, s.x, s.y, 500); point(b, grid, s.x, s.y, 500);
+            }
+            point(b, grid, x, y, amplitude!);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, stars);
+            const c = r.candidates.find((c) => near(x, y, c, 6));
+            expect(c, `${offset}″, ${amplitude}, ${trial}: ${measured(r)}`).toBeDefined();
+            expect(c!.kind).toBe('unknown');
+        }
         }
     });
 });
