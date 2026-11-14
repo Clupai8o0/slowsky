@@ -15,6 +15,8 @@ const both: ColourAt = { short: 4, long: 10, snrShort: 14.3, snrLong: 30.7, inde
 const grid: OutputGrid = { center: { ra: 1, dec: 2 }, fovDeg: 0.1, pixelArcsec: 6.15, width: 31, height: 31 };
 const radii = { radius: 2, annulusIn: 4, annulusOut: 7 };
 const readings: string[] = [];
+// One visit of six frames that agree within noise, yet lean on the first (an input from the round 9 review).
+const ONE_VISIT_LEANING = [4.5, 1.25, 1.25, 1.25, 1.25, 1.25];
 
 function colourParts(...args: Parameters<typeof makeColourParts>): ReturnType<typeof makeColourParts>
 {
@@ -317,7 +319,8 @@ describe('round 9 reading', () => {
         const days = [...Array.from({ length: 11 }, (_, i) => i), 200];
         const values = [...Array(11).fill(4), 1];
         const reading = falseColourView(sky(lookFrames(Array(12).fill(4), days, 1.25)), sky(lookFrames(values, days)), radii).parts.reading;
-        expect(reading).toContain('too weak without its strongest visit to count on its own, so it could not be confirmed at a second date');
+        expect(reading).toContain('but without its strongest visit the rest is below 3 times the noise, so it could not be confirmed at a second date');
+        expect(reading).not.toContain('too weak');
     });
 
     it('distinguishes two visits, one visit, and missing dates', () => {
@@ -364,7 +367,7 @@ describe('round 9 reading', () => {
         expect(reading).not.toContain('chance noise alone');
     });
 
-    it('handles Gaia stars at the boundary and ignores invalid pixel positions', () => {
+    it('handles Gaia stars at the boundary and places a star with an unusable saved pixel from its sky position', () => {
         const first = sourceFrame(1.25);
         const later = sourceFrame(4.6);
         later.frame = { ...later.frame, tMin: 60200, tMax: 60200.001 };
@@ -378,18 +381,19 @@ describe('round 9 reading', () => {
         expect(falseColourView(a, b, radii).parts.method).toContain('about 12.3″ from the centre, on the edge of that circle');
         a.stars = [{ ...star, pix: { x: NaN, y: NaN } }];
         const method = falseColourView(a, b, radii).parts.method;
-        expect(method).toContain('none of the Gaia stars');
+        expect(method).toContain('passes through that circle, between 12.3″ and 12.6″');
+        expect(method).not.toContain('none of the Gaia stars');
         expect(method).not.toContain('NaN');
     });
 });
 
 describe('reliable colour readings', () => {
-    it('treats chained dates as one visit and withholds their index', () => {
+    it('does not count chained dates as separate visits and withholds their index', () => {
         for (const values of [[100, 99, 98], [99, 100, 98]]) {
             const days = [0, 6, 12];
             const reading = falseColourView(sky(lookFrames(values, days, 1.25)), sky(lookFrames(values, days)), radii).parts.reading;
-            expect(reading).toContain('all 3 frames come from one visit');
-            expect(reading).toContain('so something passing through or a detector effect cannot be ruled out');
+            expect(reading).toContain('its 3 frames span 12 days with no gap of 10 days or more between them, so they are not counted as separate visits');
+            expect(reading).not.toContain('second date');
             expect(reading).not.toMatch(/colour index [−+\d]|within 10 days of each other/);
         }
     });
@@ -518,7 +522,7 @@ describe('reliable colour readings', () => {
         }
         const weakReading = falseColourView(sky(lookFrames([5, 5], [0, 200], 1.25)), sky(weak), radii).parts.reading;
         expect(weakReading).not.toContain('different places');
-        expect(weakReading).toContain('its brightest point is not at the centre');
+        expect(weakReading).toContain('is not counted as seen at the centre');
     });
     it('groups the strongest frames by look before counting a signal', () => {
         const values = [1.12, 1.29, 1177.54, 1689.28];
@@ -687,7 +691,7 @@ describe('reliable colour readings', () => {
         const long = [sourceFrame(4.6, 15, 1000), sourceFrame(4.6, 15, 1000)].map(f => ({ ...f, grid: g }));
         const result = falseColourView({ ...sky(short), grid: g }, { ...sky(long), grid: g }, radii);
         expect(result.parts.reading).toContain('brightest 6.16″ from the centre');
-        expect(result.parts.reading).toContain('its brightest point is not at the centre');
+        expect(result.parts.reading).toContain('is not counted as seen at the centre');
     });
 
     it.each([false, true])('uses both bands and all frame dates for a moving Gaia star, reversed: %s', reverse => {
@@ -745,7 +749,7 @@ describe('reliable colour readings', () => {
         const frames = [measuredFrame(4.6, 14.2, 50, 0.2), measuredFrame(4.6, 2.8, 63)];
         const reading = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25)]), sky(frames), radii).parts.reading;
         expect(reading).toContain('seen at 4.60 µm');
-        expect(reading).toContain('too weak without its strongest frame');
+        expect(reading).toContain('and without its strongest frame the rest is below 3 times the noise');
         expect(reading).not.toMatch(/index/i);
     });
 
@@ -984,7 +988,7 @@ describe('reliable colour readings', () => {
         const long = [make(4.6, 15), make(4.6, 15), make(4.6, 15)];
         const far = falseColourView(makeSky([make(1.25, 18), make(1.25, 18), make(1.25, 18)]), makeSky(long), r);
         expect(far.parts.reading).toContain('brightest 9.00″ from the centre');
-        expect(far.parts.reading).toContain('its brightest point is not at the centre');
+        expect(far.parts.reading).toContain('is not counted as seen at the centre');
         expect(far.parts.method).not.toContain("each colour's brightest point");
         const near = falseColourView(makeSky([make(1.25, 16), make(1.25, 16), make(1.25, 16)]), makeSky(long), r);
         expect(near.parts.reading).not.toContain('brightest 3.00″');
@@ -1548,6 +1552,115 @@ describe('false colour sentence', () => {
 
     it('explains how the reading relates to the picture', () => {
         expect(colourSentence(1.25, 4.6, both)).toContain('The reading adds up a small circle of pixels and takes off the sky just around it, so it need not match the tint of the middle pixels.');
+    });
+});
+
+describe('round 9b: fixes from the real-frame probe and the round 9 reviews', () => {
+    it('does not count light that peaks away from the centre as seen there', () => {
+        const g = { ...grid, pixelArcsec: 3 };
+        const make = (lambda: number, x: number) => ({ ...sourceFrame(lambda, x, 1000), grid: g });
+        const makeSky = (frames: RegriddedFrame[]) => ({ ...sky(frames), grid: g });
+        const r = { radius: 4, annulusIn: 5, annulusOut: 7 };
+        const reading = falseColourView(makeSky([make(1.25, 18), make(1.25, 18), make(1.25, 18)]),
+            makeSky([make(4.6, 15), make(4.6, 15), make(4.6, 15)]), r).parts.reading;
+        expect(reading).toContain('1.25 µm shows light here that is brightest 9.00″ from the centre, so it may belong to a neighbouring source and is not counted as seen at the centre');
+        expect(reading).not.toContain('seen at 1.25 µm');
+        expect(reading).toContain('seen at 4.60 µm');
+    });
+
+    it('does not speak of a second date when every frame comes from one visit', () => {
+        const days = [0, 1, 2, 3, 4, 5];
+        const reading = falseColourView(sky(lookFrames([30, 30, 30, 30, 30, 30], days, 1.25)),
+            sky(lookFrames(ONE_VISIT_LEANING, days)), radii).parts.reading;
+        expect(reading).toContain('all 6 frames come from one visit, so something passing through or a detector effect cannot be ruled out, and without its strongest frame the rest is below 3 times the noise)');
+        expect(reading).not.toContain('second date');
+    });
+
+    it('says none, not "not all", when no frame has a usable date', () => {
+        const read = (days: number[]) => falseColourView(sky(lookFrames(days.map(() => 30), days, 1.25)), sky(lookFrames(days.map(() => 30), days)), radii).parts.reading;
+        expect(read([NaN, NaN])).toContain('none of its 2 frames has a usable date');
+        expect(read([NaN, NaN])).not.toContain('not all of its');
+        expect(read([0, NaN])).toContain('not all of its 2 frames have usable dates');
+    });
+
+    it('leaves out the visit sentence when the centre cannot be measured in either colour', () => {
+        const blank = (lambda: number, day: number) => {
+            const f = lookFrames([30], [day], lambda)[0]!;
+            for (let y = 13; y <= 17; y++) {
+                for (let x = 13; x <= 17; x++) { f.data[y * 31 + x] = NaN; }
+            }
+            return f;
+        };
+        const result = falseColourView(sky([blank(1.25, 0), blank(1.25, 200)]), sky([blank(4.6, 0), blank(4.6, 200)]), radii);
+        expect(result.parts.reading).toBe('At the centre: cannot be measured here (blank pixels).');
+        expect(result.parts.method).not.toContain('count as one visit');
+        expect(result.parts.method).toContain('this page does not measure a colour');
+    });
+
+    it('keeps a Gaia star whose motion cannot be worked out at its catalogue place', () => {
+        const s = sky([sourceFrame(1.25)]);
+        const l = sky([sourceFrame(4.6)]);
+        l.stars = [{ sourceId: 'no-motion', ...gridPixToSky(grid, { x: 16, y: 15 }), g: 15, epochJyear: 2016, pmRa: NaN, pmDec: NaN, pix: { x: 16, y: 15 } }];
+        const method = falseColourView(s, l, radii).parts.method;
+        expect(method).toContain('1 of the Gaia stars this page loads lies inside that circle, 6.2″ from the centre');
+        expect(method).not.toContain('none of the Gaia stars');
+    });
+});
+
+describe('round 9c: fixes from the second review of round 9', () => {
+    it('says what a brightest point that moves between frames may mean', () => {
+        const g = { ...grid, pixelArcsec: 4 };
+        const make = (lambda: number, xs: number[]) => xs.map((x, i) => {
+            const f = sourceFrame(lambda, x, 1000);
+            return { ...f, grid: g, frame: { ...f.frame, tMin: 60000 + [0, 1, 200][i]!, tMax: 60000.001 + [0, 1, 200][i]! } };
+        });
+        const reading = falseColourView({ ...sky(make(1.25, [15, 15, 15])), grid: g }, { ...sky(make(4.6, [14, 14, 16])), grid: g }, radii).parts.reading;
+        expect(reading).toContain('seen at 4.60 µm');
+        expect(reading).toContain('its brightest point sits in different places in different frames, so it may be a moving source or more than one source');
+    });
+
+    it('places a Gaia star from its sky position when its saved pixel is unusable', () => {
+        const s = sky([sourceFrame(1.25)]);
+        const l = sky([sourceFrame(4.6)]);
+        l.stars = [{ sourceId: 'no-pix', ...gridPixToSky(grid, { x: 15, y: 15 }), g: 15, epochJyear: 2016, pmRa: 0, pmDec: 0, pix: { x: NaN, y: NaN } }];
+        const method = falseColourView(s, l, radii).parts.method;
+        expect(method).toContain('1 of the Gaia stars this page loads lies inside that circle');
+        expect(method).not.toContain('none of the Gaia stars');
+        expect(method).not.toContain('could not be placed');
+    });
+
+    it('never says "none" about a Gaia star it could not place', () => {
+        const s = sky([sourceFrame(1.25)]);
+        const l = sky([sourceFrame(4.6)]);
+        l.stars = [{ sourceId: 'nowhere', ra: NaN, dec: NaN, g: 15, epochJyear: 2016, pmRa: 0, pmDec: 0, pix: { x: NaN, y: NaN } }];
+        const method = falseColourView(s, l, radii).parts.method;
+        expect(method).toContain('none of the Gaia stars this page could place lies inside that circle');
+        expect(method).toContain('1 of the stars on that list could not be placed in this picture, so it may be inside too.');
+        expect(method).not.toContain('this page loads lies inside');
+    });
+
+    it('gives two weak frames at two dates one clause, not two', () => {
+        const reading = falseColourView(sky(lookFrames([30, 30], [0, 200], 1.25)), sky(lookFrames([3, 3], [0, 200])), radii).parts.reading;
+        expect(reading).toContain('seen at 4.60 µm');
+        expect(reading).toContain('only 2 frames, and at least one of them alone is below 3 times the noise, so it is not confirmed at a second date; a moving source or two detector hits cannot be ruled out)');
+        expect(reading).not.toContain('too weak');
+        expect(reading.split('4.60 µm')[1]!.match(/, so /g)).toHaveLength(1);
+    });
+
+    it('does not call months of closely spaced frames one visit', () => {
+        const read = (days: number[]) => falseColourView(sky(lookFrames(days.map(() => 30), days, 1.25)), sky(lookFrames(days.map(() => 30), days)), radii).parts.reading;
+        const chained = read([0, 9, 18]);
+        expect(chained).toContain('its 3 frames span 18 days with no gap of 10 days or more between them, so they are not counted as separate visits');
+        expect(chained).not.toContain('from one visit');
+        expect(chained).not.toContain('passing through');
+        expect(read([0, 4, 9])).toContain('all 3 frames come from one visit, so something passing through or a detector effect cannot be ruled out');
+    });
+
+    it('explains the position comparison when the only band it ran on is one whose frames differ', () => {
+        const days = [0, 160, 360, 560];
+        const result = falseColourView(sky(lookFrames([10], [0], 1.25)), sky(lookFrames([1.12, 1.29, 1177.54, 1689.28], days)), radii);
+        expect(result.parts.reading).toContain('4.60 µm shows light that differs between frames');
+        expect(result.parts.method).toContain('Position is compared only between frames with a signal-to-noise of at least 10.');
     });
 });
 
