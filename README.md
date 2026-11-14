@@ -49,11 +49,12 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   instead of coloured, and the page lists these limits under the picture (`src/lib/falsecolour.ts`,
   `src/lib/falsecolour-view.ts`).
 - In Blink on the 0.1° or 0.25° field, switch on **Older picture** to flip the sky between the 2MASS K survey
-  picture (taken between June 1997 and February 2001) and the SPHEREx frame on screen. A fast star such as
+  picture (taken between June 1997 and February 2001) and the SPHEREx frame on screen. On the 0.25° field
   Barnard's Star sits away from its ring in the older picture, and a bracket marks where its catalogue motion puts
-  it in those years. It is a picture for looking, not a measurement: it comes from a different telescope at a
-  different wavelength (2.16 µm), its brightness cannot be compared with SPHEREx, and the night it was taken on is
-  not known (`src/lib/epoch.ts`, `src/ui/epoch-view.ts`).
+  it in those years; on the 0.1° field that spot is outside the view, and the page says so. It is a picture for
+  looking, not a measurement: it comes from a different telescope at a different wavelength (2.16 µm), its
+  brightness cannot be compared with SPHEREx, and the night it was taken on is not known (`src/lib/epoch.ts`,
+  `src/ui/epoch-view.ts`).
 - Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode, and in Subtract the two
