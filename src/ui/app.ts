@@ -19,7 +19,7 @@ import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
 import { coreBlank, curveFor, frameMjd, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
-import { FEATURES, mountFlags, renderSpectrum } from './slots';
+import { FEATURES, mountFalseColour, mountFlags, renderChanges, renderHalo, renderSpectrum, type LayerState } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -258,8 +258,10 @@ function shell(): string
     <div class="sk-sky" data-ref="sky">
       <canvas class="sk-glow" data-ref="glow" width="24" height="24" aria-hidden="true"></canvas>
       <canvas class="sk-img" data-ref="canvas" role="img" aria-label="Sky image"></canvas>
+      <div class="sk-slot-layer sk-slot-fc" data-ref="fc" hidden></div>
       <svg class="sk-ov" data-ref="ov" aria-hidden="true" preserveAspectRatio="none"></svg>
       <div class="sk-slot-flags" data-ref="flags" hidden></div>
+      <div class="sk-slot-layer" data-ref="changesMarks" hidden></div>
       <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
       <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
       <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
@@ -270,12 +272,14 @@ function shell(): string
       <div class="sk-leg">
         <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA, Gaia DPAC; Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
         <button type="button" class="sk-key g f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Flagged pixels</button>
+        <button type="button" class="sk-key g c" data-act="falsecolour" data-ref="fcKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>False colour</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
       <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
     </div>
     <p class="sk-flagnote" data-ref="flagsNote" hidden></p>
+    <p class="sk-flagnote" data-ref="fcNote" hidden></p>
     <div class="sk-player">
       <div class="sk-tr">
         <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
@@ -310,6 +314,10 @@ function shell(): string
     <h2 class="sk-mh" id="sk-h8"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
     <div class="sk-slot-spec" data-ref="specBox"></div>
   </section>
+  <section class="sk-mod sk-m-slot sk-m-changes" aria-labelledby="sk-h9" data-ref="changes" hidden>
+    <h2 class="sk-mh" id="sk-h9"><span class="ic">${ICON.diff}</span>Candidate changes</h2>
+    <div data-ref="changesBox"></div>
+  </section>
   <section class="sk-mod sk-m-ai" aria-labelledby="sk-h7" data-ref="ai" data-ai-generated="true" hidden>
     <h2 class="sk-mh" id="sk-h7" tabindex="-1"><span class="ic">${ICON.note}</span>AI note<span class="sk-ai-tag">AI-written</span></h2>
     <p class="sk-body mute">A short reading of this view by a language model, from the numbers this page measured.</p>
@@ -326,6 +334,10 @@ function shell(): string
     <div class="sk-lc" data-ref="lcwrap"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
     <div class="sk-lcx" data-ref="lcx" aria-hidden="true"></div>
     <p class="sk-body mute" data-bind="lcNote"></p>
+  </section>
+  <section class="sk-mod sk-m-slot sk-m-halo" aria-labelledby="sk-h10" data-ref="halo" hidden>
+    <h2 class="sk-mh" id="sk-h10"><span class="ic">${ICON.curve}</span>Halo over time</h2>
+    <div data-ref="haloBox"></div>
   </section>
   <section class="sk-mod sk-m-details" aria-labelledby="sk-h5">
     <h2 class="sk-mh" id="sk-h5"><span class="ic">${ICON.info}</span><span data-bind="dlh">This frame</span></h2>
@@ -347,6 +359,7 @@ export function mount(root: HTMLElement): void
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
     const aiNote = mountAiNote(ref<HTMLElement>('ai'));
     const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
+    const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderSlots());
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const glow = ref<HTMLCanvasElement>('glow');
@@ -383,7 +396,8 @@ export function mount(root: HTMLElement): void
     let timer = 0;
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
-    let flagsOn = false; // the Flags layer over the sky (slot, off until its lane lands)
+    let flagsOn = false; // the Flags layer over the sky
+    let fcOn = false; // the False colour layer over the sky (slot, off until its lane lands)
     let lookup: AbortController | null = null; // pending name lookup; any newer navigation cancels it
 
     function bind(key: string, text: string): void
@@ -893,13 +907,23 @@ export function mount(root: HTMLElement): void
         const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode, source: sourceKind } : null;
         const spec = ref<HTMLElement>('spec');
         spec.hidden = !(FEATURES.spectrum && view && renderSpectrum(ref<HTMLElement>('specBox'), view));
+        const changes = !!(FEATURES.changes && view && renderChanges(ref<HTMLElement>('changesBox'), ref<HTMLElement>('changesMarks'), view));
+        ref<HTMLElement>('changes').hidden = !changes;
+        ref<HTMLElement>('changesMarks').hidden = !changes;
+        ref<HTMLElement>('halo').hidden = !(FEATURES.halo && view && renderHalo(ref<HTMLElement>('haloBox'), view));
+        layerSlot(fcLayer.update(view, fcOn), fcOn, 'fcKey', 'fc', 'fcNote');
         // FLAGS are read only once the key is switched on (Blink, live frames); a finished read renders again.
-        const fs = flagLayer.update(view, flagsOn);
-        const key = ref<HTMLButtonElement>('flagsKey');
+        layerSlot(flagLayer.update(view, flagsOn), flagsOn, 'flagsKey', 'flags', 'flagsNote');
+    }
+
+    // A legend toggle with a layer over the sky and a line under the legend (Flags, False colour).
+    function layerSlot(fs: LayerState, on: boolean, keyRef: string, layerRef: string, noteRef: string): void
+    {
+        const key = ref<HTMLButtonElement>(keyRef);
         key.hidden = !fs.key;
-        key.setAttribute('aria-pressed', String(flagsOn));
-        ref<HTMLElement>('flags').hidden = !fs.layer;
-        const note = ref<HTMLElement>('flagsNote');
+        key.setAttribute('aria-pressed', String(on));
+        ref<HTMLElement>(layerRef).hidden = !fs.layer;
+        const note = ref<HTMLElement>(noteRef);
         if (note.textContent !== fs.note) {
             note.textContent = fs.note;
         }
@@ -1270,6 +1294,9 @@ export function mount(root: HTMLElement): void
             step(b.dataset.act === 'next' ? 1 : -1);
         } else if (b.dataset.act === 'flags') {
             flagsOn = !flagsOn;
+            renderSlots();
+        } else if (b.dataset.act === 'falsecolour') {
+            fcOn = !fcOn;
             renderSlots();
         } else if (b.dataset.act === 'gaia') {
             st.gaia = !st.gaia;
