@@ -255,7 +255,7 @@ describe('review fixes', () => {
 
 describe('round 11: every end, and the finder\'s reading', () => {
     const pair = { ...candidate, id: 'p', kind: 'unknown' as const, snr: 9, reading: 'pair' as const, reason: 'Two spots (S/N 9.0; candidate).',
-        ends: [{ visit: 'later' as const, x: 1, y: 1 }, { visit: 'earlier' as const, x: 5, y: 1 }] };
+        ends: [{ visit: 'later' as const, x: 1, y: 1, radiusPix: 2 }, { visit: 'earlier' as const, x: 5, y: 1, radiusPix: 2 }] };
     const at = (x: number, names: string[]) => ({ obsId: '', names: (p: { x: number }) => (p.x === x ? names : []) });
 
     it('drops a pair when either end is flagged in its own visit, not in the other visit', () => {
@@ -297,7 +297,7 @@ describe('round 11 wording', () => {
     const at = (x: number, names: string[]) => ({ obsId: '', names: (p: { x: number }) => (p.x === x ? names : []) });
     it('names each visit with its own spot when both ends of a pair overflow', () => {
         const pair = { ...candidate, id: 'p', kind: 'unknown' as const, snr: 9, reading: 'pair' as const, reason: 'Two spots (S/N 9.0; candidate).',
-            ends: [{ visit: 'later' as const, x: 1, y: 1 }, { visit: 'earlier' as const, x: 5, y: 1 }] };
+            ends: [{ visit: 'later' as const, x: 1, y: 1, radiusPix: 2 }, { visit: 'earlier' as const, x: 5, y: 1, radiusPix: 2 }] };
         const flags = new Map([['early', at(5, ['OVERFLOW'])], ['late', at(1, ['OVERFLOW'])]]);
         expect(screen([pair], { earlier: [earlier], later: [later] }, flags, []).kept[0]!.line)
             .toBe('Two spots (S/N 9.0; candidate). In at least one frame of each visit, the archive flags that frame’s brightest pixel within 12″ of its spot in that visit as OVERFLOW; an overflowing pixel can make the reading here unreliable.');

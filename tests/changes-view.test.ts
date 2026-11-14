@@ -80,6 +80,25 @@ describe('Candidate changes panel', () => {
     });
 });
 
+describe('round 11: marks at every end', () => {
+    it('draws one ring per end at the finder\'s aperture, numbered like the list', () => {
+        const pair = { ...cand('p', 40, 20, 'Two spots (candidate).'), reading: 'pair' as const,
+            ends: [{ visit: 'earlier' as const, x: 30, y: 20, radiusPix: 4 }, { visit: 'later' as const, x: 50, y: 20, radiusPix: 1 }] };
+        const svg = changesMarks(changesView(found([pair], [])), 200, 100);
+        expect(svg.match(/<circle/g)).toHaveLength(2);
+        expect(svg).toContain('<circle cx="30.0" cy="20.0" r="4.0"/>');
+        // A tiny aperture is drawn at 3 px so the ring stays visible.
+        expect(svg).toContain('<circle cx="50.0" cy="20.0" r="3.0"/>');
+        expect(svg.match(/<text [^>]*>1<\/text>/g)).toHaveLength(2);
+    });
+
+    it('falls back to the candidate position when no end has a usable place', () => {
+        const odd = { ...cand('o', 40, 20, 'Spot (candidate).'), ends: [{ visit: 'later' as const, x: NaN, y: 20, radiusPix: 4 }] };
+        const svg = changesMarks(changesView(found([odd], [])), 200, 100);
+        expect(svg).toContain('<circle cx="40.0" cy="20.0" r="5.0"/>');
+    });
+});
+
 describe('round 11: list cap', () => {
     const many = (n: number) => found(Array.from({ length: n }, (_, i) => ({ ...cand(`c${i}`, 10 + i, 10, `Spot ${i} (candidate).`), snr: 5 + i })), []);
 

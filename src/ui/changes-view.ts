@@ -3,16 +3,17 @@
 // claim of its own: each line is labelled "Candidate N" so the word stays on every line, and the marks over the
 // sky carry the same N. The finder's counts, noise and threshold are not shown. Pure string builders, no DOM.
 
-import type { ChangeCandidate, ChangeResult } from '../lib/changes';
+import type { ChangeCandidate, ChangeEnd, ChangeReading, ChangeResult } from '../lib/changes';
 
 // Fields the finder is adding (lane/changes r10b): `sentence` (the reason without its caveat), `caveat` (a full
 // sentence, absent when both visits have 2+ frames) and `lightVisit`; `reason` stays as an alias of `sentence`.
 // Until they land, `reason` and the candidate's sign are used.
 // Round 11 adds `reading` (what the sentence reads from the two visits) and `ends` (every lobe: one for a single
-// spot, two for a pair or mover); `lightEnds` stays as an alias of `ends` for movers.
-export type Reading = 'brighter' | 'fainter' | 'laterOnly' | 'earlierOnly' | 'moved' | 'pair' | 'differs';
-export interface CandidateEnd { visit: 'earlier' | 'later'; x: number; y: number; radiusPix?: number }
-export type PanelCandidate = Omit<ChangeCandidate, 'lightEnds'> & {
+// spot, two for a pair or mover, each with its reading aperture `radiusPix`); `lightEnds` stays as an alias of
+// `ends` for movers. The radius stays optional here only for older candidates that carry no `ends`.
+export type Reading = ChangeReading;
+export type CandidateEnd = Omit<ChangeEnd, 'radiusPix'> & { radiusPix?: number };
+export type PanelCandidate = Omit<ChangeCandidate, 'lightEnds' | 'ends'> & {
     sentence?: string; caveat?: string; lightVisit?: 'earlier' | 'later'; x?: number; y?: number;
     reading?: Reading; ends?: CandidateEnd[]; lightEnds?: CandidateEnd[]; nearCatalogue?: boolean;
 };
@@ -126,13 +127,21 @@ export function changesMarks(v: ChangesView, width: number, height: number, all 
     if (!v.candidates.length || !(width > 0) || !(height > 0)) {
         return '';
     }
+    // Text size, and the ring size when the finder gives no aperture.
     const r = Math.max(5, Math.min(width, height) / 40);
-    const rings = listed(v, all).map((c, i) => {
-        const x = c.pix.x.toFixed(1);
-        const y = c.pix.y.toFixed(1);
-        const below = c.pix.y - r * 2.2 < 0;
-        const ty = (below ? c.pix.y + r * 2.4 : c.pix.y - r * 1.5).toFixed(1);
-        return `<circle cx="${x}" cy="${y}" r="${r.toFixed(1)}"/><text x="${x}" y="${ty}" font-size="${(r * 1.6).toFixed(1)}">${i + 1}</text>`;
+    // One ring per end (both spots of a pair or mover), each the finder's own reading aperture when round 11 gives
+    // it (kept at 3 px or more so it stays visible); every ring of a candidate carries its number.
+    const rings = listed(v, all).flatMap((c, i) => {
+        const given = (c.ends?.length ? c.ends : c.lightEnds ?? []).filter(end => Number.isFinite(end.x) && Number.isFinite(end.y));
+        const ends = given.length ? given : [{ x: c.pix.x, y: c.pix.y }];
+        return ends.map((end: { x: number; y: number; radiusPix?: number }) => {
+            const ring = typeof end.radiusPix === 'number' && end.radiusPix > 0 ? Math.max(3, end.radiusPix) : r;
+            const x = end.x.toFixed(1);
+            const y = end.y.toFixed(1);
+            const below = end.y - ring - r * 1.2 < 0;
+            const ty = (below ? end.y + ring + r * 1.4 : end.y - ring - r * 0.5).toFixed(1);
+            return `<circle cx="${x}" cy="${y}" r="${ring.toFixed(1)}"/><text x="${x}" y="${ty}" font-size="${(r * 1.6).toFixed(1)}">${i + 1}</text>`;
+        });
     }).join('');
     return `<svg class="sk-chg-marks" viewBox="0 0 ${width} ${height}" aria-hidden="true">${rings}</svg>`;
 }
