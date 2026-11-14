@@ -56,13 +56,22 @@ export async function findCubeFolder(fetcher: typeof fetch = globalThis.fetch): 
         if (!/<ListBucketResult(?:\s|>)/.test(body)) {
             return CUBE_FOLDER;
         }
-        const folders = [...body.matchAll(/<Prefix>dr1\/hips5_cube\/(hips_\d{8})\/<\/Prefix>/g)].map(match => match[1]!);
+        const folders = [...body.matchAll(/<Prefix>dr1\/hips5_cube\/(hips_(\d{4})(\d{2})(\d{2}))\/<\/Prefix>/g)]
+            .filter(match => {
+                // Only a real calendar date counts: a name like hips_99999999 would make every tile read fail.
+                const [year, month, day] = [Number(match[2]), Number(match[3]), Number(match[4])];
+                const date = new Date(Date.UTC(year, month - 1, day));
+                return year >= 2025 && year <= 2099 && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+            })
+            .map(match => match[1]!);
         return folders.sort().at(-1) ?? CUBE_FOLDER;
     } catch {
         return CUBE_FOLDER;
     }
 }
 const TILE_ORDER = 5;
+// Real tiles need about 12 header blocks from the start of the file to the wavelength table.
+const HEADER_BLOCK_BUDGET = 40;
 const TILE_WIDTH = 512;
 const BLOCK = 2880;
 
@@ -279,10 +288,15 @@ export async function readCubeSpectrum(c: SkyCoord, opts: {
     }
 
     let initial: Uint8Array | undefined;
+    let headerBlocks = 0;
     async function hdu(start: number): Promise<Hdu>
     {
         const blocks: Uint8Array[] = [];
         for (let block = 0; block < 45; block++) {
+            // One budget for every header of the read: a forged chain of long headers stops early.
+            if (++headerBlocks > HEADER_BLOCK_BUDGET) {
+                throw new CubeError(`Cube FITS headers exceed ${HEADER_BLOCK_BUDGET} blocks`);
+            }
             const offset = start + block * BLOCK;
             const data = initial && offset + BLOCK <= initial.length ? initial.slice(offset, offset + BLOCK) : await range(offset, BLOCK);
             blocks.push(data);
@@ -316,9 +330,10 @@ export async function readCubeSpectrum(c: SkyCoord, opts: {
             forwardAbort();
         }
         controller.signal.throwIfAborted();
-        const boxPx = integer(opts.boxPx ?? 11, 'boxPx', 5);
+        // A 5 x 5 box holds no pixel 3 px from the centre, so it would have no background at all.
+        const boxPx = integer(opts.boxPx ?? 11, 'boxPx', 7);
         if (boxPx % 2 !== 1 || boxPx > 31) {
-            throw new CubeError('boxPx must be odd, between 5 and 31');
+            throw new CubeError('boxPx must be odd, between 7 and 31');
         }
         const concurrency = Math.min(8, integer(opts.concurrency ?? 8, 'concurrency', 1));
         spot = cubeSpot(c, opts.folder);
@@ -394,7 +409,6 @@ export async function readCubeSpectrum(c: SkyCoord, opts: {
         const surfaceBrightness = new Float32Array(depth).fill(NaN);
         const noise = new Float32Array(depth).fill(NaN);
         const reasons: ('no data' | null)[] = Array(depth).fill('no data');
-        const missingAtCentre = Array<boolean>(depth).fill(false);
         const blankCard = primary.header.get('BLANKCH') ?? h.get('BLANKCH');
         const blankPlanes = new Set<number>();
         if (typeof blankCard === 'string' && /^D[1-6]:\d{2}(?:,D[1-6]:\d{2})*$/.test(blankCard.trim())) {
@@ -414,7 +428,6 @@ export async function readCubeSpectrum(c: SkyCoord, opts: {
             while (!controller.signal.aborted && next < depth) {
                 const plane = next++;
                 if (blankPlanes.has(plane)) {
-                    missingAtCentre[plane] = true;
                     continue;
                 }
                 try {
@@ -444,7 +457,6 @@ export async function readCubeSpectrum(c: SkyCoord, opts: {
                             }
                         }
                     }
-                    missingAtCentre[plane] = missingCenter || count !== 9;
                     const bg = median(sky);
                     background[plane] = bg;
                     if (sky.length >= 8) {
@@ -466,8 +478,15 @@ export async function readCubeSpectrum(c: SkyCoord, opts: {
             throw failure;
         }
         controller.signal.throwIfAborted();
-        const noData = missingAtCentre.filter(Boolean).length;
-        return { lambda, surfaceBrightness, background, noise, reasons, notes: [`${noData} planes have no data at the centre`, ...(clipped ? ['Box clipped at tile edge'] : [])], unit, spot, bytesRead, caption: CUBE_CAPTION };
+        const noData = reasons.filter(reason => reason !== null).length;
+        const centreCut = cx < 1 || cy < 1 || cx > width - 2 || cy > height - 2;
+        const notes = [`${noData} planes have no data at the centre`];
+        if (centreCut) {
+            notes.push('The spot is on the edge of a sky tile, so its 3 × 3 pixels are cut off and no plane can be measured here');
+        } else if (clipped) {
+            notes.push('Box clipped at tile edge');
+        }
+        return { lambda, surfaceBrightness, background, noise, reasons, notes, unit, spot, bytesRead, caption: CUBE_CAPTION };
     } catch (cause) {
         controller.abort(cause);
         if (cause instanceof CubeError) {

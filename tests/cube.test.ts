@@ -87,6 +87,27 @@ describe('IRSA DR1 cube range reader', () => {
         expect(Number.isFinite(result.surfaceBrightness[1])).toBe(true);
     });
 
+    it('still has a background and a noise value with the smallest box', async () => {
+        const spot = fixture.spots[0]!;
+        const server = fake(spot);
+        // The fixture holds the default 11 x 11 box, so the 7 x 7 box is cut out of it here.
+        const lead = (2 * 512 + 2) * 4, full = (10 * 512 + 11) * 4, small = (6 * 512 + 7) * 4;
+        const fetcher: typeof fetch = async (input, init) => {
+            const match = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('Range') ?? '')!;
+            const start = Number(match[1]);
+            if (Number(match[2]) - start + 1 !== small) {
+                return server.fetcher(input, init);
+            }
+            const response = await server.fetcher(input, { ...init, headers: { Range: `bytes=${start - lead}-${start - lead + full - 1}` } });
+            return new Response((await response.arrayBuffer()).slice(lead, lead + small), { status: 206 });
+        };
+        const result = await readCubeSpectrum(spot.coord, { fetcher, boxPx: 7 });
+        const finite = Array.from(result.surfaceBrightness).filter(Number.isFinite).length;
+        expect(finite).toBeGreaterThanOrEqual(90);
+        expect(Array.from(result.noise).filter(Number.isFinite).length).toBe(finite);
+        expect(result.notes[0]).toBe(`${102 - finite} planes have no data at the centre`);
+    });
+
     it('requires eight finite background pixels for noise', async () => {
         const spot = fixture.spots[0]!;
         const server = fake(spot, (data, plane) => {
@@ -130,7 +151,7 @@ describe('IRSA DR1 cube range reader', () => {
 
     it('uses the supplied folder and accepts the box size endpoints', async () => {
         const spot = fixture.spots[0]!;
-        for (const boxPx of [5, 31]) {
+        for (const boxPx of [7, 31]) {
             const fetcher: typeof fetch = async input => {
                 expect(String(input)).toContain('/hips_20261101/');
                 throw new Error('test stopped after validation');
@@ -251,7 +272,7 @@ describe('IRSA DR1 cube range reader', () => {
         const controller = new AbortController();
         controller.abort();
         await expect(readCubeSpectrum(spot.coord, { fetcher: server.fetcher, signal: controller.signal })).rejects.toBeInstanceOf(CubeError);
-        for (const boxPx of [1, 3, 8, 0, 33, NaN]) {
+        for (const boxPx of [1, 3, 5, 8, 0, 33, NaN]) {
             await expect(readCubeSpectrum(spot.coord, { fetcher: server.fetcher, boxPx })).rejects.toBeInstanceOf(CubeError);
         }
         for (const concurrency of [0, -1, 1.5, NaN]) {
@@ -328,6 +349,8 @@ describe('IRSA DR1 cube range reader', () => {
         expect(await findCubeFolder(async () => { throw new Error('offline'); })).toBe(CUBE_FOLDER);
         expect(await findCubeFolder(async () => new Response('<html>hips_20990101</html>'))).toBe(CUBE_FOLDER);
         expect(await findCubeFolder(async () => new Response('', { status: 500 }))).toBe(CUBE_FOLDER);
+        const odd = '<ListBucketResult><Prefix>dr1/hips5_cube/hips_99999999/</Prefix><Prefix>dr1/hips5_cube/hips_20261332/</Prefix></ListBucketResult>';
+        expect(await findCubeFolder(async () => new Response(odd))).toBe(CUBE_FOLDER);
     });
 
     it('starts planes early, skips blank channels, and caches headers and wavelengths', async () => {
