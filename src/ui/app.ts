@@ -197,6 +197,7 @@ export function mount(root: HTMLElement): void
     let timer = 0;
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
+    let lookup: AbortController | null = null; // pending name lookup; any newer navigation cancels it
 
     function bind(key: string, text: string): void
     {
@@ -247,10 +248,19 @@ export function mount(root: HTMLElement): void
 
     async function load(): Promise<void>
     {
+        lookup?.abort();
+        lookup = null;
         ctrl?.abort();
         ctrl = new AbortController();
         const signal = ctrl.signal;
         play(false);
+        // Drop the previous view so nothing (play, strip, details) acts on frames of another spot.
+        result = null;
+        stretch = null;
+        composed = {};
+        strip.innerHTML = '';
+        ov.innerHTML = '';
+        lamInput.disabled = true;
         ref<HTMLElement>('err').hidden = true;
         ref<HTMLElement>('load').hidden = false;
         root.dataset.loading = 'true';
@@ -267,12 +277,13 @@ export function mount(root: HTMLElement): void
         };
         const order: SourceKind[] = demoOnly ? ['demo'] : ['live', 'snapshot'];
         let res: SkyResult | null = null;
+        let got: SourceKind = 'live';
         let lastErr: unknown = null;
         let allMissing = true;
         for (const kind of order) {
             try {
                 res = await loadFrom(kind, req);
-                sourceKind = kind;
+                got = kind;
                 break;
             } catch (e) {
                 if (signal.aborted) {
@@ -290,7 +301,7 @@ export function mount(root: HTMLElement): void
             // The live and saved sources are not built yet: show the simulated sky, clearly labelled.
             try {
                 res = await loadFrom('demo', req);
-                sourceKind = 'demo';
+                got = 'demo';
             } catch (e) {
                 if (signal.aborted) {
                     return;
@@ -303,13 +314,17 @@ export function mount(root: HTMLElement): void
         }
         ref<HTMLElement>('load').hidden = true;
         delete root.dataset.loading;
+        lamInput.disabled = false;
         if (!res || res.frames.length === 0) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            renderText();
             const why = res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${lastErr instanceof Error ? lastErr.message : ''}`;
             bind('err', why);
             ref<HTMLElement>('err').hidden = false;
             return;
         }
         result = res;
+        sourceKind = got;
         st.lambda = res.lambda;
         st.detector = detectorOf(res.lambda);
         stretch = sharedStretch(res.frames);
@@ -406,17 +421,25 @@ export function mount(root: HTMLElement): void
             }
         }
         const track = result.track;
-        if (track && track.length) {
-            const ks = st.mode === 'blink' ? [st.index] : st.mode === 'stack' ? track.map((_, i) => i) : [0, track.length - 1];
+        const frames = result.frames;
+        // The track point for a frame is the one nearest its date (the track need not have one point per frame).
+        const at = (k: number) => {
+            const t = frames[k]?.frame.frame.tMin;
+            if (!track || !track.length || t === undefined) {
+                return undefined;
+            }
+            return track.reduce((best, p) => (Math.abs(p.mjd - t) < Math.abs(best.mjd - t) ? p : best));
+        };
+        if (track && track.length && frames.length) {
+            const ks = st.mode === 'blink' ? [st.index] : st.mode === 'stack' ? frames.map((_, i) => i) : [0, frames.length - 1];
             if (kind === 'mover' || kind === 'spectrum') {
-                for (const k of ks) {
-                    const p = track[k];
+                for (const p of new Set(ks.map(at))) {
                     if (p) {
                         parts.push(ring(p.pix.x, p.pix.y, Math.max(2.8, scale), 'track'));
                     }
                 }
             } else {
-                const p = track[Math.min(st.index, track.length - 1)];
+                const p = at(st.mode === 'blink' ? st.index : 0);
                 if (p) {
                     const a = Math.max(5, scale * 1.8);
                     const b = a * 0.4;
@@ -634,7 +657,8 @@ export function mount(root: HTMLElement): void
 
     function linkFor(withFrame: boolean): string
     {
-        return `${location.origin}${location.pathname}?${encodeView(view(withFrame))}${demoOnly ? '&demo=1' : ''}`;
+        const extra = `${st.mode !== 'blink' ? `&m=${st.mode}` : ''}${st.gaia ? '' : '&g=0'}${demoOnly ? '&demo=1' : ''}`;
+        return `${location.origin}${location.pathname}?${encodeView(view(withFrame))}${extra}`;
     }
 
     function writeUrl(): void
@@ -657,6 +681,7 @@ export function mount(root: HTMLElement): void
                 play(false);
             }
             draw();
+            writeUrl();
         } else if (b.dataset.k !== undefined) {
             st.mode = 'blink';
             play(false);
@@ -678,6 +703,7 @@ export function mount(root: HTMLElement): void
             st.gaia = !st.gaia;
             overlay();
             renderText();
+            writeUrl();
         } else if (b.dataset.act === 'copy') {
             const url = linkFor(true);
             navigator.clipboard?.writeText(url).then(() => toast('Link copied. It opens this exact view.'), () => toast(url));
@@ -723,22 +749,31 @@ export function mount(root: HTMLElement): void
             return;
         }
         toast(`Looking up “${text}”…`);
+        lookup?.abort();
+        const mine = new AbortController();
+        lookup = mine;
         try {
-            const a = await resolveName(text);
+            const a = await resolveName(text, mine.signal);
+            if (mine.signal.aborted) {
+                return;
+            }
             input.value = '';
             input.blur();
             setSpot({ ra: a.ra, dec: a.dec }, text);
         } catch {
+            if (mine.signal.aborted) {
+                return;
+            }
             toast('Couldn’t find that. Try a star name, or RA and Dec like 269.45, 4.69.');
         }
     });
 
     document.addEventListener('keydown', (e) => {
         const el = e.target as HTMLElement;
-        if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable || e.metaKey || e.ctrlKey || e.altKey) {
+        if (el.closest?.('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) {
             return;
         }
-        if (e.key === ' ' && el.tagName !== 'BUTTON') {
+        if (e.key === ' ' && !el.closest?.('button, summary, a, label')) {
             e.preventDefault();
             play(!st.playing);
         } else if (e.key === 'ArrowRight' || e.key === ']') {
@@ -758,6 +793,9 @@ export function mount(root: HTMLElement): void
         st.lambda = shared.lambda;
         st.target = shared.target;
         st.wantFrame = shared.frame;
+        const m = params.get('m');
+        st.mode = m === 'stack' || m === 'diff' ? m : 'blink';
+        st.gaia = params.get('g') !== '0';
         st.label = shared.target ? COPY[shared.target].display : `${formatRa(shared.center.ra)} ${formatDec(shared.center.dec)}`;
         void load();
     } else {
