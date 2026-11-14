@@ -68,7 +68,7 @@ button { cursor: pointer; }
 .sk-split:hover::before { opacity: .45; }
 .sk[data-drag] .sk-split::before { opacity: .7; }
 .sk-split:focus-visible { outline: none; }
-.sk-split:focus-visible::before { opacity: 1; left: 5px; width: 3px; }
+.sk-split:focus-visible::before { opacity: 1; left: 4px; width: 5px; border-radius: 1px; box-shadow: 0 0 0 2px var(--void), 0 0 10px 2px rgba(150, 180, 255, .75); }
 .sk-fold { position: absolute; z-index: 3; left: 50%; top: calc(var(--head) + var(--gap) - 5px); width: 26px; height: 26px; margin-left: -12.5px; padding: 0;
     display: grid; place-items: center; border: 1px solid var(--hair2); border-radius: 3px; background: var(--void); color: var(--mute);
     transition: border-color 160ms var(--ease), color 160ms var(--ease); }
@@ -490,8 +490,8 @@ button { cursor: pointer; }
     .sk-m-halo { order: 6; margin-top: 40px; }
     .sk-m-details { order: 6; margin-top: 40px; }
     .sk-credit { order: 7; margin-top: 36px; padding-top: 0; }
-    .sk-tg { flex-direction: row; overflow-x: auto; margin: 14px -18px 0; padding: 0 18px; gap: 6px; scrollbar-width: none; }
-    .sk-tg::-webkit-scrollbar { display: none; }
+    /* All five targets in view: the row wraps instead of scrolling sideways with no hint that more are hidden. */
+    .sk-tg { flex-direction: row; flex-wrap: wrap; margin: 14px 0 0; gap: 6px; }
     .sk-tg button { flex: none; flex-direction: row; align-items: center; gap: 7px; padding: 9px 13px; border: 1px solid var(--hair2); border-radius: 3px; }
     .sk-tg small { display: none; }
     .sk-tg .k { position: static; }

@@ -762,7 +762,7 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('lcx').innerHTML = `<span>${monthYear(t0)}</span><span class="b"><i></i>band: ${c.refs} comparison stars</span><span>${monthYear(t1)}</span>`;
         const min = Math.min(...ys);
         const max = Math.max(...ys);
-        ref<SVGSVGElement>('lc').setAttribute('aria-label', `Brightness over ${pts.length} looks, from ${pct(min)} to ${pct(max)} of the median. Estimated comparison noise about ${(noise * 100).toFixed(1)}%.`);
+        ref<SVGSVGElement>('lc').setAttribute('aria-label', `Brightness over ${pts.length} looks, readings from ${pct(min)} to ${pct(max)} relative to the median; the scale runs from ${pct(lo)} to ${pct(hi)} to fit the error bars. Estimated comparison noise about ${(noise * 100).toFixed(1)}%.`);
         const off = c.lc.dropped > 0 ? ` ${c.lc.dropped} ${c.lc.dropped === 1 ? 'frame was' : 'frames were'} too far off this colour.` : '';
         const bad = c.lc.points.length - pts.length;
         const left = off + (bad > 0 ? ` ${bad} ${bad === 1 ? 'look' : 'looks'} could not be measured.` : '');

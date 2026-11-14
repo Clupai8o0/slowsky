@@ -17,7 +17,7 @@ export const HINT_TEXT: Readonly<Record<HintKind | 'declined', string>> = Object
     brightness: `Sort hint: closest to the fake spots whose light was raised or lowered in training. ${MISSES} ${LOOK}`,
     artifact: `Sort hint: closest to the fake camera or processing effects it was trained on. ${MISSES} ${LOOK}`,
     nothing: `Sort hint: closest to the plain noise it was trained on. ${MISSES} ${LOOK}`,
-    declined: `Sort hint: not given. The helper skips some spots, such as very faint, very bright, off-centre or close-call ones. ${LOOK}`,
+    declined: `Sort hint: not given. The helper skips some spots, such as very faint, very bright or close-call ones. ${LOOK}`,
 });
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
