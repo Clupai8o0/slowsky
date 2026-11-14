@@ -13,7 +13,7 @@ export interface InsightFacts {
     snapshot: boolean;
 }
 export interface InsightNote { text: string; model: string; dropped: number; cached: boolean; remaining?: number }
-export interface InsightAnswer extends InsightNote { kind: 'answer' | 'none'; cached: false; lines: number[]; trust: number[] }
+export interface InsightAnswer extends InsightNote { kind: 'answer' | 'none'; cached: false; picked: number[]; lines: number[]; trust: number[] }
 export interface InsightStatus { enabled: boolean; locked: boolean; unlocked: boolean; model?: string; remaining?: number; busy?: boolean; retryAfter?: number }
 export type InsightErrorCode = 'off' | 'locked' | 'invalid' | 'busy' | 'unverified' | 'failed';
 export class InsightError extends Error {
@@ -86,7 +86,7 @@ export function validateFacts(value: unknown): InsightFacts
 }
 export function validateQuestion(value: unknown): string
 {
-    if (typeof value !== 'string') { throw new InsightError('invalid'); }
+    if (typeof value !== 'string' || Array.from(value).length > 1000) { throw new InsightError('invalid'); }
     const normalized = value.replace(/[\u00ad\u200c\u200d\ufe0e\ufe0f\u200e\u200f\u061c]/gu, '').replace(/[«»‹›]/gu, '"');
     if (/[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}<>＜＞〈〉⟨⟩﹤﹥]|&(?:lt;|gt;|#)/iu.test(normalized) || !/[\p{L}\p{N}]/u.test(normalized)) { throw new InsightError('invalid'); }
     const trimmed = normalized.trim();
@@ -96,6 +96,8 @@ export function validateQuestion(value: unknown): string
 }
 export const CHANGE_LINE_STARTS = ['Brightness relative to the reference stars', 'Largest change from the median brightness', 'Difference image at the target', 'Shift in position'] as const;
 export const TRUST_LINE_STARTS = ['Lowest signal-to-noise among the points', 'Reference stars:', 'Visits:'] as const;
+// Pair brightness with signal, references and visits, and difference or motion with visits;
+// if that leaves no answer rows, keep the picked trust rows as answers instead.
 export function askRows(sheet: string[], picked: number[]): { lines: number[]; trust: number[] }
 {
     const selected = new Set(picked);
@@ -103,9 +105,16 @@ export function askRows(sheet: string[], picked: number[]): { lines: number[]; t
         const time = sheet.findIndex((line) => line.startsWith(CHANGE_LINE_STARTS[0]));
         if (time >= 0) { selected.add(time + 1); }
     }
-    const lines = sheet.flatMap((_, i) => selected.has(i + 1) ? [i + 1] : []);
-    const changed = lines.some((n) => CHANGE_LINE_STARTS.some((start) => sheet[n - 1]!.startsWith(start)));
-    const trust = changed ? sheet.flatMap((line, i) => !selected.has(i + 1) && TRUST_LINE_STARTS.some((start) => line.startsWith(start)) ? [i + 1] : []) : [];
+    const matches = (n: number, starts: readonly string[]) => starts.some((start) => sheet[n - 1]?.startsWith(start));
+    const brightness = [...selected].some((n) => matches(n, [CHANGE_LINE_STARTS[0], CHANGE_LINE_STARTS[1], TRUST_LINE_STARTS[0], TRUST_LINE_STARTS[1]]));
+    const other = [...selected].some((n) => matches(n, [CHANGE_LINE_STARTS[2], CHANGE_LINE_STARTS[3]]));
+    const trustSet = new Set(sheet.flatMap((line, i) => (brightness ? TRUST_LINE_STARTS : other ? [TRUST_LINE_STARTS[2]] : []).some((start) => line.startsWith(start)) ? [i + 1] : []));
+    let lines = sheet.flatMap((_, i) => selected.has(i + 1) && !trustSet.has(i + 1) ? [i + 1] : []);
+    if (!lines.length) {
+        lines = sheet.flatMap((_, i) => picked.includes(i + 1) ? [i + 1] : []);
+        for (const n of lines) { trustSet.delete(n); }
+    }
+    const trust = sheet.flatMap((_, i) => trustSet.has(i + 1) ? [i + 1] : []);
     return { lines, trust };
 }
 export function joinRows(sheet: string[], lines: number[]): string
@@ -445,16 +454,16 @@ async function requestInsight(clean: InsightFacts, opts: InsightOptions, questio
         const note: InsightNote = { text: (data as InsightNote).text, model: (data as InsightNote).model, dropped: (data as InsightNote).dropped, cached: (data as InsightNote).cached === true, ...(typeof (data as InsightNote).remaining === 'number' ? { remaining: (data as InsightNote).remaining } : {}) };
         if (question !== undefined) {
             const sheet = factSheet(clean);
-            const { lines, trust, kind } = data as InsightAnswer;
+            const { picked, lines, trust, kind } = data as InsightAnswer;
             const valid = (rows: unknown): rows is number[] => Array.isArray(rows) && rows.every((n, i) => Number.isInteger(n) && n >= 1 && n <= sheet.length && (i === 0 || n > rows[i - 1]));
-            if (!valid(lines) || !valid(trust)) { throw new InsightError('failed'); }
+            if (!valid(picked) || picked.length > 3 || !valid(lines) || !valid(trust)) { throw new InsightError('failed'); }
             if (kind === 'none') {
-                if (lines.length || trust.length || note.text !== ASK_CANNOT) { throw new InsightError('failed'); }
+                if (picked.length || lines.length || trust.length || note.text !== ASK_CANNOT) { throw new InsightError('failed'); }
             } else if (kind === 'answer') {
-                const expected = askRows(sheet, lines);
-                if (!lines.length || note.text !== joinRows(sheet, lines) || JSON.stringify(expected.lines) !== JSON.stringify(lines) || JSON.stringify(expected.trust) !== JSON.stringify(trust)) { throw new InsightError('failed'); }
+                const expected = askRows(sheet, picked);
+                if (!picked.length || !lines.length || note.text !== joinRows(sheet, lines) || JSON.stringify(expected.lines) !== JSON.stringify(lines) || JSON.stringify(expected.trust) !== JSON.stringify(trust)) { throw new InsightError('failed'); }
             } else { throw new InsightError('failed'); }
-            return { ...note, lines, trust, kind, cached: false };
+            return { ...note, picked, lines, trust, kind, cached: false };
         }
         return note;
     } catch (error) {
