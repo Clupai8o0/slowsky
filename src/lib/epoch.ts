@@ -13,6 +13,7 @@ const DEFAULT_TIMEOUT_MS = 10000;
 
 export interface EpochSource {
     baseUrl: string;
+    server?: string;
     propertiesUrl: string;
     name: string;
     band: string;
@@ -65,12 +66,19 @@ export const TWO_MASS_K: Readonly<EpochSource> = Object.freeze({
 export const EPOCH_NOTE = 'The older picture is a stretched survey image, not a measurement: its brightness cannot be compared with SPHEREx, and the night or nights it was taken on are not known.';
 
 /** Page credit for the survey and the server that supplies its HiPS tiles. */
-export function epochCredit(source: EpochSource): string
+export function epochCredit(source: Pick<EpochSource, 'name' | 'credit' | 'hipsCredit' | 'baseUrl' | 'server'>): string
 {
     const name = source.name === TWO_MASS_K.name ? '2MASS' : source.name;
-    const host = new URL(source.baseUrl).hostname;
-    const server = host === 'irsa.ipac.caltech.edu' ? 'IRSA' : host;
-    return `${name}: ${source.credit}. HiPS tiles: ${source.hipsCredit}, served by ${server}.`;
+    let server = source.server;
+    if (server === undefined) {
+        try {
+            const host = new URL(source.baseUrl).hostname;
+            server = host === 'irsa.ipac.caltech.edu' ? 'IRSA' : host;
+        } catch {
+            server = undefined;
+        }
+    }
+    return `${name}: ${source.credit}. HiPS tiles: ${source.hipsCredit}${server ? `, served by ${server}` : ''}.`;
 }
 
 export const EPOCH_CREDIT = epochCredit(TWO_MASS_K);
@@ -126,7 +134,7 @@ export type EpochResult = {
     // 'fits' means BSCALE/BZERO-applied tile values; no physical unit is implied.
     // 'display' is the publisher's stretched JPEG/PNG intensity, never flux.
     values: 'display' | 'fits';
-    source: { name: string; propertiesUrl: string; credit: string; creditUrl: string; hipsCredit: string; hipsCreator: string; format: EpochSource['format'] };
+    source: Pick<EpochSource, 'name' | 'baseUrl' | 'server' | 'propertiesUrl' | 'credit' | 'creditUrl' | 'hipsCredit' | 'hipsCreator' | 'format'>;
     epoch: { label: string; fromMonth: string; toMonth: string; nightKnown: boolean };
     missing: EpochMissing[];
 } | {
@@ -244,8 +252,14 @@ function fitsTile(bytes: Uint8Array, width: number): Float32Array
                 : view.getFloat64(offset, false);
         pixels[i] = raw === blank || !Number.isFinite(raw) ? NaN : raw * scale + zero;
     }
+    const firstFinite = pixels.find(Number.isFinite);
+    if (firstFinite === undefined || pixels.every((value) => !Number.isFinite(value) || value === firstFinite)) {
+        throw new Error('Flat FITS tile');
+    }
     return pixels;
 }
+
+class IncompleteTileError extends Error {}
 
 function imageTile(image: EpochDecoded, width: number): Float32Array
 {
@@ -266,6 +280,19 @@ function imageTile(image: EpochDecoded, width: number): Float32Array
     }
     if (pixels.every((value) => value === pixels[0] || (Number.isNaN(value) && Number.isNaN(pixels[0])))) {
         throw new Error('Flat image tile');
+    }
+    if (width >= 8) {
+        const start = (count - 8 * width) * channels;
+        let identical = true;
+        for (let i = start + channels; i < image.data.length; i++) {
+            if (image.data[i] !== image.data[start + (i - start) % channels]) {
+                identical = false;
+                break;
+            }
+        }
+        if (identical) {
+            throw new IncompleteTileError('The tile is only partly drawn');
+        }
     }
     return pixels;
 }
@@ -305,17 +332,21 @@ async function loadTile(tile: EpochTile, source: EpochSource, opts: EpochOptions
             if (source.format === 'fits') {
                 return fitsTile(bytes, source.tileWidth);
             }
+            if (source.format === 'jpeg' && (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8
+                || bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9)) {
+                throw new IncompleteTileError('The tile file is incomplete');
+            }
             if (!opts.decode) {
                 throw new Error('Image decoder required');
             }
             return imageTile(await opts.decode(bytes), source.tileWidth);
         };
         return await Promise.race([work(), stopped]);
-    } catch {
+    } catch (error) {
         // Never surface arbitrary network/decoder exception text to page copy.
         return { ...tile, reason: phase, detail: timedOut ? 'Tile timeout'
             : opts.signal?.aborted ? 'Request aborted' : httpStatus !== undefined ? `HTTP ${httpStatus}`
-                : phase === 'fetch' ? 'Tile request failed' : 'Tile could not be decoded' };
+                : phase === 'fetch' ? 'Tile request failed' : error instanceof IncompleteTileError ? error.message : 'Tile could not be decoded' };
     } finally {
         clearTimeout(timer);
         opts.signal?.removeEventListener('abort', abort);
@@ -411,7 +442,8 @@ export async function readEpoch(grid: OutputGrid, opts: EpochOptions = {}): Prom
         wantedOrder: plan.wanted, pixelArcsec: Math.sqrt(Math.PI / 3) * 180 / Math.PI * 3600 / source.tileWidth / 2 ** plan.order,
         coarser: plan.order < plan.wanted, covered, holes: covered < 1,
         values: source.format === 'fits' ? 'fits' : 'display',
-        source: { name: source.name, propertiesUrl: source.propertiesUrl, credit: source.credit, creditUrl: source.creditUrl,
+        source: { name: source.name, baseUrl: source.baseUrl, ...(source.server !== undefined ? { server: source.server } : {}),
+            propertiesUrl: source.propertiesUrl, credit: source.credit, creditUrl: source.creditUrl,
             hipsCredit: source.hipsCredit, hipsCreator: source.hipsCreator, format: source.format },
         epoch: { label: source.epochLabel, fromMonth: source.fromMonth, toMonth: source.toMonth, nightKnown: source.nightKnown }, missing };
 }
