@@ -9,6 +9,9 @@
 // - Times are MJD (UTC days). Wavelengths are micrometres (µm) in code; the SIA
 //   service talks metres, and only sia.ts converts.
 // - Image values are MJy/sr as stored in the IMAGE HDU. Display uses IMAGE - ZODI.
+// - Live regridded frames expose detector context for other lanes, including FLAGS overlays.
+
+import type { FlagsLayout } from './flags';
 
 // ---------- sky and targets ----------
 
@@ -195,6 +198,14 @@ export interface OutputGrid {
     height: number;
 }
 
+// Where a live frame was cut from, so a later layer can read the same detector pixels.
+export interface FrameContext {
+    wcs: Wcs;
+    box: PixelBox; // the detector box the IMAGE cutout used
+    url: string; // the frame file
+    flags?: { layout: FlagsLayout; names: { bit: number; name: string }[] };
+}
+
 export interface RegriddedFrame {
     frame: FrameRecord;
     grid: OutputGrid;
@@ -204,6 +215,7 @@ export interface RegriddedFrame {
     variance?: Float32Array;
     lambdaAtCenter: number; // µm, from the wave grid at the view centre
     bandwidthAtCenter: number;
+    context?: FrameContext; // live source only; the saved copy leaves it out
 }
 
 export interface Stretch {
