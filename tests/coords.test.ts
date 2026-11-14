@@ -108,23 +108,29 @@ describe('parseCoords', () => {
 
     it('refuses a comma that could be a decimal comma', () => {
         // 83.63 and 22, or 83 and 63 22: two different places.
-        for (const bad of ['83,63 22', '12,5 45', '83,63 +22', '56,75 -24,12']) {
+        // "03 47 24,24 07 00" has the same problem: 03 47 24.24 and 07 00, or 03 47 24 and 24 07 00.
+        for (const bad of ['83,63 22', '12,5 45', '83,63 +22', '56,75 -24,12', '10 30,20 15',
+            '03 47 24,24 07 00', '12,0 0']) {
             expect(parseCoords(bad), bad).toBeNull();
         }
         expect(parseCoords('56.75,24.12')).toEqual({ ra: 56.75, dec: 24.12 });
         expect(parseCoords('83,63')).toEqual({ ra: 83, dec: 63 });
         expect(parseCoords('56.75, 24.12')).toEqual({ ra: 56.75, dec: 24.12 });
         expect(parseCoords('10 30, 20 15')).toEqual({ ra: 157.5, dec: 20.25 });
-        expect(parseCoords('10 30,20 15')).toEqual({ ra: 157.5, dec: 20.25 });
-        expect(parseCoords('03 47 24,24 07 00')?.dec).toBeCloseTo(24.1166667, 6);
+        expect(parseCoords('10:30,20')).toEqual({ ra: 157.5, dec: 20 });
+        expect(parseCoords('10:30,20:15')).toEqual({ ra: 157.5, dec: 20.25 });
+        expect(parseCoords('03 47 24, 24 07 00')?.dec).toBeCloseTo(24.1166667, 6);
         expect(parseCoords('03:47:24, 24:07:00')?.ra).toBeCloseTo(56.85, 9);
     });
 
-    it('refuses units out of order or after a bare number', () => {
-        for (const bad of ['12h12h +20d', '12h30m15m +20d', '10 20m, +30d', '56.75 20m', '12 30\' 00", +20d']) {
+    it('refuses units out of order, and an RA where m or s follows a bare number', () => {
+        for (const bad of ['12h12h +20d', '12h30m15m +20d', '10 20m, +30d', '10 20 30s, +30d', '56.75 20m']) {
             expect(parseCoords(bad), bad).toBeNull();
         }
         expect(parseCoords('10h 30, +20d 15')).toEqual({ ra: 157.5, dec: 20.25 });
+        // Dec is always degrees, and ′ and ″ only mean arc: no guess is needed.
+        expect(parseCoords('56.75 +24 07m00s')?.dec).toBeCloseTo(24.1166667, 6);
+        expect(parseCoords('12 30\' 00", +20d')).toEqual({ ra: 12.5, dec: 20 });
     });
 
     it('returns null for text that is not a coordinate', () => {

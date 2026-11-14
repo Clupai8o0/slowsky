@@ -20,8 +20,9 @@ export function parseCoords(text: string): SkyCoord | null
 {
     const s = text.trim().replace(/[−–—]/g, '-');
     // "83,63 22" reads as 83.63 and 22 with a decimal comma, or as 83 and 63 22 with the comma as the
-    // separator: two different places, so it is refused. A comma that can only be a separator is fine.
-    if (/\d,\d/.test(s) && s.indexOf(',') === s.lastIndexOf(',') && read(s.replace(',', '.')) !== null) {
+    // separator: two different places, so it is refused. So is any comma tight between two digits when
+    // the text also has numbers split by a space. "56.75,24.12", "10:30,20" and "10 30, 20 15" are fine.
+    if (/\d,\d/.test(s) && /\d\s+[+-]?\d/.test(s)) {
         return null;
     }
     return read(s);
@@ -128,8 +129,9 @@ function component(group: Token[], kind: 'ra' | 'dec'): number | null
     let bare = false;
     for (let i = 0; i < group.length; i++) {
         const unit = (group[i]?.unit ?? '').replace(/''/g, '"');
-        // "10 20m" could be hours and minutes or degrees and arcminutes: a unit may not follow a bare number.
-        if (unit !== '' && bare) {
+        // An RA of "10 20m" could be hours and minutes or degrees and arcminutes, so it is refused.
+        // Dec is always degrees, and the marks ′ and ″ only mean arc, so those stay readable.
+        if (kind === 'ra' && bare && (unit === 'm' || unit === 's')) {
             return null;
         }
         bare = bare || unit === '';
