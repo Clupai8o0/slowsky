@@ -5,7 +5,7 @@
 import './fonts/fonts.css';
 import './styles.css';
 import targetsJson from '../data/targets.json';
-import type { Detector, SkyCoord, Target, TargetId, ViewState } from '../lib/types';
+import type { Detector, PlayerFrame, SkyCoord, Stretch, Target, TargetId, ViewState } from '../lib/types';
 import type { SkyProgress, SkyRequest, SkyResult, SkySource } from '../lib/source';
 import { createLiveSource, createSnapshotSource } from '../lib/source';
 import { NotImplemented } from '../lib/notimpl';
@@ -21,6 +21,7 @@ import { coreBlank, curveFor, frameMjd, ringsOn, shiftFor, visitsOf, type Curve 
 import { mountAiNote } from './ai-note';
 import { FEATURES, mountFalseColour, mountFlags, renderChanges, renderHalo, renderSpectrum, type LayerState } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
+import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, type SubOp, type Visit } from './subtract';
 
 type Mode = 'blink' | 'stack' | 'diff';
 type SourceKind = 'live' | 'snapshot' | 'demo';
@@ -74,11 +75,24 @@ interface State {
     detector: Detector;
     lambda?: number;
     mode: Mode;
+    subA: number;
+    subB: number;
+    subOp: SubOp;
     index: number;
     playing: boolean;
     gaia: boolean;
     live: boolean; // read a target live from the archive instead of the saved copy
     wantFrame?: string; // obsId from a shared link, applied after load
+    wantSub?: { a: number | null; b: number | null; op: SubOp | null }; // subtract picks from a shared link, validated after load
+}
+
+function parseVisitPick(raw: string | null): number | null
+{
+    if (raw === null || !/^\d+$/.test(raw)) {
+        return null;
+    }
+    const n = Number(raw);
+    return Number.isSafeInteger(n) ? n : null;
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
@@ -274,7 +288,7 @@ function shell(): string
         <button type="button" class="sk-key g f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Flagged pixels</button>
         <button type="button" class="sk-key g c" data-act="falsecolour" data-ref="fcKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>False colour</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
-        <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
+        <span class="sk-key d"><i class="b"></i>more light earlier<i class="o"></i>more light later</span>
       </div>
       <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
     </div>
@@ -287,6 +301,11 @@ function shell(): string
         <button type="button" class="sk-btn" data-act="next" aria-label="Next frame"><span class="ic">${ICON.next}</span></button>
       </div>
       <div class="sk-seg" role="group" aria-label="View"><button type="button" data-mode="blink"><span class="ic">${ICON.blink}</span>Blink</button><button type="button" data-mode="stack"><span class="ic">${ICON.stack}</span>Stack</button><button type="button" data-mode="diff"><span class="ic">${ICON.diff}</span>Subtract</button></div>
+    </div>
+    <div class="sk-sub" data-ref="sub" hidden>
+      <label class="sk-fov">A <select data-ref="subA" aria-label="Earlier visit (A)"></select></label>
+      <label class="sk-fov">B <select data-ref="subB" aria-label="Later visit (B)"></select></label>
+      <div class="sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true">B − A</button><button type="button" data-subop="sum" aria-pressed="false">A + B</button></div>
     </div>
     <p class="sk-hint" data-bind="hint"></p>
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
@@ -368,6 +387,9 @@ export function mount(root: HTMLElement): void
     const strip = ref<HTMLElement>('strip');
     const lamInput = ref<HTMLInputElement>('lam');
     const fovSelect = ref<HTMLSelectElement>('fov');
+    const subBox = ref<HTMLElement>('sub');
+    const subASelect = ref<HTMLSelectElement>('subA');
+    const subBSelect = ref<HTMLSelectElement>('subB');
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     // Narrow screens fold long layer notes (see layerSlot); wide ones show them in full.
     const narrow = matchMedia('(max-width: 1080px)');
@@ -385,12 +407,18 @@ export function mount(root: HTMLElement): void
         fovDeg: DEFAULT_FOV,
         detector: 1,
         mode: 'blink',
+        subA: 0,
+        subB: 0,
+        subOp: 'diff',
         index: 0,
         playing: false,
         gaia: true,
         live: false,
     };
     let result: SkyResult | null = null;
+    let visits: Visit[] = [];
+    let subAHtml = '';
+    let subBHtml = '';
     let sourceKind: SourceKind = 'live';
     let liveFailed = false; // the saved copy is showing because the live archive did not answer
     let cored = false; // the picture shows a too-bright core painted white
@@ -399,13 +427,34 @@ export function mount(root: HTMLElement): void
     let shift: ReturnType<typeof shiftFor> | undefined; // motion from the first look to the last, worked out once per result
     let core: ReturnType<typeof coreBlank> = null; // frames with a saturated (blank) centre, once per result
     let stretch: ReturnType<typeof sharedStretch> | null = null;
-    let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
+    let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale; sumStretch?: Stretch; subKey?: string } = {};
     let timer = 0;
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
     let flagsOn = false; // the Flags layer over the sky
     let fcOn = false; // the False colour layer over the sky (slot, off until its lane lands)
     let lookup: AbortController | null = null; // pending name lookup; any newer navigation cancels it
+
+    function activeVisits(): { a: Visit; b: Visit } | null
+    {
+        if (!result || visits.length < 2) {
+            return null;
+        }
+        const a = visits[st.subA];
+        const b = visits[st.subB];
+        if (!a || !b || st.subA < 0 || st.subB <= st.subA || st.subB >= visits.length) {
+            return null;
+        }
+        return { a, b };
+    }
+
+    function clearSubCache(): void
+    {
+        composed.diff = undefined;
+        composed.scale = undefined;
+        composed.sumStretch = undefined;
+        composed.subKey = undefined;
+    }
 
     function bind(key: string, text: string): void
     {
@@ -461,9 +510,11 @@ export function mount(root: HTMLElement): void
     {
         lookup?.abort();
         lookup = null;
-        // Take the shared link's frame once: an aborted load must not leave it for the next view.
+        // Take the shared link's frame and subtract picks once: an aborted load must not leave them for the next view.
         const wantFrame = st.wantFrame;
         st.wantFrame = undefined;
+        const wantSub = st.wantSub;
+        st.wantSub = undefined;
         lamDraft = null; // a half-dragged colour belongs to the old view
         ctrl?.abort();
         ctrl = new AbortController();
@@ -471,6 +522,8 @@ export function mount(root: HTMLElement): void
         play(false);
         // Drop the previous view so nothing (play, strip, details) acts on frames of another spot.
         result = null;
+        visits = [];
+        subBox.hidden = true;
         curve = null;
         shift = undefined;
         core = null;
@@ -488,7 +541,7 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('load').hidden = false;
         root.dataset.loading = 'true';
         progress({ stage: 'search', done: 0, total: 1 });
-        if (wantFrame === undefined) {
+        if (wantFrame === undefined && wantSub === undefined) {
             // The address bar names the spot being opened, not the last one (no stale f=).
             writeUrl();
         }
@@ -574,6 +627,26 @@ export function mount(root: HTMLElement): void
             return;
         }
         result = res;
+        visits = visitGroups(res);
+        const picks = defaultPicks(visits);
+        if (
+            picks
+            && wantSub
+            && wantSub.a !== null
+            && wantSub.b !== null
+            && wantSub.a >= 0
+            && wantSub.a < wantSub.b
+            && wantSub.b < visits.length
+        ) {
+            st.subA = wantSub.a;
+            st.subB = wantSub.b;
+        } else {
+            st.subA = picks ? picks.a : 0;
+            st.subB = picks ? picks.b : 0;
+        }
+        if (wantSub) {
+            st.subOp = wantSub.op ?? 'diff';
+        }
         core = coreBlank(res);
         sourceKind = got;
         liveFailed = failedLive;
@@ -633,18 +706,47 @@ export function mount(root: HTMLElement): void
             if (st.mode === 'stack' && !composed.stack) {
                 composed.stack = stackVisit(regs, { clipSigma: Infinity, background: 'none' }).data;
             }
-            if (st.mode === 'diff' && !composed.diff) {
-                const first = regs[0];
-                const last = regs[regs.length - 1];
-                if (first && last) {
-                    composed.diff = subtract(last.data, first.data).data;
-                    composed.scale = diffScale(composed.diff);
+            if (st.mode === 'diff') {
+                const pair = activeVisits();
+                if (pair) {
+                    const subKey = `${st.subA}:${st.subB}:${st.subOp}`;
+                    if (!composed.diff || composed.subKey !== subKey) {
+                        const imgA = visitImage(result, pair.a);
+                        const imgB = visitImage(result, pair.b);
+                        const combined = combineVisits(imgA, imgB, st.subOp);
+                        composed.diff = combined;
+                        composed.subKey = subKey;
+                        if (st.subOp === 'diff') {
+                            composed.scale = diffScale(combined);
+                            composed.sumStretch = undefined;
+                        } else {
+                            const base = result.frames[pair.a.ks[0] ?? 0] ?? result.frames[0];
+                            if (base) {
+                                const sumFrame: PlayerFrame = {
+                                    ...base,
+                                    frame: { ...base.frame, grid: result.grid, data: combined },
+                                };
+                                composed.sumStretch = sharedStretch([sumFrame]);
+                            }
+                            composed.scale = undefined;
+                        }
+                    }
+                } else if (!composed.diff || composed.subKey !== 'frames') {
+                    const first = regs[0];
+                    const last = regs[regs.length - 1];
+                    if (first && last) {
+                        composed.diff = subtract(last.data, first.data).data;
+                        composed.scale = diffScale(composed.diff);
+                        composed.sumStretch = undefined;
+                        composed.subKey = 'frames';
+                    }
                 }
             }
         } catch (e) {
             if (!(e instanceof StackError)) {
                 throw e;
             }
+            clearSubCache();
             // Fall back to Blink for real, so the readout, legend and URL match what is drawn.
             toast(`These frames can’t be combined, so this shows them one by one. ${e.message}`);
             st.mode = 'blink';
@@ -664,17 +766,21 @@ export function mount(root: HTMLElement): void
         if (st.mode !== 'blink') {
             compose();
         }
+        const pair = st.mode === 'diff' ? activeVisits() : null;
         const data = st.mode === 'stack' ? composed.stack : st.mode === 'diff' ? composed.diff : undefined;
         const { width, height } = data ? result.grid : f.frame.grid;
         const img = ctx.createImageData(width, height);
         cored = false;
-        if (st.mode === 'diff' && data) {
+        if (st.mode === 'diff' && data && (!pair || st.subOp === 'diff')) {
             renderDiverging(data, composed.scale ?? { floor: 0, limit: 1 }, img.data);
         } else {
             const pix = data ?? f.frame.data;
-            renderRgba(pix, stretch, img.data);
+            const useStretch = st.mode === 'diff' && pair && st.subOp === 'sum' ? (composed.sumStretch ?? stretch) : stretch;
+            renderRgba(pix, useStretch, img.data);
             // A star too bright for the camera has blank pixels at its core: paint them white, not black.
-            cored = fillCores(pix, width, height, img.data) > 0;
+            // Not in A + B, whose sentence says blank pixels show black.
+            const sum = st.mode === 'diff' && pair && st.subOp === 'sum';
+            cored = !sum && fillCores(pix, width, height, img.data) > 0;
         }
         ctx.putImageData(img, 0, 0);
         paintGlow();
@@ -808,7 +914,14 @@ export function mount(root: HTMLElement): void
             return track.reduce((best, p) => (Math.abs(p.mjd - t) < Math.abs(best.mjd - t) ? p : best));
         };
         if (track && track.length && frames.length) {
-            const ks = st.mode === 'blink' ? [st.index] : st.mode === 'stack' ? frames.map((_, i) => i) : [0, frames.length - 1];
+            const pair = st.mode === 'diff' ? activeVisits() : null;
+            const ks = st.mode === 'blink'
+                ? [st.index]
+                : st.mode === 'stack'
+                    ? frames.map((_, i) => i)
+                    : pair
+                        ? [...pair.a.ks, ...pair.b.ks]
+                        : [0, frames.length - 1];
             if (kind === 'mover' || kind === 'spectrum') {
                 for (const p of new Set(ks.map(at))) {
                     if (p) {
@@ -857,11 +970,21 @@ export function mount(root: HTMLElement): void
 
     function renderFrameState(): void
     {
+        const pair = st.mode === 'diff' ? activeVisits() : null;
+        const n = result ? result.frames.length : 0;
+        const subSet = st.mode === 'diff' && n > 0
+            ? new Set(pair ? [...pair.a.ks, ...pair.b.ks] : [0, n - 1])
+            : null;
         qa<HTMLButtonElement>('.sk-strip button').forEach((b, i) => {
             if (st.mode === 'blink' && i === st.index) {
                 b.setAttribute('aria-current', 'true');
             } else {
                 b.removeAttribute('aria-current');
+            }
+            if (subSet && subSet.has(i)) {
+                b.setAttribute('data-in-sub', '');
+            } else {
+                b.removeAttribute('data-in-sub');
             }
         });
     }
@@ -954,7 +1077,9 @@ export function mount(root: HTMLElement): void
 
     function renderText(): void
     {
+        const pair = activeVisits();
         root.dataset.mode = st.mode;
+        root.dataset.subop = pair ? st.subOp : 'diff';
         root.dataset.gaia = String(st.gaia);
         root.dataset.source = sourceKind;
         ref<HTMLElement>('sim').hidden = !(result && sourceKind === 'demo');
@@ -987,7 +1112,28 @@ export function mount(root: HTMLElement): void
         bind('not', card.not ?? (copy ? copy.not : CUSTOM_COPY.not));
         bind('fact', card.fact ?? '');
         ref<HTMLElement>('fact').hidden = !card.fact;
-        bind('hint', MODE_HINT[st.mode]);
+        bind('hint', st.mode === 'diff' && pair ? subtractText(pair.a, pair.b, st.subOp) : MODE_HINT[st.mode]);
+        subBox.hidden = !(st.mode === 'diff' && pair !== null);
+        if (pair) {
+            const aHtml = visits.slice(0, -1).map((v, i) => `<option value="${i}">${esc(visitLabel(v))}</option>`).join('');
+            if (aHtml !== subAHtml) {
+                subASelect.innerHTML = aHtml;
+                subAHtml = aHtml;
+            }
+            subASelect.value = String(st.subA);
+            const bHtml = visits.slice(st.subA + 1).map((v, off) => {
+                const idx = st.subA + 1 + off;
+                return `<option value="${idx}">${esc(visitLabel(v))}</option>`;
+            }).join('');
+            if (bHtml !== subBHtml) {
+                subBSelect.innerHTML = bHtml;
+                subBHtml = bHtml;
+            }
+            subBSelect.value = String(st.subB);
+            for (const b of qa<HTMLButtonElement>('[data-subop]')) {
+                b.setAttribute('aria-pressed', String(b.dataset.subop === st.subOp));
+            }
+        }
         bind('trackLeg', copy && (copy.kind === 'mover' || copy.kind === 'spectrum') ? `Where ${copy.display} should be on this date` : '');
         root.dataset.trackleg = copy && (copy.kind === 'mover' || copy.kind === 'spectrum') ? 'true' : 'false';
         for (const b of qa<HTMLButtonElement>('[data-target]')) {
@@ -1038,6 +1184,10 @@ export function mount(root: HTMLElement): void
         } else if (st.mode === 'stack' && first && last) {
             bind('frame', `Average of ${n}`);
             bind('when', `${monthYear(first.tMin)} – ${monthYear(last.tMin)}`);
+        } else if (st.mode === 'diff' && pair) {
+            bind('frame', st.subOp === 'sum' ? 'A + B' : 'B − A');
+            const [da, db] = headerDates(pair.a, pair.b);
+            bind('when', st.subOp === 'sum' ? `${da} + ${db}` : `${db} − ${da}`);
         } else if (first && last) {
             bind('frame', 'Last − first');
             bind('when', `${monthYear(last.tMin)} − ${monthYear(first.tMin)}`);
@@ -1051,15 +1201,34 @@ export function mount(root: HTMLElement): void
         }
         if (f && lf) {
             // Blink describes the frame on screen; Stack and Subtract describe the frames they combine.
-            const many = st.mode !== 'blink' && n > 1;
-            const shown = !many ? [st.index] : st.mode === 'stack' ? result.frames.map((_, i) => i) : [0, n - 1];
+            const diffPair = st.mode === 'diff' ? pair : null;
+            const many = st.mode !== 'blink' && (diffPair !== null || n > 1);
+            const shown = !many
+                ? [st.index]
+                : st.mode === 'stack'
+                    ? result.frames.map((_, i) => i)
+                    : diffPair
+                        ? [...diffPair.a.ks, ...diffPair.b.ks]
+                        : [0, n - 1];
             const rec = many ? result.frames[shown[0]!]!.frame.frame : f.frame.frame;
             const utc = (mjd: number): string => `${mjdToDate(mjd).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
             const lams = shown.map((i) => result!.locked[i]?.lambda).filter((v): v is number => v !== undefined && Number.isFinite(v));
+            const firstA = diffPair ? result.frames[diffPair.a.ks[0]!]?.frame.frame : undefined;
+            const firstB = diffPair ? result.frames[diffPair.b.ks[0]!]?.frame.frame : undefined;
+            const showsText = st.mode === 'stack'
+                ? `Average of all ${n} frames`
+                : diffPair
+                    ? (st.subOp === 'sum' ? 'Visit A plus visit B' : 'Visit B minus visit A')
+                    : `Frame ${n} minus frame 1`;
+            const takenText = st.mode === 'stack'
+                ? `${niceDate(first!.tMin)} to ${niceDate(last!.tMin)}`
+                : diffPair && firstA && firstB
+                    ? (st.subOp === 'sum' ? `${utc(firstA.tMin)} + ${utc(firstB.tMin)}` : `${utc(firstB.tMin)} − ${utc(firstA.tMin)}`)
+                    : `${utc(last!.tMin)} − ${utc(first!.tMin)}`;
             const rows: [string, string][] = many
                 ? [
-                    ['Shows', st.mode === 'stack' ? `Average of all ${n} frames` : `Frame ${n} minus frame 1`],
-                    ['Taken', st.mode === 'stack' ? `${niceDate(first!.tMin)} to ${niceDate(last!.tMin)}` : `${utc(last!.tMin)} − ${utc(first!.tMin)}`],
+                    ['Shows', showsText],
+                    ['Taken', takenText],
                     ['Colour', lams.length ? `${Math.min(...lams).toFixed(3)} to ${Math.max(...lams).toFixed(3)} µm` : '—'],
                 ]
                 : [
@@ -1077,8 +1246,12 @@ export function mount(root: HTMLElement): void
                 ['Field', `${Number(result.grid.fovDeg.toFixed(3))}° · ${result.grid.width} × ${result.grid.height} px`],
                 ['Scale', `${result.grid.pixelArcsec.toFixed(2)}″ per pixel`],
             );
+            const firstRec = recs[0]!;
+            const lastRec = recs[recs.length - 1]!;
             if (!many) {
                 rows.push(['File', rec.obsId]);
+            } else if (diffPair) {
+                rows.push(['Files', `${recs.length} files: ${firstRec.obsId} to ${lastRec.obsId}`]);
             } else if (st.mode === 'diff') {
                 rows.push(['Files', `${last!.obsId} − ${first!.obsId}`]);
             } else {
@@ -1117,7 +1290,7 @@ export function mount(root: HTMLElement): void
             }).join('');
             const links: string[] = [];
             if (many) {
-                for (const [r, label] of [[first!, 'first'], [last!, 'last']] as const) {
+                for (const [r, label] of [[firstRec, 'first'], [lastRec, 'last']] as const) {
                     if (r.url) {
                         links.push(`<a href="${esc(r.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS, ${label}</a>`);
                     }
@@ -1279,7 +1452,8 @@ export function mount(root: HTMLElement): void
     {
         // A live view of a target says so, or the link would reopen it from the saved copy (recentred, field capped).
         const live = sourceKind === 'live' && st.target && result ? '&live=1' : '';
-        const extra = `${st.mode !== 'blink' ? `&m=${st.mode}` : ''}${st.gaia ? '' : '&g=0'}${live}${demoOnly ? '&demo=1' : ''}`;
+        const sub = st.mode === 'diff' && activeVisits() ? `&a=${st.subA}&b=${st.subB}${st.subOp === 'sum' ? '&op=sum' : ''}` : '';
+        const extra = `${st.mode !== 'blink' ? `&m=${st.mode}` : ''}${sub}${st.gaia ? '' : '&g=0'}${live}${demoOnly ? '&demo=1' : ''}`;
         return `${location.origin}${location.pathname}?${encodeView(view(withFrame))}${extra}`;
     }
 
@@ -1302,6 +1476,10 @@ export function mount(root: HTMLElement): void
             if (st.mode !== 'blink') {
                 play(false);
             }
+            draw();
+            writeUrl();
+        } else if (b.dataset.subop === 'diff' || b.dataset.subop === 'sum') {
+            st.subOp = b.dataset.subop;
             draw();
             writeUrl();
         } else if (b.dataset.k !== undefined) {
@@ -1370,6 +1548,25 @@ export function mount(root: HTMLElement): void
         st.fovDeg = Number(fovSelect.value);
         void load();
     });
+    // The visit pickers: B always stays later than A.
+    for (const [select, which] of [[subASelect, 'a'], [subBSelect, 'b']] as const) {
+        select.addEventListener('change', () => {
+            const v = Number(select.value);
+            if (!Number.isInteger(v) || v < 0 || v >= visits.length) {
+                return;
+            }
+            if (which === 'a') {
+                st.subA = v;
+                if (st.subB <= st.subA) {
+                    st.subB = st.subA + 1;
+                }
+            } else {
+                st.subB = v;
+            }
+            draw();
+            writeUrl();
+        });
+    }
 
     ref<HTMLFormElement>('search').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -1468,6 +1665,11 @@ export function mount(root: HTMLElement): void
         st.wantFrame = shared.frame;
         const m = params.get('m');
         st.mode = m === 'stack' || m === 'diff' ? m : 'blink';
+        if (st.mode === 'diff' && (params.has('a') || params.has('b') || params.has('op'))) {
+            const op = params.get('op');
+            st.wantSub = { a: parseVisitPick(params.get('a')), b: parseVisitPick(params.get('b')),
+                op: op === 'sum' || op === 'diff' ? op : null };
+        }
         st.gaia = params.get('g') !== '0';
         st.live = params.get('live') === '1';
         st.label = shared.target ? COPY[shared.target].display : `${formatRa(shared.center.ra)} ${formatDec(shared.center.dec)}`;
