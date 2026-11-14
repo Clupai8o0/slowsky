@@ -30,7 +30,7 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 - See rings that mark stars from ESA's Gaia DR3 catalogue (live within 0.2° of the centre, or from the offline
   copy), and turn them off or on.
 - On a live view in Blink, switch on **Flags** to paint the pixels that the frame's own quality layer marks
-  (cosmic-ray hits, for example), and read how many there are of each kind.
+  (cosmic-ray hits, for example), and read how many pixels are flagged and which three kinds are most common.
 - Read each frame's details: when it was taken, its wavelength at the centre, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode.
@@ -166,7 +166,9 @@ in it.
 - Bad-pixel flags are only shown, and only when you switch them on, on live frames in Blink. No measurement uses
   them, so hot pixels and cosmic-ray hits show as they are, and one can upset a point on the brightness curve.
   The Flags layer leaves out three kinds: SOURCE (set on every pixel mapped to a known source, so it would cover
-  the stars themselves), FULLSAMPLE (for information only) and GHOST_FPA (not in use at present).
+  the stars themselves), FULLSAMPLE (for information only) and GHOST_FPA (not in use at present). The TRANSIENT
+  flag marks cosmic-ray hits, and near a very bright star it can also mark charge spilling into neighbouring
+  pixels, so a flagged pixel beside a bright star is not always a cosmic ray.
 - The picture's brightness scale is for viewing. The brightness curve is relative to nearby stars, not in physical
   units. The centre of R Draconis is too bright for the camera in every saved frame, and Barnard's Star's in most
   of them, so neither gets a curve.
