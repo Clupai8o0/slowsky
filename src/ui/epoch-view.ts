@@ -19,6 +19,11 @@ export const EPOCH_FLIP_MS = 900;
 export const EPOCH_FOVS: readonly number[] = [0.1, 0.25];
 export const EPOCH_MAX_BYTES = 2000000;
 
+export function hasWiderEpochField(viewFov: number, pickerFov: number): boolean
+{
+    return EPOCH_FOVS.some((f) => f > Math.max(viewFov, pickerFov) + 1e-6);
+}
+
 export const EPOCH_TEXT = Object.freeze({
     key: 'Older picture',
     loading: 'Reading the older picture…',
@@ -27,7 +32,6 @@ export const EPOCH_TEXT = Object.freeze({
     showThen: 'Show then',
     stop: 'Stop the flip',
     tooLarge: 'The older picture is too large to read for this view. The SPHEREx frames are not affected.',
-    bracket: 'Where its catalogue motion puts it between June 1997 and February 2001',
 });
 
 export function epochNowLabel(when: string): string
@@ -106,8 +110,8 @@ function monthMjd(month: string): number
 }
 
 // The target's catalogue path across the survey months, for a target the page draws a track ring for.
-export function epochBracket(result: SkyResult, targetId: string | undefined,
-    epoch: Pick<EpochOk['epoch'], 'fromMonth' | 'toMonth'> = TWO_MASS_K): EpochBracket | null
+function epochPath(result: SkyResult, targetId: string | undefined,
+    epoch: Pick<EpochOk['epoch'], 'fromMonth' | 'toMonth'> = TWO_MASS_K): { bracket: EpochBracket | null; partial: boolean; name: string } | null
 {
     if (!targetId || !Object.hasOwn(COPY, targetId) || !result.track?.length) {
         return null;
@@ -122,14 +126,32 @@ export function epochBracket(result: SkyResult, targetId: string | undefined,
     const to = at(epoch.toMonth);
     const inside = (p: { x: number; y: number }) => p.x >= -0.5 && p.y >= -0.5
         && p.x <= result.grid.width - 0.5 && p.y <= result.grid.height - 0.5;
-    return inside(from) && inside(to) && Math.hypot(to.x - from.x, to.y - from.y) >= 1 ? { from, to } : null;
+    if (!(Math.hypot(to.x - from.x, to.y - from.y) >= 1)) {
+        return null;
+    }
+    const fromInside = inside(from);
+    const toInside = inside(to);
+    return { bracket: fromInside && toInside ? { from, to } : null,
+        partial: fromInside !== toInside, name: COPY[targetId as TargetId].display };
 }
 
-function bracketLegend(epoch: EpochOk['epoch']): string
+export function epochBracket(result: SkyResult, targetId: string | undefined,
+    epoch: Pick<EpochOk['epoch'], 'fromMonth' | 'toMonth'> = TWO_MASS_K): EpochBracket | null
+{
+    return epochPath(result, targetId, epoch)?.bracket ?? null;
+}
+
+function bracketLegend(epoch: EpochOk['epoch'], path: NonNullable<ReturnType<typeof epochPath>>, wider: boolean): string
 {
     const month = (value: string) => new Date((monthMjd(value) - 40587) * 86400000)
         .toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-    return `Where its catalogue motion puts it between ${month(epoch.fromMonth)} and ${month(epoch.toMonth)}`;
+    const from = month(epoch.fromMonth);
+    const to = month(epoch.toMonth);
+    if (path.bracket) {
+        return `Where the catalogue motion of ${path.name} puts it between ${from} and ${to}`;
+    }
+    const span = path.partial ? `for part of ${from} to ${to}` : `between ${from} and ${to}`;
+    return `The catalogue motion of ${path.name} puts it outside this view ${span}.${wider ? ' Try a wider field.' : ''}`;
 }
 
 // ---------- the decoder the page supplies ----------
@@ -201,11 +223,11 @@ export interface EpochOut {
     key: boolean;
     pressed: boolean;
     note: NotePart[]; // [] hides the line
-    legend: string; // the bracket's legend line, '' when there is none
+    legend: string; // the catalogue motion line, '' when there is none
     picture: { rgba: Uint8ClampedArray; width: number; height: number } | null;
     then: boolean; // the older picture covers the sky
     tag: { label: string; action: string | null } | null; // null action means pressing stops automatic flipping
-    bracket: EpochBracket | null; // drawn only during Then
+    bracket: EpochBracket | null; // drawn in both phases
 }
 
 export interface VisibilityLike {
@@ -218,6 +240,7 @@ export interface EpochDeps {
     reducedMotion: boolean;
     draw: (out: EpochOut) => void;
     pause: () => void; // the page's play(false)
+    hasWiderField?: (fov: number) => boolean;
     read?: typeof readEpoch;
     decode?: (bytes: Uint8Array) => Promise<EpochDecoded>;
     visibility?: VisibilityLike;
@@ -227,15 +250,16 @@ export interface EpochSlot {
     update(view: EpochSlotView | null): void;
     press(): void; // the legend key
     tagPress(): void; // the corner tag
-    off(): void; // Play pressed
+    off(): void; // Play, False colour or Flagged pixels pressed
     readonly on: boolean;
+    readonly canRead: boolean;
 }
 
 type Status =
     | { s: 'idle' }
     | { s: 'loading' }
     | { s: 'failed'; message: string }
-    | { s: 'ready'; res: EpochOk; rgba: Uint8ClampedArray; bracket: EpochBracket | null };
+    | { s: 'ready'; res: EpochOk; rgba: Uint8ClampedArray; path: ReturnType<typeof epochPath> };
 
 export const HIDDEN_OUT: Readonly<EpochOut> = Object.freeze({ key: false, pressed: false, note: [], legend: '',
     picture: null, then: false, tag: null, bracket: null });
@@ -312,10 +336,11 @@ export function createEpoch(deps: EpochDeps): EpochSlot
         }
         const then = phase === 'then';
         const label = then ? EPOCH_TEXT.then : epochNowLabel(view.when);
-        return { ...base, note: epochNoteParts(status.res, view.result.lambda), legend: status.bracket ? bracketLegend(status.res.epoch) : '',
+        return { ...base, note: epochNoteParts(status.res, view.result.lambda), legend: status.path
+            ? bracketLegend(status.res.epoch, status.path, deps.hasWiderField?.(view.result.grid.fovDeg) ?? false) : '',
             picture: { rgba: status.rgba, width: status.res.width, height: status.res.height }, then,
             tag: { label, action: hand ? (then ? EPOCH_TEXT.showNow : EPOCH_TEXT.showThen) : null },
-            bracket: then ? status.bracket : null };
+            bracket: status.path?.bracket ?? null };
     }
 
     function render(): void
@@ -346,7 +371,7 @@ export function createEpoch(deps: EpochDeps): EpochSlot
             }
             if (r.ok && r.values === 'display' && r.width === result.grid.width && r.height === result.grid.height) {
                 status = { s: 'ready', res: r, rgba: epochRgba(r.pixels, r.width, r.height),
-                    bracket: epochBracket(result, view?.targetId, r.epoch) };
+                    path: epochPath(result, view?.targetId, r.epoch) };
                 phase = 'then';
                 hand = deps.reducedMotion;
                 runTimer();
@@ -367,7 +392,7 @@ export function createEpoch(deps: EpochDeps): EpochSlot
                 tooLarge = true;
                 status = { s: 'failed', message: EPOCH_TEXT.tooLarge };
             } else {
-                on = false;
+                stop();
                 status = { s: 'failed', message: epochFailText(r.ok ? 'The picture does not match this view' : r.detail) };
             }
             render();
@@ -401,7 +426,19 @@ export function createEpoch(deps: EpochDeps): EpochSlot
             if (on) {
                 stop();
             } else if (tooLarge) {
+                deps.pause();
+                const repeat = status.s === 'failed' && status.message === EPOCH_TEXT.tooLarge;
                 status = { s: 'failed', message: EPOCH_TEXT.tooLarge };
+                if (repeat) {
+                    deps.draw({ ...out(), note: [] });
+                    const mine = gen;
+                    setTimeout(() => {
+                        if (mine === gen && status.s === 'failed' && status.message === EPOCH_TEXT.tooLarge) {
+                            render();
+                        }
+                    }, 0);
+                    return;
+                }
             } else {
                 start(view);
             }
@@ -430,6 +467,10 @@ export function createEpoch(deps: EpochDeps): EpochSlot
         get on(): boolean
         {
             return on;
+        },
+        get canRead(): boolean
+        {
+            return deps.enabled && offered(view) && !on && !tooLarge;
         },
     };
 }
@@ -472,7 +513,10 @@ function drawInto(els: EpochElements): (o: EpochOut) => void
             canvas?.remove();
             painted = null;
         }
-        els.layer.hidden = !o.then;
+        els.layer.hidden = !o.then && !o.bracket;
+        if (canvas) {
+            canvas.hidden = !o.then;
+        }
         const bk = o.bracket ? [o.bracket.from.x, o.bracket.from.y, o.bracket.to.x, o.bracket.to.y].join() : '';
         if (bk !== bracketKey) {
             bracketKey = bk;
@@ -523,13 +567,16 @@ function drawInto(els: EpochElements): (o: EpochOut) => void
             if (o.legend) {
                 const leg = doc.createElement('span');
                 leg.className = 'sk-ep-leg';
-                const sw = doc.createElement('i');
-                sw.setAttribute('aria-hidden', 'true');
-                leg.append(sw, o.legend);
+                if (o.bracket) {
+                    const sw = doc.createElement('i');
+                    sw.setAttribute('aria-hidden', 'true');
+                    leg.append(sw);
+                }
+                leg.append(o.legend);
                 els.note.append(leg);
             }
         }
-        els.note.hidden = !(o.key && o.note.length);
+        els.note.hidden = !o.key;
     };
 }
 
@@ -552,6 +599,7 @@ export function bracketPath(b: EpochBracket, width: number): string
 export interface EpochMountDeps {
     enabled: boolean;
     pause: () => void;
+    hasWiderField?: (fov: number) => boolean;
     read?: typeof readEpoch;
 }
 
@@ -567,6 +615,7 @@ export function mountEpoch(els: EpochElements, deps: EpochMountDeps): EpochSlot
         reducedMotion: !!win?.matchMedia('(prefers-reduced-motion: reduce)').matches,
         draw: drawInto(els),
         pause: deps.pause,
+        ...(deps.hasWiderField ? { hasWiderField: deps.hasWiderField } : {}),
         ...(deps.read ? { read: deps.read } : {}),
         decode: makeDecode(TWO_MASS_K.tileWidth),
         visibility: {
@@ -578,3 +627,5 @@ export function mountEpoch(els: EpochElements, deps: EpochMountDeps): EpochSlot
         },
     });
 }
+
+mountEpoch.hasWiderField = hasWiderEpochField;

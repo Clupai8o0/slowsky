@@ -7,6 +7,7 @@ import { DEFAULT_FEATURES, FEATURES } from '../src/ui/slots';
 import { EPOCH_NOTE, TWO_MASS_K, epochCredit, type EpochResult } from '../src/lib/epoch';
 import { renderRgba } from '../src/lib/player';
 import { positionAt, targetById } from '../src/lib/targets';
+import { gridSkyToPix } from '../src/lib/regrid';
 import type { SkyResult } from '../src/lib/source';
 import type { OutputGrid } from '../src/lib/types';
 import page from '../src/ui/app.ts?raw';
@@ -51,7 +52,7 @@ interface Rig {
     vis: { hidden: boolean; fire: () => void };
 }
 
-function rig(opts: { reduced?: boolean; enabled?: boolean } = {}): Rig
+function rig(opts: { reduced?: boolean; enabled?: boolean; wider?: boolean } = {}): Rig
 {
     const outs: EpochOut[] = [];
     const signals: AbortSignal[] = [];
@@ -72,6 +73,7 @@ function rig(opts: { reduced?: boolean; enabled?: boolean } = {}): Rig
         reducedMotion: opts.reduced ?? false,
         draw: (o) => outs.push(o),
         pause,
+        hasWiderField: (fov) => (opts.wider ?? true) && [0.1, 0.25, 0.5, 1].some((f) => f > fov),
         read: read as unknown as typeof import('../src/lib/epoch').readEpoch,
         decode: async () => ({ width: 1, height: 1, data: [0] }),
         visibility: {
@@ -176,6 +178,8 @@ describe('older picture: when the key is offered', () => {
         expect(r.slot.on).toBe(false);
         r.slot.press();
         expect(r.read).toHaveBeenCalledTimes(1);
+        expect(r.last().note).toEqual([]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
         expect(r.last()).toMatchObject({ key: true, pressed: false, note: [message] });
         r.slot.update(view(s, { index: 1 }));
         expect(r.last().note).toEqual([]);
@@ -185,6 +189,58 @@ describe('older picture: when the key is offered', () => {
         r.slot.update(view(sky()));
         r.slot.press();
         expect(r.read).toHaveBeenCalledTimes(2);
+    });
+
+    it('pauses again on a remembered too-large view', async () => {
+        const r = rig();
+        r.slot.update(view(sky()));
+        r.slot.press();
+        r.resolve({ ok: false, reason: 'too-large', detail: '', missing: [] });
+        await settle();
+        expect(r.slot.canRead).toBe(false);
+        r.slot.press();
+        expect(r.pause).toHaveBeenCalledTimes(2);
+        expect(r.read).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not restore a repeated too-large note after leaving the view', async () => {
+        vi.useFakeTimers();
+        const r = rig();
+        const s = sky();
+        r.slot.update(view(s));
+        r.slot.press();
+        r.resolve({ ok: false, reason: 'too-large', detail: '', missing: [] });
+        await settle();
+        r.slot.press();
+        expect(r.last().note).toEqual([]);
+        r.slot.update(view(s, { mode: 'stack' }));
+        vi.runAllTimers();
+        r.slot.update(view(s));
+        expect(r.last().note).toEqual([]);
+        vi.useRealTimers();
+    });
+
+    it('clears a failure on off, and on mode or source changes', async () => {
+        for (const change of ['off', 'mode', 'source', 'target'] as const) {
+            const r = rig();
+            const s = sky();
+            r.slot.update(view(s));
+            r.slot.press();
+            r.resolve({ ok: false, reason: 'fetch', detail: 'missing', missing: [] });
+            await settle();
+            expect(r.signals[0]!.aborted).toBe(true);
+            expect(r.last().note.length).toBe(1);
+            if (change === 'off') {
+                r.slot.off();
+            } else if (change === 'target') {
+                r.slot.update(null);
+                r.slot.update(view(sky(), { targetId: 'barnard' }));
+            } else {
+                r.slot.update(view(s, change === 'mode' ? { mode: 'stack' } : { source: 'snapshot' }));
+                r.slot.update(view(s));
+            }
+            expect(r.last().note).toEqual([]);
+        }
     });
 });
 
@@ -317,6 +373,9 @@ describe('older picture: pressing it', () => {
         r.slot.press();
         expect(r.read).toHaveBeenCalledTimes(2);
         expect(r.last()).toMatchObject({ pressed: true, note: [EPOCH_TEXT.loading] });
+        r.resolve({ ok: false, reason: 'fetch', detail: 'Some tiles are missing', missing: [] });
+        await settle();
+        expect(noteText(r.last().note)).toBe('The older picture could not be read for this view (Some tiles are missing). The SPHEREx frames are not affected.');
     });
 });
 
@@ -399,7 +458,6 @@ describe('older picture: drawing', () => {
         expect(epochBracket(sky(0.25, { grid: g(0.25) }), 'barnard')).toBeNull();
         expect(epochBracket(wide, 'rwaur')).toBeNull();
         expect(epochBracket(wide, undefined)).toBeNull();
-        expect(EPOCH_TEXT.bracket).toBe('Where its catalogue motion puts it between June 1997 and February 2001');
     });
 
     it('omits subpixel brackets and uses the returned survey months', async () => {
@@ -425,7 +483,64 @@ describe('older picture: drawing', () => {
         r.resolve(result);
         await settle();
         expect(r.last().bracket).not.toBeNull();
-        expect(r.last().legend).toBe('Where its catalogue motion puts it between January 1996 and February 2001');
+        expect(r.last().legend).toBe('Where the catalogue motion of Barnard’s Star puts it between January 1996 and February 2001');
+    });
+
+    it('explains an outside Barnard path and retains an inside bracket through the flip', async () => {
+        vi.useFakeTimers();
+        const centre = positionAt(targetById('barnard')!.astrometry, 61041);
+        const track = [{ mjd: 61041, ra: centre.ra, dec: centre.dec, pix: { x: 0, y: 0 } }];
+        const make = (fovDeg: number, pixelArcsec: number, height: number) => sky(fovDeg, {
+            grid: { center: centre, fovDeg, pixelArcsec, width: 587, height }, track,
+        });
+        const narrow = make(0.1, 360 / 587, 587);
+        const wide = make(0.25, 900 / 587, 587);
+        const partial = make(0.25, 1, 550);
+        const astro = targetById('barnard')!.astrometry;
+        const endpoints = [50600, 51941].map((mjd) => gridSkyToPix(partial.grid, positionAt(astro, mjd)));
+        expect(endpoints.map((p) => p.y >= -0.5 && p.y <= partial.grid.height - 0.5)).toEqual([false, true]);
+        for (const [s, sentence] of [
+            [narrow, 'The catalogue motion of Barnard’s Star puts it outside this view between June 1997 and February 2001. Try a wider field.'],
+            [partial, 'The catalogue motion of Barnard’s Star puts it outside this view for part of June 1997 to February 2001. Try a wider field.'],
+        ] as const) {
+            const r = rig({ reduced: true });
+            await ready(r, s, { targetId: 'barnard' });
+            expect(r.last().bracket).toBeNull();
+            expect(r.last().legend).toBe(sentence);
+            r.slot.off();
+            expect(r.last().legend).toBe('');
+        }
+        const r = rig();
+        await ready(r, wide, { targetId: 'barnard' });
+        expect(r.last().bracket).not.toBeNull();
+        expect(r.last().legend).toBe('Where the catalogue motion of Barnard’s Star puts it between June 1997 and February 2001');
+        vi.advanceTimersByTime(EPOCH_FLIP_MS);
+        expect(r.last().then).toBe(false);
+        expect(r.last().bracket).not.toBeNull();
+        r.slot.off();
+        const noWider = rig({ reduced: true, wider: false });
+        await ready(noWider, narrow, { targetId: 'barnard' });
+        expect(noWider.last().legend).toBe('The catalogue motion of Barnard’s Star puts it outside this view between June 1997 and February 2001.');
+        noWider.slot.off();
+        const otherMonths = rig({ reduced: true });
+        otherMonths.slot.update(view(narrow, { targetId: 'barnard' }));
+        otherMonths.slot.press();
+        const otherResult = okResult(narrow.grid) as Extract<EpochResult, { ok: true }>;
+        otherResult.epoch = { ...otherResult.epoch, fromMonth: '1996-01', toMonth: '2001-02' };
+        otherMonths.resolve(otherResult);
+        await settle();
+        expect(otherMonths.last().legend).toBe('The catalogue motion of Barnard’s Star puts it outside this view between January 1996 and February 2001. Try a wider field.');
+        otherMonths.slot.off();
+        const short = rig({ reduced: true });
+        short.slot.update(view(partial, { targetId: 'barnard' }));
+        short.slot.press();
+        const result = okResult(partial.grid) as Extract<EpochResult, { ok: true }>;
+        result.epoch = { ...result.epoch, fromMonth: '2000-01', toMonth: '2000-02' };
+        short.resolve(result);
+        await settle();
+        expect(short.last()).toMatchObject({ bracket: null, legend: '' });
+        short.slot.off();
+        vi.useRealTimers();
     });
 });
 
@@ -433,6 +548,8 @@ describe('older picture: page wiring', () => {
     it('keeps tag spans in place with a spaced, visible action while flipping', async () => {
         vi.useFakeTimers();
         class Element {
+            tagName = '';
+            replacements = 0;
             children: (Element | string)[] = [];
             textContent = '';
             className = '';
@@ -442,63 +559,107 @@ describe('older picture: page wiring', () => {
             ownerDocument = doc;
             append(...items: (Element | string)[]) { this.children.push(...items); }
             prepend(item: Element) { this.children.unshift(item); }
-            replaceChildren(...items: (Element | string)[]) { this.children = items; }
+            replaceChildren(...items: (Element | string)[]) { this.replacements++; this.children = items; }
             setAttribute(name: string, value: string) { this.attrs[name] = value; }
             removeAttribute(name: string) { delete this.attrs[name]; }
-            querySelector() { return null; }
+            querySelector(name: string) { return this.children.find((c) => c instanceof Element && c.tagName === name) ?? null; }
+            remove() {}
             getContext() { return { putImageData: () => {} }; }
         }
         const doc = { defaultView: { matchMedia: () => ({ matches: false }) }, hidden: false,
-            createElement: () => new Element(), createElementNS: () => new Element(),
+            createElement: (name: string) => Object.assign(new Element(), { tagName: name }),
+            createElementNS: (_ns: string, name: string) => Object.assign(new Element(), { tagName: name }),
             addEventListener: () => {}, removeEventListener: () => {} };
         vi.stubGlobal('ImageData', class { constructor(..._args: unknown[]) {} });
         const key = new Element(), layer = new Element(), tag = new Element(), note = new Element(), marks = new Element();
-        const s = sky();
+        const centre = positionAt(targetById('barnard')!.astrometry, 61041);
+        const s = sky(0.25, { grid: { ...grid(), center: centre }, track: [{ mjd: 61041, ra: centre.ra, dec: centre.dec, pix: { x: 0, y: 0 } }] });
         const slot = mountEpoch({ key, layer, tag, note, thenHides: [marks] } as unknown as EpochElements,
             { enabled: true, pause: () => {}, read: vi.fn(async () => okResult(s.grid)) as unknown as typeof import('../src/lib/epoch').readEpoch });
-        slot.update(view(s));
+        slot.update(view(s, { targetId: 'barnard' }));
+        expect(note.hidden).toBe(false);
+        expect(note.children).toEqual([]);
         slot.press();
         await settle();
         const [label, space, action] = tag.children;
         expect((label as Element).textContent).toBe(EPOCH_TEXT.then);
         expect(space).toBe(' ');
         expect((action as Element).textContent).toBe('Stop the flip');
+        const bracketLegend = note.children.find((child) => child instanceof Element && child.className === 'sk-ep-leg') as Element;
+        expect(bracketLegend.children.some((child) => child instanceof Element && child.tagName === 'i')).toBe(true);
         expect(tag.attrs['aria-label']).toBeUndefined();
         expect(marks.style.visibility).toBe('hidden');
+        const noteUpdates = note.replacements;
         vi.advanceTimersByTime(EPOCH_FLIP_MS);
+        expect(layer.hidden).toBe(false);
+        expect((layer.children[0] as Element).hidden).toBe(true);
+        expect(note.replacements).toBe(noteUpdates);
         expect(tag.children[0]).toBe(label);
         expect(tag.children[2]).toBe(action);
         expect(marks.style.visibility).toBe('');
         slot.tagPress();
         expect((action as Element).textContent).toBe('Show then');
         slot.off();
+        for (const [fovDeg, pixelArcsec, height] of [[0.1, 360 / 587, 587], [0.25, 1, 550]] as const) {
+            const outside = sky(fovDeg, { grid: { center: centre, fovDeg, pixelArcsec, width: 587, height },
+                track: [{ mjd: 61041, ra: centre.ra, dec: centre.dec, pix: { x: 0, y: 0 } }] });
+            const outsideSlot = mountEpoch({ key, layer, tag, note, thenHides: [marks] } as unknown as EpochElements,
+                { enabled: true, pause: () => {}, read: vi.fn(async () => okResult(outside.grid)) as unknown as typeof import('../src/lib/epoch').readEpoch });
+            outsideSlot.update(view(outside, { targetId: 'barnard' }));
+            outsideSlot.press();
+            await settle();
+            const legend = note.children.find((child) => child instanceof Element && child.className === 'sk-ep-leg') as Element;
+            expect(legend).toBeDefined();
+            expect(legend.children.some((child) => child instanceof Element && child.tagName === 'i')).toBe(false);
+            outsideSlot.off();
+        }
         vi.unstubAllGlobals();
         vi.useRealTimers();
     });
 
-    it('announces the note and hides SPHEREx change marks during Then', () => {
+    it('wires wider-field advice to fields offered beyond both the view and picker', () => {
+        const match = page.match(/hasWiderField:\s*(.*?)\s*\}\);/s);
+        expect(match).not.toBeNull();
+        const callback = new Function('mountEpoch', 'st', 'FOVS', `return (${match![1]});`);
+        const check = (viewFov: number, pickerFov: number) =>
+            callback(mountEpoch, { fovDeg: pickerFov }, [0.1, 0.25, 0.5, 1])(viewFov);
+        expect(check(0.1, 0.1)).toBe(true);
+        expect(check(0.25, 0.25)).toBe(false);
+        expect(check(0.1, 0.25)).toBe(false);
+        expect(check(0.25, 0.1)).toBe(false);
+    });
+
+    it('declares a status note and hides SPHEREx change marks during Then', () => {
         expect(page).toMatch(/data-ref="epochNote"[^>]*role="status"|role="status"[^>]*data-ref="epochNote"/);
         expect(page).toMatch(/thenHides:\s*\[[^\]]*ref<HTMLElement>\('changesMarks'\)/);
     });
 
-    it('switches the competing keys off before starting, and Play switches it off', () => {
+    it('switches competing keys off only when a read can start', () => {
         const start = page.indexOf("        } else if (b.dataset.act === 'flags') {");
         const end = page.indexOf("        } else if (b.dataset.act === 'gaia') {", start);
         const handlers = page.slice(start, end).replace(/^        } else if/, 'if') + '\n}';
         expect(start).toBeGreaterThan(0);
-        const run = new Function('b', 'epochSlot', 'renderSlots', 'FEATURES', 'state', `
+        const run = new Function('b', 'epochSlot', 'observe', 'FEATURES', 'state', `
             let fcOn = state.fcOn, flagsOn = state.flagsOn;
+            function renderSlots() { observe({ fcOn, flagsOn }); }
             ${handlers}
             return { fcOn, flagsOn };
         `);
         let epochOn = false;
         let state = { fcOn: true, flagsOn: true };
-        const epochSlot = { get on() { return epochOn; }, off: () => { epochOn = false; },
+        const epochSlot = { canRead: true, get on() { return epochOn; }, off: () => { epochOn = false; },
             press: () => { expect(state.fcOn || state.flagsOn).toBe(false); epochOn = !epochOn; }, tagPress: () => {} };
-        const renderSlots = () => { state = { fcOn: false, flagsOn: false }; };
+        const renderSlots = (next: typeof state) => { state = next; };
         state = run({ dataset: { act: 'epoch' } }, epochSlot, renderSlots, { epoch: true }, state);
         expect(state).toEqual({ fcOn: false, flagsOn: false });
         expect(epochOn).toBe(true);
+        epochOn = false;
+        const blocked = { ...epochSlot, canRead: false, press: vi.fn() };
+        state = run({ dataset: { act: 'epoch' } }, blocked, renderSlots, { epoch: true }, { fcOn: true, flagsOn: true });
+        expect(state).toEqual({ fcOn: true, flagsOn: true });
+        expect(blocked.press).toHaveBeenCalledOnce();
+        epochOn = true;
+        state = { fcOn: false, flagsOn: false };
         state = run({ dataset: { act: 'falsecolour' } }, epochSlot, () => {}, { epoch: true }, state);
         expect(epochOn).toBe(false);
         expect(state.fcOn).toBe(true);

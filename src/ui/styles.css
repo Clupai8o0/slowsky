@@ -286,6 +286,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-key.e .sw { width: 10px; height: 10px; border-radius: 1px; background: linear-gradient(90deg, #a3a8b0 50%, #262b36 50%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25); }
 .sk-key.e[aria-pressed=false] .sw { opacity: .5; }
 .sk-ep-note a { color: var(--ink); text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .35); text-underline-offset: 3px; }
+.sk-ep-note:empty { margin: 0; }
 .sk-ep-note a:hover, .sk-ep-note a:focus-visible { text-decoration-color: currentColor; }
 .sk-ep-leg { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--ink2); }
 .sk-ep-leg i { flex: none; width: 10px; height: 7px; border: 1.75px solid #7fd8ff; border-bottom: 0; }

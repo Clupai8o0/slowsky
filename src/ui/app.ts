@@ -387,9 +387,10 @@ export function mount(root: HTMLElement): void
     const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
     const changesSlot = mountChanges(() => renderSlots());
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderSlots());
-    // Older picture (2MASS): off unless FEATURES.epoch; the logic lives in epoch-view.ts. Play switches it off.
+    // Older picture (2MASS): off unless FEATURES.epoch; Play, False colour and Flagged pixels switch it off.
     const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),
-        note: ref<HTMLElement>('epochNote'), thenHides: [ref<HTMLElement>('flags'), ref<HTMLElement>('changesMarks')] }, { enabled: FEATURES.epoch, pause: () => play(false) });
+        note: ref<HTMLElement>('epochNote'), thenHides: [ref<HTMLElement>('flags'), ref<HTMLElement>('changesMarks')] },
+        { enabled: FEATURES.epoch, pause: () => play(false), hasWiderField: (fov) => mountEpoch.hasWiderField(fov, st.fovDeg) });
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const glow = ref<HTMLCanvasElement>('glow');
@@ -1585,7 +1586,7 @@ export function mount(root: HTMLElement): void
             renderSlots();
         } else if (b.dataset.act === 'epoch' || b.dataset.act === 'epoch-tag') {
             if (b.dataset.act === 'epoch') {
-                if (FEATURES.epoch && !epochSlot.on && (fcOn || flagsOn)) {
+                if (FEATURES.epoch && epochSlot.canRead && (fcOn || flagsOn)) {
                     fcOn = false;
                     flagsOn = false;
                     renderSlots();
