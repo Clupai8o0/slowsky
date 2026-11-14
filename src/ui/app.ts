@@ -16,6 +16,8 @@ import { formatDec, formatRa, parseCoords, resolveName } from '../lib/coords';
 import { createDemoSource } from './demo-source';
 import { diffScale, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
+import { initLayout } from './layout';
+import { curveFor, frameMjd, middleMjd, ringsOn, shiftFor, type Curve } from './measure';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -38,6 +40,7 @@ const ICON = {
     prev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>',
     next: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg>',
     search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
+    focus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/></svg>',
     link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.1-1.1"/></svg>',
 };
 
@@ -123,7 +126,8 @@ function shell(): string
     const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
     const ticks = [0.4, 1, 2, 3, 4, 5].map((t) => `<span style="left:${axisPct(t).toFixed(2)}%">${t}</span>`).join('');
     return `
-<aside class="sk-rail sk-left">
+<aside class="sk-rail sk-left" id="sk-left">
+  <button type="button" class="sk-tab" data-act="fold-left" aria-controls="sk-left" aria-expanded="true"><i aria-hidden="true"></i><span>01 Choose a target</span></button>
   <div class="sk-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span><span class="sk-tag">Watch the sky change.</span><span class="sk-sub2">Infrared frames from NASA’s SPHEREx</span></div>
   <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
     <h2 class="sk-mh" id="sk-h1"><i>01</i>Choose a target</h2>
@@ -138,11 +142,16 @@ function shell(): string
     <p class="sk-body mute"><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
   </section>
 </aside>
+<div class="sk-gut sk-gut-l">
+  <div class="sk-split" data-side="left" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sk-left" aria-label="Resize the targets panel. Arrow keys resize, Enter folds" aria-valuemin="0" aria-valuemax="420" aria-valuenow="0"></div>
+  <button type="button" class="sk-fold" data-act="fold-left" aria-controls="sk-left" aria-expanded="true" aria-label="Fold the targets panel" title="Fold or open the targets panel"><span class="ic">${ICON.prev}</span></button>
+</div>
 <main class="sk-mid">
   <section class="sk-mod sk-m-watch" aria-labelledby="sk-h2">
     <div class="sk-mhrow">
       <h2 class="sk-mh" id="sk-h2"><i>02</i>Watch it change</h2>
       <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
+      <button type="button" class="sk-focus" data-act="focus" aria-pressed="false" title="Fold both panels (F)"><span class="ic">${ICON.focus}</span><span>Focus</span></button>
     </div>
     <div class="sk-sky" data-ref="sky">
       <canvas class="sk-glow" data-ref="glow" width="24" height="24" aria-hidden="true"></canvas>
@@ -173,7 +182,12 @@ function shell(): string
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
   </section>
 </main>
-<aside class="sk-rail sk-right">
+<div class="sk-gut sk-gut-r">
+  <div class="sk-split" data-side="right" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sk-right" aria-label="Resize the colour panel. Arrow keys resize, Enter folds" aria-valuemin="0" aria-valuemax="420" aria-valuenow="0"></div>
+  <button type="button" class="sk-fold" data-act="fold-right" aria-controls="sk-right" aria-expanded="true" aria-label="Fold the colour panel" title="Fold or open the colour panel"><span class="ic">${ICON.next}</span></button>
+</div>
+<aside class="sk-rail sk-right" id="sk-right">
+  <button type="button" class="sk-tab" data-act="fold-right" aria-controls="sk-right" aria-expanded="true"><span>03 Colour and frame</span></button>
   <div class="sk-status"><p><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span></p><div class="sk-acts"><button type="button" class="sk-btn2 sk-golive" data-act="live" data-ref="golive" hidden><i aria-hidden="true"></i>Go live</button><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div></div>
   <section class="sk-mod sk-m-colour" aria-labelledby="sk-h3">
     <h2 class="sk-mh" id="sk-h3"><i>03</i>Change the colour</h2>
@@ -185,6 +199,12 @@ function shell(): string
       <div class="sk-axl" aria-hidden="true"><span>your eyes</span><span>SPHEREx · µm</span></div>
     </div>
     <p class="sk-body mute">All of this is infrared: your eyes stop at 0.70 µm. Drag, then let go to load that colour.</p>
+  </section>
+  <section class="sk-mod sk-m-curve" aria-labelledby="sk-h6" data-ref="curve" hidden>
+    <h2 class="sk-mh" id="sk-h6">Brightness over time</h2>
+    <div class="sk-lc"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
+    <div class="sk-lcx" data-ref="lcx" aria-hidden="true"></div>
+    <p class="sk-body mute" data-bind="lcNote"></p>
   </section>
   <section class="sk-mod sk-m-details" aria-labelledby="sk-h5">
     <h2 class="sk-mh" id="sk-h5">This frame</h2>
@@ -230,6 +250,8 @@ export function mount(root: HTMLElement): void
     let result: SkyResult | null = null;
     let sourceKind: SourceKind = 'live';
     let liveFailed = false; // the saved copy is showing because the live archive did not answer
+    let curve: Curve | null = null; // brightness against steady stars, for targets that change
+    const shifts = new Map<number, ReturnType<typeof shiftFor>>(); // measured motion, by frame index
     let stretch: ReturnType<typeof sharedStretch> | null = null;
     let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
     let timer = 0;
@@ -295,6 +317,9 @@ export function mount(root: HTMLElement): void
         play(false);
         // Drop the previous view so nothing (play, strip, details) acts on frames of another spot.
         result = null;
+        curve = null;
+        shifts.clear();
+        renderCurve();
         stretch = null;
         composed = {};
         strip.innerHTML = '';
@@ -390,7 +415,8 @@ export function mount(root: HTMLElement): void
         sourceKind = got;
         liveFailed = failedLive;
         st.lambda = res.lambda;
-        st.detector = detectorOf(res.lambda);
+        // The frames say which detector they came from; near a band edge the wavelength alone can point at the next one.
+        st.detector = res.frames[0]?.frame.frame.detector ?? detectorOf(res.lambda);
         stretch = sharedStretch(res.frames);
         composed = {};
         st.index = 0;
@@ -402,6 +428,9 @@ export function mount(root: HTMLElement): void
         if (st.mode !== 'blink') {
             compose();
         }
+        const kindNow = st.target ? COPY[st.target].kind : 'field';
+        curve = kindNow === 'variable' || kindNow === 'spectrum' || kindNow === 'cold' ? curveFor(res) : null;
+        renderCurve();
         canvas.width = res.grid.width;
         canvas.height = res.grid.height;
         ov.setAttribute('viewBox', `0 0 ${res.grid.width} ${res.grid.height}`);
@@ -480,8 +509,53 @@ export function mount(root: HTMLElement): void
         }
         paintGlow();
         overlay();
+        renderCurve();
         renderText();
         renderFrameState();
+    }
+
+    // Brightness against steady stars: one dot per frame, the frame on screen lit. The band is how much the
+    // steady stars themselves wobble, so a change inside it may be noise.
+    function renderCurve(): void
+    {
+        const sec = ref<HTMLElement>('curve');
+        const c = curve;
+        const pts = c ? c.lc.points.map((p, i) => ({ p, k: c.frameOf[i] ?? -1 })).filter((o) => o.p.valid && Number.isFinite(o.p.relative)) : [];
+        if (!result || !c || pts.length < 2) {
+            sec.hidden = true;
+            return;
+        }
+        sec.hidden = false;
+        const W = 300;
+        const H = 100;
+        const scatter = c.lc.refScatter.filter(Number.isFinite).sort((a, b) => a - b);
+        const noise = scatter.length ? scatter[Math.floor(scatter.length / 2)]! : 0;
+        const ys = pts.map((o) => o.p.relative);
+        let lo = Math.min(...ys, 1 - noise);
+        let hi = Math.max(...ys, 1 + noise);
+        const pad = Math.max((hi - lo) * 0.18, 0.01);
+        lo -= pad;
+        hi += pad;
+        const t0 = pts[0]!.p.mjd;
+        const t1 = pts[pts.length - 1]!.p.mjd;
+        const x = (t: number) => 6 + ((t - t0) / (t1 - t0 || 1)) * (W - 12);
+        const y = (v: number) => ((hi - v) / (hi - lo)) * H;
+        const on = st.mode === 'blink' ? st.index : -1;
+        const dot = (o: { p: { mjd: number; relative: number }; k: number }) =>
+            `<path d="M${x(o.p.mjd).toFixed(1)} ${y(o.p.relative).toFixed(1)}h0" class="${o.k === on ? 'on' : ''}" data-k="${o.k}" vector-effect="non-scaling-stroke"/>`;
+        ref<SVGSVGElement>('lc').innerHTML =
+            `<rect x="0" width="${W}" y="${y(1 + noise).toFixed(1)}" height="${Math.max(0.5, y(1 - noise) - y(1 + noise)).toFixed(1)}" class="band"/>`
+            + `<path d="M0 ${y(1).toFixed(1)}H${W}" class="base" vector-effect="non-scaling-stroke"/>`
+            + `<polyline points="${pts.map((o) => `${x(o.p.mjd).toFixed(1)},${y(o.p.relative).toFixed(1)}`).join(' ')}" class="line" vector-effect="non-scaling-stroke"/>`
+            + `<g class="dots">${pts.map(dot).join('')}</g>`;
+        const pct = (v: number) => `${v >= 1 ? '+' : '−'}${Math.abs((v - 1) * 100).toFixed(Math.abs(v - 1) < 0.1 ? 1 : 0)}%`;
+        ref<HTMLElement>('lcy').innerHTML = `<span style="top:0">${pct(hi)}</span><span style="top:${((hi - 1) / (hi - lo) * 100).toFixed(1)}%">usual</span><span style="top:100%">${pct(lo)}</span>`;
+        ref<HTMLElement>('lcx').innerHTML = `<span>${monthYear(t0)}</span><span>${monthYear(t1)}</span>`;
+        const min = Math.min(...ys);
+        const max = Math.max(...ys);
+        ref<SVGSVGElement>('lc').setAttribute('aria-label', `Brightness over ${pts.length} looks, from ${pct(min)} to ${pct(max)} of usual. Steady stars nearby vary by about ${(noise * 100).toFixed(1)}%.`);
+        const left = c.lc.dropped > 0 ? ` ${c.lc.dropped} ${c.lc.dropped === 1 ? 'frame was' : 'frames were'} too far off this colour.` : '';
+        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} steady Gaia stars in the field. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%), so a change inside it may be noise.${left}`);
     }
 
     // A tiny copy of the sky, blurred by CSS behind the image: the glow follows what is on screen.
@@ -504,8 +578,10 @@ export function mount(root: HTMLElement): void
             `<circle cx="${(x + 0.5).toFixed(2)}" cy="${(y + 0.5).toFixed(2)}" r="${r}" class="${cls}" fill="none" vector-effect="non-scaling-stroke"/>`;
         const scale = result.grid.width / 60;
         if (st.gaia && st.mode !== 'diff') {
-            const bright = [...result.stars].sort((p, q) => p.g - q.g).slice(0, GAIA_RINGS);
-            for (const s of bright) {
+            // Each star where it was on this frame's date; with every frame shown at once, halfway through.
+            const now = result.frames[st.index];
+            const mjd = st.mode === 'blink' && now ? frameMjd(now.frame) : middleMjd(result);
+            for (const s of ringsOn(result, mjd, GAIA_RINGS)) {
                 parts.push(ring(s.pix.x, s.pix.y, Math.max(2.4, scale * 0.9), 'gaia'));
             }
         }
@@ -683,6 +759,16 @@ export function mount(root: HTMLElement): void
             if (rec.pipelineVersion) {
                 rows.push(['Pipeline', rec.pipelineVersion]);
             }
+            const t = st.target ? targetById(st.target) : undefined;
+            if (t && COPY[t.id].kind === 'mover' && n > 1) {
+                if (!shifts.has(st.index)) {
+                    shifts.set(st.index, shiftFor(result, t.astrometry, st.index));
+                }
+                const sh = shifts.get(st.index);
+                if (sh) {
+                    rows.push([`Moved, frames 1 to ${sh.to + 1}`, `${sh.measuredArcsec.toFixed(1)}″ (expected ${sh.predictedArcsec.toFixed(1)}″)`]);
+                }
+            }
             let html = rows.map(([k, v]) => `<dt>${k}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('');
             const links: string[] = [];
             if (rec.url) {
@@ -771,7 +857,9 @@ export function mount(root: HTMLElement): void
 
     function linkFor(withFrame: boolean): string
     {
-        const extra = `${st.mode !== 'blink' ? `&m=${st.mode}` : ''}${st.gaia ? '' : '&g=0'}${demoOnly ? '&demo=1' : ''}`;
+        // A live view of a target says so, or the link would reopen it from the saved copy (recentred, field capped).
+        const live = sourceKind === 'live' && st.target && result ? '&live=1' : '';
+        const extra = `${st.mode !== 'blink' ? `&m=${st.mode}` : ''}${st.gaia ? '' : '&g=0'}${live}${demoOnly ? '&demo=1' : ''}`;
         return `${location.origin}${location.pathname}?${encodeView(view(withFrame))}${extra}`;
     }
 
@@ -820,6 +908,19 @@ export function mount(root: HTMLElement): void
             st.live = true;
             void load();
         }
+    });
+
+    ref<SVGSVGElement>('lc').addEventListener('click', (e) => {
+        const dot = (e.target as Element).closest('[data-k]');
+        const k = dot ? Number(dot.getAttribute('data-k')) : NaN;
+        if (!result || !Number.isInteger(k) || k < 0 || !result.frames[k]) {
+            return;
+        }
+        st.mode = 'blink';
+        play(false);
+        st.index = k;
+        draw();
+        writeUrl();
     });
 
     lamInput.addEventListener('input', () => {
@@ -883,9 +984,15 @@ export function mount(root: HTMLElement): void
         }
     });
 
+    const layout = initLayout(root);
+
     document.addEventListener('keydown', (e) => {
         const el = e.target as HTMLElement;
-        if (el.closest?.('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) {
+        if (el.closest?.('input, textarea, select, [contenteditable], [role=separator]') || e.metaKey || e.ctrlKey || e.altKey) {
+            return;
+        }
+        if ((e.key === 'f' || e.key === 'F') && matchMedia('(min-width: 1081px)').matches) {
+            layout.toggleFocus();
             return;
         }
         if (e.key === ' ' && !el.closest?.('button, summary, a, label')) {
@@ -911,6 +1018,7 @@ export function mount(root: HTMLElement): void
         const m = params.get('m');
         st.mode = m === 'stack' || m === 'diff' ? m : 'blink';
         st.gaia = params.get('g') !== '0';
+        st.live = params.get('live') === '1';
         st.label = shared.target ? COPY[shared.target].display : `${formatRa(shared.center.ra)} ${formatDec(shared.center.dec)}`;
         void load();
     } else {
