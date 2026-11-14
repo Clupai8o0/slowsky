@@ -318,3 +318,44 @@ describe('halo round 10, review', () => {
 
     const three = () => [point(MJD0), point(MJD0 + 100, { relative: 1.04 }), point(MJD0 + 200)];
 });
+
+describe('halo round 11 view', () => {
+    const three = () => [point(MJD0), point(MJD0 + 100, { relative: 1.04 }), point(MJD0 + 200)];
+    const agree = 'The comparison stars were checked against each other in every look and agree within their noise.';
+
+    it('names a comparison star the panel left out before the module\'s check', () => {
+        const r = result([5000, 5000, 5000]);
+        let first = -1;
+        const base = fake(three(), 0, { note: agree });
+        const curve: typeof haloCurve = (frames, target, refs, opts) => {
+            first = first < 0 ? refs.length : first;
+            const lc = base(frames, target, refs, opts);
+            // The first comparison star scatters far more than the rest only while all of them are measured.
+            return { ...lc, refScatter: refs.map((_, i) => (i === 0 && refs.length === first ? 1 : 0.01)) };
+        };
+        const h = haloFor(r, { ring, curve })!;
+        expect(first).toBeGreaterThan(2);
+        expect(h.leftOut).toBe(1);
+        expect(h.refs).toBe(first - 1);
+        const html = haloHtml(h, 'R Draconis', -1);
+        const out = '<p class="sk-body mute">One comparison star was left out because its readings scattered far more from look to look than the other comparison stars’ did.</p>';
+        expect(html).toContain(`${out}<p class="sk-body mute">${agree}</p>`);
+        expect(html).not.toMatch(BANNED);
+    });
+
+    it('says nothing about left-out stars when none were', () => {
+        const h = haloFor(result([5000, 5000, 5000]), { ring, curve: fake(three(), 0, { note: agree }) })!;
+        expect(h.leftOut).toBe(0);
+        expect(haloHtml(h, 'R Draconis', -1)).not.toContain('left out');
+    });
+
+    it('hides the module note when it gives a reason against a curve, and keeps its caveat', () => {
+        const caveat = 'The blank middle is larger in 1 look than the ring, so these readings may be off.';
+        const h = haloFor(result([5000, 5000, 5000]), { ring, curve: fake(three(), 0,
+            { drawable: false, reason: 'The blank middle is larger in 1 look than the ring allows', caveat, note: agree }) })!;
+        const html = haloHtml(h, 'R Draconis', -1);
+        expect(html).toContain('No curve is drawn: the blank middle');
+        expect(html).toContain(`<p class="sk-body mute">${caveat}</p>`);
+        expect(html).not.toContain('agree');
+    });
+});

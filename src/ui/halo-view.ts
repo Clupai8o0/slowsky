@@ -37,6 +37,7 @@ export interface HaloView {
     caveat?: string; // why the readings may be off (comparison stars, a larger blank middle)
     note?: string; // how far a change in one comparison star could shift the readings unseen
     reason?: string; // why no curve is drawn, when the module says it cannot be
+    leftOut?: number; // comparison stars the panel left out before measuring (steadyRefs), so the module never saw them
     rule?: boolean; // whether the panel's own rule (MIN_VISITS visits within CURVE_WIDTH_UM) allows a line
 }
 
@@ -102,6 +103,7 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
     const curve = deps.curve ?? haloCurve;
     let order: number[] = []; // the module asks for the target once per kept frame, in point order
     let lc: HaloCurve;
+    const picked = clear.length;
     try {
         lc = steadyRefs(clear, (pix) => {
             order = [];
@@ -151,6 +153,7 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
         note: drawing.note ?? '',
         reason: drawing.drawable === false ? drawing.reason?.trim() ?? '' : '',
         rule,
+        leftOut: picked - clear.length,
     };
 }
 
@@ -205,8 +208,16 @@ export function haloHtml(h: HaloView, name: string, on: number): string
         ? ` ${gs.length === 1 ? `A catalogued Gaia star (G ${gs[0]!.toFixed(1)}) sits` : `${gs.length} catalogued Gaia stars (brightest G ${gs[0]!.toFixed(1)}) sit`}`
             + ` in or at the edge of the ring, so some of ${gs.length === 1 ? 'its' : 'their'} light is in every reading.`
         : '';
-    // The module's own sentences on the comparison stars and the blank middle, under the readings.
-    const module = [h.caveat, h.note].filter((t): t is string => !!t).map((t) => `<p class="sk-body mute">${esc(t)}</p>`).join('');
+    // The module's own sentences on the comparison stars and the blank middle, under the readings. Its note says the
+    // stars agree, so it shows only when the module gives no reason against a curve; it speaks of the stars the
+    // module was given, so the stars the panel left out first are named before it.
+    const out = h.leftOut ?? 0;
+    const leftOut = out > 0
+        ? `${out === 1 ? 'One comparison star was' : `${out} comparison stars were`} left out because ${out === 1 ? 'its readings' : 'their readings'}`
+            + ` scattered far more from look to look than the other comparison stars’ did.`
+        : '';
+    const module = [h.caveat, leftOut, h.reason ? '' : h.note].filter((t): t is string => !!t)
+        .map((t) => `<p class="sk-body mute">${esc(t)}</p>`).join('');
     // One reading compared with its own median always reads +0.0%, so show only its noise.
     const one = h.points.length === 1;
     // Each look's date is a button that shows that frame in Blink, as the dots on the curve do.
