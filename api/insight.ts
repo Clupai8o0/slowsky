@@ -98,6 +98,7 @@ export interface InsightDeps {
     maxPerUserDay: number;
     maxPerDay: number;
     maxPerHour: number;
+    storeMissing?: boolean;
 }
 type Answer = { text: string; model: string; dropped: number };
 const answers = new Map<string, Answer>();
@@ -111,8 +112,16 @@ export function pickStore(env: Record<string, string | undefined>): LimitStore
     }
     return memoryStore();
 }
+export function storeMissing(env: Record<string, string | undefined>): boolean
+{
+    return (env.VERCEL_ENV === 'production' || env.VERCEL_ENV === 'preview')
+        && !(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN)
+        && !(env.KV_REST_API_URL && env.KV_REST_API_TOKEN);
+}
 // In-memory limits are per server instance and reset on a cold start.
 const serverStore = pickStore(process.env);
+const missingStore = storeMissing(process.env);
+if (missingStore) { console.warn('AI note is off: no shared store for the limits'); }
 // Caps what one address can cost the shared store per server instance.
 const localStore = memoryStore();
 const limit = 4096;
@@ -175,7 +184,7 @@ class StoreFailure extends Error {}
 export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Response>; POST(r: Request): Promise<Response> }
 {
     const minute = 60000, hour = 3600000, day = 86400000, guessWindow = 900000;
-    const enabled = Boolean(deps.apiKey && (deps.passcode || deps.open));
+    const enabled = Boolean(!deps.storeMissing && deps.apiKey && (deps.passcode || deps.open));
     const local = deps.local ?? localStore;
     async function counter(method: 'hit' | 'count', key: string, window: number, now: number): Promise<number> {
         try { return await deps.store[method](key, window, now); } catch { throw new StoreFailure(); }
@@ -316,7 +325,7 @@ function handlers(): ReturnType<typeof createHandlers>
     const apiKey = process.env.ANTHROPIC_API_KEY;
     const model = process.env.INSIGHT_MODEL || 'claude-opus-5-5';
     const passcode = process.env.INSIGHT_PASSCODE?.trim() || undefined;
-    return createHandlers({ apiKey, model, complete: anthropicComplete(apiKey ?? '', model), now: Date.now, store: serverStore, passcode, open: process.env.INSIGHT_OPEN === '1', maxPerUserDay: setting('INSIGHT_MAX_PER_USER_DAY', 40), maxPerDay: setting('INSIGHT_MAX_PER_DAY', 300), maxPerHour: setting('INSIGHT_MAX_PER_HOUR', 120) });
+    return createHandlers({ apiKey, model, complete: anthropicComplete(apiKey ?? '', model), now: Date.now, store: serverStore, storeMissing: missingStore, passcode, open: process.env.INSIGHT_OPEN === '1', maxPerUserDay: setting('INSIGHT_MAX_PER_USER_DAY', 40), maxPerDay: setting('INSIGHT_MAX_PER_DAY', 300), maxPerHour: setting('INSIGHT_MAX_PER_HOUR', 120) });
 }
 export function GET(request: Request): Promise<Response> { return handlers().GET(request); }
 export function POST(request: Request): Promise<Response> { return handlers().POST(request); }

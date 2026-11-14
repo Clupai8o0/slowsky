@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { GET as serverGET, createHandlers as createServerHandlers, memoryStore, pickStore, upstashStore, type InsightDeps, type LimitStore } from '../api/insight';
+import { GET as serverGET, createHandlers as createServerHandlers, memoryStore, pickStore, storeMissing, upstashStore, type InsightDeps, type LimitStore } from '../api/insight';
 import { checkNote, factSheet, fetchInsight, insightEnabled, insightStatus, validateFacts, type InsightFacts } from '../src/lib/insight';
 import { SYSTEM_PROMPT } from '../src/lib/insight-prompt';
 import { TARGETS } from '../src/lib/targets';
@@ -17,8 +17,8 @@ function request(value: unknown, headers: Record<string, string> = {}): Request
 }
 describe('round four corpus', () => {
     const sheet = ["Target: Barnard's Star.", 'Position: RA 269.4521 deg, Dec 4.6934 deg.', 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Lowest signal-to-noise among the points: 48.', 'Reference stars: 3. Scatter of each: 1.2, 1.8, 2.5 percent.', 'Frames left out because their wavelength did not match: 0.', 'Difference image at the target: 3.4 sigma, brighter in the later visit.', 'Shift in position: 10.4 arcsec over 182.5 days.', "Frames came from: NASA's live archive."];
-    const good = ["Barnard's Star was seen in 3 visits spread over 182.5 days.", 'The visits hold 14, 12 and 16 frames.', 'Its brightness relative to the reference stars went from 1.00 to 0.97 and then 1.12.', 'The largest change from the median brightness is 12 percent brighter.', 'The 3 reference stars scatter by 1.2, 1.8 and 2.5 percent, so the 12 percent change stands out.', 'The lowest signal-to-noise among the points is 48.', 'The difference image shows 3.4 sigma at the target, brighter in the later visit.', 'The star shifted 10.4 arcsec over 182.5 days.', 'The frames were taken at 4.270 micron, close to the carbon dioxide ice feature at 4.27 micron.', 'Its position is RA 269.4521 deg, Dec 4.6934 deg.', 'SPHEREx pixels are about 6.2 arcsec wide, so a 10.4 arcsec shift is larger than one pixel.', 'With only 3 visits, the trend is thinly sampled.', 'The 12 percent brightening is larger than the 2.5 percent scatter of the least steady reference star.', 'A shift of 10.4″ in 182.5 days and a 3.4σ difference both point the same way.', 'Compare the frames at 4.270 µm with a second wavelength in Slowsky.', 'SPHEREx returns about every 6 months, so a later visit would test it.', 'This is a candidate change, and CO2 ice absorbs near this wavelength.'];
-    const bad = ['The reference stars scatter by 12 percent.', 'The star moved 10.4 arcmin.', 'The star moved 10.4 milliarcsec.', 'The frames were taken at 4.270 nm.', 'Its position is RA 269.4521 hours.', 'It moved 10.4 arcsec per day.', 'It moved 10.4 arcsec a day.', 'It moved 10.4 arcsec/day.', 'Its position is RA 269.4521 deg, Dec -4.6934 deg.', '12 of the 14 frames were left out.', '1 in 3 frames was sharp.', 'The fourth visit was the brightest.', 'It brightened by a factor of 12.', 'The change is an order of magnitude larger than the scatter.', 'The visit was on 14 March.', 'The star is at 48 °C.', 'It lies 182.5 trillion kilometres away.', 'The star is 48 light-years away.', 'The signal-to-noise reached 48 percent.', 'The 3 visits each lasted 3.4 days.', 'The scatter is 2.5 sigma.', 'It brightened 1.12 times.', 'The star moved 16 arcsec.', 'The difference is 12 sigma.', 'There were 48 visits.', 'The brightness fell to 0.97 percent.', 'The wavelength is 3.4 micron.', 'It was 3/W2/12 brighter.', 'It is half as bright.', 'The star is 1 of a kind.'];
+    const good = ["Barnard's Star was seen in 3 visits spread over 182.5 days.", 'The visits hold 14, 12 and 16 frames.', 'Its brightness relative to the reference stars went from 1.00 to 0.97 and then 1.12.', 'The largest change from the median brightness is 12 percent brighter.', 'The 3 reference stars scatter by 1.2, 1.8 and 2.5 percent, so the 12 percent change stands out.', 'The lowest signal-to-noise among the points is 48.', 'The difference image shows 3.4 sigma at the target, brighter in the later visit.', 'The star shifted 10.4 arcsec over 182.5 days.', 'The frames were taken at 4.270 micron, close to the carbon dioxide ice feature at 4.27 micron.', 'Its position is RA 269.4521 deg, Dec 4.6934 deg.', 'SPHEREx pixels are about 6.2 arcsec wide, so a 10.4 arcsec shift is larger than one pixel.', 'With only 3 visits, the trend is thinly sampled.', 'The 12 percent brightening is larger than the 2.5 percent scatter of the least steady reference star.', 'A shift of 10.4″ in 182.5 days and a 3.4σ difference both point the same way.', 'Compare the frames at 4.270 µm with a second wavelength in Slowsky.', 'This is a candidate change, and CO2 ice absorbs near this wavelength.'];
+    const bad = ['SPHEREx returns about every 6 months, so a later visit would test it.', 'The reference stars scatter by 12 percent.', 'The star moved 10.4 arcmin.', 'The star moved 10.4 milliarcsec.', 'The frames were taken at 4.270 nm.', 'Its position is RA 269.4521 hours.', 'It moved 10.4 arcsec per day.', 'It moved 10.4 arcsec a day.', 'It moved 10.4 arcsec/day.', 'Its position is RA 269.4521 deg, Dec -4.6934 deg.', '12 of the 14 frames were left out.', '1 in 3 frames was sharp.', 'The fourth visit was the brightest.', 'It brightened by a factor of 12.', 'The change is an order of magnitude larger than the scatter.', 'The visit was on 14 March.', 'The star is at 48 °C.', 'It lies 182.5 trillion kilometres away.', 'The star is 48 light-years away.', 'The signal-to-noise reached 48 percent.', 'The 3 visits each lasted 3.4 days.', 'The scatter is 2.5 sigma.', 'It brightened 1.12 times.', 'The star moved 16 arcsec.', 'The difference is 12 sigma.', 'There were 48 visits.', 'The brightness fell to 0.97 percent.', 'The wavelength is 3.4 micron.', 'It was 3/W2/12 brighter.', 'It is half as bright.', 'The star is 1 of a kind.'];
     it.each(good)('keeps %s', (sentence) => { expect(checkNote(`${sentence} Plain sentence.`, sheet).dropped).toBe(0); });
     it.each(bad)('drops %s', (sentence) => { expect(checkNote(`${sentence} Plain sentence. Another plain sentence.`, sheet).dropped).toBe(1); });
     it('derives and recognizes the actual WISE short name', () => {
@@ -74,8 +74,8 @@ describe('round four access', () => {
     it('lets concurrent correct requests through during wrong guesses', async () => {
         const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => 0, complete: vi.fn() });
         const send = (code: string) => handler.GET(new Request('https://example.test', { headers: { 'x-real-ip': 'r4-parallel', 'x-insight-passcode': code } }));
-        const replies = await Promise.all([...Array.from({ length: 25 }, () => send('bad')), ...Array.from({ length: 30 }, () => send('secret'))]);
-        for (const response of replies.slice(25)) { expect(await response.json()).toMatchObject({ unlocked: true }); }
+        const replies = await Promise.all([...Array.from({ length: 60 }, () => send('bad')), ...Array.from({ length: 30 }, () => send('secret'))]);
+        for (const response of replies.slice(60)) { expect(await response.json()).toMatchObject({ unlocked: true }); }
     });
     it('returns 503 when the local counter fails', async () => {
         const local: LimitStore = { hit: async () => { throw new Error('unavailable'); }, count: async () => 0, refund: async () => {} };
@@ -162,8 +162,8 @@ describe('round three regressions', () => {
     });
     it('pairs unit aliases and lists while rejecting mismatches and unsupported hyphenated units', () => {
         const sheet = ['Target: Example.', 'Visits: 4. Frames: 8.', 'Wavelength: 1.2, 1.4 and 1.6 micron.', 'Shift in position: 10.4 arcsec over 182.5 days.', 'Position: 14 deg.', 'Signal: 3.4 sigma.'];
-        const good = ['At 1.2, 1.4 and 1.6 µm it changes.', 'The shift is 10.4 arcseconds over 182.5 day.', 'Position is 14 degrees.', 'The signal is 3.4 standard deviations.', 'There are 4 visits.', 'There are 3 visits.'];
-        const bad = ['At 1.2 and 8 µm it changes.', 'Position is 8 degrees.', 'There are 8 visits.', 'It is 6-light-year distant.', 'It is 8-km away.', 'It is 8-Mjup.', 'It is 8-Rsun.', 'It is 8-Lsun.', 'It is 8 masses.'];
+        const good = ['At 1.2, 1.4 and 1.6 µm it changes.', 'The shift is 10.4 arcseconds over 182.5 day.', 'Position is 14 degrees.', 'The signal is 3.4 standard deviations.', 'There are 4 visits.'];
+        const bad = ['There are 3 visits.', 'At 1.2 and 8 µm it changes.', 'Position is 8 degrees.', 'There are 8 visits.', 'It is 6-light-year distant.', 'It is 8-km away.', 'It is 8-Mjup.', 'It is 8-Rsun.', 'It is 8-Lsun.', 'It is 8 masses.'];
         for (const sentence of good) { expect(checkNote(`${sentence} Safe sentence. Another safe sentence.`, sheet).dropped, sentence).toBe(0); }
         for (const sentence of bad) { expect(checkNote(`${sentence} Safe sentence. Another safe sentence.`, sheet).dropped, sentence).toBe(1); }
     });
@@ -183,7 +183,7 @@ describe('round two regressions', () => {
         for (const value of bad) {
             expect(checkNote(`Value ${value}. Safe sentence. Another safe sentence.`, ['Value 6.']).dropped, value).toBe(1);
         }
-        expect(checkNote('Double-check the second visit. It returns about every 6 months. There are fewer than 3 visits. SPHEREx has 6 detectors. The scatter is 1.2 percent.', ['Scatter: 1.2, 1.8, 2.5 percent.']).dropped).toBe(0);
+        expect(checkNote('Double-check the second visit. It returns about every 6 months. There are fewer than 3 visits. SPHEREx has 6 detectors. The scatter is 1.2 percent.', ['Scatter: 1.2, 1.8, 2.5 percent.']).dropped).toBe(2);
         expect(SYSTEM_PROMPT).toContain('about every 6 months');
         expect(SYSTEM_PROMPT).toContain('fewer than 3 visits');
         expect(SYSTEM_PROMPT).toContain('Write every number in digits');
@@ -632,5 +632,76 @@ describe('checkNote: names and words used as numbers', () => {
     });
     it.each(['In the third visit it was brighter.', 'A third visit shows it brighter again.', "Barnard's Star shifted 10.4 arcsec over 182.5 days."])('keeps: %s', (sentence) => {
         expect(dropped(sentence, barnard)).toBe(0);
+    });
+});
+
+describe('checkNote: round five', () => {
+    const sheet = ["Target: Barnard's Star.", 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Reference stars: 3.', 'Frames left out because their wavelength did not match: 3.', 'Difference image at the target: 1 sigma, brighter.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
+    const pad = 'Safe sentence. Another safe sentence.';
+    it.each([
+        "Barnard's Star moves about 10.4 arcsec in a year.", 'It shifts 10.4 arcsec annually.', 'That is 10.4 arcsec per annum.',
+        'The brightening began 6 months before the first visit.', 'The visits were 3 weeks apart.',
+        'At this signal-to-noise the error is a couple of percent.', 'It moved a few arcsec.', 'The scatter is several sigma.', 'The span is a handful of days.', 'Some microns are brighter.', 'Many degrees separate them.', 'Dozens of standard deviations were measured.',
+        'It moved one arcsec.', 'The brightness changed one percent.', 'The wavelength is one micron.', 'The position is one degree.', 'The span is one day.',
+        'It is the fourth-closest star to the Sun.', 'It is the second brightest star.', 'It changed by a hundredth.', 'It changed by two ten-thousandths.',
+        'See <b>this</b> result.', 'See https://example.test for details.', 'See www.example.test for details.',
+        'It is an M4 red dwarf.', 'It is a T8 object.', 'It is an L5.5 dwarf.', 'It is an M4V star.',
+        'The star was observed in 12 visits.', 'There were 16 visits in all.', 'Only 3 frames passed the wavelength match.', 'The star appears in only 3 frames.',
+        'The fourth visit was brighter.', 'SPHEREx has 102 detectors.',
+    ])('drops %s', (sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+    });
+    it.each([
+        'A rise from 0.97 to 1.12 is the main change.', "The star's light went up by 12 percent.",
+        'The visits held 14, 12 and 16 frames per visit.', 'A fourth visit would show whether the brightening holds.',
+        'SPHEREx sees 102 colours, so try another wavelength.', 'SPHEREx has 6 detectors.',
+        'The difference image shows one sigma.', 'The difference image shows one standard deviation.',
+        'One can see the star.', 'No one knows.', 'One of the visits is brighter.',
+        '3 frames were left out.',
+    ])('keeps %s', (sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(0);
+    });
+    it.each([
+        ['The difference image shows one sigma.', 'Difference image: 1 sigma.'],
+        ['The difference image shows one standard deviation.', 'Difference image: 1 sigma.'],
+        ['The change is one percent.', 'Largest change: 1 percent.'],
+        ['The shift is one arcsec.', 'Shift in position: 1 arcsec.'],
+        ['The wavelength is one micron.', 'Wavelength: 1 micron.'],
+        ['The position is one degree.', 'Position: 1 deg.'],
+        ['The shift spans one day.', 'Shift in position: 1 days.'],
+    ])('checks one against the matching fact: %s', (sentence, line) => {
+        expect(checkNote(`${sentence} ${pad}`, [line]).dropped).toBe(0);
+        expect(checkNote(`${sentence} ${pad}`, []).dropped).toBe(1);
+    });
+    it('allows a spectral token belonging to the target name', () => {
+        expect(checkNote(`M4V is the target. ${pad}`, ['Target: M4V.']).dropped).toBe(0);
+    });
+    it.each([
+        [{ VERCEL_ENV: 'production' }, true],
+        [{ VERCEL_ENV: 'preview', UPSTASH_REDIS_REST_URL: 'url' }, true],
+        [{ VERCEL_ENV: 'preview', KV_REST_API_URL: 'url', KV_REST_API_TOKEN: 'token' }, false],
+        [{ VERCEL_ENV: 'development' }, false],
+    ])('checks shared store configuration %j', (env, missing) => {
+        expect(storeMissing(env)).toBe(missing);
+    });
+    it('turns both handlers off before accessing any store', async () => {
+        const store = { hit: vi.fn(), count: vi.fn(), refund: vi.fn() } as unknown as LimitStore;
+        const complete = vi.fn();
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => 0, passcode: 'secret', store, local: store, storeMissing: true });
+        expect(await (await handler.GET(new Request('https://example.test', { headers: { 'x-insight-passcode': 'secret' } }))).json()).toEqual({ enabled: false, locked: false, unlocked: false, model: 'fake' });
+        const response = await handler.POST(request({ facts }, { 'x-insight-passcode': 'secret' }));
+        expect(response.status).toBe(503);
+        expect(await response.json()).toEqual({ error: 'off' });
+        expect(store.hit).not.toHaveBeenCalled(); expect(store.count).not.toHaveBeenCalled(); expect(store.refund).not.toHaveBeenCalled(); expect(complete).not.toHaveBeenCalled();
+    });
+    it('limits uncached correct requests per minute', async () => {
+        let now = 120000;
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => now, maxPerUserDay: 40, complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }) });
+        const send = (ra: number) => handler.POST(request({ facts: { ...facts, ra } }, { 'x-real-ip': 'round-five-minute', 'x-insight-passcode': 'secret' }));
+        for (let i = 0; i < 20; i++) { expect((await send(200 + i)).status).toBe(200); }
+        const limited = await send(220);
+        expect(limited.status).toBe(429); expect(limited.headers.get('Retry-After')).toBeTruthy();
+        now += 60000;
+        expect((await send(220)).status).toBe(200);
     });
 });
