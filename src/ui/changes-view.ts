@@ -24,7 +24,9 @@ export function changesView(found: ChangeResult | { error: string }): ChangesVie
     return {
         candidates: found.candidates.filter((c) => Number.isFinite(c.pix.x) && Number.isFinite(c.pix.y)),
         notes: found.notes,
-        ran: true,
+        // The finder sets sigma to NaN when it measured nothing (no frames within its colour window); then
+        // "no candidates" would claim a comparison that never happened, so only its notes show.
+        ran: Number.isFinite(found.sigma) || found.candidates.length > 0,
     };
 }
 

@@ -40,6 +40,11 @@ describe('Candidate changes panel', () => {
         expect(html).not.toContain('<ol');
     });
 
+    it('says nothing of its own when the finder measured nothing (sigma NaN)', () => {
+        const none = { ...found([], ['2 frames skipped: no earlier image within 0.02 µm.']), sigma: NaN };
+        expect(changesHtml(changesView(none))).toBe('<ul class="sk-chg-notes"><li>2 frames skipped: no earlier image within 0.02 µm.</li></ul>');
+    });
+
     it('prints the finder\'s own message, and no empty line, when it cannot run', () => {
         const html = changesHtml(changesView({ error: 'Change finding needs two visits; these frames make 1.' }));
         expect(html).toBe('<ul class="sk-chg-notes"><li>Change finding needs two visits; these frames make 1.</li></ul>');
