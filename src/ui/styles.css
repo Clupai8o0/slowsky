@@ -103,7 +103,7 @@ button { cursor: pointer; }
     .sk[data-left=min] .sk-left > * { min-width: var(--lw); }
     .sk[data-right=min] .sk-right > * { min-width: var(--rw); }
     /* An opened rail settles in: a short fade and an 8 px drift from the side it lives on. */
-    .sk[data-anim=left-open] .sk-left > *, .sk[data-anim=both-open] .sk-left > * { animation: sk-in-l var(--t-enter) var(--ease) both; }
+    .sk[data-anim=left-open] .sk-left > :not(.sk-skip), .sk[data-anim=both-open] .sk-left > :not(.sk-skip) { animation: sk-in-l var(--t-enter) var(--ease) both; }
     .sk[data-anim=right-open] .sk-right > *, .sk[data-anim=both-open] .sk-right > * { animation: sk-in-r var(--t-enter) var(--ease) both; }
 
     .sk-mini { position: absolute; z-index: 4; top: var(--pt); display: inline-flex; align-items: center; gap: 10px; height: 36px; max-width: 280px; padding: 0 12px;
@@ -367,7 +367,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-strip button { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; text-align: left; transition: transform var(--t-press) var(--ease); }
 .sk-strip button canvas { opacity: .5; }
 .sk-strip button:hover canvas { opacity: .85; }
-.sk-strip canvas { width: 52px; height: 52px; display: block; background: #000; image-rendering: pixelated; outline: 1px solid var(--hair2); transition: outline-color var(--t-hover) var(--ease), opacity var(--t-hover) var(--ease); }
+.sk-strip canvas { width: 52px; height: 52px; display: block; background: #000; image-rendering: pixelated; outline: 1px solid var(--hair2); } /* no fade: the current frame moves on every blink step */
 .sk-strip button[aria-current=true] canvas { opacity: 1; outline: 1px solid #fff; outline-offset: 3px; }
 .sk[data-mode=stack] .sk-strip canvas, .sk[data-mode=diff] .sk-strip button[data-in-sub] canvas { opacity: 1; }
 .sk-strip small { font: var(--fs-label)/1.4 var(--mono); color: var(--mute); white-space: nowrap; }
