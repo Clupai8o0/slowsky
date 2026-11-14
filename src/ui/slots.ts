@@ -18,7 +18,27 @@ import type { RegriddedFrame, TargetId } from '../lib/types';
 import { COPY } from './copy';
 import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
 
-export const FEATURES = Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
+export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo';
+export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
+    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
+
+// Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
+// Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
+export function featuresFrom(list: string | undefined, defaults: Readonly<Record<Feature, boolean>> = DEFAULT_FEATURES): Readonly<Record<Feature, boolean>>
+{
+    const out = { ...defaults };
+    for (const raw of (list ?? '').split(',')) {
+        const item = raw.trim();
+        const off = item.startsWith('-');
+        const name = (off ? item.slice(1) : item).trim();
+        if (Object.prototype.hasOwnProperty.call(out, name)) {
+            out[name as Feature] = !off;
+        }
+    }
+    return Object.freeze(out);
+}
+
+export const FEATURES = featuresFrom(import.meta.env.VITE_PREVIEW_FEATURES as string | undefined);
 
 export interface SlotView {
     result: SkyResult;
