@@ -48,6 +48,7 @@ function measure(minScreenPx: number): number
 it.each([1, 2, 4])('calibrates resampling noise on grid %i', (m) => {
     const ratio = measure(m);
     console.log(`grid ${m}: true scatter / reported noise = ${ratio.toFixed(3)}`);
-    expect(ratio).toBeGreaterThanOrEqual(0.80);
-    expect(ratio).toBeLessThanOrEqual(1.10);
+    // Other seeds and 2000 trials stayed between 0.92 and 1.02 (review, 14 Nov 2026).
+    expect(ratio).toBeGreaterThanOrEqual(0.88);
+    expect(ratio).toBeLessThanOrEqual(1.06);
 }, 20000);

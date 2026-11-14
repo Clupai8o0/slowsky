@@ -110,8 +110,8 @@ export function factSheet(f: InsightFacts): string[]
             }
         }
         const snr = Math.min(...lc.points.map((p) => p.snr));
-        const roundedSnr = Number(snr.toFixed(0));
-        const snrText = snr < 1 ? 'below 1' : roundedSnr > 100 ? 'more than 100' : roundedSnr.toFixed(0);
+        const flooredSnr = Math.floor(snr);
+        const snrText = snr < 1 ? 'below 1' : flooredSnr > 100 ? 'more than 100' : String(flooredSnr);
         const scatter = lc.refScatter.filter(Number.isFinite);
         lines.push(`Lowest signal-to-noise among the points: ${snrText}. This counts sky noise only, so the real uncertainty is larger.`, scatter.length ? `Reference stars: ${scatter.length} with available scatter. Scatter of each: ${scatter.map((n) => (n * 100).toFixed(1)).join(', ')} percent.` : 'Reference stars: scatter unavailable.', `Frames left out because their wavelength did not match: ${lc.dropped}.`);
     }

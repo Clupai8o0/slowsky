@@ -10,7 +10,9 @@ const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3
 describe('honest fact sheet', () => {
     const withPoints = (points: { mjd: number; relative: number; snr: number }[]) => ({ ...facts, lightCurve: { ...facts.lightCurve!, points } });
     it('uses printed precision at the bounds', () => {
-        for (const [snr, shown] of [[1, '1'], [100, '100'], [100.4, '100']] as const) {
+        // The lowest signal-to-noise is rounded down, so the sheet never shows it better than it is.
+        for (const [snr, shown] of [[1, '1'], [1.5, '1'], [1.99, '1'], [99.5, '99'], [100, '100'], [100.4, '100'],
+            [100.99, '100'], [101, 'more than 100']] as const) {
             expect(factSheet(withPoints([{ mjd: 61000, relative: 1, snr }])).join(' ')).toContain(`points: ${shown}.`);
         }
         for (const [peakSigma, shown] of [[100, '100.0 sigma'], [100.04, '100.0 sigma'], [5, '5.0 sigma'], [0.04, 'no change above the noise']] as const) {

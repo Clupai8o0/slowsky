@@ -221,7 +221,10 @@ export function toJy(sum: number, pixelArcsec: number): number
 }
 
 const NATIVE_PIXEL_ARCSEC = 6.15;
-// Measured by photometry-noise.test.ts on native, 2x and 4x regridded pixels.
+// Measured by photometry-noise.test.ts on native, 2x and 4x regridded pixels: resampling makes
+// neighbouring pixels share noise, so the plain formula reads about 1.4 times too low.
+// The page's views (up to 1 degree, at most 721 pixels wide) are always finer than the camera's pixels.
+// On a coarser grid the factor would be too large, which errs on the careful side.
 export const RESAMPLE_NOISE_FACTOR = 1.4;
 
 /** Moving targets receive the index in the original input, before filtering/sorting. */
