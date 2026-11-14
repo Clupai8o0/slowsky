@@ -73,6 +73,17 @@ function star(sourceId: string, ra = grid.center.ra, dec = grid.center.dec): Gai
 describe('change input', () => {
     beforeEach(() => { seed = 918273; });
 
+    it('reports the number of frames without a finite time', () => {
+        const bad = frame('bad', 60000);
+        bad.frame.tMin = NaN;
+        const one = changeInput(sky([...visit('a', 60000), ...visit('b', 60030), bad]));
+        expect(one.notes).toContain('1 frame without a time was left out.');
+        const bad2 = frame('bad2', 60000);
+        bad2.frame.tMax = Infinity;
+        const two = changeInput(sky([...visit('a', 60000), ...visit('b', 60030), bad, bad2]));
+        expect(two.notes).toContain('2 frames without a time were left out.');
+    });
+
     it('groups visits and reports ordered ids, the full time midpoint and mean wavelength', () => {
         const first = visit('a', 60000), second = visit('b', 60030);
         first[0]!.frame.tMax = 60000.5;
@@ -108,6 +119,9 @@ describe('change input', () => {
     it('places each moving Gaia star at both visit dates with its shared id', () => {
         const moving = { ...star('moving'), pmRa: 1000, pmDec: 0 };
         const input = changeInput(sky([...visit('a', 58000), ...visit('b', 58000 + 2 * 365.25)], [moving]));
+        expect(input.stars.map(({ visit, properMotion }) => ({ visit, properMotion }))).toEqual([
+            { visit: 'earlier', properMotion: true }, { visit: 'later', properMotion: true },
+        ]);
         expect(input.stars).toHaveLength(2);
         expect(input.stars.map((s) => s.id)).toEqual(['moving', 'moving']);
         const astrometry = { ra: moving.ra, dec: moving.dec, epochJyear: moving.epochJyear, pmRa: 1000, pmDec: 0 };
@@ -117,6 +131,25 @@ describe('change input', () => {
         expect(input.stars[1]!.x).toBeCloseTo(expectedLater.x, 8);
         expect(input.stars[1]!.x - input.stars[0]!.x).toBeCloseTo(expectedLater.x - expectedEarlier.x, 8);
         expect(Math.abs(input.stars[1]!.x - input.stars[0]!.x)).toBeGreaterThan(1);
+    });
+
+    it('uses listed proper motion end to end for a Barnard-shaped source', () => {
+        const firstMjd = 60000, lastMjd = firstMjd + 365.25;
+        const pos = gridPixToSky(grid, { x: 57, y: 60 });
+        const moving = { ...star('barnard', pos.ra, pos.dec), epochJyear: 2000 + (firstMjd + 0.005 - 51544.5) / 365.25,
+            pmRa: -10300, pmDec: 0 };
+        const later = gridSkyToPix(grid, positionAt({ ra: moving.ra, dec: moving.dec, epochJyear: moving.epochJyear,
+            pmRa: moving.pmRa, pmDec: moving.pmDec }, lastMjd + 0.005));
+        const a = noise(grid), b = noise(grid);
+        point(a, 57, 60, 3000); point(b, later.x, later.y, 3000);
+        const frames = [frame('a', firstMjd, 2, a), frame('b', lastMjd, 2, b)];
+        const found = findChanges(sky(frames, [moving]));
+        expect(found.candidates).toHaveLength(1);
+        expect(found.candidates[0]).toMatchObject({ kind: 'mover', reading: 'moved', nearCatalogue: true });
+        expect(found.candidates[0]!.sentence).toMatch(/listed motion of about 10″/);
+        const withoutMotion = findChanges(sky(frames, [star('barnard', pos.ra, pos.dec)]));
+        expect(withoutMotion.candidates).toHaveLength(1);
+        expect(withoutMotion.candidates[0]).toMatchObject({ kind: 'unknown', reading: 'pair' });
     });
 
     it('drops distant stars and honours the default and zero margins', () => {
