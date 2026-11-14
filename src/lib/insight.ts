@@ -96,7 +96,7 @@ export function validateQuestion(value: unknown): string
 }
 export const CHANGE_LINE_STARTS = ['Brightness relative to the reference stars', 'Largest change from the median brightness', 'Difference image at the target', 'Shift in position'] as const;
 export const TRUST_LINE_STARTS = ['Lowest signal-to-noise among the points', 'Reference stars:', 'Visits:'] as const;
-// Pair brightness with signal, references and visits, and difference or motion with visits.
+// Brightness includes its caveats; a difference without a time-order line includes signal and visits.
 export function askRows(sheet: string[], picked: number[]): { lines: number[]; trust: number[] }
 {
     const selected = new Set(picked);
@@ -107,9 +107,9 @@ export function askRows(sheet: string[], picked: number[]): { lines: number[]; t
     const matches = (n: number, starts: readonly string[]) => starts.some((start) => sheet[n - 1]?.startsWith(start));
     const brightness = [...selected].some((n) => matches(n, [CHANGE_LINE_STARTS[0], CHANGE_LINE_STARTS[1]]));
     const other = [...selected].some((n) => matches(n, [CHANGE_LINE_STARTS[2], CHANGE_LINE_STARTS[3]]));
-    const trustSet = new Set(sheet.flatMap((line, i) => (brightness ? TRUST_LINE_STARTS : other ? [TRUST_LINE_STARTS[2]] : []).some((start) => line.startsWith(start)) ? [i + 1] : []));
+    const difference = [...selected].some((n) => matches(n, [CHANGE_LINE_STARTS[2]]));
     const lines = sheet.flatMap((_, i) => selected.has(i + 1) && (!(brightness || other) || !matches(i + 1, TRUST_LINE_STARTS)) ? [i + 1] : []);
-    const trust = sheet.flatMap((_, i) => trustSet.has(i + 1) ? [i + 1] : []);
+    const trust = brightness ? sheet.flatMap((line, i) => TRUST_LINE_STARTS.some((start) => line.startsWith(start)) ? [i + 1] : []) : other ? (difference ? [TRUST_LINE_STARTS[0], TRUST_LINE_STARTS[2]] : [TRUST_LINE_STARTS[2]]).flatMap((start) => sheet.flatMap((line, i) => line.startsWith(start) ? [i + 1] : [])) : [];
     return { lines, trust };
 }
 export function joinRows(sheet: string[], lines: number[]): string
@@ -140,11 +140,11 @@ export function factSheet(f: InsightFacts): string[]
             if (values.length >= 3 && median !== 0) {
                 const below = median - sorted[0]!;
                 const above = sorted[sorted.length - 1]! - median;
-                // Compare the printed percents: 0.81, 1.00, 1.19 is a tie, not "19 percent brighter".
+                // Compare the printed percents: 0.81, 1.00, 1.19 is a tie.
                 const down = (below / median * 100).toFixed(0);
                 const up = (above / median * 100).toFixed(0);
                 const amount = below > above ? down : up;
-                const description = amount === '0' ? 'less than 1 percent' : `${amount} percent ${down === up ? 'either side' : below > above ? 'dimmer' : 'brighter'}`;
+                const description = amount === '0' ? 'less than 1 percent' : `${amount} percent ${down === up ? 'either side' : below > above ? 'below it' : 'above it'}`;
                 lines.push(`Largest change from the median brightness: ${description}.`);
             }
         }
@@ -193,7 +193,7 @@ const meanings: [RegExp, string][] = [
     [/^Frames in each visit\b/i, 'frame|image|exposure'],
     [/^Time from first to last visit\b/i, 'visit|span|apart|baseline|over|across|within|between|period|separat|later|after|first|last|cover|shift|mov'],
     [/^Brightness relative\b/i, 'bright|flux|relative|ratio|level|value|reading|measure|point|went|rise|rose|climb|drop|fell|fall|dip|chang|from|increas|decreas|dim|fade|light'],
-    [/^Largest change\b/i, 'chang|differ|bright|dim|faint|fade|fading|rise|rose|drop|fell|fall|dip|swing|jump|median|largest|peak|increas|decreas|light|went|up(?!\\p{L})|down|grew|gain|lost|vari'],
+    [/^Largest change\b/i, 'chang|differ|bright|dim|faint|fade|fading|rise|rose|drop|fell|fall|dip|swing|jump|median|largest|peak|increas|decreas|light|went|up(?!\\p{L})|down|above|below|either side|grew|gain|lost|vari'],
     [/^Lowest signal-to-noise\b/i, 'signal|noise|s/n|snr'],
     [/^Reference stars\b/i, 'reference|comparison|control|star'],
     [/^Scatter of each\b/i, 'scatter|spread|reference|comparison|control|steady|stable'],
@@ -450,13 +450,13 @@ async function requestInsight(clean: InsightFacts, opts: InsightOptions, questio
         if (question !== undefined) {
             const sheet = factSheet(clean);
             const { picked, lines, trust, kind } = data as InsightAnswer;
-            const valid = (rows: unknown): rows is number[] => Array.isArray(rows) && rows.every((n, i) => Number.isInteger(n) && n >= 1 && n <= sheet.length && (i === 0 || n > rows[i - 1]));
-            if (!valid(picked) || picked.length > 3 || !valid(lines) || !valid(trust)) { throw new InsightError('failed'); }
+            const valid = (rows: unknown, ordered = true): rows is number[] => Array.isArray(rows) && rows.every((n, i) => Number.isInteger(n) && n >= 1 && n <= sheet.length && (!ordered || i === 0 || n > rows[i - 1])) && new Set(rows).size === rows.length;
+            if (!valid(picked) || picked.length > 3 || !valid(lines) || !valid(trust, false)) { throw new InsightError('failed'); }
             if (kind === 'none') {
                 if (picked.length || lines.length || trust.length || note.text !== ASK_CANNOT) { throw new InsightError('failed'); }
             } else if (kind === 'answer') {
                 const expected = askRows(sheet, picked);
-                if (!picked.length || !lines.length || note.text !== joinRows(sheet, lines) || JSON.stringify(expected.lines) !== JSON.stringify(lines) || JSON.stringify(expected.trust) !== JSON.stringify(trust)) { throw new InsightError('failed'); }
+                if (!picked.length || !lines.length || picked.some((n) => !lines.includes(n) && !trust.includes(n)) || note.text !== joinRows(sheet, lines) || JSON.stringify(expected.lines) !== JSON.stringify(lines) || JSON.stringify(expected.trust) !== JSON.stringify(trust)) { throw new InsightError('failed'); }
             } else { throw new InsightError('failed'); }
             return { ...note, picked, lines, trust, kind, cached: false };
         }

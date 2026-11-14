@@ -346,9 +346,11 @@ describe('ask reply checks', () => {
         const withoutTime = sheet.filter((_, i) => i !== 1);
         const cases: [string[], number[], number[], number[]][] = [
             [sheet, [2], [2], [6, 7, 8]], [sheet, [3], [2, 3], [6, 7, 8]],
-            [sheet, [4], [2, 4], [6, 7, 8]], [withoutTime, [3], [3], [7]],
+            [sheet, [4], [2, 4], [6, 7, 8]], [withoutTime, [3], [3], [5, 7]],
             [sheet, [5], [5], [8]], [sheet, [5, 6], [5], [8]],
-            [withoutTime, [3, 6], [3], [7]], [withoutTime, [2], [2], [5, 6, 7]],
+            [withoutTime, [3, 6], [3], [5, 7]], [withoutTime, [2], [2], [5, 6, 7]],
+            [withoutTime, [3, 4], [3, 4], [5, 7]],
+            [withoutTime.filter((_, i) => i !== 4), [3], [3], [6]],
             [sheet, [6], [6], []], [sheet, [7], [7], []], [sheet, [8], [8], []],
             [sheet, [2, 8], [2], [6, 7, 8]], [sheet, [1, 6], [1, 6], []], [sheet, [1, 7], [1, 7], []],
         ];
@@ -367,7 +369,39 @@ describe('ask reply checks', () => {
                 expect(lines.length).toBeGreaterThan(0);
                 expect(lines.some((n) => trust.includes(n))).toBe(false);
                 if (trust.length) { expect(has(lines, CHANGE_LINE_STARTS)).toBe(true); }
-                if (has(trust, TRUST_LINE_STARTS.slice(0, 2))) { expect(has(lines, CHANGE_LINE_STARTS.slice(0, 2))).toBe(true); }
+                if (has(trust, [TRUST_LINE_STARTS[0]])) { expect(has(lines, CHANGE_LINE_STARTS.slice(0, 2)) || (has(lines, [CHANGE_LINE_STARTS[2]]) && !sheet.some((line) => line.startsWith(CHANGE_LINE_STARTS[0])))).toBe(true); }
+                if (has(trust, [TRUST_LINE_STARTS[1]])) { expect(has(lines, CHANGE_LINE_STARTS.slice(0, 2))).toBe(true); }
+            }
+        }
+    });
+    it('rejects selections that silently lose a signal or reference line on the server and client', async () => {
+        for (const [choices, usable, hasTime] of [
+            [['M', 'R'], false, false], [['M', 'S'], false, false], [['D', 'R'], false, false],
+            [['D', 'S'], true, false], [['D', 'R'], true, true],
+        ] as const) {
+            const h = setup();
+            h.facts.lightCurve = { points: [{ mjd: 61000, relative: 1, snr: 10 }, { mjd: 61010, relative: 0.8, snr: hasTime ? 10 : 0.5 }], refScatter: [0.02], dropped: 0 };
+            h.facts.difference = { peakSigma: 6.2 };
+            h.facts.motion = { arcsec: 2.3, days: 10 };
+            const sheet = factSheet(h.facts);
+            const starts = { D: CHANGE_LINE_STARTS[2], M: CHANGE_LINE_STARTS[3], S: TRUST_LINE_STARTS[0], R: TRUST_LINE_STARTS[1] };
+            const picked = choices.map((choice) => sheet.findIndex((line) => line.startsWith(starts[choice])) + 1).sort((a, b) => a - b);
+            h.complete.mockResolvedValueOnce({ text: picked.map((n) => String.fromCharCode(64 + n)).join(','), refused: false, model: 'fixture-model' });
+            const response = await h.POST(h.request({ facts: h.facts, question }));
+            const rows = askRows(sheet, picked);
+            const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ text: joinRows(sheet, rows.lines), picked, ...rows, model: 'fixture-model', dropped: 0, cached: false, kind: 'answer' }));
+            if (usable) {
+                expect(response.status).toBe(200);
+                expect(await response.json()).toMatchObject({ picked, ...rows });
+                if (!hasTime) {
+                    expect(rows.trust).toEqual([sheet.findIndex((line) => line.startsWith(TRUST_LINE_STARTS[0])) + 1, sheet.findIndex((line) => line.startsWith(TRUST_LINE_STARTS[2])) + 1]);
+                }
+                expect(await askInsight(h.facts, question, { fetcher })).toMatchObject({ picked, ...rows });
+            } else {
+                expect(response.status).toBe(502);
+                expect(await response.json()).toEqual({ error: 'failed' });
+                expect(h.hit.mock.calls.some(([key]) => key.startsWith('user-fail-day:'))).toBe(true);
+                await expect(askInsight(h.facts, question, { fetcher })).rejects.toMatchObject({ code: 'failed' });
             }
         }
     });
