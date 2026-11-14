@@ -1,11 +1,12 @@
 # Slowsky (NASA Space Apps 2026, Planet X and SPHEREx)
 
-Product repo, started 14 Nov 2026 at kick-off. Plan and research live in
-`~/Documents/projects/spaceapps-melbourne-2026` (`BUILD-PLAN.md`, `research/INDEX.md`). Read them for facts only.
+Product repo, started 14 Nov 2026 at kick-off. This file holds the rules that AI coding tools and people follow
+when they work here. Team notes that are not part of the product are in `.claude/local.md` (not in the repo).
 
 ## Rules
 
-- **Nothing from the workspace's `research/` is copied in** (code, data, previews, numbers). Write fresh, download fresh.
+- **Everything here is made during the event** (code, data, previews, numbers). Nothing made before kick-off is
+  copied in. Write fresh, download fresh.
 - **AI tools:** Claude, Codex, Gemini and Grok write or review code here (Sam, 14 Nov: Gemini and Grok added, on
   the condition that `README.md` names them first). The Terms ban Chinese-owned entities: never DeepSeek, Kimi,
   Qwen, GLM or MiniMax. Cursor is held: its Composer 2.5 model is built on Moonshot's Kimi K2.5 (Cursor's own
@@ -13,8 +14,7 @@ Product repo, started 14 Nov 2026 at kick-off. Plan and research live in
   used is named in `README.md`.
 - `DECISIONS.md` is Sam's, in his own words. AI never fills it in.
 - Every number on a target card comes from code or bakes run in this repo.
-- Repo and deploys are **private until Sam says go public**: GitHub repo private; Vercel deploys by CLI as preview
-  only (Vercel Authentication on); no Git integration yet, because pushes to main would make production deploys.
+- Deploys are made by hand with the Vercel CLI. There is no Git integration, so a push to main never deploys.
 - Last Submit Sun 15 Nov 12:30 NPT. Tag and freeze then.
 
 ## Data facts
@@ -32,16 +32,16 @@ Product repo, started 14 Nov 2026 at kick-off. Plan and research live in
   embedded in a website.
 - Network calls from Bash need the sandbox off; use `/usr/bin/curl`.
 
-## Layout and owners
+## Layout
 
-| Path | What | Owner |
-|---|---|---|
-| `src/lib/types.ts` | Module contract; change only with a note | scaffold (session -8d) |
-| `src/lib/*.ts` | One module per lane; stubs throw `NotImplemented` | lanes, see BUILD-PLAN "Who builds what" |
-| `src/ui/`, landing, styles | UI shell | design session (spaceapps-melbourne-2026-12) |
-| `api/sia.ts` | Allowlisted SIA passthrough | SIA lane |
-| `scripts/` | Python build-time scripts (astropy, pyvo) | fixtures and bake lanes |
-| `tests/` | Vitest; each lane commits its gate test | each lane |
+| Path | What |
+|---|---|
+| `src/lib/types.ts` | Module contract; change only with a note |
+| `src/lib/*.ts` | One module per piece of work, each with its own test |
+| `src/ui/`, landing, styles | The page |
+| `api/sia.ts` | Allowlisted SIA passthrough |
+| `scripts/` | Python build-time scripts (astropy, pyvo) |
+| `tests/` | Vitest; each piece of work commits its gate test |
 
 Conventions in `src/lib/types.ts`: ICRS degrees, 0-based pixels (astropy origin=0), MJD, wavelengths in µm.
 Code in `src/lib` must run in the page and in Web Workers: no DOM globals (document, window, DOMParser).
@@ -57,8 +57,7 @@ Worker entry files go in `src/workers/` (excluded from the main tsconfig); the f
 ## Commands
 
 - `npm test`, `npm run typecheck`, `npm run build`.
-- Preview deploy: `vercel deploy` (not `--prod` until Sam says go public).
-- Progress: `ROADMAP_AUTHOR=<session> python3 ~/Documents/projects/slowsky-roadmap/bin/roadmap.py update <id> ...`.
+- Deploy: `vercel deploy` for a preview, `vercel deploy --prod` for the live site.
 
 ## Style
 

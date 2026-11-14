@@ -93,7 +93,7 @@ More on the scripts: [scripts/README.md](scripts/README.md).
 
 ## Tests
 
-`npm test` runs every file in `tests/`. The three gates named in `CLAUDE.md`:
+`npm test` runs every file in `tests/`. Three of them are gates that every change must pass:
 
 - **WCS:** the page's sky mapping matches astropy within 0.01 pixel at 9 points on each of two real frames, in
   both directions (`tests/wcs.test.ts`).
@@ -116,7 +116,7 @@ through the CfA mirror. The full list, with licences and credit lines: [DATA-LIC
 
 | Tool | Maker | Used for |
 |---|---|---|
-| Claude Code (Claude Opus, Sonnet and Haiku models) | Anthropic | Writing and reviewing code, tests, planning help, page text drafts |
+| Claude Code (Claude Fable, Opus, Sonnet and Haiku models) | Anthropic | Writing and reviewing code, tests, planning help, page text drafts |
 | Codex | OpenAI | Writing and reviewing code |
 | Gemini (through Antigravity) | Google | Writing and reviewing code |
 | Grok (through Grok Build) | xAI | Writing and reviewing code |
