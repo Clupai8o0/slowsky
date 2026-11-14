@@ -70,6 +70,7 @@ export interface SkyResult {
     credits: string[]; // data credits to show under the player
     notes: string[]; // plain-language notes, e.g. "2 visits dropped: no frame within 0.02 µm"
     unusable?: number; // frames with no finite output pixels
+    missed?: number; // frames left out because the view is off their detector or the spot is at its edge
 }
 
 export interface SkySource {
@@ -361,8 +362,9 @@ async function assemble(
     });
 
     const kept = regridded.filter((r): r is NonNullable<typeof r> => r !== undefined);
-    if (kept.length + unusable < locked.length) {
-        notes.push(`${plural(locked.length - kept.length - unusable, 'frame')} left out: the view is off the detector.`);
+    const missed = locked.length - kept.length - unusable;
+    if (missed > 0) {
+        notes.push(`${plural(missed, 'frame')} left out: the view is off the detector.`);
     }
     if (unusable > 0) {
         notes.push(`${plural(unusable, 'frame')} had no usable pixels here and ${unusable === 1 ? 'was' : 'were'} left out.`);
@@ -381,6 +383,7 @@ async function assemble(
         lambda: chosen,
         notes,
         ...(unusable > 0 ? { unusable } : {}),
+        ...(missed > 0 ? { missed } : {}),
     };
     if (range) {
         result.lambdaRange = range;
@@ -946,6 +949,9 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
                         notes.push(`${plural(atEdge, 'frame')} left out: the spot is at the detector edge.`);
                     }
                     const core = await assemble(req, usable, visits, opts, notes, skippedVisits);
+                    if (atEdge > 0) {
+                        core.missed = (core.missed ?? 0) + atEdge;
+                    }
                     // The picture is ready: give a slow catalogue a short grace time, then go on without it.
                     const rows = await settleWithin(catalogue.rows, GAIA_GRACE_MS, req.signal);
                     req.signal?.throwIfAborted();
@@ -1050,7 +1056,9 @@ function optionalNumber(v: number | null | undefined): number | undefined
 
 const SNAPSHOT_MAX_FOV_DEG = 0.1;
 // Bound each saved-copy request, including its body read.
-const SNAPSHOT_TIMEOUT_MS = 15_000;
+// One deadline for headers and body. The files are 150 to 200 KB and load four at a time, so 30 s still lets a
+// 0.4 Mbit/s phone finish, and a stalled connection cannot hang the page.
+export const SNAPSHOT_TIMEOUT_MS = 30_000;
 
 export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
 {

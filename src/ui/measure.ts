@@ -300,6 +300,14 @@ export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
 // it carries their noise too: solve for each star's own scatter first, then add them weighted by flux.
 // With two stars both ratios scatter alike and can't say which star is noisy, so their shared scatter is split
 // in proportion to each one's own sky noise (`phot`, fractional), or evenly when that is unknown.
+// One dot's error bar on the brightness chart: the comparison stars' wobble (a fraction) scaled to the dot's value,
+// combined in quadrature with the sky noise on the target's own aperture sum (`own`, in the dot's units). The
+// star's own photon noise is in neither term. A dot well under 1 can so have a bar shorter than the band.
+export function dotBar(relative: number, wobble: number, own: number): number
+{
+    return Math.hypot(Math.abs(relative) * wobble, Number.isFinite(own) ? own : 0);
+}
+
 export function sumNoise(flux: number[], scatter: number[], phot: number[] = []): number
 {
     const ok = flux.map((f, i) => Number.isFinite(f) && f > 0 && Number.isFinite(scatter[i]));

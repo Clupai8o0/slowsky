@@ -17,7 +17,7 @@ import { createDemoSource } from './demo-source';
 import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
-import { coreBlank, curveFor, frameMjd, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
+import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
 import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, renderSpectrum, type LayerState } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
@@ -594,7 +594,8 @@ export function mount(root: HTMLElement): void
                 }
             }
         }
-        if (!res && spare) {
+        // The saved copy stands in when live fails, and when live answers with no frames while the saved copy has some.
+        if (spare && (!res || (res.frames.length === 0 && spare.frames.length > 0))) {
             res = spare;
             got = 'snapshot';
         }
@@ -621,9 +622,13 @@ export function mount(root: HTMLElement): void
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             paintGlow();
             renderText();
-            const why = res?.unusable ? 'SPHEREx has frames of this spot at this colour, but none has usable pixels here.'
-                : res && failedLive && got !== 'live' ? `Couldn’t reach the live SPHEREx archive, and the saved copy has no frames at this colour. ${plainError(lastErr)}`
-                : res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${plainError(lastErr)}`;
+            // Frames exist, but none could be used: blank in this view, off the detector, or the spot at its edge.
+            const none = !!res && (res.unusable ?? 0) + (res.missed ?? 0) > 0;
+            // A failed live read comes first: what the saved copy lacks says nothing about the archive.
+            const why = !res ? `Couldn’t load the frames. ${plainError(lastErr)}`
+                : failedLive && got !== 'live' ? `Couldn’t read the live SPHEREx archive, and the saved copy has no ${none ? 'frames that could be used for this view' : 'frames'} at this colour. ${plainError(lastErr)}`
+                : none ? 'SPHEREx has frames near this spot, but none of them could be used for this view at this colour.'
+                : 'SPHEREx has no frames of this spot at this colour yet.';
             bind('err', why);
             ref<HTMLElement>('err').hidden = false;
             writeUrl();
@@ -845,7 +850,7 @@ export function mount(root: HTMLElement): void
         const med = scales.length ? scales[Math.floor(scales.length / 2)]! : NaN;
         const err = pts.map((o) => {
             const own = o.p.target.noise / (o.p.refSum * med);
-            return Math.hypot(Math.abs(o.p.relative) * noise, Number.isFinite(own) ? own : 0);
+            return dotBar(o.p.relative, noise, own);
         });
         let lo = Math.min(...ys.map((v, i) => v - err[i]!), 1 - noise);
         let hi = Math.max(...ys.map((v, i) => v + err[i]!), 1 + noise);
@@ -875,7 +880,7 @@ export function mount(root: HTMLElement): void
         const off = c.lc.dropped > 0 ? ` ${c.lc.dropped} ${c.lc.dropped === 1 ? 'frame was' : 'frames were'} too far off this colour.` : '';
         const bad = c.lc.points.length - pts.length;
         const left = off + (bad > 0 ? ` ${bad} ${bad === 1 ? 'look' : 'looks'} could not be measured.` : '');
-        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} nearby comparison stars from Gaia. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%); the bar on each dot adds the noise of the sky around the star. The star’s own photon noise is not included, so the real uncertainty may be larger. A change inside its bar may be noise.${left}${blendAt ? ` ${blendAt}, too close for SPHEREx to split, so the curve includes its light.` : ''}`);
+        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} nearby comparison stars from Gaia. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%); the bar on each dot combines that wobble, scaled to the dot’s value, with the noise of the sky around the star. Noise from the star’s own light, and anything that affects this star alone, is not in the bar, so the real uncertainty may be larger. A change inside its bar may be noise.${left}${blendAt ? ` ${blendAt}, too close for SPHEREx to split, so the curve includes its light.` : ''}`);
     }
 
     // A tiny copy of the sky, blurred by CSS behind the image: the glow follows what is on screen.
@@ -1395,6 +1400,10 @@ export function mount(root: HTMLElement): void
     function plainError(e: unknown): string
     {
         const msg = e instanceof Error ? e.message : '';
+        // The saved copy is served by this site, so its timeout is not the archive's doing.
+        if (/saved copy timed out/i.test(msg)) {
+            return 'The saved copy on this site took too long to load. Check the connection and try again.';
+        }
         if (!msg || /failed to fetch|networkerror|load failed|network/i.test(msg)) {
             return 'The archive did not answer. Check the connection and try again.';
         }
