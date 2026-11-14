@@ -550,10 +550,11 @@ export function mount(root: HTMLElement): void
         ov.setAttribute('viewBox', `0 0 ${res.grid.width} ${res.grid.height}`);
         buildStrip();
         draw();
-        writeUrl();
         if (!reduceMotion && !hold && st.mode === 'blink' && res.frames.length > 1) {
             play(true);
         }
+        // After the play state is set: a playing view links without a frame, a paused one with it.
+        writeUrl();
     }
 
     function progress(p: SkyProgress): void
@@ -1007,6 +1008,9 @@ export function mount(root: HTMLElement): void
         const msg = e instanceof Error ? e.message : '';
         if (!msg || /failed to fetch|networkerror|load failed|network/i.test(msg)) {
             return 'The archive did not answer. Check the connection and try again.';
+        }
+        if (/\b[45]\d\d\b|request failed|http|timed? ?out/i.test(msg)) {
+            return 'NASA’s archive is busy or down right now. Try again in a minute.';
         }
         return msg;
     }
