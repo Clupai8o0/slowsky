@@ -20,7 +20,7 @@ import type { RegriddedFrame, TargetId } from '../lib/types';
 import { COPY } from './copy';
 import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
 import { ChangeInputError, findChanges } from '../lib/change-input';
-import { PLAIN_LEAD, hasSnrFigure, plainListNotes } from '../lib/changes';
+import { PLAIN_LEAD, hasSnrFigure, plainListNotes, isSnrNote } from '../lib/changes';
 import { changesHtml, changesMarks, changesView, type ChangesView } from './changes-view';
 import { createRangeReader } from '../lib/fits';
 import { groupByVisit } from '../lib/stack';
@@ -383,12 +383,12 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
                 const info = found.plainListInfo;
                 if (info) {
                     screened.kept.sort((a, b) => Number(Boolean(a.nearCatalogue)) - Number(Boolean(b.nearCatalogue))
-                        || Number(hasSnrFigure(b.line)) - Number(hasSnrFigure(a.line)) || b.snr - a.snr);
+                        || Number(hasSnrFigure(b.line)) - Number(hasSnrFigure(a.line)));
                 }
                 const listNotes = info ? plainListNotes(screened.kept, info.usedErrorMap, info.matchArcsec) : [];
                 const notes = info ? found.notes.flatMap(note => note.startsWith('Listed with spots that have no catalogue star within ')
                     ? listNotes
-                    : note.startsWith('S/N is left out for ') ? []
+                    : isSnrNote(note) ? []
                     : !screened.kept.length && note.startsWith('No catalogue stars for this view:') ? [] : [note]) : found.notes;
                 resultView = { ...found, candidates: screened.kept, lead: [...(screened.kept.length ? (found.lead ?? []).filter((s) => s === PLAIN_LEAD) : []), ...screened.lead],
                     ran: screened.dropNote && !screened.kept.length ? false : found.ran,

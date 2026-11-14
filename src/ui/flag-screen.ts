@@ -186,7 +186,8 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
         // Classifier ends require a readable frame in their own light visit to count as checked at all.
         const endUnread = plain ? !checked.some(o => o.names.some(n => n !== null)) : own.some(o => !o.names.some(n => n !== null));
         const missing = checked.some(o => o.names.some(n => n === null));
-        const unreadVisit = plain && !endUnread ? checked.find(o => o.names.length > 0 && o.names.every(n => n === null))?.end.visit : undefined;
+        const unreadEnd = plain && !endUnread ? checked.find(o => o.names.length > 0 && o.names.every(n => n === null)) : undefined;
+        const unreadVisit = unreadEnd && checked.every(o => o === unreadEnd || o.names.every(n => n !== null)) ? unreadEnd.end.visit : undefined;
         kept.push({ ...c, kind, reading, line, unread: endUnread ? 'all' : missing ? 'some' : 'none',
             ...(unreadVisit ? { unreadVisit } : {}),
             ...(plain && over.size && hasSnrFigure(said) && !hasSnrFigure(line) ? { snrFlagRemoved: true } : {}) });
@@ -201,7 +202,7 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
         if (!allUnread && c.unread === 'all') {
             c.line += ' The archive flags for this spot could not be read, so it is listed without that check.';
         } else if (!allUnread && c.unreadVisit) {
-            c.line += ` The archive flags of the ${c.unreadVisit} visit could not be read for this spot, so that visit is not checked.`;
+            c.line += ` The archive flags of the ${c.unreadVisit} visit could not be read for this spot, so that visit's flags are not checked.`;
         } else if (!allUnread && c.unread === 'some') {
             c.line += ' Some of the archive flags for this spot could not be read, so that check is incomplete.';
         }
