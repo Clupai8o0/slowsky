@@ -1,0 +1,7 @@
+Fonts in this folder, used unmodified (woff2, Latin subset from fontsource):
+
+- Geist and Geist Mono. Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font).
+- Big Shoulders Display. Copyright 2019 The Big Shoulders Project Authors (https://github.com/xotypeco/big_shoulders).
+
+Both are licensed under the SIL Open Font License, Version 1.1.
+Full text: https://openfontlicense.org/open-font-license-official-text/
