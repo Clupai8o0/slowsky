@@ -1,4 +1,4 @@
-import data from '../data/targets.json';
+import data from '../data/targets.json' with { type: 'json' };
 import type { Astrometry, SkyCoord, Target, TargetId } from './types';
 
 export const TARGETS: Target[] = data as Target[];
