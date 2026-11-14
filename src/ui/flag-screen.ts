@@ -159,7 +159,7 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
             // Each frame has its own brightest pixel. A pair's or mover's ends sit in different visits, so each
             // visit is named with its own spot; two ends in one visit are not told apart.
             const split = ends.length > 1 && new Set(ends.map(end => end.visit)).size === ends.length;
-            const pixel = ends.length === 1 ? 'that frame’s brightest pixel within 12″'
+            const pixel = ends.length === 1 ? 'that frame’s brightest pixel within 12″ of the spot'
                 : split ? 'that frame’s brightest pixel within 12″ of its spot in that visit'
                     : 'that frame’s brightest pixel within 12″ of at least one of its spots';
             const flagged = `In ${where}, the archive flags ${pixel} as OVERFLOW`;
@@ -167,13 +167,14 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
             // reading is safer than showing one OVERFLOW may have spoiled. Only a known comparison is named as one.
             const compares = c.reading ? COMPARES.includes(c.reading) : c.kind !== 'mover';
             if (compares) {
-                const snr = snrText(c.snr);
-                const what = c.reading ? 'the brightness comparison' : 'the finder’s reading of this spot';
+                // The S/N is repeated only when the finder's own line shows one (round 11 drops it without error maps).
+                const snr = said.includes('S/N') ? snrText(c.snr) : '';
+                const what = c.reading ? 'the brightness comparison' : 'the finder’s reading here';
                 line = `The two visits differ here${c.gaiaMatch ? ' at a catalogue star' : ''}${snr ? `, at ${snr}` : ''} (candidate). `
-                    + `${flagged}, so ${what} is not shown; the overflow may account for the difference.`;
+                    + `${flagged}, so ${what} is not shown; an overflowing pixel can spoil a brightness reading.`;
                 kind = 'unknown';
             } else {
-                line = `${line} ${flagged}.`;
+                line = `${line} ${flagged}; an overflowing pixel can spoil a brightness reading.`;
             }
         }
         // When no frame of an end's own visit was read, the drop check never ran for it: unread in full, even if
@@ -200,6 +201,6 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
     const flags = list.length === 1 ? `the archive flag ${list[0]}` : `at least one of these archive flags: ${list.join(', ')}`;
     const dropNote = count === 0 ? undefined
         : `${count === 1 ? '1 candidate is not listed:' : `${count} candidates are not listed: for each,`} in at least one frame of `
-            + `the visit where one of its spots shows more light, that frame’s brightest pixel within 12″ of the spot carries ${flags}.`;
+            + `the visit where its spot, or one of its two spots, shows more light, that frame’s brightest pixel within 12″ of that spot carries ${flags}.`;
     return { kept, dropNote, allUnread, lead };
 }

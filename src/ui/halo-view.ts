@@ -37,6 +37,7 @@ export interface HaloView {
     caveat?: string; // why the readings may be off (comparison stars, a larger blank middle)
     note?: string; // how far a change in one comparison star could shift the readings unseen
     reason?: string; // why no curve is drawn, when the module says it cannot be
+    rule?: boolean; // whether the panel's own rule (MIN_VISITS visits within CURVE_WIDTH_UM) allows a line
 }
 
 // Fields halo round 9-10 adds to HaloCurve; read as optional so the panel works with the module before and after.
@@ -133,8 +134,8 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
     const oneColour = lams.every(Number.isFinite) && Math.max(...lams) - Math.min(...lams) <= CURVE_WIDTH_UM + 1e-9;
     // The module has the last word: its comparison-star and blank-middle checks can stop a line this rule allows.
     const drawing = lc as HaloCurve & CurveDrawing;
-    const line = points.length >= MIN_VISITS && visitCount(points.map((p) => p.mjd)) >= MIN_VISITS && oneColour
-        && drawing.drawable !== false;
+    const rule = points.length >= MIN_VISITS && visitCount(points.map((p) => p.mjd)) >= MIN_VISITS && oneColour;
+    const line = rule && drawing.drawable !== false;
     return {
         kind: line ? 'curve' : points.length > 0 ? 'table' : 'none',
         lambda: Number.isFinite(lc.lambda) ? lc.lambda : result.lambda,
@@ -148,7 +149,8 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
         ringStars: starsInRing(result, centre.pix, ring),
         caveat: drawing.caveat ?? '',
         note: drawing.note ?? '',
-        reason: drawing.drawable === false ? drawing.reason ?? '' : '',
+        reason: drawing.drawable === false ? drawing.reason?.trim() ?? '' : '',
+        rule,
     };
 }
 
@@ -215,11 +217,14 @@ export function haloHtml(h: HaloView, name: string, on: number): string
         + '<thead><tr><th scope="col">Look</th><th scope="col">Colour</th><th scope="col">Ring light vs the median of these looks</th></tr></thead>'
         + `<tbody>${rows}</tbody></table>`;
     if (h.kind === 'none' || h.kind === 'table') {
-        const listed = h.kind === 'none' ? '' : one ? ' The one reading is listed instead.' : ' Each reading is listed instead.';
+        const listed = h.kind === 'none' ? '' : one ? ' The one reading is listed below.' : ' Each reading is listed below.';
+        const ruleText = ` A curve is drawn only from looks on at least ${MIN_VISITS} visits, all within ${CURVE_WIDTH_UM} µm of colour;`
+            + ' these looks do not meet that';
+        // The module's reason when it gives one, and the panel's own rule as well when that fails too.
         const why = h.reason
-            ? ` No curve is drawn: ${h.reason[0]!.toLowerCase()}${h.reason.slice(1)}.${listed}`
-            : ` A curve is drawn only from looks on at least ${MIN_VISITS} visits, all within ${CURVE_WIDTH_UM} µm of colour;`
-                + ` these looks do not meet that, so ${h.kind === 'none' ? 'there is no curve' : one ? 'the one reading is listed instead' : 'each reading is listed instead'}.`;
+            ? ` No curve is drawn: ${h.reason[0]!.toLowerCase()}${h.reason.slice(1)}.${h.rule === false ? `${ruleText} either.` : ''}${listed}`
+            : h.rule === true ? ` No curve is drawn.${listed}`
+                : `${ruleText}, so ${h.kind === 'none' ? 'there is no curve' : one ? 'the one reading is listed instead' : 'each reading is listed instead'}.`;
         const head = `Near ${h.lambda.toFixed(2)} µm, ${where}, could be measured in ${h.points.length} of ${plural(h.looks, 'look', 'looks')}`
             + `${h.points.length ? `, taken on ${plural(visits, 'visit', 'visits')}` : ''}.${why}${off}`;
         if (h.kind === 'none') {

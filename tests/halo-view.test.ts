@@ -278,7 +278,7 @@ describe('halo round 10', () => {
         const h = haloFor(r, { ring, curve: fake(three(), 0, { drawable: false, reason: 'The comparison stars do not hold steady against each other', caveat }) })!;
         expect(h.kind).toBe('table');
         const html = haloHtml(h, 'R Draconis', -1);
-        expect(html).toContain('No curve is drawn: the comparison stars do not hold steady against each other. Each reading is listed instead.');
+        expect(html).toContain('No curve is drawn: the comparison stars do not hold steady against each other. Each reading is listed below.');
         expect(html).not.toContain('these looks do not meet that');
         expect(html).toContain(`<p class="sk-body mute">${caveat}</p>`);
         expect(html).not.toContain('<svg');
@@ -303,4 +303,18 @@ describe('halo round 10', () => {
         expect(h.kind).toBe('table');
         expect(haloHtml(h, 'R Draconis', -1)).toContain('these looks do not meet that');
     });
+});
+
+describe('halo round 10, review', () => {
+    it('gives the panel rule too when the module reason is not the only block, and copes with a blank reason', () => {
+        const r = result([5000, 5000, 5000]);
+        const spread = [point(MJD0, { lambda: 0.9 }), point(MJD0 + 100, { lambda: 0.91 }), point(MJD0 + 200, { lambda: 0.92 })];
+        const both = haloHtml(haloFor(r, { ring, curve: fake(spread, 0, { drawable: false, reason: 'The blank middle is larger in 1 look than the ring allows' }) })!, 'R Draconis', -1);
+        expect(both).toContain('No curve is drawn: the blank middle is larger in 1 look than the ring allows. A curve is drawn only from looks on at least 3 visits, all within 0.005 µm of colour; these looks do not meet that either. Each reading is listed below.');
+        const blank = haloHtml(haloFor(r, { ring, curve: fake(three(), 0, { drawable: false, reason: ' ' }) })!, 'R Draconis', -1);
+        expect(blank).toContain('taken on 3 visits. No curve is drawn. Each reading is listed below.');
+        expect(blank).not.toContain('do not meet that');
+    });
+
+    const three = () => [point(MJD0), point(MJD0 + 100, { relative: 1.04 }), point(MJD0 + 200)];
 });

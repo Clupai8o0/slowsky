@@ -23,6 +23,7 @@ import { createRangeReader } from '../lib/fits';
 import { groupByVisit } from '../lib/stack';
 import type { RangeReader } from '../lib/types';
 import { readFrameFlags, screen, type FrameFlags } from './flag-screen';
+import { readVariance } from './error-maps';
 
 export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo' | 'mlHint';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
@@ -270,7 +271,10 @@ export interface ChangesDeps {
     fetcher?: typeof fetch;
     timeoutMs?: number;
     find?: typeof findChanges;
+    variance?: (frame: RegriddedFrame, signal: AbortSignal) => Promise<Float32Array | null>;
 }
+
+export const MAPS_NOTE = 'Reading the archive’s error maps for the two compared visits; the list shows when they are in.';
 
 export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { render: (box: HTMLElement, marks: HTMLElement, view: SlotView) => boolean }
 {
@@ -286,6 +290,40 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
     const wired = new WeakSet<HTMLElement>();
     let last: [HTMLElement, HTMLElement, SlotView] | null = null;
 
+    // One frame at a time, each with its own deadline; null when a new result takes over. A read that fails or
+    // runs out of time counts as null for that frame.
+    async function eachFrame<T>(frames: RegriddedFrame[], reset: AbortSignal, read: (frame: RegriddedFrame, signal: AbortSignal) => Promise<T | null>): Promise<Map<string, T | null> | null>
+    {
+        const out = new Map<string, T | null>();
+        for (const frame of frames) {
+            if (reset.aborted) {
+                return null;
+            }
+            const deadline = new AbortController();
+            const abort = () => deadline.abort();
+            reset.addEventListener('abort', abort, { once: true });
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const timeout = new Promise<null>(resolve => {
+                timer = setTimeout(() => { abort(); resolve(null); }, deps.timeoutMs ?? FLAGS_READ_TIMEOUT_MS);
+                deadline.signal.addEventListener('abort', () => resolve(null), { once: true });
+            });
+            const value = await Promise.race([read(frame, deadline.signal).catch(() => null), timeout]);
+            clearTimeout(timer);
+            reset.removeEventListener('abort', abort);
+            out.set(frame.frame.obsId, value);
+        }
+        return reset.aborted ? null : out;
+    }
+
+    // The two visits the finder compared: its own list when it gives one, else the same split it makes by default.
+    function compared(result: SkyResult, found: ChangesView): { earlier: RegriddedFrame[]; later: RegriddedFrame[] }
+    {
+        const byId = (ids: string[]) => result.frames.map(f => f.frame).filter(f => ids.includes(f.frame.obsId));
+        const visits = found.visits ? [byId(found.visits.earlier.obsIds), byId(found.visits.later.obsIds)]
+            : groupByVisit(result.frames.map(f => f.frame), 10);
+        return { earlier: visits[0] ?? [], later: visits.length > 1 ? visits[visits.length - 1]! : [] };
+    }
+
     function start(result: SkyResult, source: SlotView['source']): void
     {
         controller.abort();
@@ -296,58 +334,75 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
             resultView = done.get(result) ?? null;
             return;
         }
-        const initial = changesFor(result, deps.find);
-        resultView = initial;
-        if (!initial?.candidates.length) {
-            done.set(result, initial);
-            return;
-        }
-        // The finder's own list of the compared frames when it gives one, else the same split it makes by default.
-        const byId = (ids: string[]) => result.frames.map(f => f.frame).filter(f => ids.includes(f.frame.obsId));
-        const visits = initial.visits ? [byId(initial.visits.earlier.obsIds), byId(initial.visits.later.obsIds)]
-            : groupByVisit(result.frames.map(f => f.frame), 10);
-        const earlier = visits[0] ?? [];
-        const later = visits.length > 1 ? visits[visits.length - 1]! : [];
-        const frames = [...earlier, ...later];
-        const order = frames.flatMap(f => f.context?.flags?.names.map(n => n.name) ?? []);
         const saved = source === 'snapshot';
-        const finish = (flags: Map<string, FrameFlags | null>) => {
-            const screened = screen(initial.candidates, { earlier, later }, flags, order, saved);
-            resultView = { ...initial, candidates: screened.kept, lead: screened.lead,
-                ran: screened.dropNote && !screened.kept.length ? false : initial.ran,
-                notes: [...initial.notes, ...(screened.dropNote ? [screened.dropNote] : [])] };
-            done.set(result, resultView);
-        };
-        if (saved || !frames.some(f => f.context?.flags)) {
-            finish(new Map());
+        const first = changesFor(result, deps.find);
+        resultView = first;
+        if (!first?.ran) {
+            done.set(result, first);
             return;
         }
-        resultView = { ...initial, notes: [...initial.notes, 'Checking the archive flags for these spots; the list and its numbers may update.'] };
+        const firstVisits = compared(result, first);
+        const firstFrames = [...firstVisits.earlier, ...firstVisits.later];
+        // Live frames: the finder runs again with the archive's error maps for the two compared visits, which give
+        // each pixel its own noise (the difference image alone leaves out a source's own light). Until then only
+        // a note shows, so a list that will shrink never appears.
+        const maps = !saved && firstFrames.some(f => f.context);
+        if (maps) {
+            resultView = { candidates: [], notes: [MAPS_NOTE], ran: false };
+        }
         void (async () => {
-            const flags = new Map<string, FrameFlags | null>();
-            for (const frame of frames) {
-                if (reset.aborted) {
+            let found = first;
+            if (maps) {
+                const read = deps.variance ?? ((f: RegriddedFrame, signal: AbortSignal) => readVariance(f, { reader, signal }));
+                const got = await eachFrame(firstFrames, reset, read);
+                if (!got) {
                     return;
                 }
-                const deadline = new AbortController();
-                const abort = () => deadline.abort();
-                reset.addEventListener('abort', abort, { once: true });
-                let timer: ReturnType<typeof setTimeout> | undefined;
-                const timeout = new Promise<null>(resolve => {
-                    timer = setTimeout(() => { abort(); resolve(null); }, deps.timeoutMs ?? FLAGS_READ_TIMEOUT_MS);
-                    deadline.signal.addEventListener('abort', () => resolve(null), { once: true });
+                const frames = result.frames.map(p => {
+                    const variance = got.get(p.frame.frame.obsId);
+                    return variance ? { ...p, frame: { ...p.frame, variance } } : p;
                 });
-                const value = await Promise.race([readFrameFlags(frame, { reader, readFlags: deps.read ?? readFlags,
-                    fetcher: deps.fetcher, signal: deadline.signal }), timeout]);
-                clearTimeout(timer);
-                reset.removeEventListener('abort', abort);
-                flags.set(frame.frame.obsId, value);
+                const missing = firstFrames.filter(f => !got.get(f.frame.obsId)).length;
+                const again = missing === firstFrames.length ? first : changesFor({ ...result, frames }, deps.find) ?? first;
+                found = missing ? { ...again, notes: [...again.notes, `Error maps could not be read for ${missing} ${missing === 1 ? 'frame' : 'frames'}.`] } : again;
             }
-            if (!reset.aborted) {
+            if (!found.candidates.length) {
+                resultView = found;
+                done.set(result, found);
+                if (maps) {
+                    onChange();
+                }
+                return;
+            }
+            const { earlier, later } = compared(result, found);
+            const frames = [...earlier, ...later];
+            const order = frames.flatMap(f => f.context?.flags?.names.map(n => n.name) ?? []);
+            const finish = (flags: Map<string, FrameFlags | null>) => {
+                const screened = screen(found.candidates, { earlier, later }, flags, order, saved);
+                resultView = { ...found, candidates: screened.kept, lead: screened.lead,
+                    ran: screened.dropNote && !screened.kept.length ? false : found.ran,
+                    notes: [...found.notes, ...(screened.dropNote ? [screened.dropNote] : [])] };
+                done.set(result, resultView);
+            };
+            if (saved || !frames.some(f => f.context?.flags)) {
+                finish(new Map());
+                if (maps) {
+                    onChange();
+                }
+                return;
+            }
+            resultView = { ...found, notes: [...found.notes, 'Checking the archive flags for these spots; the list and its numbers may update.'] };
+            if (maps) {
+                onChange();
+            }
+            const flags = await eachFrame(frames, reset, (frame, signal) => readFrameFlags(frame, { reader,
+                readFlags: deps.read ?? readFlags, fetcher: deps.fetcher, signal }));
+            if (flags) {
                 finish(flags);
                 onChange();
             }
         })();
+        // A saved view or a view with nothing to read finishes in this same call.
     }
 
     function render(box: HTMLElement, marks: HTMLElement, view: SlotView): boolean
@@ -561,7 +616,8 @@ export function renderHalo(box: HTMLElement, view: SlotView, deps: HaloDeps = {}
         box.innerHTML = html;
         haloShown.set(box, html);
         if (k !== undefined && /^\d+$/.test(k)) {
-            box.querySelector<HTMLElement>(`[data-k="${k}"]`)?.focus();
+            // The table's date button, not the curve's dot (an SVG path cannot take focus).
+            box.querySelector<HTMLElement>(`button[data-k="${k}"]`)?.focus();
         }
     }
     return true;
