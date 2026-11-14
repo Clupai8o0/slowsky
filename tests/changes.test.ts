@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { compareVisits, findTracklets, significance, snrText, NO_SNR_NOTE, PLAIN_LEAD, hasSnrFigure, plainListNotes, stripSnr } from '../src/lib/changes';
+
 // @ts-expect-error Node types are not included in the browser project.
 import { readFileSync } from 'node:fs';
 import { createSnapshotSource } from '../src/lib/source';
@@ -9,6 +10,20 @@ import { positionAt, targetById } from '../src/lib/targets';
 import type { FrameRecord, OutputGrid, RegriddedFrame } from '../src/lib/types';
 
 declare const process: { cwd(): string };
+
+describe('plain note counts name the candidate set', () => {
+    it('says the 1 candidate, 1 of N, and k of N for both reasons', () => {
+        const c = (snrFlagRemoved: boolean, snrMapMissing: boolean) => ({ reason: 'spot (candidate).', snrFlagRemoved, snrMapMissing });
+        expect(plainListNotes([c(true, true)], true, 6).slice(1)).toEqual([
+            'S/N is left out for the 1 candidate marked by an archive overflow flag, because the S/N figure there can be unreliable.',
+            "S/N is left out for the 1 candidate where the frames' error maps have no value, because the noise there comes from the difference image alone.",
+        ]);
+        expect(plainListNotes([c(true, false), c(false, true), c(false, true)], true, 6).slice(1)).toEqual([
+            'S/N is left out for 1 of the 3 candidates marked by an archive overflow flag, because the S/N figure there can be unreliable.',
+            "S/N is left out for 2 of the 3 candidates where the frames' error maps have no value, because the noise there comes from the difference image alone.",
+        ]);
+    });
+});
 
 const grid: OutputGrid = { center: { ra: 20, dec: 30 }, fovDeg: 0.1, pixelArcsec: 1.5375, width: 121, height: 121 };
 
@@ -1324,7 +1339,7 @@ describe('round 11 public readings', () => {
             const hole = r.candidates.find((c) => Math.hypot(c.pix.x - 90, c.pix.y - 90) < 3)!;
             expect(covered.sentence, `${plain}`).toMatch(/\(S\/N > 50; candidate\)/);
             expect(hole.sentence, `${plain}`).not.toMatch(/S\/N/);
-            expect(r.notes).toContain('S/N is left out for 1 candidate where the frames\' error maps have no value, because the noise there comes from the difference image alone.');
+            expect(r.notes).toContain(`S/N is left out for ${plain ? `1 of the ${r.candidates.length} candidates` : '1 candidate'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`);
         }
     });
     it('prints no S/N when the maps have holes around the spot but not at its centre (Codex r11p)', () => {

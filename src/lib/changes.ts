@@ -627,6 +627,8 @@ export function stripSnr(text: string): string
     return text.replace(SNR_IN_TEXT, '(candidate)');
 }
 
+export const PLAIN_CAUSES = "a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
+
 export function plainListNotes(candidates: { line?: string; sentence?: string; reason: string; snrMapMissing?: boolean; snrFlagRemoved?: boolean }[],
     usedErrorMap: boolean, matchArcsec: number): string[]
 {
@@ -639,8 +641,9 @@ export function plainListNotes(candidates: { line?: string; sentence?: string; r
     const order = !shown && hiddenMapped ? `${base}.` : !shown ? `${base} estimated from the difference image; that figure is used only for this order.`
         : `${base}${shown < candidates.length ? '; within each group, spots with no S/N figure come after those with one' : ''}.`;
     const flagged = candidates.filter(c => c.snrFlagRemoved).length;
-    return [order, ...(flagged ? [`S/N is left out for ${flagged} ${flagged === 1 ? 'candidate' : 'candidates'} marked by an archive overflow flag, because the S/N figure there can be unreliable.`] : []),
-        ...(unmapped ? [`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`] : [])];
+    const count = (n: number) => candidates.length === 1 ? 'the 1 candidate' : n === candidates.length ? `all ${n} candidates` : `${n} of the ${candidates.length} candidates`;
+    return [order, ...(flagged ? [`S/N is left out for ${count(flagged)} marked by an archive overflow flag, because the S/N figure there can be unreliable.`] : []),
+        ...(unmapped ? [`S/N is left out for ${count(unmapped)} where the frames' error maps have no value, because the noise there comes from the difference image alone.`] : [])];
 }
 export function hasSnrFigure(text: string): boolean
 {
@@ -1366,7 +1369,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
             } else if (!clear && ((ringClipped && !edgeClipped) || ring.length < 20) && !nearMissing && !nearGap && !nearEdge) {
                 facts += ' Too few pixels around it could be compared to tell which visit has more light.';
             }
-            const ending = `a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}`;
+            const ending = `${PLAIN_CAUSES} (${snrText(snr)}; candidate).${facts}`;
             const neutral = `The light here differs between the two visits, and which visit has more is not clear; ${ending}`;
             out.push({ id: '', kind: 'unknown', pix, sky: gridPixToSky(grid, pix), snr, sign,
                 gaiaMatch: catalogueArcsec !== undefined, ...(catalogueArcsec === undefined ? {} : { gaiaDistArcsec: catalogueArcsec, catalogueArcsec }),

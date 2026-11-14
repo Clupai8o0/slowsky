@@ -3,7 +3,7 @@
 // claim of its own: each line is labelled "Candidate N" so the word stays on every line, and the marks over the
 // sky carry the same N. The finder's counts, noise and threshold are not shown. Pure string builders, no DOM.
 
-import { PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
+import { PLAIN_CAUSES, PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
 
 // Fields the finder is adding (lane/changes r10b): `sentence` (the reason without its caveat), `caveat` (a full
 // sentence, absent when both visits have 2+ frames) and `lightVisit`; `reason` stays as an alias of `sentence`.
@@ -32,7 +32,7 @@ export interface ChangesView {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 
 export const EMPTY_LEAD = 'The change finder lists no candidates between the first and last visit.';
-// How many candidates show before "Show N more"; the list is ordered by S/N, so these are the strongest.
+// Maximum number of candidates in the closed list.
 export const LIST_CAP = 8;
 
 // 0 a single spot (a mover with one spot too), 1 two spots (a pair, or a mover seen in both visits), 2 near a
@@ -67,9 +67,15 @@ export function isPlain(candidates: PanelCandidate[]): boolean
     return candidates.length > 0 && candidates.every((c) => c.reading === 'moreLater' || c.reading === 'lessLater' || c.reading === 'unclear');
 }
 
-function listed<T>(v: { candidates: T[] }, all: boolean): T[]
+function listed(v: ChangesView, all: boolean): ChangesView['candidates']
 {
-    return all ? v.candidates : v.candidates.slice(0, LIST_CAP);
+    if (all) { return v.candidates; }
+    const match = v.plainListInfo?.matchArcsec;
+    if (isPlain(v.candidates) && typeof match === 'number' && Number.isFinite(match)) {
+        const firstNear = v.candidates.findIndex(c => c.nearCatalogue === true);
+        return v.candidates.slice(0, Math.min(LIST_CAP, firstNear < 0 ? v.candidates.length : firstNear));
+    }
+    return v.candidates.slice(0, LIST_CAP);
 }
 
 // From what findChanges returns, or the message of the error it threw (for example "needs two visits").
@@ -118,16 +124,35 @@ export function withCaveats(candidates: { caveat?: string; line: string }[]): st
 // `all` shows every candidate; otherwise the first LIST_CAP and a text button for the rest.
 export function changesHtml(v: ChangesView, all = false): string
 {
-    const lead = (v.lead ?? []).map(s => `<p class="sk-chg-lead">${esc(s)}</p>`).join('');
+    const plain = isPlain(v.candidates);
+    const clause = `; ${PLAIN_CAUSES} (`;
+    const shared = plain && v.candidates.every(c => c.line.split(clause).length === 2);
+    const lead = [...(v.lead ?? []), ...(shared ? [`For every spot listed: ${PLAIN_CAUSES}.`] : [])].map(s => `<p class="sk-chg-lead">${esc(s)}</p>`).join('');
+    const closed = listed(v, false);
+    const hidden = v.candidates.slice(closed.length);
+    const match = v.plainListInfo?.matchArcsec;
+    const fold = plain && typeof match === 'number' && Number.isFinite(match);
+    if (fold) {
+        const starCount = hidden.filter(c => c.nearCatalogue === true).length;
+        const hiddenText = hidden.length === starCount
+            ? `${hidden.length}${closed.length ? ' more' : ''} ${hidden.length === 1 ? 'spot lies' : 'spots lie'} within ${match}″ of a catalogue star.`
+            : `${hidden.length} more not shown${starCount ? `; ${starCount} of them ${starCount === 1 ? 'lies' : 'lie'} within ${match}″ of a catalogue star` : ''}.`;
+        const more = hidden.length ? `<p class="sk-chg-more-row">${all ? '' : esc(hiddenText) + ' '}<button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? 'Show fewer' : `Show all ${v.candidates.length}`}</button></p>` : '';
+        const items = listed(v, all);
+        const list = items.length ? `<ol class="sk-chg">${items.map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(shared ? c.line.replace(clause, ' (') : c.line)}</li>`).join('')}</ol>`
+            : v.candidates.every(c => c.nearCatalogue === true) ? `<p class="sk-chg-lead">Every spot found lies within ${match}″ of a catalogue star.</p>` : '';
+        const notes = v.notes.length ? `<ul class="sk-chg-notes">${v.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
+        return lead + list + more + notes;
+    }
     const rest = v.candidates.length - LIST_CAP;
     const order = isPlain(v.candidates) ? '' : orderNote(v.candidates);
     const button = rest > 0
         ? ` <button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? 'Show fewer' : `Show ${rest} more`}</button>`
         : '';
-    // The order is said when the list is cut or grouped; a short plain list needs no explanation.
+    // Grouped lists show their order here; the plain list receives its order note from the finder.
     const more = button || order.startsWith('Listed in groups') ? `<p class="sk-chg-more-row">${`${order}${button}`.trim()}</p>` : '';
     const list = v.candidates.length
-        ? `<ol class="sk-chg">${listed(v, all).map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(c.line)}</li>`).join('')}</ol>${more}`
+        ? `<ol class="sk-chg">${listed(v, all).map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(shared ? c.line.replace(clause, ' (') : c.line)}</li>`).join('')}</ol>${more}`
         : v.ran ? `<p class="sk-chg-lead">${EMPTY_LEAD}</p>` : '';
     const notes = v.notes.length ? `<ul class="sk-chg-notes">${v.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
     return lead + list + notes;
@@ -138,6 +163,9 @@ export function changesMarks(v: ChangesView, width: number, height: number, all 
 {
     if (!v.candidates.length || !(width > 0) || !(height > 0)) {
         return '';
+    }
+    if (isPlain(v.candidates)) {
+        return plainMarks(v, width, height, all);
     }
     // Text size, and the ring size when the finder gives no aperture.
     const r = Math.max(5, Math.min(width, height) / 40);
@@ -193,4 +221,86 @@ export function changesMarks(v: ChangesView, width: number, height: number, all 
         return `<circle cx="${x}" cy="${y}" r="${ring.toFixed(1)}"/><text x="${placed.x.toFixed(1)}" y="${placed.y.toFixed(1)}" font-size="${size.toFixed(1)}">${i + 1}</text>`;
     }).join('');
     return `<svg class="sk-chg-marks" viewBox="0 0 ${width} ${height}" aria-hidden="true">${rings}</svg>`;
+}
+
+type Box = { left: number; right: number; top: number; bottom: number };
+type Point = { x: number; y: number };
+export type PlacementCounts = { preferred: number; soft: number; hard: number; apart: number; grid: number; last: number };
+
+// Optional counts let the seeded geometry test report which placement rule was needed.
+export function plainMarks(v: ChangesView, width: number, height: number, all = false, counts?: PlacementCounts): string
+{
+    const r = Math.max(5, Math.min(width, height) / 40);
+    const ends = listed(v, all).flatMap((c, i) => {
+        const given = (c.ends?.length ? c.ends : c.lightEnds ?? []).filter(e => Number.isFinite(e.x) && Number.isFinite(e.y));
+        return (given.length ? given : [{ x: c.pix.x, y: c.pix.y, radiusPix: undefined }]).map(e => ({
+            x: Number(e.x.toFixed(1)), y: Number(e.y.toFixed(1)), i,
+            radius: Number((typeof e.radiusPix === 'number' && e.radiusPix > 0 ? Math.max(3, e.radiusPix) : r).toFixed(1)),
+        }));
+    });
+    const parent = ends.map((_, i) => i);
+    const root = (i: number): number => parent[i] === i ? i : (parent[i] = root(parent[i]!));
+    ends.forEach((a, i) => ends.slice(0, i).forEach((b, j) => {
+        if (a.i !== b.i && Math.hypot(a.x - b.x, a.y - b.y) < Math.max(a.radius, b.radius)) {
+            parent[root(i)] = root(j);
+        }
+    }));
+    const groups = new Map<number, number[]>();
+    ends.forEach((_, i) => { const k = root(i); groups.set(k, [...(groups.get(k) ?? []), i]); });
+    const ringBoxes = ends.map(e => ({ left: e.x - e.radius, right: e.x + e.radius, top: e.y - e.radius, bottom: e.y + e.radius }));
+    const overlap = (a: Box, b: Box) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+    const boxes: Box[] = [];
+    const marks: string[] = [];
+    for (const members of groups.values()) {
+        const label = [...new Set(members.map(i => ends[i]!.i + 1))].sort((a, b) => a - b).join(', ');
+        const size = Math.floor(Math.min(r * 1.6, (width - 2.2) / (label.length * 0.7)) * 10) / 10;
+        const half = size * label.length * 0.35 + 1;
+        const own = { left: Math.min(...members.map(i => ringBoxes[i]!.left)), right: Math.max(...members.map(i => ringBoxes[i]!.right)),
+            top: Math.min(...members.map(i => ringBoxes[i]!.top)), bottom: Math.max(...members.map(i => ringBoxes[i]!.bottom)) };
+        const cx = (own.left + own.right) / 2, cy = (own.top + own.bottom) / 2;
+        const box = (p: Point): Box => ({ left: p.x - half, right: p.x + half, top: p.y - size - 1, bottom: p.y + 1 });
+        const place = (x: number, y: number): Point => ({ x: Number(Math.max(half + 0.05, Math.min(width - half - 0.05, x)).toFixed(1)),
+            y: Number(Math.max(size + 1.05, Math.min(height - 1.05, y)).toFixed(1)) });
+        const apart = (p: Point) => boxes.every(b => !overlap(box(p), b));
+        const hard = (p: Point) => apart(p) && !overlap(box(p), own);
+        const soft = (p: Point) => ringBoxes.every((b, i) => members.includes(i) || !overlap(box(p), b));
+        const mine = (p: Point) => {
+            const distances = ends.map(e => Math.hypot(p.x - e.x, p.y - size / 2 - e.y));
+            const d = Math.min(...members.map(i => distances[i]!));
+            return ends.every((e, i) => members.includes(i) || members.some(j => ends[j]!.i === e.i) || distances[i]! >= d);
+        };
+        const candidates: Point[] = [];
+        const below = own.top - r * 2.1 - 1 < 0;
+        for (let step = 0; step <= Math.floor(size - 1.15); step++) {
+            const gap = 1.1 + step;
+            const above = Math.max(own.top - 1 - size, Math.min(own.top - r * 0.5 - step, own.top - 1 - gap));
+            const down = Math.max(own.bottom + size + 1 + gap, own.bottom + r * 1.4 + step);
+            const top = place(cx, above), bottom = place(cx, down);
+            const middle = (own.top + own.bottom + size) / 2;
+            const diagonal = Math.min(gap, size / Math.SQRT2 - 0.1);
+            candidates.push(...(below ? [bottom, top] : [top, bottom]), place(own.left - half - gap, middle), place(own.right + half + gap, middle),
+                place(own.left - half - diagonal, own.top - 1 - diagonal), place(own.right + half + diagonal, own.top - 1 - diagonal),
+                place(own.left - half - diagonal, own.bottom + size + 1 + diagonal), place(own.right + half + diagonal, own.bottom + size + 1 + diagonal));
+        }
+        const rules = [(p: Point) => hard(p) && soft(p) && mine(p), (p: Point) => hard(p) && soft(p), hard, apart];
+        let tier = rules.findIndex(rule => candidates.some(rule));
+        let chosen = tier < 0 ? undefined : candidates.find(rules[tier]!);
+        // Before accepting a place on the cluster itself, search for an available off-ring place across the picture.
+        if (!chosen || overlap(box(chosen), own)) {
+            const grid: Point[] = [];
+            for (let y = size + 1.1; y <= height - 1.05; y += 2) {
+                for (let x = half + 0.1; x <= width - half - 0.05; x += 2) { grid.push(place(x, y)); }
+            }
+            const byDistance = (a: Point, b: Point) => Math.hypot(a.x - cx, a.y - size / 2 - cy) - Math.hypot(b.x - cx, b.y - size / 2 - cy);
+            const off = grid.filter(hard).sort(byDistance)[0];
+            const free = off ?? grid.filter(apart).sort(byDistance)[0];
+            if (free) { chosen = free; tier = 4; }
+        }
+        if (!chosen) { chosen = candidates[0]!; tier = 5; }
+        if (counts) { counts[(['preferred', 'soft', 'hard', 'apart', 'grid', 'last'] as const)[tier]!]++; }
+        boxes.push(box(chosen));
+        marks.push(...members.map(i => { const e = ends[i]!; return `<circle cx="${e.x.toFixed(1)}" cy="${e.y.toFixed(1)}" r="${e.radius.toFixed(1)}"/>`; }),
+            `<text x="${chosen.x.toFixed(1)}" y="${chosen.y.toFixed(1)}" font-size="${size.toFixed(1)}">${label}</text>`);
+    }
+    return `<svg class="sk-chg-marks" viewBox="0 0 ${width} ${height}" aria-hidden="true">${marks.join('')}</svg>`;
 }

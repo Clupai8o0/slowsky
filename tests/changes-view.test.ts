@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ChangeInputError } from '../src/lib/change-input';
 import { hasSnrFigure, stripSnr, type ChangeCandidate, type ChangeResult } from '../src/lib/changes';
 import type { SkyResult } from '../src/lib/source';
-import { changesHtml, changesMarks, changesView, EMPTY_LEAD } from '../src/ui/changes-view';
+import { changesHtml, changesMarks, changesView, plainMarks, EMPTY_LEAD } from '../src/ui/changes-view';
 import { changesFor, DEFAULT_FEATURES } from '../src/ui/slots';
 
 function cand(id: string, x: number, y: number, reason: string): ChangeCandidate
@@ -81,7 +81,7 @@ describe('Candidate changes panel', () => {
 });
 
 describe('round 11: marks at every end', () => {
-    it('keeps lone marks bounded at every edge and corner and preserves valid default positions', () => {
+    it('keeps lone marks bounded and preserves valid above positions', () => {
         for (const [x, y] of [[117, 117], [0, 117], [234, 117], [117, 0], [117, 234], [0, 0], [234, 0], [0, 234], [234, 234]]) {
             const svg = changesMarks(changesView(found([cand('one', x!, y!, 'Spot (candidate).')], [])), 235, 235);
             const m = /<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/><text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"/.exec(svg)!;
@@ -99,7 +99,7 @@ describe('round 11: marks at every end', () => {
             }
         }
     });
-    it('clamps every label in a crowded left-edge layout', () => {
+    it('clamps label x positions in a crowded left-edge layout', () => {
         const points = [[1, 55], [2, 60], [3, 65], [1, 70], [4, 75], [3, 80]];
         const svg = changesMarks(changesView(found(points.map(([x, y], i) => cand(String(i), x!, y!, 'Spot (candidate).')), [])), 235, 235);
         for (const m of svg.matchAll(/<text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"/g)) {
@@ -147,7 +147,7 @@ describe('round 11: marks at every end', () => {
             expect(counts.nearer).toBeLessThanOrEqual(crowded ? 154 : 0);
         }
     });
-    it('keeps the reviewers’ crowded edge labels beside their own rings', () => {
+    it('keeps the reviewers’ edge labels off their own rings and ordered', () => {
         for (const [width, points] of [[235, [[20, 4], [26, 4]]], [100, [[6, 81], [6, 93], [18, 93]]]] as [number, number[][]][]) {
             const svg = changesMarks(changesView(found(points.map(([x, y], i) => cand(String(i), x!, y!, 'Spot (candidate).')), [])), width, width);
             const marks = [...svg.matchAll(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/><text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"/g)];
@@ -307,6 +307,114 @@ describe('round 11: groups from the review', () => {
 });
 
 describe('plain list (compareVisits plain: true)', () => {
+    it('folds the near-star suffix and keeps prefix numbers and rings', () => {
+        const list = [false, false, true].map((nearCatalogue, i) => ({ ...cand(String(i), 20 + i * 30, 30, `spot ${i} (candidate).`), reading: 'unclear' as const, nearCatalogue }));
+        const v = changesView({ ...found(list, []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
+        expect(changesHtml(v)).toContain('1 more spot lies within 6″ of a catalogue star.');
+        expect(changesHtml(v)).toContain('Show all 3');
+        expect(changesHtml(v)).not.toContain('Candidate 3');
+        expect(changesHtml(v, true)).toContain('Candidate 3');
+        expect(changesMarks(v, 235, 235).match(/<circle/g)).toHaveLength(2);
+    });
+    it('joins a chain of nearby different candidates into one label', () => {
+        const list = [50, 57, 64].map((x, i) => ({ ...cand(String(i), x, 60, 'spot'), reading: 'unclear' as const, ends: [{ visit: 'later' as const, x, y: 60, radiusPix: 7.8 }] }));
+        const svg = changesMarks(changesView(found(list, [])), 235, 235);
+        expect(svg.match(/<circle/g)).toHaveLength(3);
+        expect(svg.match(/<text/g)).toHaveLength(1);
+        expect(svg).toContain('>1, 2, 3</text>');
+    });
+    it('shares identical plain causes while retaining candidate details', () => {
+        const causes = "a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
+        const line = `The light differs; ${causes} (S/N 9.0; candidate).`;
+        const v = changesView(found([{ ...cand('a', 20, 20, line), reading: 'unclear' }], []));
+        expect(changesHtml(v)).toContain(`For every spot listed: ${causes}.`);
+        expect(changesHtml(v)).toContain('The light differs (S/N 9.0; candidate).');
+        const hidden = changesView({ ...found([{ ...cand('a', 20, 20, line), reading: 'unclear', nearCatalogue: true }], []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
+        expect(changesHtml(hidden)).toContain(`For every spot listed: ${causes}.`);
+        expect(changesHtml(hidden)).not.toContain('<ol');
+    });
+    it('keeps every line whole when any cause clause is absent or repeated', () => {
+        const causes = "a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
+        const full = `Here; ${causes} (candidate).`;
+        for (const other of ['Different (candidate).', `${full}; ${causes} (candidate).`]) {
+            const v = changesView(found([full, other].map((line, i) => ({ ...cand(String(i), i * 20, 20, line), reading: 'unclear' as const })), []));
+            expect(changesHtml(v)).not.toContain('For every spot listed:');
+            expect(changesHtml(v)).toContain(full);
+        }
+    });
+    it('describes several hidden stars, a capped mixed suffix, and all stars', () => {
+        const view = (flags: boolean[]) => changesView({ ...found(flags.map((nearCatalogue, i) => ({ ...cand(String(i), 10 + i * 10, 30, `spot ${i}`), reading: 'unclear' as const, nearCatalogue })), []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
+        expect(changesHtml(view([false, true, true]))).toContain('2 more spots lie within 6″ of a catalogue star.');
+        const capped = view([...Array(9).fill(false), true, true]);
+        expect(changesHtml(capped)).toContain('3 more not shown; 2 of them lie within 6″ of a catalogue star.');
+        expect(changesHtml(capped)).toContain('Candidate 8');
+        expect(changesHtml(capped)).not.toContain('Candidate 9');
+        expect(changesHtml(capped, true)).toContain('Candidate 9');
+        expect(changesHtml(view(Array(10).fill(false)))).toContain('2 more not shown.');
+        const stars = changesHtml(view([true, true]));
+        expect(stars).toContain('Every spot found lies within 6″ of a catalogue star.');
+        expect(stars).toContain('2 spots lie within 6″ of a catalogue star.');
+        expect(stars).not.toContain('<ol');
+    });
+    it('joins all three observed separations with width for the joint label', () => {
+        for (const distance of [4.3, 3.2, 4.9]) {
+            const list = [60, 60 + distance].map((x, i) => ({ ...cand(String(i), x, 60, 'spot'), reading: 'unclear' as const, ends: [{ visit: 'later' as const, x, y: 60, radiusPix: 7.8 }] }));
+            const svg = changesMarks(changesView(found(list, [])), 235, 235);
+            expect(svg.match(/<circle/g)).toHaveLength(2);
+            expect(svg.match(/<text/g)).toHaveLength(1);
+            expect(svg).toContain('>1, 2</text>');
+            const text = /<text x="([^"]+)" y="([^"]+)" font-size="([^"]+)">/.exec(svg)!;
+            expect(Number(text[1]) - (Number(text[3]) * 4 * 0.35 + 1)).toBeGreaterThanOrEqual(0);
+        }
+        const edge = [0, 2, 4].map((x, i) => ({ ...cand(String(i), x, 1, 'spot'), reading: 'unclear' as const, ends: [{ visit: 'later' as const, x, y: 1, radiusPix: 7.8 }] }));
+        const m = /<text x="([^"]+)" y="([^"]+)" font-size="([^"]+)">1, 2, 3<\/text>/.exec(changesMarks(changesView(found(edge, [])), 235, 235))!;
+        expect(Number(m[1]) - (Number(m[3]) * 7 * 0.35 + 1)).toBeGreaterThanOrEqual(0);
+    });
+    it('puts a large-ring label outside its box and the top-edge label below', () => {
+        const make = (x: number, y: number, radiusPix: number) => changesMarks(changesView(found([{ ...cand('a', x, y, 'spot'), reading: 'unclear', ends: [{ visit: 'later', x, y, radiusPix }] }], [])), 235, 235);
+        const large = /<text x="([^"]+)" y="([^"]+)" font-size="([^"]+)">/.exec(make(117, 117, 60))!;
+        const [x, y, s] = large.slice(1).map(Number) as [number, number, number];
+        expect(x + s * 0.35 + 1 <= 57 || x - s * 0.35 - 1 >= 177 || y + 1 <= 57 || y - s - 1 >= 177).toBe(true);
+        const top = /<text x="[^"]+" y="([^"]+)"/.exec(make(117, 3, 235 / 40))!;
+        expect(Number(top[1])).toBeGreaterThan(3 + 5.9 + 9.4 + 1);
+        const threshold = /<text x="[^"]+" y="([^"]+)"/.exec(make(117, 18.2, 235 / 40))!;
+        expect(Number(threshold[1])).toBeGreaterThan(18.2 + 5.9);
+    });
+    it('checks 500 seeded layouts for bounds, unique ring numbers, overlaps and placement fallbacks', () => {
+        let seed = 72931;
+        const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+        const layouts = { preferred: 0, soft: 0, hard: 0, apart: 0, grid: 0, last: 0, nearer: 0 };
+        for (let trial = 0; trial < 500; trial++) {
+            const n = 1 + Math.floor(random() * 8), anchor = [[0, 0], [234, 0], [0, 234], [234, 234], [117, 117]][trial % 5]!;
+            const cs = Array.from({ length: n }, (_, i) => {
+                const x = Math.max(0, Math.min(234, trial % 3 ? anchor[0]! + (random() - 0.5) * 32 : random() * 234));
+                const y = Math.max(0, Math.min(234, trial % 3 ? anchor[1]! + (random() - 0.5) * 32 : random() * 234));
+                const ends = [{ visit: 'later' as const, x, y, radiusPix: 7.8 }];
+                if (trial % 7 === 0 && i === 0) { ends.push({ visit: 'later', x: 234 - x, y: 234 - y, radiusPix: 7.8 }); }
+                return { ...cand(String(i), x, y, 'spot'), reading: 'unclear' as const, ends };
+            });
+            const counts = { preferred: 0, soft: 0, hard: 0, apart: 0, grid: 0, last: 0 };
+            const svg = plainMarks(changesView(found(cs, [])), 235, 235, false, counts);
+            for (const key of Object.keys(counts) as (keyof typeof counts)[]) { if (counts[key]) { layouts[key]++; } }
+            const labels = [...svg.matchAll(/<text x="([^"]+)" y="([^"]+)" font-size="([^"]+)">([^<]+)<\/text>/g)].map(m => {
+                const x = Number(m[1]), y = Number(m[2]), s = Number(m[3]), ids = m[4]!.split(', ').map(Number), half = s * m[4]!.length * 0.35 + 1;
+                return { x, y, s, ids, left: x - half, right: x + half, top: y - s - 1, bottom: y + 1 };
+            });
+            const intersects = (a: typeof labels[number], b: typeof labels[number]) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+            let nearer = false;
+            labels.forEach((label, i) => {
+                expect(label.left).toBeGreaterThanOrEqual(0); expect(label.right).toBeLessThanOrEqual(235);
+                expect(label.top).toBeGreaterThanOrEqual(0); expect(label.bottom).toBeLessThanOrEqual(235);
+                expect(labels.slice(0, i).some(other => intersects(label, other))).toBe(false);
+                const distance = (e: { x: number; y: number }) => Math.hypot(label.x - e.x, label.y - label.s / 2 - e.y);
+                const own = Math.min(...label.ids.flatMap(id => cs[id - 1]!.ends.map(distance)));
+                if (cs.some((c, j) => !label.ids.includes(j + 1) && c.ends.some(e => distance(e) < own - 0.01))) { nearer = true; }
+            });
+            cs.forEach((c, i) => expect(labels.filter(l => l.ids.includes(i + 1)).length).toBe(c.ends.length));
+            if (nearer) { layouts.nearer++; }
+        }
+        console.log('500 layout counts', layouts);
+    });
     it('P2 prints each new sentence exactly and strips only its S/N figure', () => {
         const ending = "a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
         for (const [reading, start] of [
@@ -319,7 +427,7 @@ describe('plain list (compareVisits plain: true)', () => {
             expect(hasSnrFigure(sentence)).toBe(true);
             expect(hasSnrFigure(stripSnr(sentence))).toBe(false);
             const c = { ...cand('p', 10, 10, sentence), reading, sentence };
-            expect(changesHtml(changesView(found([c], [])))).toBe(`<ol class="sk-chg"><li><b>Candidate 1</b> ${sentence}</li></ol>`);
+            expect(changesHtml(changesView(found([c], [])))).toBe(`<p class="sk-chg-lead">For every spot listed: ${ending}.</p><ol class="sk-chg"><li><b>Candidate 1</b> ${start} (S/N 9.0; candidate). A catalogue star lies 8.0″ away.</li></ol>`);
         }
     });
     it('places the confirmation note before the shared caveat and list', () => {
