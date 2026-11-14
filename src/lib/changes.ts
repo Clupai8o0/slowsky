@@ -12,6 +12,7 @@ export interface ChangeCandidate {
     sign: 1 | -1;
     gaiaMatch: boolean;
     gaiaDistArcsec?: number;
+    fracChange?: number;
     frames: string[];
     speedArcsecPerHour?: number;
     paDeg?: number;
@@ -20,7 +21,7 @@ export interface ChangeCandidate {
 }
 export interface ChangeResult {
     candidates: ChangeCandidate[];
-    rejected: { streaks: number; single: number; edge: number };
+    rejected: { streaks: number; single: number; edge: number; residual: number };
     sigma: number;
     threshold: number;
     skipped: { obsId: string; reason: string }[];
@@ -38,6 +39,7 @@ export interface ChangeOptions {
     minSpeedArcsecPerHour?: number;
     maxSpeedArcsecPerHour?: number;
     lineTolArcsec?: number;
+    minFracChange?: number;
 }
 
 type Image = { data: Float32Array; lambda: number; mjd: number; obsIds: string[] };
@@ -45,6 +47,7 @@ type Settings = Required<ChangeOptions>;
 type Blob = { pix: PixelCoord; snr: number; sign: 1 | -1; area: number };
 type Measurement = { z: Float32Array; sigma: number; k: number; width: number; height: number };
 const NATIVE = 6.15;
+const PSF_FWHM = 12; // arcsec
 
 function settings(opts: ChangeOptions = {}): Settings
 {
@@ -53,7 +56,8 @@ function settings(opts: ChangeOptions = {}): Settings
         dipoleArcsec: opts.dipoleArcsec ?? 15, edgeArcsec: opts.edgeArcsec ?? 12,
         maxDeltaLambda: opts.maxDeltaLambda ?? 0.02, maxCandidates: opts.maxCandidates ?? 50,
         minSpeedArcsecPerHour: opts.minSpeedArcsecPerHour ?? 5,
-        maxSpeedArcsecPerHour: opts.maxSpeedArcsecPerHour ?? 4000, lineTolArcsec: opts.lineTolArcsec ?? 4 };
+        maxSpeedArcsecPerHour: opts.maxSpeedArcsecPerHour ?? 4000, lineTolArcsec: opts.lineTolArcsec ?? 4,
+        minFracChange: opts.minFracChange ?? 0.10 };
 }
 
 function validate(data: Float32Array, grid: OutputGrid): void
@@ -334,7 +338,7 @@ function match(p: PixelCoord, stars: StarPix[], grid: OutputGrid, radius: number
 
 function empty(opt: Settings): ChangeResult
 {
-    return { candidates: [], rejected: { streaks: 0, single: 0, edge: 0 }, sigma: NaN,
+    return { candidates: [], rejected: { streaks: 0, single: 0, edge: 0, residual: 0 }, sigma: NaN,
         threshold: opt.threshold, skipped: [], notes: [] };
 }
 
@@ -355,6 +359,68 @@ function candidate(blob: Blob, grid: OutputGrid, stars: StarPix[], opt: Settings
         reason: kind === 'brightness'
             ? `A catalogue star here is ${blob.sign === 1 ? 'brighter' : 'fainter'} than in the earlier image, at S/N ${blob.snr.toFixed(1)} (candidate).`
             : `Changed at S/N ${blob.snr.toFixed(1)} with no catalogue star here (candidate).` };
+}
+
+function fractionalChange(earlier: Float32Array, later: Float32Array, pix: PixelCoord, grid: OutputGrid): number | undefined
+{
+    const radius = 12 / grid.pixelArcsec;
+    const ringA: number[] = [], ringB: number[] = [];
+    let sumA = 0, sumB = 0, count = 0;
+    for (let y = Math.ceil(pix.y - 3 * radius); y <= Math.floor(pix.y + 3 * radius); y++) {
+        for (let x = Math.ceil(pix.x - 3 * radius); x <= Math.floor(pix.x + 3 * radius); x++) {
+            const r = Math.hypot(x - pix.x, y - pix.y);
+            if (r > 3 * radius || (r > radius + 1 && r < 2 * radius)) {
+                continue;
+            }
+            let weight = 0;
+            if (r <= radius + 1) {
+                for (let sy = 0; sy < 4; sy++) {
+                    for (let sx = 0; sx < 4; sx++) {
+                        if (Math.hypot(x + (sx + 0.5) / 4 - 0.5 - pix.x,
+                            y + (sy + 0.5) / 4 - 0.5 - pix.y) <= radius) {
+                            weight += 1 / 16;
+                        }
+                    }
+                }
+            }
+            const inside = x >= 0 && y >= 0 && x < grid.width && y < grid.height;
+            const a = inside ? earlier[y * grid.width + x]! : NaN;
+            const b = inside ? later[y * grid.width + x]! : NaN;
+            if (!Number.isFinite(a) || !Number.isFinite(b)) {
+                if (weight > 0) {
+                    return undefined;
+                }
+                continue;
+            }
+            if (weight > 0) {
+                sumA += weight * a;
+                sumB += weight * b;
+                count += weight;
+            } else if (r >= 2 * radius) {
+                ringA.push(a);
+                ringB.push(b);
+            }
+        }
+    }
+    if (count === 0 || ringA.length < 20) {
+        return undefined;
+    }
+    const backgroundA = robust(ringA);
+    const backgroundB = robust(ringB);
+    const clippedMean = (values: number[], stat: { center: number; sigma: number }): number => {
+        const retained = values.filter((v) => Math.abs(v - stat.center) <= 3 * stat.sigma);
+        return retained.length ? retained.reduce((a, b) => a + b, 0) / retained.length : stat.center;
+    };
+    sumA -= count * clippedMean(ringA, backgroundA);
+    sumB -= count * clippedMean(ringB, backgroundB);
+    // The regridded pixels are correlated on the scale of one native pixel.
+    const k = Math.max(1, Math.round(NATIVE / grid.pixelArcsec));
+    const noise = backgroundA.sigma * Math.sqrt(count) * k;
+    if (!(sumA > 0) || !(sumB > 0) || !Number.isFinite(noise) || sumA < 5 * noise) {
+        return undefined;
+    }
+    const frac = (sumB - sumA) / sumA;
+    return Number.isFinite(frac) && frac >= -1 ? frac : undefined;
 }
 
 export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, stars: StarPix[], opts?: ChangeOptions): ChangeResult
@@ -394,9 +460,39 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     }
     found.forEach((b, i) => {
         if (!used.has(i)) {
-            result.candidates.push(candidate(b, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]));
+            const frac = fractionalChange(earlier.data, later.data, b.pix, grid);
+            if (frac !== undefined && Math.abs(frac) < opt.minFracChange) {
+                result.rejected.residual++;
+                return;
+            }
+            const c = candidate(b, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
+            if (frac !== undefined) {
+                c.fracChange = frac;
+                const change = `${Math.round(Math.abs(frac) * 100)}% ${frac >= 0 ? 'brighter' : 'fainter'}`;
+                c.reason = c.kind === 'brightness'
+                    ? `A catalogue star here is ${change} than in the earlier image (candidate).`
+                    : `A source here is ${change} than in the earlier image, with no catalogue star here (candidate).`;
+            } else {
+                c.kind = 'unknown';
+                c.reason = `Changed at S/N ${c.snr.toFixed(1)}; brightness change could not be measured here (candidate).`;
+            }
+            result.candidates.push(c);
         }
     });
+    const smallLeftovers = result.rejected.residual;
+    const candidates = result.candidates;
+    result.candidates = candidates.filter((c) => {
+        if (c.kind !== 'mover' && candidates.some((stronger) => stronger !== c && stronger.snr >= 5 * c.snr
+            && distance(c.pix, stronger.pix, grid) <= 2 * PSF_FWHM)) {
+            result.rejected.residual++;
+            return false;
+        }
+        return true;
+    });
+    const shadows = result.rejected.residual - smallLeftovers;
+    if (result.rejected.residual > 0) {
+        result.notes.push(`${smallLeftovers} small leftovers on steady stars ignored (under ${opt.minFracChange * 100}% change); ${shadows} shadows near stronger changes ignored.`);
+    }
     return finish(result, opt);
 }
 

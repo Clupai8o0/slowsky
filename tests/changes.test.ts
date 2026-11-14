@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { compareVisits, findTracklets, significance } from '../src/lib/changes';
+// @ts-expect-error Node types are not included in the browser project.
+import { readFileSync } from 'node:fs';
+import { createSnapshotSource } from '../src/lib/source';
+import { groupByVisit, stackVisit } from '../src/lib/stack';
+import { gridSkyToPix } from '../src/lib/regrid';
+import { positionAt, targetById } from '../src/lib/targets';
 import type { FrameRecord, OutputGrid, RegriddedFrame } from '../src/lib/types';
+
+declare const process: { cwd(): string };
 
 const grid: OutputGrid = { center: { ra: 20, dec: 30 }, fovDeg: 0.1, pixelArcsec: 1.5375, width: 121, height: 121 };
 
@@ -101,6 +109,50 @@ function near(x: number, y: number, a: { pix: { x: number; y: number } }, radius
 
 describe('change finder', () => {
     beforeEach(() => { seed = 918273; });
+    it('rejects a weak wing leftover near a much stronger change', () => {
+        const earlier = noise(grid), later = noise(grid);
+        point(later, grid, 55, 60, 1000);
+        point(earlier, grid, 69, 60, 25);
+        const result = compareVisits(image(earlier, 'a'), image(later, 'b'), grid, []);
+        expect(result.candidates).toHaveLength(1);
+        expect(result.rejected.residual).toBeGreaterThanOrEqual(1);
+        expect(result.notes.join(' ')).toMatch(/shadow/i);
+    });
+
+    it('does not quantify a change when the later aperture flux is negative', () => {
+        const earlier = noise(grid), later = noise(grid);
+        point(earlier, grid, 60, 60, 30);
+        point(later, grid, 60, 60, -20);
+        const result = compareVisits(image(earlier, 'a'), image(later, 'b'), grid, [{ x: 60, y: 60 }]);
+        const change = result.candidates.find((c) => near(60, 60, c));
+        expect(change).toBeDefined();
+        expect(change!.fracChange).toBeUndefined();
+        expect(change!.kind).toBe('unknown');
+        expect(change!.reason).toBe(`Changed at S/N ${change!.snr.toFixed(1)}; brightness change could not be measured here (candidate).`);
+    });
+
+    it('ignores small changes in bright sources and measures substantial changes', () => {
+        const earlier = noise(grid), small = noise(grid), large = noise(grid);
+        point(earlier, grid, 60, 60, 200);
+        point(small, grid, 60, 60, 206);
+        point(large, grid, 60, 60, 260);
+        const ignored = compareVisits(image(earlier, 'a'), image(small, 'b'), grid, [{ x: 60, y: 60 }]);
+        expect(ignored.candidates).toHaveLength(0);
+        expect(ignored.rejected.residual).toBeGreaterThanOrEqual(1);
+        expect(ignored.notes.join(' ')).toMatch(/small leftovers.*under 10%/);
+        const kept = compareVisits(image(earlier, 'a'), image(large, 'b'), grid, [{ x: 60, y: 60 }]);
+        expect(kept.candidates[0]?.kind).toBe('brightness');
+        expect(kept.candidates[0]!.fracChange).toBeGreaterThan(0.27);
+        expect(kept.candidates[0]!.fracChange).toBeLessThan(0.33);
+        expect(kept.candidates[0]!.reason).toMatch(/30% brighter/);
+        const custom = compareVisits(image(earlier, 'a'), image(small, 'b'), grid, [], { minFracChange: 0.01 });
+        expect(custom.candidates[0]?.kind).toBe('unknown');
+        expect(custom.candidates[0]?.fracChange).toBeGreaterThan(0.01);
+        expect(custom.candidates[0]?.reason).toMatch(/% brighter/);
+        const strict = compareVisits(image(earlier, 'a'), image(large, 'b'), grid, [], { minFracChange: 0.4 });
+        expect(strict.candidates).toHaveLength(0);
+        expect(strict.notes.join(' ')).toContain('under 40% change');
+    });
     it('rejects malformed image shapes', () => {
         expect(() => significance(new Float32Array(3), grid)).toThrow(/length/i);
         expect(() => compareVisits({ data: new Float32Array(3), lambda: 1, mjd: 1, obsIds: [] },
@@ -130,6 +182,7 @@ describe('change finder', () => {
         injectSnr(before, after, grid, x, y, 8);
         r = compareVisits(image(before, 'a'), image(after, 'b'), grid, []);
         expect(r.candidates.some((c) => c.kind === 'unknown' && near(x, y, c))).toBe(true);
+        expect(r.candidates.find((c) => near(x, y, c))?.fracChange).toBeUndefined();
         const left = noise(grid), right = noise(grid);
         staticSky(left, right, grid);
         point(left, grid, x - 3, y, 30);
@@ -290,4 +343,53 @@ describe('change finder', () => {
         console.log(`24-frame processing: ${elapsed.toFixed(0)} ms`);
         expect(elapsed).toBeLessThan(3000);
     }, 30000);
+});
+
+describe('real snapshot changes', () => {
+    const diskFetch = (async (url: string) => {
+        const path = process.cwd() + '/public' + String(url).replace(/^https?:\/\/[^/]+/, '');
+        return new Response(readFileSync(path));
+    }) as unknown as typeof fetch;
+
+    for (const id of ['rwaur', 'epsindb', 'barnard'] as const) {
+        it(`compares first and last visits for ${id}`, async () => {
+            const target = targetById(id)!;
+            const source = createSnapshotSource({ fetch: diskFetch, baseUrl: '' });
+            const result = await source.load({ center: target.astrometry, fovDeg: 0.12, detector: target.detector, target: id });
+            const visits = groupByVisit(result.frames.map((entry) => entry.frame));
+            expect(visits.length).toBeGreaterThan(1);
+            const first = visits[0]!, last = visits[visits.length - 1]!;
+            const mid = (visit: RegriddedFrame[]): number => (visit[0]!.frame.tMin + visit[visit.length - 1]!.frame.tMax) / 2;
+            const lastFrame = last[last.length - 1]!.frame;
+            const lastMjd = (lastFrame.tMin + lastFrame.tMax) / 2;
+            const track = gridSkyToPix(result.grid, positionAt(target.astrometry, lastMjd));
+            const stars = result.stars.map((s) => gridSkyToPix(result.grid, positionAt({
+                ra: s.ra, dec: s.dec, epochJyear: s.epochJyear, pmRa: s.pmRa ?? 0, pmDec: s.pmDec ?? 0,
+            }, mid(last))));
+            const a = stackVisit(first), b = stackVisit(last);
+            const changes = compareVisits({ data: a.data, lambda: first[0]!.lambdaAtCenter, mjd: mid(first),
+                obsIds: first.map((f) => f.frame.obsId) },
+            { data: b.data, lambda: last[0]!.lambdaAtCenter, mjd: mid(last), obsIds: last.map((f) => f.frame.obsId) },
+            result.grid, stars);
+            const distance = (p: { x: number; y: number }): number => Math.hypot(p.x - track.x, p.y - track.y) * result.grid.pixelArcsec;
+            console.log(`${id}: ${changes.candidates.length} candidates, rejected ${JSON.stringify(changes.rejected)}`);
+            for (const c of changes.candidates) {
+                console.log(`  ${c.kind} sign=${c.sign} snr=${c.snr.toFixed(1)} frac=${c.fracChange} distance=${distance(c.pix).toFixed(1)}″`);
+                expect(c.fracChange === undefined || c.fracChange >= -1).toBe(true);
+                expect(c.reason).not.toMatch(/fainter by (1\d\d|[2-9]\d\d)%|\d{3,}% fainter/);
+            }
+            if (id === 'rwaur') {
+                const best = changes.candidates.find((c) => c.kind === 'brightness');
+                expect(best).toBeDefined();
+                expect(distance(best!.pix)).toBeLessThan(6);
+                expect(best!.sign).toBe(1);
+                expect(best!.fracChange).toBeGreaterThan(0.25);
+                expect(best!.fracChange).toBeLessThan(0.8);
+            }
+            if (id === 'epsindb') {
+                expect(changes.candidates.some((c) => c.kind === 'mover' && distance(c.pix) < 15)).toBe(true);
+            }
+            expect(changes.candidates.length).toBeLessThanOrEqual(12);
+        }, 60000);
+    }
 });
