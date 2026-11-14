@@ -419,6 +419,7 @@ export function mount(root: HTMLElement): void
         // Take the shared link's frame once: an aborted load must not leave it for the next view.
         const wantFrame = st.wantFrame;
         st.wantFrame = undefined;
+        lamDraft = null; // a half-dragged colour belongs to the old view
         ctrl?.abort();
         ctrl = new AbortController();
         const signal = ctrl.signal;
@@ -962,9 +963,13 @@ export function mount(root: HTMLElement): void
                     ['Frame', `${st.index + 1} of ${n}`],
                     ['Colour here', `${lf.lambda.toFixed(3)} µm (${lf.dLambda >= 0 ? '+' : '−'}${Math.abs(lf.dLambda).toFixed(3)})`],
                 ];
+            // Stack and Subtract can mix detectors or releases (e.g. QR3 and DR1), so list every one they use.
+            const recs = shown.map((i) => result!.frames[i]!.frame.frame);
+            const relRecs = recs.filter((r, i) => recs.findIndex((o) => o.collection === r.collection) === i);
+            const dets = [...new Set(recs.map((r) => r.detector))].sort((a, b) => a - b);
             rows.push(
-                ['Detector', `D${rec.detector}`],
-                ['Release', rec.collection],
+                ['Detector', dets.map((d) => `D${d}`).join(', ')],
+                ['Release', relRecs.map((r) => r.collection).join(', ')],
                 ['Field', `${Number(result.grid.fovDeg.toFixed(3))}° · ${result.grid.width} × ${result.grid.height} px`],
                 ['Scale', `${result.grid.pixelArcsec.toFixed(2)}″ per pixel`],
             );
@@ -996,11 +1001,14 @@ export function mount(root: HTMLElement): void
                         : 'The star’s centre could not be found close enough to where it should be, so only the expected shift from its catalogue motion is shown.');
                 }
             }
-            const doi = sourceKind === 'demo' ? undefined : RELEASE_DOI[rec.release];
-            let html = rows.map(([k, v]) => {
-                const val = k === 'Release' && doi
+            const release = relRecs.map((r) => {
+                const doi = sourceKind === 'demo' ? undefined : RELEASE_DOI[r.release];
+                return doi
                     ? `<a class="sk-src" href="https://doi.org/${doi.id}" target="_blank" rel="noopener" title="${esc(doi.cite)}">${esc(doi.label)}</a>`
-                    : esc(v);
+                    : esc(r.collection);
+            }).join(', ');
+            let html = rows.map(([k, v]) => {
+                const val = k === 'Release' ? release : esc(v);
                 return `<dt>${k}</dt><dd>${val}</dd>`;
             }).join('');
             const links: string[] = [];
@@ -1062,8 +1070,8 @@ export function mount(root: HTMLElement): void
             : '';
         if (kind === 'mover') {
             return blankText
-                ? { not: `Its centre has no value in ${blankText}, inside a bright glow, the way a star too bright for the camera shows. So its position is rough, to about one pixel.` }
-                : {};
+                ? { not: `Its centre has no value in ${blankText}, inside a bright glow, the way a star too bright for the camera shows. So its position here is rough.` }
+                : { not: 'Its centre may be too bright for the camera, so treat its position with care.' };
         }
         if (kind === 'saturated') {
             return blankText
@@ -1076,7 +1084,7 @@ export function mount(root: HTMLElement): void
             // Ratios only mean something when the star itself is clearly seen (3 sigma over the sky noise in its
             // aperture, scaled for regridded pixels sharing a detector pixel's noise) in every look.
             const spread = Math.max(1, NATIVE_ARCSEC / result.grid.pixelArcsec);
-            const seen = (p: (typeof valid)[number]): boolean => p.target.sum > 3 * p.target.backgroundSigma * Math.sqrt(p.target.nPix) * spread;
+            const seen = (p: (typeof valid)[number]): boolean => p.target.backgroundSigma > 0 && p.target.nPix > 0 && p.target.sum > 3 * p.target.backgroundSigma * Math.sqrt(p.target.nPix) * spread;
             if (rel.length >= 2 && (Math.min(...rel) <= 0 || !valid.every(seen))) {
                 return { fact: `Across ${rel.length} looks it is not clearly seen above the sky in at least one, so no change is given.` };
             }
@@ -1336,7 +1344,7 @@ export function mount(root: HTMLElement): void
     if (shared) {
         st.center = shared.center;
         // No fov= in the link (?t=barnard): the app's 0.1°, not the URL module's default, so a target opens from the saved copy.
-        st.fovDeg = params.has('fov') && FOVS.includes(shared.fovDeg) ? shared.fovDeg : DEFAULT_FOV;
+        st.fovDeg = FOVS.includes(Number(params.get('fov') ?? NaN)) && FOVS.includes(shared.fovDeg) ? shared.fovDeg : DEFAULT_FOV;
         st.detector = shared.detector;
         st.lambda = shared.lambda;
         st.target = shared.target;

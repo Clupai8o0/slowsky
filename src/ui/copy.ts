@@ -22,7 +22,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         kind: 'mover',
         headline: 'Barnard’s Star, walking north',
         show: 'The fastest-moving star in our sky. Gold rings mark where its measured motion puts it on each date. Watch it step from ring to ring.',
-        not: 'Its centre is too bright for the camera, so its position here is rough, to about one pixel.',
+        not: 'Its centre may be too bright for the camera, so treat its position with care.',
     },
     rwaur: {
         display: 'RW Aurigae',
