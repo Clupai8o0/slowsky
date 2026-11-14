@@ -29,8 +29,8 @@ const CONSTANT_CONTEXT: readonly { value: number; context: RegExp }[] = [
     ...[0.75, 5, 5.0, 1.083, 1.875, 3.05, 3.3, 4.05, 4.27, 4.67].map((value) => ({ value, context: /(?:\bmicrons?\b|µm\b)/i })),
     { value: 6.2, context: /\barcsec(?:onds?)?\b/i },
 ];
-// Mission counts are allowed only with their own immediately following nouns.
-const MISSION_COUNTS = [{ value: 102, nouns: /^(?:colours?|colors?|wavelengths?|bands?|channels?)\b/i }, { value: 6, nouns: /^detectors?\b/i }];
+// Mission counts are allowed only with their own nouns, optionally after an adjective.
+const MISSION_COUNTS = [{ value: 102, nouns: /^(?:[a-z]+\s+)?(?:colours?|colors?|wavelengths?|bands?|channels?)\b/i }, { value: 6, nouns: /^(?:[a-z]+\s+)?detectors?\b/i }];
 export const CONSTANTS: readonly number[] = [...CONSTANT_CONTEXT, ...MISSION_COUNTS].map(({ value }) => value);
 function object(value: unknown, keys: string[]): Record<string, unknown>
 {
@@ -133,11 +133,11 @@ const meanings: [RegExp, string][] = [
     [/^Shift in position\b/i, 'shift|mov|motion|position|drift|displac|travel|cross|slid|proper'],
 ];
 const numberList = /(?<![\w.])[-−]?\d+(?:\.\d+)?(?:\s*(?:,\s*(?:(?:and|or)\s+)?|\s+(?:and\s+then|and|or|to|then)\s+)[-−]?\d+(?:\.\d+)?)*/g;
-const unitAtStart = /^\s*-?\s*(percent\b|%|micrometres?\b|micrometers?\b|microns?\b|µm\b|um\b|arcseconds?\b|arcsec\b|″|degrees?\b|deg\b|°|standard\s+deviations?\b|sigma\b|σ|days?\b)/i;
+const unitAtStart = /^\s*-?\s*(percent\b|per\s+cent\b|%|micrometres?\b|micrometers?\b|microns?\b|µm\b|um\b|arcseconds?\b|arcsec\b|″|degrees?\b|deg\b|°|standard\s+deviations?\b|sigma\b|σ|days?\b)/i;
 function normalizedUnit(unit: string): string
 {
     const value = unit.toLowerCase();
-    if (value === '%' || value === 'percent') { return 'percent'; }
+    if (value === '%' || value === 'percent' || /^per\s+cent$/.test(value)) { return 'percent'; }
     if (/^(micron|micromet|µm|um)/.test(value)) { return 'micron'; }
     if (/^(arcsec|″)/.test(value)) { return 'arcsec'; }
     if (/^(deg|°)/.test(value)) { return 'deg'; }
@@ -211,8 +211,9 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             const after = value.slice(list.end).match(/[\p{L}]+(?:\/[\p{L}]+)?|[%″°]/gu) ?? [];
             const context = [...before.slice(-8), ...after.slice(0, 3)].join(' ');
             const follower = list.follower.trimStart().replace(/^-\s*/, '');
-            const followingWords = follower.match(/^[a-z]+(?:\s+[a-z]+)?/i)?.[0].split(/\s+/) ?? [];
-            const noun = followingWords.find((word) => countingNoun.test(word));
+            const nounFollower = follower.replace(/^of\s+(?:the|its|their|these|those)\s+/i, '');
+            const followingWords = nounFollower.match(/^[a-z]+(?:\s+[a-z]+)?/i)?.[0].split(/\s+/) ?? [];
+            const noun = list.unit ? undefined : followingWords.find((word) => countingNoun.test(word));
             const unitlessBlocked = Boolean(list.unit) || /^[°′″$€£±×^/]/.test(follower) || /^[A-Z]/.test(follower) || foreign.test(follower);
             for (const raw of list.values) {
                 const val = Number(raw.replace('−', '-'));
@@ -231,13 +232,14 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     }
     function invalid(value: string): boolean
     {
-        if (/[<>]|:\/\/|www\./i.test(value) || (/\d/.test(value) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(value))) { return true; }
+        if (/[<>]|:\/\/|www\./i.test(value) || (/\d/.test(value) && /\b(?:years?|yrs?|yearly|annual|annually|annum|decade|century)\b/i.test(value))) { return true; }
         if (namePattern) { value = value.replace(namePattern, 'NAME'); }
-        if (/\b[OBAFGKMLTY]\d(?:\.\d)?(?:V|I)?\b/.test(value)) { return true; }
+        if (/\b[OBAFGKMLTY]\d(?:\.\d)?(?:IV|I{1,3}|V)?[a-z]*\b/.test(value)) { return true; }
         value = value.replace(/\b(?:CO2|H2O|H2|CH4|2MASS|W[1-4]|DR[1-3]|QR3)\b/gi, 'NAME').replace(/−/g, '-');
-        const unitWords = '(?:percent|%|sigma|σ|standard\\s+deviations?|arcsec(?:onds?)?|″|degrees?|deg|°|microns?|micrometres?|micrometers?|µm|um|days?)';
+        const unitWords = '(?:percent|per\\s+cent|%|sigma|σ|standard\\s+deviations?|arcsec(?:onds?)?|″|degrees?|deg|°|microns?|micrometres?|micrometers?|µm|um|days?)';
         if (new RegExp(`\\b(?:a couple|a few|several|a handful|some|many|dozens)(?:\\s+of)?\\s+${unitWords}(?![\\p{L}])`, 'iu').test(value)) { return true; }
-        value = value.replace(new RegExp(`\\bone(?=\\s+${unitWords}(?![\\p{L}]))`, 'giu'), '1');
+        value = value.replace(new RegExp(`\\b(?:one|a|an)(?=[\\s-]+${unitWords}(?![\\p{L}]))`, 'giu'), '1');
+        value = value.replace(/\bfewer\s+than\s+(?:3|three)\s+visits\b/gi, 'few visits');
         // A name, or any token that mixes letters and digits, is never a quantity: "It moved WISE J085510.83 arcsec."
         for (const token of value.matchAll(/(?<![\w.])(?:NAME|[A-Za-z][\w.]*\d[\w.]*)(?![\w])/g)) {
             const after = value.slice(token.index + token[0].length);
@@ -245,6 +247,14 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
         }
         const ordinals = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth'];
         const ordinal = /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+visits?\b/gi;
+        const rank = /\b(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[\s-]+(brightest|faintest)\s+reading\s+was\s+([-−]?\d+(?:\.\d+)?)\b/i;
+        const ranked = value.match(rank);
+        if (ranked) {
+            const readings = sheet.find((line) => /^Brightness relative to the reference stars, in time order:/i.test(line))?.split(':')[1];
+            const values = readings ? lists(readings).flatMap((list) => list.values.map(Number)).sort((a, b) => ranked[2]!.toLowerCase() === 'brightest' ? b - a : a - b) : [];
+            if (values[ordinals.indexOf(ranked[1]!.toLowerCase())] !== Number(ranked[3]!.replace('−', '-'))) { return true; }
+            value = value.replace(rank, `reading was ${ranked[3]}`);
+        }
         return /discover/i.test(value)
             || /\b(?:second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[\s-]+(?:nearest|closest|brightest|faintest|largest|smallest|coldest|coolest|hottest|fastest|most|least)\b/i.test(value)
             || /\b[\p{L}-]*(?:hundredth|thousandth|millionth|billionth)s?\b/iu.test(value)
@@ -261,7 +271,7 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             || /\b(?:factor\s+of|orders?\s+of\s+magnitude)\b/i.test(value)
             || /\b(?:January|February|March|April|June|July|August|September|October|November|December)\b/.test(value)
             || /(?:\d\s+May\b|\bMay\s+\d)/.test(value)
-            || Array.from(value.matchAll(ordinal)).some((match) => ordinals.indexOf(match[1]!.toLowerCase()) + 1 > visitCount && !/\b(?:a|another|one more)\s+$/i.test(value.slice(0, match.index)))
+            || Array.from(value.matchAll(ordinal)).some((match) => ordinals.indexOf(match[1]!.toLowerCase()) + 1 > visitCount && !/\b(?:would|could|will|should|might|next|later|another|one more)\b/i.test(value))
             || unsupportedNumbers(value);
     }
     let dropped = 0;

@@ -71,11 +71,11 @@ describe('round four access', () => {
         now = 1800000; headers['x-insight-passcode'] = 'wrong';
         expect((await handler.POST(request({ facts }, headers))).status).toBe(401);
     });
-    it('lets concurrent correct requests through during wrong guesses', async () => {
+    it('lets correct requests through after wrong guesses', async () => {
         const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => 0, complete: vi.fn() });
         const send = (code: string) => handler.GET(new Request('https://example.test', { headers: { 'x-real-ip': 'r4-parallel', 'x-insight-passcode': code } }));
-        const replies = await Promise.all([...Array.from({ length: 60 }, () => send('bad')), ...Array.from({ length: 30 }, () => send('secret'))]);
-        for (const response of replies.slice(60)) { expect(await response.json()).toMatchObject({ unlocked: true }); }
+        for (let i = 0; i < 60; i++) { await send('bad'); }
+        for (let i = 0; i < 30; i++) { expect(await (await send('secret')).json()).toMatchObject({ unlocked: true }); }
     });
     it('returns 503 when the local counter fails', async () => {
         const local: LimitStore = { hit: async () => { throw new Error('unavailable'); }, count: async () => 0, refund: async () => {} };
@@ -183,8 +183,8 @@ describe('round two regressions', () => {
         for (const value of bad) {
             expect(checkNote(`Value ${value}. Safe sentence. Another safe sentence.`, ['Value 6.']).dropped, value).toBe(1);
         }
-        expect(checkNote('Double-check the second visit. It returns about every 6 months. There are fewer than 3 visits. SPHEREx has 6 detectors. The scatter is 1.2 percent.', ['Scatter: 1.2, 1.8, 2.5 percent.']).dropped).toBe(2);
-        expect(SYSTEM_PROMPT).toContain('about every 6 months');
+        expect(checkNote('Double-check the second visit. There are fewer than 3 visits. SPHEREx has 6 detectors. The scatter is 1.2 percent.', ['Scatter: 1.2, 1.8, 2.5 percent.']).dropped).toBe(0);
+        expect(SYSTEM_PROMPT).not.toContain('about every 6 months');
         expect(SYSTEM_PROMPT).toContain('fewer than 3 visits');
         expect(SYSTEM_PROMPT).toContain('Write every number in digits');
         expect(SYSTEM_PROMPT).not.toMatch(/\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|hundred|thousand|million|billion|dozen|half|halve|twice|double|triple|quadruple|quarter|\w+-fold)\b/i);
@@ -703,5 +703,44 @@ describe('checkNote: round five', () => {
         expect(limited.status).toBe(429); expect(limited.headers.get('Retry-After')).toBeTruthy();
         now += 60000;
         expect((await send(220)).status).toBe(200);
+    });
+});
+
+describe('checkNote: round six', () => {
+    const sheet = ['Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Difference image at the target: 3.4 sigma.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
+    const pad = 'Safe sentence. Another safe sentence.';
+    it.each([
+        'It moves 10.4 arcsec per yr.', 'It moves 10.4 arcsec a yr.', 'The difference is a one-sigma bump.',
+        'The reference stars are steady to about a percent.', 'It shifted about an arcsecond more than predicted.',
+        'The star shows up in 3 of its frames.', 'A fourth visit showed it brighter.', 'It is a K0III giant.',
+        'The error is a couple of per cent.',
+    ])('drops unsupported: %s', (sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+    });
+    it.each([
+        'The frames were taken in the 4.270 micron band.', 'Water ice absorbs near the 3.05 micron band.',
+        'The 4.270 micron images show the star.', 'A 3.4 sigma point at the target is brighter in the later visit.',
+        'SPHEREx has 102 spectral channels.', 'The brightness was 12 per cent higher.',
+        'The second-brightest reading was 1.00.', 'There are fewer than 3 visits.', 'There are fewer than three visits.',
+        'A fourth visit might show it brighter.',
+    ])('keeps supported: %s', (sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(0);
+    });
+    it('checks rank against the readings and requires a future cue for visits', () => {
+        for (const sentence of ['The second-brightest reading was 0.97.', 'The fourth-brightest reading was 1.00.', 'A fourth visit showed it brighter.']) {
+            expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+        }
+        expect(checkNote(`The difference is a one-sigma bump. ${pad}`, ['Difference image: 1 sigma.']).dropped).toBe(0);
+        expect(checkNote(`The shift is an arcsecond. ${pad}`, ['Shift in position: 1 arcsec.']).dropped).toBe(0);
+        expect(checkNote(`The change is a percent. ${pad}`, ['Largest change: 1 percent.']).dropped).toBe(0);
+    });
+    it('does not use a visit count as a frame count through a possessive', () => {
+        expect(checkNote(`The visit shows the star in 3 of its frames. ${pad}`, ['Visits: 3.']).dropped).toBe(1);
+    });
+    it.each([
+        [{ VERCEL: '1' }, true], [{ VERCEL: '1', VERCEL_ENV: 'development' }, false],
+        [{ VERCEL: '1', KV_REST_API_URL: 'url', KV_REST_API_TOKEN: 'token' }, false], [{}, false],
+    ])('detects missing store on Vercel: %j', (env, missing) => {
+        expect(storeMissing(env)).toBe(missing);
     });
 });

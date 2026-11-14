@@ -114,7 +114,7 @@ export function pickStore(env: Record<string, string | undefined>): LimitStore
 }
 export function storeMissing(env: Record<string, string | undefined>): boolean
 {
-    return (env.VERCEL_ENV === 'production' || env.VERCEL_ENV === 'preview')
+    return (env.VERCEL_ENV === 'production' || env.VERCEL_ENV === 'preview' || (env.VERCEL === '1' && env.VERCEL_ENV !== 'development'))
         && !(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN)
         && !(env.KV_REST_API_URL && env.KV_REST_API_TOKEN);
 }

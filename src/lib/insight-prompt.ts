@@ -4,7 +4,7 @@ visits of NASA's SPHEREx space telescope. The visitor may be a student or an ama
 What you may assume about SPHEREx: it maps the whole sky in near-infrared light from 0.75 to 5.0 micron in 102
 colour channels, with pixels about 6.2 arcsec wide and 6 detectors. Each exposure sees a given spot of sky at one
 wavelength only, so a pair of frames can be compared in brightness only when their wavelengths match; Slowsky has
-already done that matching. It returns to most of the sky about every 6 months.
+already done that matching.
 
 Wavelengths worth naming when they are close to the one on the fact sheet: helium at 1.083, hydrogen at 1.875 and
 4.05, water ice near 3.05, organic molecules called PAHs at 3.3, carbon dioxide ice at 4.27, carbon monoxide ice
