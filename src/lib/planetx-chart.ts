@@ -64,9 +64,9 @@ function sentence(value: string): string
 
 function markValue(mark: ChartMark): string
 {
-    const format = (value: number, decimals: number): string => String(Number(value.toFixed(decimals)));
-    const value = mark.kind === 'range' ? `${format(mark.from, 2)}–${format(mark.to, 2)}` : format(mark.from, 1);
-    const uncertainty = mark.low !== undefined && mark.high !== undefined ? ` (${format(mark.low, 2)}–${format(mark.high, 2)})` : '';
+    const format = (value: number): string => String(Number(value.toFixed(2)));
+    const value = mark.kind === 'range' ? `${format(mark.from)}–${format(mark.to)}` : format(mark.from);
+    const uncertainty = mark.low !== undefined && mark.high !== undefined ? ` (${format(mark.low)}–${format(mark.high)})` : '';
     return `${value}${uncertainty}`;
 }
 
@@ -80,14 +80,14 @@ export function planetxChartText(): { title: string; caption: string; notes: str
     };
 }
 
-export function planetxChartSvg(opts: { width?: number } = {}): string
+export function planetxChartSvg(opts: { width?: number; rows?: readonly ChartRow[] } = {}): string
 {
     const requestedWidth = opts.width ?? 720;
     const width = typeof requestedWidth === 'number' && Number.isFinite(requestedWidth) && requestedWidth >= 320 ? requestedWidth : 320;
     const left = Math.min(230, Math.round(width * 0.42));
     const right = 20;
     const plotWidth = width - left - right;
-    const rows = planetxRows();
+    const rows = opts.rows ?? planetxRows();
     const colors = ['var(--gold, #ffc861)', 'var(--gold, #ffc861)', 'var(--gold, #ffc861)', 'var(--ink2, #c2c8d3)', 'var(--neg, #5c96f0)', 'var(--neg, #5c96f0)', 'var(--pos, #f3983a)'];
     const ink = 'var(--ink, #eef1f6)';
     const mute = 'var(--mute, #9aa1b1)';
@@ -128,7 +128,7 @@ export function planetxChartSvg(opts: { width?: number } = {}): string
             const x = xFor(mark.from);
             const end = xFor(mark.to);
             const currentY = markY + (mark.kind === 'tick' ? lineIndex * 15 : 0);
-            const color = colors[rowIndex];
+            const color = colors[rowIndex] ?? colors[0]!;
             const paint = mark.style === 'outline' ? `fill="none" stroke="${color}" stroke-width="1.5"` : `fill="${color}"${mark.style === 'light' ? ' fill-opacity="0.28"' : ''}`;
             let shape = '';
             if (mark.kind === 'range') {
@@ -145,7 +145,7 @@ export function planetxChartSvg(opts: { width?: number } = {}): string
             let anchor = '';
             let baseline = '';
             if (mark.kind === 'range') {
-                textX = Math.max(0, Math.min(width - textWidth, x));
+                textX = Math.max(left, Math.min(width - textWidth, x));
                 const below = row.id === 'p9-predicted' ? index === 0 : above.some(other => textX < other.x + other.width + 6 && textX + textWidth + 6 > other.x);
                 textY = currentY + (below ? 16 : -8);
                 if (!below) {
