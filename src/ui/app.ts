@@ -18,6 +18,7 @@ import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
 import { coreBlank, curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
+import { DISCLAIMER, mountAiNote } from './ai-note';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -60,6 +61,7 @@ const ICON = {
     panelL: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/></svg>',
     panelR: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/></svg>',
     focus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/></svg>',
+    note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 4.5h13v15h-13z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg>',
     link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.1-1.1"/></svg>',
 };
 
@@ -300,6 +302,16 @@ function shell(): string
     </div>
     <p class="sk-body mute">All of this is infrared: your eyes stop at 0.70 µm. Drag, then let go to load that colour.</p>
   </section>
+  <section class="sk-mod sk-m-ai" aria-labelledby="sk-h7" data-ref="ai" data-ai-generated="true" hidden>
+    <h2 class="sk-mh" id="sk-h7"><span class="ic">${ICON.note}</span>AI note<span class="sk-ai-tag">AI-written</span></h2>
+    <p class="sk-body mute">A short reading of this view by a language model, from the numbers this page measured.</p>
+    <form class="sk-ai-lock" data-ai="lock" hidden><label><span>Passcode</span><input type="password" autocomplete="off" data-ai="pass" aria-label="AI note passcode"></label><button type="submit" class="sk-btn2">Unlock</button></form>
+    <button type="button" class="sk-btn2 sk-ai-go" data-ai="go" hidden>Write an AI note</button>
+    <p class="sk-ai-msg" data-ai="msg" role="status" hidden></p>
+    <div class="sk-ai-out" data-ai="out" hidden></div>
+    <p class="sk-ai-disc">${DISCLAIMER}</p>
+    <p class="sk-ai-left" data-ai="left" hidden></p>
+  </section>
   <section class="sk-mod sk-m-curve" aria-labelledby="sk-h6" data-ref="curve" hidden>
     <h2 class="sk-mh" id="sk-h6"><span class="ic">${ICON.curve}</span>Brightness over time</h2>
     <div class="sk-lc" data-ref="lcwrap"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
@@ -324,6 +336,7 @@ export function mount(root: HTMLElement): void
     const q = <T extends Element>(sel: string) => root.querySelector(sel) as T;
     const qa = <T extends Element>(sel: string) => [...root.querySelectorAll(sel)] as T[];
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
+    const aiNote = mountAiNote(ref<HTMLElement>('ai'));
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const glow = ref<HTMLCanvasElement>('glow');
@@ -850,6 +863,19 @@ export function mount(root: HTMLElement): void
         bind('bar', `${bar / 60}′`);
     }
 
+    // The mover's first-to-last shift, worked out once per result, for the AI note's facts.
+    function noteShift(): ReturnType<typeof shiftFor> | undefined
+    {
+        const t = st.target ? targetById(st.target) : undefined;
+        if (!result || !t || COPY[t.id].kind !== 'mover' || result.frames.length < 2) {
+            return undefined;
+        }
+        if (shift === undefined) {
+            shift = shiftFor(result, t.astrometry);
+        }
+        return shift;
+    }
+
     function renderText(): void
     {
         root.dataset.mode = st.mode;
@@ -857,6 +883,7 @@ export function mount(root: HTMLElement): void
         root.dataset.source = sourceKind;
         ref<HTMLElement>('sim').hidden = !(result && sourceKind === 'demo');
         ref<HTMLElement>('golive').hidden = !(result && sourceKind === 'snapshot' && st.target);
+        aiNote.update(result && sourceKind !== 'demo' ? { result, targetId: st.target, center: st.center, curve, shift: noteShift() } : null);
         const copy = st.target ? COPY[st.target] : null;
         bind('name', copy ? copy.display : st.label);
         const coordsA = ref<HTMLAnchorElement>('coords');
