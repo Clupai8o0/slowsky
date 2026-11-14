@@ -142,7 +142,7 @@ describe('optional change hints', () => {
         expect([...box.innerHTML.matchAll(/<p class="sk-hintml">.*?<\/p>/g)]).toHaveLength(count);
     });
 
-    it('never fetches with hints off when a finished list is drawn again', async () => {
+    it('never fetches with hints off when a finished list is drawn again, also after stop()', async () => {
         const data = livePair(), box = {} as HTMLElement, marks = {} as HTMLElement, onChange = vi.fn();
         const fetcher = vi.fn();
         const frames = new Map(data.frames.map(f => [f.frame.frame.obsId, f.frame]));
@@ -158,6 +158,20 @@ describe('optional change hints', () => {
         slot.render(box, marks, view);
         expect([...box.innerHTML.matchAll(/<li><b>Candidate \d+<\/b>/g)]).toHaveLength(2);
         slot.render(box, marks, view);
+        expect(fetcher).toHaveBeenCalledTimes(0);
+        // The page drops its view and draws the same result again: the finished list comes back from the slot's
+        // own store, with the same HTML, no new read, no new draw request and still no model fetch.
+        const finished = box.innerHTML, finishedMarks = marks.innerHTML;
+        const reads = read.mock.calls.length, draws = onChange.mock.calls.length;
+        slot.stop();
+        const again = {} as HTMLElement, againMarks = {} as HTMLElement;
+        expect(slot.render(again, againMarks, view)).toBe(true);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        slot.render(again, againMarks, view);
+        expect(again.innerHTML).toBe(finished);
+        expect(againMarks.innerHTML).toBe(finishedMarks);
+        expect(read.mock.calls.length).toBe(reads);
+        expect(onChange.mock.calls.length).toBe(draws);
         expect(fetcher).toHaveBeenCalledTimes(0);
     });
 
