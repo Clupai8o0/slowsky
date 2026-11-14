@@ -4,7 +4,7 @@ import {
 } from '../src/lib/gaia';
 import type { GaiaRow } from '../src/lib/gaia';
 import { separationDeg } from '../src/lib/coords';
-import { gridPixToSky } from '../src/lib/regrid';
+import { gridPixToSky, gridSkyToPix } from '../src/lib/regrid';
 import { positionAt } from '../src/lib/targets';
 import type { Astrometry, OutputGrid } from '../src/lib/types';
 
@@ -56,9 +56,9 @@ describe('URLs', () => {
     it('match the documented forms', () => {
         const c = { ra: 269.4485, dec: 4.7394 };
         expect(stsciConeUrl(c, 0.05)).toBe('https://gsss.stsci.edu/webservices/vo/CatalogSearch.aspx'
-            + '?CAT=GAIADR3&RA=269.448500&DEC=4.739400&SR=0.0500&FORMAT=CSV');
+            + '?CAT=GAIADR3&RA=269.448500&DEC=4.739400&SR=0.050000&FORMAT=CSV');
         expect(vizierConeUrl(c, 0.05)).toBe('https://vizier.cfa.harvard.edu/viz-bin/asu-tsv?-source=I/355/gaiadr3'
-            + '&-c=269.448500%20%2B4.739400&-c.rd=0.0500'
+            + '&-c=269.448500%20%2B4.739400&-c.rd=0.050000'
             + '&-out=Source,RA_ICRS,DE_ICRS,pmRA,pmDE,Plx,Gmag&-out.max=unlimited&Gmag=%3C19');
         expect(vizierConeUrl(c, 0.05, 15)).toContain('&Gmag=%3C15');
     });
@@ -79,6 +79,14 @@ describe('URLs', () => {
         expect(() => stsciConeUrl(ok, 0)).toThrow(GaiaError);
         expect(() => stsciConeUrl(ok, 0.21)).toThrow(GaiaError);
         expect(() => vizierConeUrl(ok, 0.2)).not.toThrow();
+    });
+
+    it('never write a small radius as 0', () => {
+        const ok = { ra: 10, dec: 10 };
+        expect(stsciConeUrl(ok, 0.00001)).toContain('&SR=0.000010&');
+        expect(vizierConeUrl(ok, 0.00001)).toContain('&-c.rd=0.000010&');
+        expect(() => stsciConeUrl(ok, 1e-7)).toThrow(GaiaError);
+        expect(() => vizierConeUrl(ok, 1e-7)).toThrow(GaiaError);
     });
 });
 
@@ -321,5 +329,25 @@ describe('shiftReadout', () => {
     it('throws when the dates are equal or reversed', () => {
         expect(() => shiftReadout(a, grid, first, { mjd: first.mjd, pix: second.pix })).toThrow(GaiaError);
         expect(() => shiftReadout(a, grid, second, first)).toThrow(GaiaError);
+    });
+
+    it('stays right next to the pole, where RA changes fast', () => {
+        // 3.6 arcsec from the north pole, moving 10 arcsec a year due east: RA changes by tens of degrees.
+        const polar: Astrometry = { ra: 40, dec: 89.999, epochJyear: 2016, pmRa: 10000, pmDec: 0 };
+        const polarGrid: OutputGrid = {
+            center: { ra: polar.ra, dec: polar.dec }, fovDeg: 600 / 3600, pixelArcsec: 3, width: 200, height: 200,
+        };
+        const m1 = MJD_2016;
+        const m2 = MJD_2016 + 365.25;
+        const p2 = positionAt(polar, m2);
+        expect(Math.abs(p2.ra - polar.ra)).toBeGreaterThan(30);
+        const r = shiftReadout(polar, polarGrid,
+            { mjd: m1, pix: gridSkyToPix(polarGrid, positionAt(polar, m1)) },
+            { mjd: m2, pix: gridSkyToPix(polarGrid, p2) });
+        expect(r.predictedArcsec).toBeCloseTo(10, 2);
+        expect(Math.abs(r.predictedPaDeg - 90)).toBeLessThan(0.1);
+        expect(Math.abs(r.measuredArcsec - 10)).toBeLessThan(0.01);
+        expect(Math.abs(r.measuredPaDeg - 90)).toBeLessThan(0.1);
+        expect(r.offsetArcsec).toBeLessThan(0.01);
     });
 });

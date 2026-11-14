@@ -24,6 +24,7 @@ export class GaiaError extends Error
 
 const DEFAULT_G_MAX = 19;
 const DEFAULT_EPOCH = 2016;
+const MIN_RADIUS_DEG = 0.000001;
 const MAX_RADIUS_DEG = 0.2;
 
 function checkCone(c: SkyCoord, radiusDeg: number): void
@@ -34,8 +35,9 @@ function checkCone(c: SkyCoord, radiusDeg: number): void
     if (!Number.isFinite(c.dec) || c.dec < -90 || c.dec > 90) {
         throw new GaiaError(`Dec ${c.dec} is outside -90 to 90 degrees.`);
     }
-    if (!Number.isFinite(radiusDeg) || radiusDeg <= 0 || radiusDeg > MAX_RADIUS_DEG) {
-        throw new GaiaError(`Radius ${radiusDeg} must be above 0 and at most ${MAX_RADIUS_DEG} degrees.`);
+    // The lower limit keeps the radius from rounding to 0 in the URLs (6 decimals).
+    if (!Number.isFinite(radiusDeg) || radiusDeg < MIN_RADIUS_DEG || radiusDeg > MAX_RADIUS_DEG) {
+        throw new GaiaError(`Radius ${radiusDeg} must be from ${MIN_RADIUS_DEG} to ${MAX_RADIUS_DEG} degrees.`);
     }
 }
 
@@ -44,7 +46,7 @@ export function stsciConeUrl(c: SkyCoord, radiusDeg: number): string
     checkCone(c, radiusDeg);
     const e = encodeURIComponent;
     return 'https://gsss.stsci.edu/webservices/vo/CatalogSearch.aspx?CAT=GAIADR3'
-        + `&RA=${e(c.ra.toFixed(6))}&DEC=${e(c.dec.toFixed(6))}&SR=${e(radiusDeg.toFixed(4))}&FORMAT=CSV`;
+        + `&RA=${e(c.ra.toFixed(6))}&DEC=${e(c.dec.toFixed(6))}&SR=${e(radiusDeg.toFixed(6))}&FORMAT=CSV`;
 }
 
 export function vizierConeUrl(c: SkyCoord, radiusDeg: number, gMax: number = DEFAULT_G_MAX): string
@@ -53,7 +55,7 @@ export function vizierConeUrl(c: SkyCoord, radiusDeg: number, gMax: number = DEF
     const e = encodeURIComponent;
     const dec = (c.dec >= 0 ? '+' : '') + c.dec.toFixed(6);
     return 'https://vizier.cfa.harvard.edu/viz-bin/asu-tsv?-source=I/355/gaiadr3'
-        + `&-c=${e(c.ra.toFixed(6) + ' ' + dec)}&-c.rd=${e(radiusDeg.toFixed(4))}`
+        + `&-c=${e(c.ra.toFixed(6) + ' ' + dec)}&-c.rd=${e(radiusDeg.toFixed(6))}`
         + '&-out=Source,RA_ICRS,DE_ICRS,pmRA,pmDE,Plx,Gmag&-out.max=unlimited'
         + `&Gmag=${e('<' + String(gMax))}`;
 }
@@ -370,12 +372,29 @@ export function shiftReadout(a: Astrometry, grid: OutputGrid,
     const p2 = positionAt(a, second.mjd);
     const m1 = gridPixToSky(grid, first.pix);
     const m2 = gridPixToSky(grid, second.pix);
-    const cosDec = Math.cos(p1.dec * Math.PI / 180);
-    // Tangent-plane vector in arcsec: east = dRA x cos(dec), north = dDec.
+    // Every position is projected onto one tangent plane, touching the sky at the first
+    // predicted position (gnomonic projection), in arcsec east and north. Plain RA and Dec
+    // differences go wrong next to a pole.
+    const rad = Math.PI / 180;
+    const ra0 = p1.ra * rad;
+    const dec0 = p1.dec * rad;
+    const plane = (c: SkyCoord): { east: number; north: number } => {
+        const dRa = c.ra * rad - ra0;
+        const dec = c.dec * rad;
+        const d = Math.sin(dec0) * Math.sin(dec) + Math.cos(dec0) * Math.cos(dec) * Math.cos(dRa);
+        if (!(d > 0)) {
+            throw new GaiaError('The positions are too far apart to compare.');
+        }
+        const k = 3600 / rad / d;
+        return {
+            east: Math.cos(dec) * Math.sin(dRa) * k,
+            north: (Math.cos(dec0) * Math.sin(dec) - Math.sin(dec0) * Math.cos(dec) * Math.cos(dRa)) * k,
+        };
+    };
     const vector = (from: SkyCoord, to: SkyCoord): { east: number; north: number } => {
-        let dRa = to.ra - from.ra;
-        dRa -= 360 * Math.round(dRa / 360);
-        return { east: dRa * cosDec * 3600, north: (to.dec - from.dec) * 3600 };
+        const f = plane(from);
+        const t = plane(to);
+        return { east: t.east - f.east, north: t.north - f.north };
     };
     const pa = (v: { east: number; north: number }): number => {
         if (v.east === 0 && v.north === 0) {
