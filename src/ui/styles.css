@@ -151,7 +151,7 @@ button { cursor: pointer; }
 .sk-bar b { font: 400 10.5px/1 var(--mono); color: #fff; }
 .sk-bar i { display: block; width: 100%; height: 5px; border: 1.5px solid #fff; border-top: 0; }
 
-.sk-player { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 4px; }
+.sk-player { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; padding-top: 4px; }
 .sk-tr { display: flex; gap: 4px; }
 .sk-btn { width: 44px; height: 44px; padding: 0; border: 0; border-radius: 3px; background: var(--fill); display: grid; place-items: center; color: var(--ink); transition: background 160ms var(--ease), transform 120ms var(--ease); }
 .sk-btn:hover { background: var(--fill2); }
@@ -234,12 +234,19 @@ button { cursor: pointer; }
 @media (max-width: 1280px) {
     .sk { grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) minmax(240px, 270px); column-gap: 32px; }
     .sk-readout b { font-size: 52px; }
-    .sk-seg button { padding: 0 12px; }
+}
+/* When the sky is small, the player tightens so both groups stay on one row. */
+@media (max-width: 1280px), (max-height: 820px) {
+    .sk-player { column-gap: 8px; }
+    .sk-tr .sk-btn { width: 40px; }
+    .sk-tr .sk-btn.go { width: 54px; }
+    .sk-seg { flex: 1; min-width: 0; }
+    .sk-seg button { flex: 1; min-width: 0; padding: 0 6px; }
 }
 
 /* ---------- short laptop screens: tighter, so the whole tool fits without scrolling ---------- */
-@media (min-width: 961px) and (max-height: 820px) {
-    .sk { --gap: 16px; --w: min(100%, max(340px, calc(100dvh - 394px))); padding-top: 20px; padding-bottom: 18px; }
+@media (min-width: 1081px) and (max-height: 820px) {
+    .sk { --gap: 16px; --w: min(100%, max(320px, calc(100dvh - 394px))); padding-top: 20px; padding-bottom: 18px; }
     .sk-tg small { display: none; }
     .sk-tg button { padding: 6px 0 6px 18px; }
     .sk-tg button::before { top: 15px; }
@@ -249,11 +256,11 @@ button { cursor: pointer; }
 }
 
 /* ---------- phone and narrow: one column, same order ---------- */
-@media (max-width: 960px) {
+@media (max-width: 1080px) {
     .sk { display: flex; flex-direction: column; height: auto; min-height: 100dvh; padding: 0 0 40px;
         background: radial-gradient(120% 50% at 50% 34%, rgba(40, 70, 160, .26), transparent 70%), var(--void); }
     .sk-rail, .sk-mid { display: contents; }
-    .sk-brand, .sk-mod, .sk-status, .sk-credit { padding-left: 18px; padding-right: 18px; }
+    .sk-brand, .sk-mod, .sk-status, .sk-credit { padding-left: 18px; padding-right: 18px; width: 100%; max-width: 680px; align-self: center; }
     .sk-brand { order: 0; height: auto; padding-top: 20px; }
     .sk-m-pick { order: 1; margin-top: 22px; }
     .sk-m-watch { order: 2; width: 100%; margin-top: 30px; padding: 0; }
