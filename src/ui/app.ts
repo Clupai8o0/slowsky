@@ -16,6 +16,7 @@ import { formatDec, formatRa, parseCoords, resolveName } from '../lib/coords';
 import { createDemoSource } from './demo-source';
 import { diffScale, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
+import { initLayout } from './layout';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -38,6 +39,7 @@ const ICON = {
     prev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>',
     next: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg>',
     search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
+    focus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/></svg>',
     link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.1-1.1"/></svg>',
 };
 
@@ -123,7 +125,8 @@ function shell(): string
     const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
     const ticks = [0.4, 1, 2, 3, 4, 5].map((t) => `<span style="left:${axisPct(t).toFixed(2)}%">${t}</span>`).join('');
     return `
-<aside class="sk-rail sk-left">
+<aside class="sk-rail sk-left" id="sk-left">
+  <button type="button" class="sk-tab" data-act="fold-left" aria-controls="sk-left" aria-expanded="true"><i aria-hidden="true"></i><span>01 Choose a target</span></button>
   <div class="sk-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span><span class="sk-tag">Watch the sky change.</span><span class="sk-sub2">Infrared frames from NASA’s SPHEREx</span></div>
   <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
     <h2 class="sk-mh" id="sk-h1"><i>01</i>Choose a target</h2>
@@ -138,11 +141,16 @@ function shell(): string
     <p class="sk-body mute"><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
   </section>
 </aside>
+<div class="sk-gut sk-gut-l">
+  <div class="sk-split" data-side="left" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sk-left" aria-label="Resize the targets panel. Arrow keys resize, Enter folds" aria-valuemin="0" aria-valuemax="420" aria-valuenow="0"></div>
+  <button type="button" class="sk-fold" data-act="fold-left" aria-controls="sk-left" aria-expanded="true" aria-label="Fold the targets panel" title="Fold or open the targets panel"><span class="ic">${ICON.prev}</span></button>
+</div>
 <main class="sk-mid">
   <section class="sk-mod sk-m-watch" aria-labelledby="sk-h2">
     <div class="sk-mhrow">
       <h2 class="sk-mh" id="sk-h2"><i>02</i>Watch it change</h2>
       <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
+      <button type="button" class="sk-focus" data-act="focus" aria-pressed="false" title="Fold both panels (F)"><span class="ic">${ICON.focus}</span><span>Focus</span></button>
     </div>
     <div class="sk-sky" data-ref="sky">
       <canvas class="sk-glow" data-ref="glow" width="24" height="24" aria-hidden="true"></canvas>
@@ -173,7 +181,12 @@ function shell(): string
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
   </section>
 </main>
-<aside class="sk-rail sk-right">
+<div class="sk-gut sk-gut-r">
+  <div class="sk-split" data-side="right" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sk-right" aria-label="Resize the colour panel. Arrow keys resize, Enter folds" aria-valuemin="0" aria-valuemax="420" aria-valuenow="0"></div>
+  <button type="button" class="sk-fold" data-act="fold-right" aria-controls="sk-right" aria-expanded="true" aria-label="Fold the colour panel" title="Fold or open the colour panel"><span class="ic">${ICON.next}</span></button>
+</div>
+<aside class="sk-rail sk-right" id="sk-right">
+  <button type="button" class="sk-tab" data-act="fold-right" aria-controls="sk-right" aria-expanded="true"><span>03 Colour and frame</span></button>
   <div class="sk-status"><p><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span></p><div class="sk-acts"><button type="button" class="sk-btn2 sk-golive" data-act="live" data-ref="golive" hidden><i aria-hidden="true"></i>Go live</button><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div></div>
   <section class="sk-mod sk-m-colour" aria-labelledby="sk-h3">
     <h2 class="sk-mh" id="sk-h3"><i>03</i>Change the colour</h2>
@@ -883,9 +896,15 @@ export function mount(root: HTMLElement): void
         }
     });
 
+    const layout = initLayout(root);
+
     document.addEventListener('keydown', (e) => {
         const el = e.target as HTMLElement;
-        if (el.closest?.('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) {
+        if (el.closest?.('input, textarea, select, [contenteditable], [role=separator]') || e.metaKey || e.ctrlKey || e.altKey) {
+            return;
+        }
+        if ((e.key === 'f' || e.key === 'F') && matchMedia('(min-width: 1081px)').matches) {
+            layout.toggleFocus();
             return;
         }
         if (e.key === ' ' && !el.closest?.('button, summary, a, label')) {
