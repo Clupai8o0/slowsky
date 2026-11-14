@@ -280,11 +280,31 @@ export function initLayout(root: HTMLElement): Layout
         });
     });
     wide.addEventListener('change', () => {
+        placeAbout(root, wide.matches);
         fit();
         apply();
     });
 
+    placeAbout(root, wide.matches);
     fit();
     apply();
     return { toggleFocus };
+}
+
+// In one column, CSS order shows "What to look for" after the sky and the status line, but in the page it sits in the
+// left rail, before the sky, so Tab reached its link first. Move it to just after the status line on narrow screens
+// and back under the target picker on wide ones, so Tab follows what is on screen.
+export function placeAbout(root: HTMLElement, isWide: boolean): void
+{
+    const about = root.querySelector<HTMLElement>('.sk-m-about');
+    const anchor = root.querySelector<HTMLElement>(isWide ? '.sk-m-pick' : '.sk-status');
+    if (!about || !anchor || anchor.nextElementSibling === about) {
+        return;
+    }
+    const active = document.activeElement;
+    const hadFocus = active instanceof HTMLElement && about.contains(active);
+    anchor.after(about);
+    if (hadFocus) {
+        active.focus({ preventScroll: true });
+    }
 }
