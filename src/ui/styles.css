@@ -225,6 +225,10 @@ button { cursor: pointer; }
     -webkit-mask-image: radial-gradient(closest-side, #000 35%, transparent); mask-image: radial-gradient(closest-side, #000 35%, transparent); }
 .sk-img, .sk-ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .sk-slot-flags { position: absolute; inset: 0; pointer-events: none; }
+/* Empty layers over the sky for modules from other lanes (src/ui/slots.ts): same box as the picture. */
+.sk-slot-layer { position: absolute; inset: 0; pointer-events: none; }
+.sk-slot-layer > canvas, .sk-slot-layer > svg { display: block; width: 100%; height: 100%; }
+.sk-slot-fc > canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
 .sk-slot-flags canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
 .sk-img { image-rendering: pixelated; image-rendering: crisp-edges; transition: opacity 240ms var(--ease), filter 240ms var(--ease); }
 .sk[data-loading] .sk-img { opacity: .25; filter: blur(2px); }
@@ -259,6 +263,8 @@ button { cursor: pointer; }
 .sk-key.g[aria-pressed=false] { color: var(--mute); }
 .sk-key.f .sw { width: 10px; height: 10px; border-radius: 1px; background: rgb(255, 79, 216); }
 .sk-key.f[aria-pressed=false] .sw { opacity: .5; }
+.sk-key.c .sw { width: 10px; height: 10px; border-radius: 1px; background: linear-gradient(90deg, #4f8bff, #ff7a45); }
+.sk-key.c[aria-pressed=false] .sw { opacity: .5; }
 .sk-flagnote { margin: 2px 0 6px; font-size: 12px; line-height: 1.5; color: var(--ink2); }
 .sk-key .ring, .sk-key.t::before { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--gold); }
 .sk-key.t { align-items: flex-start; color: var(--ink2); }
@@ -355,6 +361,7 @@ button { cursor: pointer; }
 /* Brightness over time: a small framed plot. Dots are zero-length round-capped strokes, so they stay round
    while the plot stretches to the rail's width. */
 .sk-m-curve { margin-top: 44px; gap: 12px; flex: none; }
+.sk-m-slot { margin-top: 44px; gap: 12px; flex: none; }
 .sk-lc { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: stretch; }
 .sk-lc svg { width: 100%; height: 104px; display: block; overflow: visible; }
 .sk-lc .band { fill: rgba(255, 255, 255, .07); }
