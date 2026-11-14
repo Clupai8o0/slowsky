@@ -190,6 +190,14 @@ describe('change input', () => {
         expect(Number.isFinite(found.sigma)).toBe(false);
     });
 
+    it('omits the catalogue list note when wavelengths prevent comparison', () => {
+        const found = findChanges(sky([frame('a', 60000, 2), frame('b', 60030, 2.05)]), {}, { plain: true });
+        expect(found.notes).toEqual([
+            'Earlier visit at 2.000 µm, later at 2.050 µm. A source can read differently at different wavelengths.',
+            'The two visits were not compared: their wavelengths differ by more than 0.02 µm.',
+        ]);
+    });
+
     it('finds a catalogue-matched brightening and preserves input notes', () => {
         const frames: RegriddedFrame[] = [];
         for (const [prefix, mjd, amplitude] of [['a', 60000, 200], ['b', 60030, 800]] as const) {

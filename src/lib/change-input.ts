@@ -113,6 +113,7 @@ export function findChanges(result: SkyResult, opts: ChangeInputOptions = {}, ch
     const input = changeInput(result, opts);
     const found = compareVisits(input.earlier, input.later, result.grid, input.stars, changeOpts);
     const noiseReported = found.notes.some((note) => /noise from the difference image/i.test(note));
-    found.notes.push(...input.notes.filter((note) => !((noiseReported || !Number.isFinite(found.sigma)) && note.startsWith('No error maps'))));
+    found.notes.push(...input.notes.filter((note) => !((noiseReported || !Number.isFinite(found.sigma)) && note.startsWith('No error maps'))
+        && !(!Number.isFinite(found.sigma) && note.startsWith('No catalogue stars for this view:'))));
     return found;
 }

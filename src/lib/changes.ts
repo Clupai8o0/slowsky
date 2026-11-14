@@ -111,6 +111,10 @@ type Measurement = { z: Float32Array; background: Float32Array; noise: Float32Ar
     sigma: number; k: number; width: number; height: number };
 const NATIVE = 6.15;
 const PSF_FWHM = 12; // arcsec
+// Inner radius of the local background ring, in arcseconds.
+const PLAIN_RING_INNER = 18;
+// Outer radius of the local background ring, in arcseconds.
+const PLAIN_RING_OUTER = 30;
 // Require at least half the core signal to remain within the full aperture.
 const PLAIN_CORE_RETAINED = 0.5;
 export const PLAIN_LEAD = 'Every spot listed is a candidate only; this page cannot tell which, if any, are real changes in the sky.';
@@ -1275,7 +1279,8 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                 }
             }
             const nearGap = Boolean(blob?.edge && !nearEdge && !nearMissing);
-            const facts = (starDistance !== undefined && starDistance <= PLAIN_STAR_FACT_ARCSEC ? ` A catalogue star lies ${starDistance < 1 ? 'less than 1″' : `${starDistance.toFixed(1)}″`} away.` : '')
+            const displayDistance = starDistance !== undefined && starDistance > opt.matchArcsec ? Math.ceil(starDistance * 10) / 10 : starDistance;
+            const facts = (starDistance !== undefined && starDistance <= PLAIN_STAR_FACT_ARCSEC ? ` A catalogue star lies ${starDistance < 1 ? 'less than 1″' : `${displayDistance!.toFixed(1)}″`} away.` : '')
                 + (nearEdge ? ' It is near the edge of the picture.' : '')
                 + (nearMissing ? ' Pixels at or near it are missing in at least one visit.' : '')
                 + (nearGap ? ' It is close to pixels that could not be compared, or to the edge of the picture.' : '');
@@ -1286,7 +1291,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
             };
             const cx = Math.round(pix.x), cy = Math.round(pix.y);
             const center = cx >= 0 && cy >= 0 && cx < grid.width && cy < grid.height ? corrected(cx, cy) : NaN;
-            let sum = 0, core = 0;
+            let sum = 0, core = 0, coreCount = 0;
             for (let y = Math.max(0, Math.ceil(pix.y - radiusPix)); y <= Math.min(grid.height - 1, Math.floor(pix.y + radiusPix)); y++) {
                 for (let x = Math.max(0, Math.ceil(pix.x - radiusPix)); x <= Math.min(grid.width - 1, Math.floor(pix.x + radiusPix)); x++) {
                     if (Math.hypot(x - pix.x, y - pix.y) <= radiusPix) {
@@ -1294,13 +1299,38 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                         if (Number.isFinite(earlier.data[i]!) && Number.isFinite(later.data[i]!)) {
                             const value = corrected(x, y);
                             sum += value;
-                            if (Math.hypot(x - pix.x, y - pix.y) <= radiusPix / 2) { core += value; }
+                            if (Math.hypot(x - pix.x, y - pix.y) <= radiusPix / 2) { core += value; coreCount++; }
                         }
                     }
                 }
             }
-            const clear = !nearMissing && Number.isFinite(center) && Number.isFinite(core) && Number.isFinite(sum)
-                && sign * center > 0 && sign * core > 0 && sign * sum >= PLAIN_CORE_RETAINED * sign * core;
+            const ring: number[] = [], ringSides: number[][] = [[], [], [], []];
+            let localCore = 0, localCount = 0;
+            const outerPix = PLAIN_RING_OUTER / grid.pixelArcsec;
+            for (let y = Math.max(0, Math.ceil(pix.y - outerPix)); y <= Math.min(grid.height - 1, Math.floor(pix.y + outerPix)); y++) {
+                for (let x = Math.max(0, Math.ceil(pix.x - outerPix)); x <= Math.min(grid.width - 1, Math.floor(pix.x + outerPix)); x++) {
+                    const d = Math.hypot(x - pix.x, y - pix.y) * grid.pixelArcsec;
+                    const i = y * grid.width + x;
+                    if (!Number.isFinite(earlier.data[i]!) || !Number.isFinite(later.data[i]!)) { continue; }
+                    const value = later.data[i]! - earlier.data[i]!;
+                    if (d <= CORE_ARCSEC) { localCore += value; localCount++; }
+                    if (d >= PLAIN_RING_INNER && d <= PLAIN_RING_OUTER) {
+                        ring.push(value);
+                        ringSides[(x >= pix.x ? 1 : 0) + (y >= pix.y ? 2 : 0)]!.push(value);
+                    }
+                }
+            }
+            const local = localCount && ring.length >= 20 ? localCore / localCount - median(ring) : NaN;
+            // An uneven ring can itself be lifted by a nearby patch; do not use it to claim a direction.
+            const sideMedians = ringSides.map(side => side.length >= 5 ? median(side) : NaN);
+            const evenRing = sideMedians.every(Number.isFinite)
+                && Math.max(...sideMedians) - Math.min(...sideMedians) <= 3 * measurement.sigma;
+            // The local reading (the core against its own ring, with no background tiles) must keep at least half of
+            // what the tile-corrected core shows. A bare sign test passes half the time on noise alone, which is
+            // exactly where the tiles are wrong: a spot that did not change inside a patch of sky that did.
+            const clear = !nearMissing && evenRing && Number.isFinite(center) && Number.isFinite(core) && Number.isFinite(sum)
+                && sign * center > 0 && sign * core > 0 && sign * sum >= PLAIN_CORE_RETAINED * sign * core
+                && Number.isFinite(local) && sign * local >= PLAIN_CORE_RETAINED * sign * core / coreCount;
             const ending = `a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}`;
             const neutral = `The light here differs between the two visits, and which visit has more is not clear; ${ending}`;
             out.push({ id: '', kind: 'unknown', pix, sky: gridPixToSky(grid, pix), snr, sign,

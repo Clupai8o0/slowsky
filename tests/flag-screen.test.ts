@@ -419,6 +419,12 @@ describe('plain list (compareVisits plain: true)', () => {
         expect(screen([c], { earlier: [earlier], later: [later] }, flags, []).kept[0]!.line).toBe('The two visits differ here, at S/N 49.9 (candidate). In at least one frame of the earlier visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW, so the brightness comparison is not shown; an overflowing pixel can make the reading here unreliable.');
     });
 
+    it('does not print a non-finite S/N for an overflowed comparison', () => {
+        const flags = new Map([['early', at(1, ['OVERFLOW'])], ['late', at(1, [])]]);
+        const c = { ...plain, reading: 'brighter' as const, snr: NaN };
+        expect(screen([c], { earlier: [earlier], later: [later] }, flags, []).kept[0]!.line).toBe('The two visits differ here (candidate). In at least one frame of the earlier visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW, so the brightness comparison is not shown; an overflowing pixel can make the reading here unreliable.');
+    });
+
     it('drops a plain spot flagged in its light visit, with one-spot wording', () => {
         const flags = new Map([['early', at(9, [])], ['late', at(1, ['TRANSIENT'])]]);
         const out = screen([plain], { earlier: [earlier], later: [later] }, flags, ['TRANSIENT']);
