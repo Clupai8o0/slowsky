@@ -1,5 +1,766 @@
-// Placeholder until the design lane brings in the chosen UI shell. Replace this whole file.
+// Slowsky UI shell ("Spectrum+" direction): black, Swiss type; the sky on the left, time as a frame
+// strip under it, colour (wavelength) as the big number on the right. The UI only talks to SkySource.
+import './fonts/fonts.css';
+import './styles.css';
+import targetsJson from '../data/targets.json';
+import type { Detector, SkyCoord, Target, TargetId, ViewState } from '../lib/types';
+import type { SkyProgress, SkyRequest, SkyResult, SkySource } from '../lib/source';
+import { createLiveSource, createSnapshotSource } from '../lib/source';
+import { NotImplemented } from '../lib/notimpl';
+import { drawFrame, frameDelayMs, renderRgba, sharedStretch, stepIndex } from '../lib/player';
+import { decodeView, encodeView } from '../lib/urlstate';
+import { formatDec, formatRa, parseCoords, resolveName } from '../lib/coords';
+import { createDemoSource } from './demo-source';
+import { meanStack, difference, diffScale, renderDiverging, type DiffScale } from './compose';
+import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
+
+type Mode = 'blink' | 'stack' | 'diff';
+type SourceKind = 'live' | 'snapshot' | 'demo';
+
+const TARGETS = targetsJson as unknown as Target[];
+const FOVS = [0.1, 0.25, 0.5, 1];
+const DEFAULT_TARGET: TargetId = 'barnard';
+const FPS = 1.5;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const ICON = {
+    play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.6v12.8l10.2-6.4z" fill="currentColor" stroke="none"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.8" y="5.5" width="3.6" height="13" rx="1" fill="currentColor" stroke="none"/><rect x="13.6" y="5.5" width="3.6" height="13" rx="1" fill="currentColor" stroke="none"/></svg>',
+    prev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>',
+    next: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg>',
+    search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
+    link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.1-1.1"/></svg>',
+};
+
+interface State {
+    target?: TargetId;
+    center: SkyCoord;
+    label: string; // name shown for a custom spot
+    fovDeg: number;
+    detector: Detector;
+    lambda?: number;
+    mode: Mode;
+    index: number;
+    playing: boolean;
+    gaia: boolean;
+    wantFrame?: string; // obsId from a shared link, applied after load
+}
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+
+function mjdToDate(mjd: number): Date
+{
+    return new Date((mjd - 40587) * 86400000);
+}
+
+function niceDate(mjd: number): string
+{
+    const d = mjdToDate(mjd);
+    return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+function monthYear(mjd: number): string
+{
+    const d = mjdToDate(mjd);
+    return `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+function detectorOf(lambda: number): Detector
+{
+    for (let i = 0; i < DETECTORS.length; i++) {
+        if (lambda <= (DETECTORS[i] as [number, number])[1] + 1e-9) {
+            return (i + 1) as Detector;
+        }
+    }
+    return 6;
+}
+
+function targetById(id: TargetId): Target | undefined
+{
+    return TARGETS.find((t) => t.id === id);
+}
+
+function matchTarget(text: string): TargetId | undefined
+{
+    const norm = (s: string) => s.toLowerCase().replace(/[’'\s−-]/g, '');
+    const q = norm(text);
+    if (!q) {
+        return undefined;
+    }
+    for (const id of ORDER) {
+        const names = [id, COPY[id].display, targetById(id)?.name ?? ''].map(norm).filter(Boolean);
+        if (names.some((n) => n === q || n.startsWith(q) || q.startsWith(n))) {
+            return id;
+        }
+    }
+    return undefined;
+}
+
+function isNotImplemented(e: unknown): boolean
+{
+    return e instanceof NotImplemented || (e instanceof Error && e.name === 'NotImplemented');
+}
+
+function shell(): string
+{
+    const targets = ORDER.map((id) => `<button type="button" data-target="${id}" aria-pressed="false">${esc(COPY[id].display)}</button>`).join('');
+    const dets = DETECTORS.map((d, i) => `<button type="button" data-det="${i + 1}" style="flex:${(d[1] - d[0]).toFixed(2)}" title="Detector ${i + 1}: ${d[0].toFixed(2)} to ${d[1].toFixed(2)} µm" aria-pressed="false">D${i + 1}</button>`).join('');
+    const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
+    return `
+<div class="sk-l">
+  <div class="sk-skyw">
+    <div class="sk-sky" data-ref="sky">
+      <canvas data-ref="canvas" role="img" aria-label="Sky image"></canvas>
+      <svg class="sk-ov" data-ref="ov" aria-hidden="true" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="sk-hud tl"><b data-bind="name"></b><span data-bind="coords"></span></div>
+    <div class="sk-hud tr"><b data-bind="frame"></b><span data-bind="when"></span></div>
+    <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
+    <div class="sk-leg" aria-hidden="true">
+      <span class="t" data-bind="trackLeg"></span><span class="g">Stars in ESA’s Gaia catalogue</span>
+      <span class="d"><i class="b"></i>there then<i class="o"></i>there now</span>
+    </div>
+    <div class="sk-bar" data-ref="bar"><i></i><b data-bind="bar"></b></div>
+    <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
+    <div class="sk-err" data-ref="err" hidden><p data-bind="err"></p><button type="button" class="sk-chip" data-act="retry">Try again</button></div>
+  </div>
+  <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
+</div>
+<header class="sk-top">
+  <span class="sk-word">slowsky</span>
+  <form class="sk-search" data-ref="search" role="search"><span class="ic">${ICON.search}</span><input name="q" placeholder="Go anywhere: a star, or RA, Dec" autocomplete="off" aria-label="Search the sky: a star name, or RA and Dec"></form>
+</header>
+<main class="sk-p">
+  <nav class="sk-tg" aria-label="Targets">${targets}</nav>
+  <h1 class="sk-h" data-bind="headline"></h1>
+  <div class="sk-ctl">
+    <div class="sk-tr">
+      <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
+      <button type="button" class="sk-btn go" data-act="play" aria-label="Play"></button>
+      <button type="button" class="sk-btn" data-act="next" aria-label="Next frame"><span class="ic">${ICON.next}</span></button>
+    </div>
+    <div class="sk-seg" role="group" aria-label="View"><button type="button" data-mode="blink">Blink</button><button type="button" data-mode="stack">Stack</button><button type="button" data-mode="diff">Subtract</button></div>
+  </div>
+  <p class="sk-hint" data-bind="hint"></p>
+  <section class="sk-col" aria-label="Colour">
+    <div class="sk-lab"><span>Colour · wavelength</span><span data-bind="det"></span></div>
+    <div class="sk-num"><b data-bind="lam"></b><small>µm</small></div>
+    <div class="sk-numsub"><span>Your eyes stop at 0.70 µm. All of this is infrared.</span></div>
+    <div class="sk-dets" role="group" aria-label="Detector">${dets}</div>
+    <input class="sk-rng" type="range" data-ref="lam" step="0.005" aria-label="Wavelength in micrometres">
+    <div class="sk-rngl"><span data-bind="lamLo"></span><span>Fine colour within this detector</span><span data-bind="lamHi"></span></div>
+  </section>
+  <div class="sk-text"><p data-bind="show"></p><p data-bind="not"></p></div>
+  <div class="sk-foot">
+    <button type="button" class="sk-chip" data-act="gaia" aria-pressed="true">Gaia rings</button>
+    <button type="button" class="sk-chip" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button>
+    <label class="sk-chip sk-fov">Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
+    <details class="sk-det"><summary>Frame details</summary><dl data-ref="dl"></dl></details>
+  </div>
+  <ul class="sk-notes" data-ref="notes"></ul>
+  <footer class="sk-credit"><p data-bind="status"></p><p data-bind="credits"></p></footer>
+</main>
+<p class="sk-sr" aria-live="polite" data-ref="live"></p>
+<div class="sk-toast" data-ref="toast" role="status"></div>`;
+}
+
 export function mount(root: HTMLElement): void
 {
-    root.textContent = 'Slowsky: hello. The sky player is being built during NASA Space Apps 2026.';
+    root.classList.add('sk');
+    root.innerHTML = shell();
+    const q = <T extends Element>(sel: string) => root.querySelector(sel) as T;
+    const qa = <T extends Element>(sel: string) => [...root.querySelectorAll(sel)] as T[];
+    const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
+    const canvas = ref<HTMLCanvasElement>('canvas');
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    const ov = ref<SVGSVGElement>('ov');
+    const strip = ref<HTMLElement>('strip');
+    const lamInput = ref<HTMLInputElement>('lam');
+    const fovSelect = ref<HTMLSelectElement>('fov');
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const params = new URLSearchParams(location.search);
+    const demoOnly = params.get('demo') === '1';
+
+    const st: State = {
+        center: { ra: 0, dec: 0 },
+        label: '',
+        fovDeg: 0.25,
+        detector: 1,
+        mode: 'blink',
+        index: 0,
+        playing: false,
+        gaia: true,
+    };
+    let result: SkyResult | null = null;
+    let sourceKind: SourceKind = 'live';
+    let stretch: ReturnType<typeof sharedStretch> | null = null;
+    let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
+    let timer = 0;
+    let ctrl: AbortController | null = null;
+    let lamDraft: number | null = null;
+
+    function bind(key: string, text: string): void
+    {
+        for (const el of qa<HTMLElement>(`[data-bind="${key}"]`)) {
+            el.textContent = text;
+        }
+    }
+
+    function toast(msg: string): void
+    {
+        const el = ref<HTMLElement>('toast');
+        el.textContent = msg;
+        el.setAttribute('data-show', '');
+        window.clearTimeout(Number(el.dataset.t));
+        el.dataset.t = String(window.setTimeout(() => el.removeAttribute('data-show'), 2200));
+    }
+
+    // ---------- loading ----------
+
+    function setTarget(id: TargetId): void
+    {
+        const t = targetById(id);
+        if (!t) {
+            return;
+        }
+        st.target = id;
+        st.center = { ra: t.astrometry.ra, dec: t.astrometry.dec };
+        st.detector = t.detector;
+        st.lambda = undefined;
+        st.label = COPY[id].display;
+        void load();
+    }
+
+    function setSpot(center: SkyCoord, label: string): void
+    {
+        st.target = undefined;
+        st.center = center;
+        st.label = label;
+        st.lambda = undefined;
+        void load();
+    }
+
+    async function loadFrom(kind: SourceKind, req: SkyRequest): Promise<SkyResult>
+    {
+        const src: SkySource = kind === 'demo' ? createDemoSource() : kind === 'live' ? createLiveSource() : createSnapshotSource();
+        return src.load(req);
+    }
+
+    async function load(): Promise<void>
+    {
+        ctrl?.abort();
+        ctrl = new AbortController();
+        const signal = ctrl.signal;
+        play(false);
+        ref<HTMLElement>('err').hidden = true;
+        ref<HTMLElement>('load').hidden = false;
+        root.dataset.loading = 'true';
+        progress({ stage: 'search', done: 0, total: 1 });
+        renderText();
+        const req: SkyRequest = {
+            center: st.center,
+            fovDeg: st.fovDeg,
+            detector: st.detector,
+            lambda: st.lambda,
+            target: st.target,
+            signal,
+            onProgress: progress,
+        };
+        const order: SourceKind[] = demoOnly ? ['demo'] : ['live', 'snapshot'];
+        let res: SkyResult | null = null;
+        let lastErr: unknown = null;
+        let allMissing = true;
+        for (const kind of order) {
+            try {
+                res = await loadFrom(kind, req);
+                sourceKind = kind;
+                break;
+            } catch (e) {
+                if (signal.aborted) {
+                    return;
+                }
+                lastErr = e;
+                allMissing = allMissing && isNotImplemented(e);
+                // A spot that is not one of the five targets has no saved copy.
+                if (kind === 'live' && !st.target && !isNotImplemented(e)) {
+                    break;
+                }
+            }
+        }
+        if (!res && allMissing && !demoOnly) {
+            // The live and saved sources are not built yet: show the simulated sky, clearly labelled.
+            try {
+                res = await loadFrom('demo', req);
+                sourceKind = 'demo';
+            } catch (e) {
+                if (signal.aborted) {
+                    return;
+                }
+                lastErr = e;
+            }
+        }
+        if (signal.aborted) {
+            return;
+        }
+        ref<HTMLElement>('load').hidden = true;
+        delete root.dataset.loading;
+        if (!res || res.frames.length === 0) {
+            const why = res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${lastErr instanceof Error ? lastErr.message : ''}`;
+            bind('err', why);
+            ref<HTMLElement>('err').hidden = false;
+            return;
+        }
+        result = res;
+        st.lambda = res.lambda;
+        st.detector = detectorOf(res.lambda);
+        stretch = sharedStretch(res.frames);
+        composed = {};
+        st.index = 0;
+        if (st.wantFrame) {
+            const k = res.frames.findIndex((f) => f.frame.frame.obsId === st.wantFrame);
+            st.index = Math.max(0, k);
+            st.wantFrame = undefined;
+        }
+        if (st.mode !== 'blink') {
+            compose();
+        }
+        canvas.width = res.grid.width;
+        canvas.height = res.grid.height;
+        ov.setAttribute('viewBox', `0 0 ${res.grid.width} ${res.grid.height}`);
+        buildStrip();
+        draw();
+        writeUrl();
+        if (!reduceMotion && st.mode === 'blink' && res.frames.length > 1) {
+            play(true);
+        }
+    }
+
+    function progress(p: SkyProgress): void
+    {
+        const n = Math.max(p.total, 1);
+        bind('stage', `${STAGE_TEXT[p.stage]}${p.total > 1 ? ` · ${Math.min(p.done + 1, n)} of ${n}` : ''}`);
+        const stages = ['search', 'headers', 'pixels', 'regrid'];
+        const frac = (stages.indexOf(p.stage) + Math.min(p.done / n, 1)) / stages.length;
+        ref<HTMLElement>('prog').style.width = `${Math.round(frac * 100)}%`;
+    }
+
+    // ---------- drawing ----------
+
+    function compose(): void
+    {
+        if (!result) {
+            return;
+        }
+        const regs = result.frames.map((f) => f.frame);
+        if (st.mode === 'stack' && !composed.stack) {
+            composed.stack = meanStack(regs);
+        }
+        if (st.mode === 'diff' && !composed.diff) {
+            const first = regs[0];
+            const last = regs[regs.length - 1];
+            if (first && last) {
+                composed.diff = difference(last.data, first.data);
+                composed.scale = diffScale(composed.diff);
+            }
+        }
+    }
+
+    function draw(): void
+    {
+        if (!result || !stretch) {
+            return;
+        }
+        const f = result.frames[st.index];
+        if (!f) {
+            return;
+        }
+        if (st.mode === 'blink') {
+            drawFrame(ctx, f, stretch);
+        } else {
+            compose();
+            const img = ctx.createImageData(result.grid.width, result.grid.height);
+            if (st.mode === 'stack' && composed.stack) {
+                renderRgba(composed.stack, stretch, img.data);
+            } else if (composed.diff) {
+                renderDiverging(composed.diff, composed.scale ?? { floor: 0, limit: 1 }, img.data);
+            }
+            ctx.putImageData(img, 0, 0);
+        }
+        overlay();
+        renderText();
+        renderFrameState();
+    }
+
+    function overlay(): void
+    {
+        if (!result) {
+            return;
+        }
+        const parts: string[] = [];
+        const kind = st.target ? COPY[st.target].kind : 'field';
+        const ring = (x: number, y: number, r: number, cls: string) =>
+            `<circle cx="${(x + 0.5).toFixed(2)}" cy="${(y + 0.5).toFixed(2)}" r="${r}" class="${cls}" fill="none" vector-effect="non-scaling-stroke"/>`;
+        const scale = result.grid.width / 60;
+        if (st.gaia && st.mode !== 'diff') {
+            for (const s of result.stars) {
+                parts.push(ring(s.pix.x, s.pix.y, Math.max(2.4, scale * 0.9), 'gaia'));
+            }
+        }
+        const track = result.track;
+        if (track && track.length) {
+            const ks = st.mode === 'blink' ? [st.index] : st.mode === 'stack' ? track.map((_, i) => i) : [0, track.length - 1];
+            if (kind === 'mover' || kind === 'spectrum') {
+                for (const k of ks) {
+                    const p = track[k];
+                    if (p) {
+                        parts.push(ring(p.pix.x, p.pix.y, Math.max(2.8, scale), 'track'));
+                    }
+                }
+            } else {
+                const p = track[Math.min(st.index, track.length - 1)];
+                if (p) {
+                    const a = Math.max(5, scale * 1.8);
+                    const b = a * 0.4;
+                    const x = p.pix.x + 0.5;
+                    const y = p.pix.y + 0.5;
+                    const corner = (sx: number, sy: number) =>
+                        `<path d="M${x + sx * a} ${y + sy * (a - b)}V${y + sy * a}H${x + sx * (a - b)}" class="mark" fill="none" vector-effect="non-scaling-stroke"/>`;
+                    parts.push(corner(-1, -1), corner(1, -1), corner(-1, 1), corner(1, 1));
+                }
+            }
+        }
+        ov.innerHTML = parts.join('');
+    }
+
+    function buildStrip(): void
+    {
+        if (!result || !stretch) {
+            strip.innerHTML = '';
+            return;
+        }
+        const { width, height } = result.grid;
+        const firstVisit = result.frames[0]?.frame.frame.tMin ?? 0;
+        strip.innerHTML = result.frames.map((f, i) => {
+            const t = f.frame.frame.tMin;
+            const months = Math.round((t - firstVisit) / 30.44);
+            return `<button type="button" data-k="${i}" aria-label="Frame ${i + 1}: ${niceDate(t)}"><canvas width="${width}" height="${height}"></canvas>
+                <small><b>${monthYear(t)}</b>${i === 0 ? 'first look' : `+${months} months`}</small></button>`;
+        }).join('');
+        const s = stretch;
+        qa<HTMLButtonElement>('.sk-strip button').forEach((b, i) => {
+            const c = b.querySelector('canvas');
+            const f = result?.frames[i];
+            if (c && f) {
+                drawFrame(c.getContext('2d') as CanvasRenderingContext2D, f, s);
+            }
+        });
+    }
+
+    function renderFrameState(): void
+    {
+        qa<HTMLButtonElement>('.sk-strip button').forEach((b, i) => {
+            if (st.mode === 'blink' && i === st.index) {
+                b.setAttribute('aria-current', 'true');
+            } else {
+                b.removeAttribute('aria-current');
+            }
+        });
+    }
+
+    function renderText(): void
+    {
+        root.dataset.mode = st.mode;
+        root.dataset.gaia = String(st.gaia);
+        root.dataset.source = sourceKind;
+        ref<HTMLElement>('sim').hidden = !(result && sourceKind === 'demo');
+        const copy = st.target ? COPY[st.target] : null;
+        bind('name', copy ? copy.display : st.label);
+        bind('coords', `${formatRa(st.center.ra)}  ${formatDec(st.center.dec)}`);
+        bind('headline', copy ? copy.headline : CUSTOM_COPY.headline);
+        bind('show', copy ? copy.show : CUSTOM_COPY.show);
+        bind('not', copy ? copy.not : CUSTOM_COPY.not);
+        bind('hint', MODE_HINT[st.mode]);
+        bind('trackLeg', copy && (copy.kind === 'mover' || copy.kind === 'spectrum') ? `Where ${copy.display} should be on this date` : '');
+        root.dataset.trackleg = copy && (copy.kind === 'mover' || copy.kind === 'spectrum') ? 'true' : 'false';
+        for (const b of qa<HTMLButtonElement>('[data-target]')) {
+            b.setAttribute('aria-pressed', String(b.dataset.target === st.target));
+        }
+        for (const b of qa<HTMLButtonElement>('[data-mode]')) {
+            b.setAttribute('aria-pressed', String(b.dataset.mode === st.mode));
+        }
+        for (const b of qa<HTMLButtonElement>('[data-det]')) {
+            b.setAttribute('aria-pressed', String(Number(b.dataset.det) === st.detector));
+        }
+        const play = q<HTMLButtonElement>('[data-act="play"]');
+        play.innerHTML = `<span class="ic">${st.playing ? ICON.pause : ICON.play}</span>`;
+        play.setAttribute('aria-label', st.playing ? 'Pause' : 'Play');
+        q<HTMLButtonElement>('[data-act="gaia"]').setAttribute('aria-pressed', String(st.gaia));
+        fovSelect.value = String(st.fovDeg);
+        bind('det', `Detector ${st.detector} of 6`);
+
+        const band = DETECTORS[st.detector - 1] as [number, number];
+        const range = result?.lambdaRange ?? band;
+        lamInput.min = range[0].toFixed(3);
+        lamInput.max = range[1].toFixed(3);
+        const lam = lamDraft ?? st.lambda ?? (range[0] + range[1]) / 2;
+        if (lamDraft === null) {
+            lamInput.value = lam.toFixed(3);
+        }
+        bind('lam', lam.toFixed(2));
+        bind('lamLo', `${range[0].toFixed(2)}`);
+        bind('lamHi', `${range[1].toFixed(2)}`);
+
+        if (!result) {
+            bind('frame', '');
+            bind('when', '');
+            return;
+        }
+        const n = result.frames.length;
+        const f = result.frames[st.index];
+        const lf = result.locked[st.index];
+        const first = result.frames[0]?.frame.frame;
+        const last = result.frames[n - 1]?.frame.frame;
+        if (st.mode === 'blink' && f) {
+            bind('frame', `Frame ${st.index + 1} of ${n}`);
+            bind('when', niceDate(f.frame.frame.tMin));
+        } else if (st.mode === 'stack' && first && last) {
+            bind('frame', `All ${n} frames, averaged`);
+            bind('when', `${monthYear(first.tMin)} to ${monthYear(last.tMin)}`);
+        } else if (first && last) {
+            bind('frame', 'Last look minus first');
+            bind('when', `${monthYear(last.tMin)} minus ${monthYear(first.tMin)}`);
+        }
+        const fovArcsec = result.grid.pixelArcsec * result.grid.width;
+        const bar = st.fovDeg >= 0.5 ? 600 : 60;
+        ref<HTMLElement>('bar').style.width = `${(bar / fovArcsec * 100).toFixed(2)}%`;
+        bind('bar', bar >= 60 ? `${bar / 60}′` : `${bar}″`);
+
+        if (f && lf) {
+            const rec = f.frame.frame;
+            const rows: [string, string][] = [
+                ['Taken', `${mjdToDate(rec.tMin).toISOString().slice(0, 16).replace('T', ' ')} UTC`],
+                ['Frame', `${st.index + 1} of ${n}`],
+                ['Colour here', `${lf.lambda.toFixed(3)} µm (${lf.dLambda >= 0 ? '+' : '−'}${Math.abs(lf.dLambda).toFixed(3)})`],
+                ['Detector', `D${rec.detector}`],
+                ['Release', rec.collection],
+                ['Field', `${st.fovDeg}° · ${result.grid.width} × ${result.grid.height} px`],
+                ['Scale', `${result.grid.pixelArcsec.toFixed(2)}″ per pixel`],
+                ['File', rec.obsId],
+            ];
+            if (rec.pipelineVersion) {
+                rows.push(['Pipeline', rec.pipelineVersion]);
+            }
+            let html = rows.map(([k, v]) => `<dt>${k}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('');
+            const links: string[] = [];
+            if (rec.url) {
+                links.push(`<a href="${esc(rec.url)}" rel="noopener" target="_blank">FITS file</a>`);
+            }
+            if (rec.irsaUrl) {
+                links.push(`<a href="${esc(rec.irsaUrl)}" rel="noopener" target="_blank">IRSA</a>`);
+            }
+            if (links.length) {
+                html += `<dt>Open</dt><dd>${links.join(' · ')}</dd>`;
+            }
+            ref<HTMLElement>('dl').innerHTML = html;
+        }
+        const status = sourceKind === 'live' ? 'Live: read straight from NASA’s SPHEREx archive on Amazon S3.'
+            : sourceKind === 'snapshot' ? 'Saved copy of NASA SPHEREx frames (the live archive did not answer).'
+                : 'Simulated sky for building the page. Not real data.';
+        bind('status', status);
+        const credits = ['NASA SPHEREx via IRSA (NASA/IPAC).', ...(sourceKind === 'demo' ? [] : result.credits)];
+        bind('credits', [...new Set(credits)].join(' '));
+        ref<HTMLElement>('notes').innerHTML = result.notes.map((t) => `<li>${esc(t)}</li>`).join('');
+        ref<HTMLElement>('live').textContent = `${q<HTMLElement>('[data-bind="frame"]').textContent}, ${q<HTMLElement>('[data-bind="when"]').textContent}`;
+        canvas.setAttribute('aria-label', `Sky image. ${ref<HTMLElement>('live').textContent}, ${lam.toFixed(2)} µm`);
+    }
+
+    // ---------- playback ----------
+
+    function tick(): void
+    {
+        if (!result) {
+            return;
+        }
+        st.index = stepIndex(st.index, result.frames.length, 1);
+        draw();
+        timer = window.setTimeout(tick, frameDelayMs(FPS));
+    }
+
+    function play(on: boolean): void
+    {
+        window.clearTimeout(timer);
+        st.playing = on && !!result && result.frames.length > 1;
+        if (st.playing) {
+            if (st.mode !== 'blink') {
+                st.mode = 'blink';
+                draw();
+            }
+            timer = window.setTimeout(tick, frameDelayMs(FPS));
+        }
+        renderText();
+        if (!on) {
+            writeUrl();
+        }
+    }
+
+    function step(dir: number): void
+    {
+        if (!result) {
+            return;
+        }
+        st.mode = 'blink';
+        play(false);
+        st.index = stepIndex(st.index, result.frames.length, dir);
+        draw();
+        writeUrl();
+    }
+
+    // ---------- URL ----------
+
+    function view(withFrame: boolean): ViewState
+    {
+        const v: ViewState = { center: st.center, fovDeg: st.fovDeg, detector: st.detector };
+        if (st.lambda !== undefined) {
+            v.lambda = st.lambda;
+        }
+        if (st.target) {
+            v.target = st.target;
+        }
+        const f = result?.frames[st.index];
+        if (withFrame && f && st.mode === 'blink') {
+            v.frame = f.frame.frame.obsId;
+        }
+        return v;
+    }
+
+    function linkFor(withFrame: boolean): string
+    {
+        return `${location.origin}${location.pathname}?${encodeView(view(withFrame))}${demoOnly ? '&demo=1' : ''}`;
+    }
+
+    function writeUrl(): void
+    {
+        history.replaceState(null, '', linkFor(!st.playing));
+    }
+
+    // ---------- events ----------
+
+    root.addEventListener('click', (e) => {
+        const b = (e.target as Element).closest('button');
+        if (!b || !root.contains(b)) {
+            return;
+        }
+        if (b.dataset.target) {
+            setTarget(b.dataset.target as TargetId);
+        } else if (b.dataset.mode) {
+            st.mode = b.dataset.mode as Mode;
+            if (st.mode !== 'blink') {
+                play(false);
+            }
+            draw();
+        } else if (b.dataset.k !== undefined) {
+            st.mode = 'blink';
+            play(false);
+            st.index = Number(b.dataset.k);
+            draw();
+            writeUrl();
+        } else if (b.dataset.det) {
+            const d = Number(b.dataset.det) as Detector;
+            if (d !== st.detector) {
+                st.detector = d;
+                st.lambda = undefined;
+                void load();
+            }
+        } else if (b.dataset.act === 'play') {
+            play(!st.playing);
+        } else if (b.dataset.act === 'prev' || b.dataset.act === 'next') {
+            step(b.dataset.act === 'next' ? 1 : -1);
+        } else if (b.dataset.act === 'gaia') {
+            st.gaia = !st.gaia;
+            overlay();
+            renderText();
+        } else if (b.dataset.act === 'copy') {
+            const url = linkFor(true);
+            navigator.clipboard?.writeText(url).then(() => toast('Link copied. It opens this exact view.'), () => toast(url));
+        } else if (b.dataset.act === 'retry') {
+            void load();
+        }
+    });
+
+    lamInput.addEventListener('input', () => {
+        lamDraft = Number(lamInput.value);
+        bind('lam', lamDraft.toFixed(2));
+    });
+    lamInput.addEventListener('change', () => {
+        st.lambda = Number(lamInput.value);
+        lamDraft = null;
+        void load();
+    });
+    fovSelect.addEventListener('change', () => {
+        st.fovDeg = Number(fovSelect.value);
+        void load();
+    });
+
+    ref<HTMLFormElement>('search').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = e.target as HTMLFormElement;
+        const input = form.querySelector('input') as HTMLInputElement;
+        const text = input.value.trim();
+        if (!text) {
+            return;
+        }
+        const id = matchTarget(text);
+        if (id) {
+            input.value = '';
+            input.blur();
+            setTarget(id);
+            return;
+        }
+        const c = parseCoords(text);
+        if (c) {
+            input.value = '';
+            input.blur();
+            setSpot(c, `${formatRa(c.ra)} ${formatDec(c.dec)}`);
+            return;
+        }
+        toast(`Looking up “${text}”…`);
+        try {
+            const a = await resolveName(text);
+            input.value = '';
+            input.blur();
+            setSpot({ ra: a.ra, dec: a.dec }, text);
+        } catch {
+            toast('Couldn’t find that. Try a star name, or RA and Dec like 269.45, 4.69.');
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        const el = e.target as HTMLElement;
+        if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable || e.metaKey || e.ctrlKey || e.altKey) {
+            return;
+        }
+        if (e.key === ' ' && el.tagName !== 'BUTTON') {
+            e.preventDefault();
+            play(!st.playing);
+        } else if (e.key === 'ArrowRight' || e.key === ']') {
+            step(1);
+        } else if (e.key === 'ArrowLeft' || e.key === '[') {
+            step(-1);
+        }
+    });
+
+    // ---------- start ----------
+
+    const shared = decodeView(location.search);
+    if (shared) {
+        st.center = shared.center;
+        st.fovDeg = FOVS.includes(shared.fovDeg) ? shared.fovDeg : 0.25;
+        st.detector = shared.detector;
+        st.lambda = shared.lambda;
+        st.target = shared.target;
+        st.wantFrame = shared.frame;
+        st.label = shared.target ? COPY[shared.target].display : `${formatRa(shared.center.ra)} ${formatDec(shared.center.dec)}`;
+        void load();
+    } else {
+        setTarget(DEFAULT_TARGET);
+    }
 }
