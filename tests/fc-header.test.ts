@@ -63,6 +63,10 @@ describe('false colour page', () => {
         expect(single.html).toContain('1 at 0.85 µm, 3 at 4.60 µm');
         expect(single.html).toContain('<dt>File</dt><dd><span class="sk-only">0.85 µm only</span>a0</dd>');
         expect(single.html).not.toContain('a0 to a0');
+        // One file gets one link: "first" and "last" would point at the same file.
+        expect(single.html).toContain('FITS file</a>');
+        expect(single.html).not.toContain('FITS, first');
+        expect(partly.html).toContain('FITS, first');
         // The wavelength on screen has no used frame: the Files row still says which wavelength it lists.
         const none = await render(true, 4);
         expect(none.html).toContain('0 of 4 at 0.85 µm');
@@ -81,6 +85,7 @@ describe('false colour page', () => {
             layerSlot({ key: true, layer: true, note: 'full', split: { lead: 'labels warning', more: 'explanation' } }, true, 'key', 'layer', 'fcNote');
             expect(nodes.fcNote.children[0]).toBe('labels warning');
             expect(nodes.fcNote.children[2].open).toBe(false);
+            expect(nodes.fcNote.children[2].append).toHaveBeenCalledWith(expect.objectContaining({ textContent: 'How to read this colour: rims, speckle, bright stars' }), 'explanation');
         }
         const fs = (globalThis as any).process.getBuiltinModule('node:fs');
         expect(fs.readFileSync('src/ui/styles.css', 'utf8')).toContain('[data-ref="fcNote"] .sk-more summary { display: flex;');

@@ -1151,7 +1151,8 @@ export function mount(root: HTMLElement): void
                 more.className = 'sk-more';
                 more.open = noteRef !== 'fcNote' && !narrow.matches;
                 const sum = document.createElement('summary');
-                sum.textContent = 'How to read this colour';
+                // The label names what is folded away, so a reader who sees a coloured rim knows where it is explained.
+                sum.textContent = noteRef === 'fcNote' ? 'How to read this colour: rims, speckle, bright stars' : 'How to read this colour';
                 more.append(sum, split.more);
                 note.append(more);
             } else {
@@ -1393,16 +1394,18 @@ export function mount(root: HTMLElement): void
                 return `<dt>${k}</dt><dd>${k === 'File' || k === 'Files' ? only : ''}${val}</dd>`;
             }).join('');
             const links: string[] = [];
-            if (many) {
+            // One file on screen (Blink, or False colour over a single frame) gets one link, not "first" and "last".
+            const oneFile = !many || fileRecs.length === 1;
+            if (!oneFile) {
                 for (const [r, label] of [[firstRec, 'first'], [lastRec, 'last']] as const) {
                     if (r.url) {
                         links.push(`<a href="${esc(r.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS, ${label}</a>`);
                     }
                 }
-            } else if (rec.url && !many) {
+            } else if (rec.url) {
                 links.push(`<a href="${esc(rec.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS file</a>`);
             }
-            if (rec.irsaUrl && !many) {
+            if (rec.irsaUrl && oneFile) {
                 links.push(`<a href="${esc(rec.irsaUrl)}" rel="noopener" target="_blank"><span class="ic">${ICON.out}</span>IRSA</a>`);
             }
             if (links.length) {
