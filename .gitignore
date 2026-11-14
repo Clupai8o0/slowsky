@@ -14,3 +14,5 @@ scripts/__pycache__/
 # raw downloads stay local; commit only small fixtures listed in tests/fixtures/README.md
 data-raw/
 AGENTS.md
+.vercel
+.env*
