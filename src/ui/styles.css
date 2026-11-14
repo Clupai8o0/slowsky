@@ -36,7 +36,8 @@ button { cursor: pointer; }
     --pt: 28px; --pb: 24px; --cg: clamp(32px, 4vw, 64px);
     --lw: 300px; --rw: 320px; --lcol: var(--lw); --rcol: var(--rw); --lg: var(--cg); --rg: var(--cg);
     display: grid; grid-template-columns: minmax(0, var(--lcol)) var(--lg) minmax(360px, 1fr) var(--rg) minmax(0, var(--rcol));
-    padding: var(--pt) clamp(24px, 3vw, 44px) var(--pb);
+    --px: clamp(24px, 3vw, 44px);
+    padding: var(--pt) var(--px) var(--pb);
     transition: grid-template-columns 280ms var(--ease);
 }
 .sk[data-drag] { transition: none; cursor: col-resize; user-select: none; -webkit-user-select: none; }
@@ -68,39 +69,58 @@ button { cursor: pointer; }
 .sk-fold .ic svg { width: 14px; height: 14px; transition: transform 280ms var(--ease); }
 .sk-fold[aria-expanded=false] .ic svg { transform: rotate(180deg); }
 
-/* A folded rail becomes a column of icons: the targets and search on the left, the colour and frame on the right. */
+/* A folded rail slides shut and fades; a small button in its top corner names what it holds and opens it again. */
 .sk-mini { display: none; }
+.sk-ctrl { display: contents; }
 @media (min-width: 1081px) {
-    /* The glow round a big sky reaches past the window; clip it there so it never adds a scrollbar. */
-    .sk { overflow: clip; }
-    .sk[data-left=min] { --lcol: 40px; --lg: 32px; }
-    .sk[data-right=min] { --rcol: 40px; --rg: 32px; }
-    .sk[data-left=min] .sk-left > :not(.sk-mini), .sk[data-right=min] .sk-right > :not(.sk-mini) { display: none; }
-    .sk[data-left=min] .sk-left > .sk-mini, .sk[data-right=min] .sk-right > .sk-mini { display: flex; }
-    /* Both folded is Focus: the sky moves up and grows into the room the step line used. */
-    .sk[data-left=min][data-right=min] { --w: min(100%, max(360px, calc(100dvh - 314px))); }
-    .sk[data-left=min][data-right=min] .sk-m-watch { padding-top: 0; }
+    /* The page grows past the window only when the centre needs it (short windows); the rails then stay put while it
+       scrolls. Clip, not hidden: the sky's glow never adds a scrollbar, and sticky still works. */
+    .sk { overflow: clip; height: auto; min-height: 100dvh; grid-template-rows: minmax(calc(100dvh - var(--pt) - var(--pb)), auto); }
+    .sk-rail { position: sticky; top: var(--pt); align-self: start; height: calc(100dvh - var(--pt) - var(--pb));
+        transition: opacity 260ms var(--ease) 60ms, visibility 0s; }
+    .sk[data-left=min] { --lcol: 0px; --lg: 0px; }
+    .sk[data-right=min] { --rcol: 0px; --rg: 0px; }
+    .sk[data-left=min] .sk-left, .sk[data-right=min] .sk-right { opacity: 0; visibility: hidden; transition: opacity 140ms var(--ease), visibility 0s 280ms; }
+    .sk[data-left=min] .sk-gut-l, .sk[data-right=min] .sk-gut-r { visibility: hidden; }
+    /* While a rail opens or shuts its content keeps its full width and is cut, instead of rewrapping every frame. */
+    .sk[data-anim] .sk-rail, .sk[data-left=min] .sk-left, .sk[data-right=min] .sk-right { overflow: hidden; }
+    .sk[data-anim] .sk-left > *, .sk[data-left=min] .sk-left > * { min-width: var(--lw); }
+    .sk[data-anim] .sk-right > *, .sk[data-right=min] .sk-right > * { min-width: var(--rw); }
+
+    .sk-mini { position: absolute; z-index: 4; top: var(--pt); display: inline-flex; align-items: center; gap: 10px; height: 32px; max-width: 280px; padding: 0 12px;
+        border: 1px solid var(--hair2); border-radius: 3px; background: rgba(3, 5, 11, .55); color: var(--mute); font-size: 12.5px; white-space: nowrap;
+        opacity: 0; visibility: hidden; transition: opacity 160ms var(--ease), transform 260ms var(--ease), visibility 0s 260ms, border-color 160ms var(--ease), color 160ms var(--ease); }
+    .sk-mini-l { left: var(--px); transform: translateX(-10px); }
+    .sk-mini-r { right: var(--px); transform: translateX(10px); }
+    .sk[data-left=min] .sk-mini-l, .sk[data-right=min] .sk-mini-r { opacity: 1; visibility: visible; transform: none;
+        transition: opacity 220ms var(--ease) 140ms, transform 320ms var(--ease) 140ms, visibility 0s, border-color 160ms var(--ease), color 160ms var(--ease); }
+    .sk-mini:hover { border-color: rgba(255, 255, 255, .4); color: var(--ink); }
+    .sk-mini .ic svg { width: 15px; height: 15px; }
+    .sk-mini .t { font: 500 10.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+    .sk-mini .v { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+    .sk-mini-r .v { font: 12px/1 var(--mono); }
+
+    /* Focus: the centre's heading sits just under the corner buttons' line. */
+    .sk[data-left=min][data-right=min] { --w: min(100%, max(360px, calc(100dvh - 362px))); }
+    .sk[data-left=min][data-right=min] .sk-m-watch { padding-top: 48px; }
+
+    /* Side by side: when the centre is much wider than it is tall (a panel folded, or a short window), the controls
+       move beside the sky and the sky takes the height. layout.ts sets data-side and --sky. */
+    .sk[data-side] .sk-m-watch { width: auto; display: grid; grid-template-columns: var(--sky, 480px) 340px; column-gap: 40px; align-content: start; }
+    .sk[data-side] .sk-mhrow { grid-column: 1 / -1; }
+    .sk[data-side] .sk-sky { grid-column: 1; }
+    .sk[data-side] .sk-ctrl { grid-column: 2; display: flex; flex-direction: column; min-width: 0; }
+    .sk[data-side] .sk-player { order: 1; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 8px; padding-top: 0; }
+    .sk[data-side] .sk-tr .sk-btn { flex: 1; width: auto; }
+    .sk[data-side] .sk-tr .sk-btn.go { flex: 1.6; width: auto; }
+    .sk[data-side] .sk-seg { flex: none; }
+    .sk[data-side] .sk-seg button { flex: 1; min-width: 0; padding: 0 8px; }
+    .sk[data-side] .sk-seg .ic { display: inline-block; }
+    .sk[data-side] .sk-hint { order: 2; margin-top: 12px; }
+    .sk[data-side] .sk-strip { order: 3; flex-wrap: wrap; padding-top: 16px; }
+    .sk[data-side] .sk-legrow { order: 4; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 18px; padding-top: 0; }
+    .sk[data-side] .sk-leg { flex-direction: column; align-items: flex-start; gap: 6px; }
 }
-.sk-mini { flex: 1; position: relative; flex-direction: column; align-items: center; gap: 4px; padding-top: calc(var(--head) + var(--gap) - 8px); }
-/* The dot at the top: the brand mark on the left, the data source (live, saved, demo) on the right. */
-.sk-mini-dot { position: absolute; top: 8px; width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px 2px rgba(150, 180, 255, .55); }
-.sk-right .sk-mini-dot { top: 12px; width: 6px; height: 6px; box-shadow: none; background: var(--faint); }
-.sk[data-source=live] .sk-right .sk-mini-dot { background: #5fd49b; box-shadow: 0 0 8px rgba(95, 212, 155, .7); }
-.sk[data-source=snapshot] .sk-right .sk-mini-dot { background: var(--gold); }
-.sk[data-source=demo] .sk-right .sk-mini-dot { background: #fff; }
-.sk-mi { position: relative; width: 34px; height: 34px; flex: none; padding: 0; display: grid; place-items: center; border: 0; border-radius: 3px; background: none; color: var(--faint);
-    transition: color 160ms var(--ease), background 160ms var(--ease); }
-.sk-mi .ic svg { width: 17px; height: 17px; }
-.sk-mi:hover { color: var(--ink); background: var(--fill); }
-.sk-mi[aria-pressed=true] { color: #fff; background: var(--fill2); }
-/* The chosen target also gets the glowing tick the full list uses. */
-.sk-mi[aria-pressed=true]::before { content: ""; position: absolute; left: -5px; top: 50%; width: 2px; height: 14px; margin-top: -7px; border-radius: 1px; background: #fff; box-shadow: 0 0 8px rgba(150, 180, 255, .7); }
-.sk-mini-gap { height: 10px; flex: none; }
-/* The colour button carries the wavelength itself, so the folded view still says which colour is on screen. */
-.sk-mi-lam { height: auto; padding: 8px 0 7px; gap: 3px; color: var(--ink2); }
-.sk-mi-lam b { font: 400 13px/1 var(--mono); color: #fff; letter-spacing: -.02em; }
-.sk-mi-lam small { font: 9.5px/1 var(--mono); color: var(--faint); letter-spacing: .06em; }
-.sk-mi-lam + .sk-mi { margin-top: 6px; }
 
 /* The centre does not clip, so the sky's glow can spill into the void around it. */
 .sk-mid { min-width: 0; display: flex; justify-content: center; }
@@ -108,8 +128,9 @@ button { cursor: pointer; }
 
 /* Step labels: small mono caps, the number in full white. */
 .sk-mh { margin: 0; display: flex; align-items: baseline; gap: 10px; font: 500 10.5px/16px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--mute); }
-.sk-mh i { font-style: normal; color: var(--ink); letter-spacing: .06em; }
-.sk-mh .ic { align-self: center; margin-right: -2px; color: var(--faint); }
+.sk-mh i { flex: none; min-width: 17px; font-style: normal; color: var(--ink); letter-spacing: .06em; }
+/* Every label in a rail starts 27 px in: step numbers, heading icons, target icons and the search icon share one column. */
+.sk-mh .ic { flex: none; width: 17px; align-self: center; color: var(--faint); }
 .sk-mh .ic svg { width: 14px; height: 14px; }
 /* Small icons inside a line of text. */
 .sk-fov .ic svg, .sk-m-details dd a .ic svg { width: 13px; height: 13px; }
@@ -120,7 +141,7 @@ button { cursor: pointer; }
 /* ---------- left: brand, 01 choose, what to look for ---------- */
 .sk-brand { height: var(--head); flex: none; display: flex; flex-direction: column; }
 .sk-word { display: flex; align-items: center; gap: 9px; font-size: 16px; line-height: 22px; font-weight: 500; letter-spacing: -.01em; }
-.sk-word i { width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px 2px rgba(150, 180, 255, .55); }
+.sk-word i { width: 7px; height: 7px; border-radius: 1px; background: #fff; box-shadow: 0 0 10px 2px rgba(150, 180, 255, .55); }
 .sk-tag { margin-top: 4px; font-size: 13px; line-height: 18px; color: var(--ink2); }
 .sk-sub2 { font-size: 12px; line-height: 18px; color: var(--faint); }
 
@@ -128,19 +149,21 @@ button { cursor: pointer; }
 .sk-tg { display: flex; flex-direction: column; margin-top: 12px; }
 .sk-tg button { position: relative; display: flex; flex-direction: column; gap: 1px; padding: 8px 0 8px 27px; border: 0; background: none; text-align: left; }
 /* Each target's kind (mover, variable, cold ...) as a small mark beside its name. */
-.sk-tg .k { position: absolute; left: 0; top: 10px; color: var(--faint); transition: color 160ms var(--ease), filter 200ms var(--ease); }
+.sk-tg .k { position: absolute; left: 0; top: 12px; color: var(--faint); transition: color 160ms var(--ease), filter 200ms var(--ease); }
 .sk-tg .k svg { width: 16px; height: 16px; }
 .sk-tg button:hover .k { color: var(--ink2); }
 .sk-tg button[aria-pressed=true] .k { color: #fff; filter: drop-shadow(0 0 5px rgba(150, 180, 255, .8)); }
 .sk-tg b { font-size: 16px; font-weight: 400; letter-spacing: -.01em; color: var(--mute); transition: color 160ms var(--ease); }
 .sk-tg small { font-size: 12px; color: var(--faint); transition: color 160ms var(--ease); }
 .sk-tg button:hover b { color: var(--ink); }
+.sk-tg b, .sk-tg small { transition: color 160ms var(--ease), transform 220ms var(--ease); }
+.sk-tg button:hover b, .sk-tg button:hover small { transform: translateX(2px); }
 .sk-tg button[aria-pressed=true] b { color: #fff; }
 .sk-tg button[aria-pressed=true] small { color: var(--mute); }
 
-.sk-search { display: flex; align-items: center; gap: 10px; height: 40px; margin: 12px 0 0 18px; border-bottom: 1px solid var(--hair2); transition: border-color 160ms var(--ease); }
+.sk-search { display: flex; align-items: center; gap: 11px; height: 40px; margin: 12px 0 0; border-bottom: 1px solid var(--hair2); transition: border-color 160ms var(--ease); }
 .sk-search:focus-within { border-color: rgba(255, 255, 255, .45); }
-.sk-search .ic { color: var(--faint); }
+.sk-search .ic { flex: none; width: 16px; display: grid; place-items: center start; color: var(--faint); }
 .sk-search .ic svg { width: 15px; height: 15px; }
 .sk-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 13.5px; }
 .sk-search input::placeholder { color: var(--faint); }
@@ -175,8 +198,8 @@ button { cursor: pointer; }
     filter: blur(56px) sepia(1) hue-rotate(180deg) saturate(2.4); opacity: .4;
     -webkit-mask-image: radial-gradient(closest-side, #000 35%, transparent); mask-image: radial-gradient(closest-side, #000 35%, transparent); }
 .sk-img, .sk-ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.sk-img { image-rendering: pixelated; image-rendering: crisp-edges; transition: opacity 240ms var(--ease); }
-.sk[data-loading] .sk-img { opacity: .25; }
+.sk-img { image-rendering: pixelated; image-rendering: crisp-edges; transition: opacity 240ms var(--ease), filter 240ms var(--ease); }
+.sk[data-loading] .sk-img { opacity: .25; filter: blur(2px); }
 .sk-ov circle, .sk-ov path { stroke-width: 1.5; }
 .sk-ov .gaia { stroke: var(--gold); opacity: .7; }
 .sk[data-trackleg=true] .sk-ov .gaia { opacity: .3; }
@@ -185,6 +208,13 @@ button { cursor: pointer; }
 .sk-sim { position: absolute; z-index: 2; top: 12px; left: 12px; padding: 4px 8px; border-radius: 2px; background: #fff; color: #000; font: 10.5px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
 
 .sk-load, .sk-err { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center; font-size: 13.5px; }
+/* While frames load, a faint band sweeps down the sky, so the wait reads as work in progress. */
+.sk-load { overflow: hidden; }
+.sk-load > * { position: relative; }
+.sk-load::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 40%; pointer-events: none;
+    background: linear-gradient(180deg, transparent, rgba(140, 170, 255, .07) 70%, rgba(190, 210, 255, .16) 99%, transparent);
+    animation: sk-sweep 1.6s cubic-bezier(.45, 0, .55, 1) infinite; }
+@keyframes sk-sweep { from { transform: translateY(-100%); } to { transform: translateY(250%); } }
 .sk-load p, .sk-err p { margin: 0; max-width: 340px; line-height: 1.5; color: var(--ink2); }
 .sk-err { background: rgba(3, 5, 11, .86); }
 .sk-prog { width: min(220px, 60%); height: 1px; background: var(--hair2); }
@@ -200,8 +230,8 @@ button { cursor: pointer; }
 .sk-key.g[aria-pressed=true] .box::after { content: ""; position: absolute; left: 3.5px; top: .5px; width: 4px; height: 8px; border: solid var(--void); border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
 .sk-key.g[aria-pressed=false] { color: var(--mute); }
 .sk-key .ring, .sk-key.t::before { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--gold); }
-.sk-key.t { color: var(--ink2); }
-.sk-key.t::before { content: ""; flex: none; border-width: 2px; }
+.sk-key.t { align-items: flex-start; color: var(--ink2); }
+.sk-key.t::before { content: ""; flex: none; border-width: 2px; margin-top: 4px; }
 .sk-key.t:empty { display: none; }
 .sk-key.d { display: none; gap: 0; color: var(--ink2); }
 .sk-key.d i { width: 10px; height: 10px; border-radius: 1px; margin: 0 7px 0 16px; }
@@ -225,13 +255,19 @@ button { cursor: pointer; }
 .sk-btn { width: 44px; height: 44px; padding: 0; border: 0; border-radius: 3px; background: var(--fill); display: grid; place-items: center; color: var(--ink); transition: background 160ms var(--ease), transform 120ms var(--ease); }
 .sk-btn:hover { background: var(--fill2); }
 .sk-btn:active { transform: scale(.96); }
+/* Presses answer at once: a small dip on every button, no delay. */
+.sk-seg button:active, .sk-btn2:active, .sk-fold:active, .sk-focus:active, .sk-mini:active, .sk-key.g:active { transform: scale(.97); }
 .sk-btn.go { width: 64px; background: #fff; color: #000; box-shadow: 0 0 24px rgba(160, 190, 255, .18); }
 .sk-btn.go:hover { background: #fff; box-shadow: 0 0 30px rgba(160, 190, 255, .32); }
 .sk-seg { display: flex; padding: 3px; gap: 2px; border-radius: 4px; background: var(--fill); }
 .sk-seg button { height: 38px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 2px; background: none; color: var(--mute); font-size: 13.5px; transition: background 160ms var(--ease), color 160ms var(--ease); }
 .sk-seg .ic svg { width: 15px; height: 15px; }
 .sk-seg button:hover { color: var(--ink); }
-.sk-seg button[aria-pressed=true] { background: #fff; color: #000; }
+.sk-seg { position: relative; isolation: isolate; }
+.sk-seg::before { content: ""; position: absolute; z-index: -1; top: 3px; bottom: 3px; left: 0; width: var(--sw, 0px); transform: translateX(var(--sx, 0px)); border-radius: 2px; background: #fff; }
+.sk-seg[data-ready]::before { transition: transform 260ms var(--ease), width 260ms var(--ease); }
+.sk-seg button[aria-pressed=true] { color: #000; }
+.sk-seg:not([data-ready]) button[aria-pressed=true] { background: #fff; }
 
 .sk-strip { display: flex; gap: 14px; padding: 14px 3px 2px; overflow-x: auto; scrollbar-width: none; }
 .sk-strip::-webkit-scrollbar { display: none; }
@@ -239,6 +275,7 @@ button { cursor: pointer; }
 .sk-strip button { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; text-align: left; }
 .sk-strip button canvas { opacity: .45; }
 .sk-strip button:hover canvas { opacity: .85; }
+.sk-strip button:not([aria-current=true]):hover canvas { transform: translateY(-1.5px); }
 .sk-strip canvas { width: 52px; height: 52px; display: block; background: #000; image-rendering: pixelated; outline: 1px solid var(--hair); transition: transform 240ms var(--ease), outline-color 200ms var(--ease), opacity 200ms var(--ease); }
 .sk-strip button[aria-current=true] canvas { opacity: 1; }
 .sk-strip button[aria-current=true] canvas { outline: 1px solid #fff; outline-offset: 3px; transform: translateY(-3px); }
@@ -249,7 +286,7 @@ button { cursor: pointer; }
 /* ---------- right: status, 03 colour, this frame ---------- */
 .sk-status { height: var(--head); flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .sk-status p { margin: 6px 0 0; display: flex; align-items: baseline; gap: 9px; font-size: 12.5px; line-height: 1.45; color: var(--ink2); }
-.sk-status .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); transform: translateY(-1px); }
+.sk-status .dot { flex: none; width: 6px; height: 6px; border-radius: 1px; background: var(--faint); transform: translateY(-1px); }
 .sk[data-source=live] .sk-status .dot { background: #5fd49b; box-shadow: 0 0 8px rgba(95, 212, 155, .7); }
 .sk[data-source=snapshot] .sk-status .dot { background: var(--gold); }
 .sk[data-source=demo] .sk-status .dot { background: #fff; }
@@ -258,7 +295,7 @@ button { cursor: pointer; }
 .sk-btn2 .ic svg { width: 14px; height: 14px; }
 .sk-acts { flex: none; display: flex; gap: 6px; }
 /* Presets open from the saved copy; this reads the archive itself. The dot says where it goes. */
-.sk-golive i { width: 6px; height: 6px; border-radius: 50%; background: #5fd49b; }
+.sk-golive i { width: 6px; height: 6px; border-radius: 1px; background: #5fd49b; }
 
 .sk-m-colour { margin-top: var(--gap); flex: none; }
 .sk-readout { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 16px; }
@@ -292,6 +329,7 @@ button { cursor: pointer; }
 .sk-lc .band { fill: rgba(255, 255, 255, .07); }
 .sk-lc .base { stroke: rgba(255, 255, 255, .22); stroke-dasharray: 2 3; fill: none; }
 .sk-lc .line { stroke: rgba(255, 255, 255, .4); stroke-width: 1; fill: none; }
+.sk-lc .err path { stroke: rgba(255, 255, 255, .35); stroke-width: 1; fill: none; }
 .sk-lc .dots path { stroke: var(--ink2); stroke-width: 6; stroke-linecap: round; cursor: pointer; }
 .sk-lc .dots path:hover { stroke: #fff; }
 .sk-lc .dots path.on { stroke: #fff; stroke-width: 10; }
@@ -335,10 +373,10 @@ button { cursor: pointer; }
 @media (min-width: 1081px) and (max-height: 820px) {
     /* 404 px leaves room for the mode hint to take two lines when the sky is narrow. */
     .sk { --gap: 16px; --w: min(100%, max(320px, calc(100dvh - 404px))); --pt: 20px; --pb: 18px; }
-    .sk[data-left=min][data-right=min] { --w: min(100%, max(320px, calc(100dvh - 326px))); }
+    .sk[data-left=min][data-right=min] { --w: min(100%, max(320px, calc(100dvh - 374px))); }
     .sk-tg small { display: none; }
     .sk-tg button { padding: 6px 0 6px 27px; }
-    .sk-tg .k { top: 7px; }
+    .sk-tg .k { top: 10px; }
     .sk-strip canvas { width: 44px; height: 44px; }
     .sk-m-about { padding-top: 24px; }
     .sk-h { font-size: 21px; }
@@ -393,3 +431,7 @@ button { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
     .sk, .sk *, .sk *::before, .sk *::after { animation: none !important; transition: none !important; }
 }
+
+/* Panels that appear late (the brightness curve) rise in rather than pop. */
+.sk-m-curve:not([hidden]) { animation: sk-rise 320ms var(--ease) both; }
+@keyframes sk-rise { from { opacity: 0; transform: translateY(6px); } }

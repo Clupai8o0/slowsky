@@ -1,7 +1,9 @@
 // What the UI measures on the frames it already has: Gaia rings moved to each frame's date, a light curve
 // against steady Gaia stars, and how far a fast mover really moved compared with its catalogue motion.
-import { ringsAt, shiftReadout, type Ring, type ShiftReadout } from '../lib/gaia';
+import { GaiaError, ringsAt, shiftReadout, type Ring, type ShiftReadout } from '../lib/gaia';
+import { separationDeg } from '../lib/coords';
 import { lightCurve, PhotometryError, type LightCurve } from '../lib/photometry';
+import { positionAt } from '../lib/targets';
 import type { SkyResult, TrackPoint } from '../lib/source';
 import type { Astrometry, PixelCoord, RegriddedFrame } from '../lib/types';
 
@@ -122,9 +124,14 @@ export function curveFor(result: SkyResult): Curve | null
     }
     const inside = (p: PixelCoord) => p.x >= OUT && p.y >= OUT && p.x <= width - 1 - OUT && p.y <= height - 1 - OUT;
     const all = ringsAt(result.stars, result.grid, mid);
+    const stars = new Map(result.stars.map((s) => [s.sourceId, s]));
     // A reference must be clear of the target and of any other catalogued star that would leak into its aperture.
     const refs = all
         .filter((r) => r.g >= REF_G_MIN && r.g <= REF_G_MAX && inside(r.pix))
+        .filter((r) => {
+            const s = stars.get(r.sourceId);
+            return s?.pmRa !== undefined && s.pmDec !== undefined && Math.hypot(s.pmRa, s.pmDec) < 50;
+        })
         .filter((r) => Math.hypot(r.pix.x - target.pix.x, r.pix.y - target.pix.y) > OUT + R)
         .filter((r) => !all.some((o) => o !== r && o.g < r.g + 2.5 && Math.hypot(o.pix.x - r.pix.x, o.pix.y - r.pix.y) < OUT))
         .sort((a, b) => a.g - b.g)
@@ -140,7 +147,22 @@ export function curveFor(result: SkyResult): Curve | null
     };
     let lc: LightCurve;
     try {
-        lc = lightCurve(frames, (f) => where(f), refs.map((r) => r.pix), { lambda: result.lambda, maxDeltaUm: 0.05 });
+        const measure = () => lightCurve(frames, (f) => where(f), refs.map((r) => r.pix), { lambda: result.lambda, maxDeltaUm: 0.05 });
+        lc = measure();
+        while (refs.length > 2) {
+            const worst = lc.refScatter.reduce((best, scatter, i) => scatter > (lc.refScatter[best] ?? -Infinity) ? i : best, -1);
+            if (worst < 0) {
+                break;
+            }
+            const others = lc.refScatter.filter((_, i) => i !== worst).sort((a, b) => a - b);
+            const mid = Math.floor(others.length / 2);
+            const median = others.length % 2 === 0 ? (others[mid - 1]! + others[mid]!) / 2 : others[mid]!;
+            if (!(lc.refScatter[worst]! > 3 * median)) {
+                break;
+            }
+            refs.splice(worst, 1);
+            lc = measure();
+        }
     } catch (e) {
         if (e instanceof PhotometryError) {
             return null;
@@ -154,9 +176,15 @@ export function curveFor(result: SkyResult): Curve | null
     return { lc, refs: refs.length, frameOf };
 }
 
-// How far the target moved between the first frame and frame k (or the last, when k is the first),
-// measured on the frames and predicted from its catalogue motion. Null when either centre can't be found.
-export function shiftFor(result: SkyResult, a: Astrometry, k: number): (ShiftReadout & { from: number; to: number }) | null
+export interface Shift {
+    from: number;
+    to: number;
+    predictedArcsec: number;
+    measured: ShiftReadout | null;
+}
+
+// Catalogue motion from the first frame to frame k (or the last when k is first), with a measured shift when reliable.
+export function shiftFor(result: SkyResult, a: Astrometry, k: number): Shift | null
 {
     const n = result.frames.length;
     const to = k > 0 ? k : n - 1;
@@ -165,12 +193,29 @@ export function shiftFor(result: SkyResult, a: Astrometry, k: number): (ShiftRea
     }
     const f0 = result.frames[0]!.frame;
     const f1 = result.frames[to]!.frame;
-    const p0 = trackNear(result.track, frameMjd(f0));
-    const p1 = trackNear(result.track, frameMjd(f1));
+    const mjd0 = frameMjd(f0);
+    const mjd1 = frameMjd(f1);
+    const shift: Shift = {
+        from: 0, to,
+        predictedArcsec: separationDeg(positionAt(a, mjd0), positionAt(a, mjd1)) * 3600,
+        measured: null,
+    };
+    const p0 = trackNear(result.track, mjd0);
+    const p1 = trackNear(result.track, mjd1);
     const c0 = p0 && centreNear(f0, p0.pix);
     const c1 = p1 && centreNear(f1, p1.pix);
-    if (!c0 || !c1 || !(frameMjd(f1) > frameMjd(f0))) {
-        return null;
+    const maxDistance = 1.5 * 6.15 / result.grid.pixelArcsec;
+    if (!p0 || !p1 || !c0 || !c1
+        || Math.hypot(c0.x - p0.pix.x, c0.y - p0.pix.y) > maxDistance
+        || Math.hypot(c1.x - p1.pix.x, c1.y - p1.pix.y) > maxDistance) {
+        return shift;
     }
-    return { ...shiftReadout(a, result.grid, { mjd: frameMjd(f0), pix: c0 }, { mjd: frameMjd(f1), pix: c1 }), from: 0, to };
+    try {
+        shift.measured = shiftReadout(a, result.grid, { mjd: mjd0, pix: c0 }, { mjd: mjd1, pix: c1 });
+    } catch (e) {
+        if (!(e instanceof GaiaError)) {
+            throw e;
+        }
+    }
+    return shift;
 }

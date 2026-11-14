@@ -17,7 +17,7 @@ import { createDemoSource } from './demo-source';
 import { diffScale, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
-import { curveFor, frameMjd, middleMjd, ringsOn, shiftFor, type Curve } from './measure';
+import { curveFor, frameMjd, ringsOn, shiftFor, type Curve } from './measure';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -56,7 +56,8 @@ const ICON = {
     retry: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.8 4.5v4h-4"/></svg>',
     file: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/></svg>',
     out: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5h5.5V10M19.5 4.5L11 13"/><path d="M17.5 14v5.5h-13v-13H10"/></svg>',
-    colour: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12c2-5 4-5 6 0s4 5 6 0 4-5 6 0"/></svg>',
+    panelL: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/></svg>',
+    panelR: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/></svg>',
     focus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/></svg>',
     link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.1-1.1"/></svg>',
 };
@@ -140,13 +141,12 @@ const axisPct = (lam: number) => ((lam - AXIS_MIN) / (LAM_MAX - AXIS_MIN)) * 100
 function shell(): string
 {
     const targets = ORDER.map((id) => `<button type="button" data-target="${id}" aria-pressed="false"><span class="ic k">${ICON[COPY[id].kind]}</span><b>${esc(COPY[id].display)}</b><small>${esc(COPY[id].short)}</small></button>`).join('');
-    // The folded left panel: the same targets as icons, then search.
-    const mini = ORDER.map((id) => `<button type="button" class="sk-mi" data-target="${id}" aria-pressed="false" aria-label="${esc(COPY[id].display)}" title="${esc(COPY[id].display)}: ${esc(COPY[id].short)}"><span class="ic">${ICON[COPY[id].kind]}</span></button>`).join('');
     const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
     const ticks = [0.4, 1, 2, 3, 4, 5].map((t) => `<span style="left:${axisPct(t).toFixed(2)}%">${t}</span>`).join('');
     return `
+<button type="button" class="sk-mini sk-mini-l" data-act="fold-left" aria-controls="sk-left" aria-label="Show the targets panel" title="Show the targets panel"><span class="ic">${ICON.panelL}</span><span class="t">Target</span><span class="v" data-bind="name"></span></button>
+<button type="button" class="sk-mini sk-mini-r" data-act="fold-right" aria-controls="sk-right" aria-label="Show the colour panel" title="Show the colour panel"><span class="t">Colour</span><span class="v"><span data-bind="lam"></span> µm</span><span class="ic">${ICON.panelR}</span></button>
 <aside class="sk-rail sk-left" id="sk-left">
-  <nav class="sk-mini" aria-label="Targets (panel folded)"><i class="sk-mini-dot" aria-hidden="true"></i>${mini}<span class="sk-mini-gap"></span><button type="button" class="sk-mi" data-act="mini-search" aria-label="Search the sky" title="Search the sky"><span class="ic">${ICON.search}</span></button></nav>
   <div class="sk-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span><span class="sk-tag">Watch the sky change.</span><span class="sk-sub2">Infrared frames from NASA’s SPHEREx</span></div>
   <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
     <h2 class="sk-mh" id="sk-h1"><i>01</i>Choose a target</h2>
@@ -181,6 +181,7 @@ function shell(): string
       <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
       <div class="sk-err" data-ref="err" hidden><p data-bind="err"></p><button type="button" class="sk-btn2" data-act="retry"><span class="ic">${ICON.retry}</span>Try again</button></div>
     </div>
+    <div class="sk-ctrl">
     <div class="sk-legrow">
       <div class="sk-leg">
         <button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button>
@@ -199,6 +200,7 @@ function shell(): string
     </div>
     <p class="sk-hint" data-bind="hint"></p>
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
+    </div>
   </section>
 </main>
 <div class="sk-gut sk-gut-r">
@@ -206,7 +208,6 @@ function shell(): string
   <button type="button" class="sk-fold" data-act="fold-right" aria-controls="sk-right" aria-expanded="true" aria-label="Fold the colour panel" title="Fold or open the colour panel"><span class="ic">${ICON.next}</span></button>
 </div>
 <aside class="sk-rail sk-right" id="sk-right">
-  <div class="sk-mini" role="group" aria-label="Colour and frame (panel folded)"><i class="sk-mini-dot" aria-hidden="true"></i><button type="button" class="sk-mi sk-mi-lam" data-act="fold-right" aria-label="Change the colour" title="Change the colour"><span class="ic">${ICON.colour}</span><b data-bind="lam"></b><small>µm</small></button><button type="button" class="sk-mi" data-act="fold-right" aria-label="Show this frame’s details" title="This frame"><span class="ic">${ICON.info}</span></button><button type="button" class="sk-mi" data-act="copy" aria-label="Copy link" title="Copy link"><span class="ic">${ICON.link}</span></button></div>
   <div class="sk-status"><p><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span></p><div class="sk-acts"><button type="button" class="sk-btn2 sk-golive" data-act="live" data-ref="golive" hidden><i aria-hidden="true"></i>Go live</button><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div></div>
   <section class="sk-mod sk-m-colour" aria-labelledby="sk-h3">
     <h2 class="sk-mh" id="sk-h3"><i>03</i>Change the colour</h2>
@@ -269,7 +270,7 @@ export function mount(root: HTMLElement): void
     let result: SkyResult | null = null;
     let sourceKind: SourceKind = 'live';
     let liveFailed = false; // the saved copy is showing because the live archive did not answer
-    let curve: Curve | null = null; // brightness against steady stars, for targets that change
+    let curve: Curve | null = null; // brightness against nearby comparison stars, for targets that change
     const shifts = new Map<number, ReturnType<typeof shiftFor>>(); // measured motion, by frame index
     let stretch: ReturnType<typeof sharedStretch> | null = null;
     let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
@@ -533,8 +534,24 @@ export function mount(root: HTMLElement): void
         renderFrameState();
     }
 
-    // Brightness against steady stars: one dot per frame, the frame on screen lit. The band is how much the
-    // steady stars themselves wobble, so a change inside it may be noise.
+    // The white block behind the chosen view slides to it (styles.css .sk-seg::before) instead of jumping.
+    function placeSeg(): void
+    {
+        const seg = q<HTMLElement>('.sk-seg');
+        const on = seg.querySelector<HTMLElement>('[aria-pressed="true"]');
+        if (!on || on.offsetWidth === 0) {
+            return;
+        }
+        seg.style.setProperty('--sx', `${on.offsetLeft}px`);
+        seg.style.setProperty('--sw', `${on.offsetWidth}px`);
+        if (!('ready' in seg.dataset)) {
+            void seg.offsetWidth; // place it first, then let later moves animate
+            seg.dataset.ready = '';
+        }
+    }
+
+    // Brightness against nearby comparison stars: one dot per frame, the frame on screen lit. The band is how much
+    // the comparison stars wobble against each other, so a change inside it may be noise.
     function renderCurve(): void
     {
         const sec = ref<HTMLElement>('curve');
@@ -550,8 +567,11 @@ export function mount(root: HTMLElement): void
         const scatter = c.lc.refScatter.filter(Number.isFinite).sort((a, b) => a - b);
         const noise = scatter.length ? scatter[Math.floor(scatter.length / 2)]! : 0;
         const ys = pts.map((o) => o.p.relative);
-        let lo = Math.min(...ys, 1 - noise);
-        let hi = Math.max(...ys, 1 + noise);
+        // Each point's own error: the comparison stars' wobble plus the target's photon noise (1 / its signal-to-noise),
+        // so a faint target's dot can't look significant just because the reference stars are bright.
+        const err = pts.map((o) => o.p.relative * Math.hypot(noise, o.p.target.snr > 0 ? 1 / o.p.target.snr : 0));
+        let lo = Math.min(...ys.map((v, i) => v - err[i]!), 1 - noise);
+        let hi = Math.max(...ys.map((v, i) => v + err[i]!), 1 + noise);
         const pad = Math.max((hi - lo) * 0.18, 0.01);
         lo -= pad;
         hi += pad;
@@ -566,16 +586,19 @@ export function mount(root: HTMLElement): void
             `<rect x="0" width="${W}" y="${y(1 + noise).toFixed(1)}" height="${Math.max(0.5, y(1 - noise) - y(1 + noise)).toFixed(1)}" class="band"/>`
             + `<path d="M0 ${y(1).toFixed(1)}H${W}" class="base" vector-effect="non-scaling-stroke"/>`
             + `<polyline points="${pts.map((o) => `${x(o.p.mjd).toFixed(1)},${y(o.p.relative).toFixed(1)}`).join(' ')}" class="line" vector-effect="non-scaling-stroke"/>`
+            + `<g class="err">${pts.map((o, i) => `<path d="M${x(o.p.mjd).toFixed(1)} ${y(o.p.relative + err[i]!).toFixed(1)}V${y(o.p.relative - err[i]!).toFixed(1)}" vector-effect="non-scaling-stroke"/>`).join('')}</g>`
             + `<g class="dots">${pts.map(dot).join('')}</g>`;
         const pct = (v: number) => `${v >= 1 ? '+' : '−'}${Math.abs((v - 1) * 100).toFixed(Math.abs(v - 1) < 0.1 ? 1 : 0)}%`;
-        ref<HTMLElement>('lcy').innerHTML = `<span style="top:0">${pct(hi)}</span><span style="top:${((hi - 1) / (hi - lo) * 100).toFixed(1)}%">usual</span><span style="top:100%">${pct(lo)}</span>`;
+        ref<HTMLElement>('lcy').innerHTML = `<span style="top:0">${pct(hi)}</span><span style="top:${((hi - 1) / (hi - lo) * 100).toFixed(1)}%">median</span><span style="top:100%">${pct(lo)}</span>`;
         // The band's key sits between the dates, so nobody reads it as the star's own error bar.
-        ref<HTMLElement>('lcx').innerHTML = `<span>${monthYear(t0)}</span><span class="b"><i></i>band: ${c.refs} reference stars</span><span>${monthYear(t1)}</span>`;
+        ref<HTMLElement>('lcx').innerHTML = `<span>${monthYear(t0)}</span><span class="b"><i></i>band: ${c.refs} comparison stars</span><span>${monthYear(t1)}</span>`;
         const min = Math.min(...ys);
         const max = Math.max(...ys);
-        ref<SVGSVGElement>('lc').setAttribute('aria-label', `Brightness over ${pts.length} looks, from ${pct(min)} to ${pct(max)} of usual. Steady stars nearby vary by about ${(noise * 100).toFixed(1)}%.`);
-        const left = c.lc.dropped > 0 ? ` ${c.lc.dropped} ${c.lc.dropped === 1 ? 'frame was' : 'frames were'} too far off this colour.` : '';
-        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} steady Gaia stars in the field. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%), so a change inside it may be noise.${left}`);
+        ref<SVGSVGElement>('lc').setAttribute('aria-label', `Brightness over ${pts.length} looks, from ${pct(min)} to ${pct(max)} of the median. Comparison stars nearby vary by about ${(noise * 100).toFixed(1)}%.`);
+        const off = c.lc.dropped > 0 ? ` ${c.lc.dropped} ${c.lc.dropped === 1 ? 'frame was' : 'frames were'} too far off this colour.` : '';
+        const bad = c.lc.points.length - pts.length;
+        const left = off + (bad > 0 ? ` ${bad} ${bad === 1 ? 'look' : 'looks'} could not be measured.` : '');
+        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} nearby comparison stars from Gaia. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%); the bar on each dot adds the star’s own noise. A change inside its bar may be noise.${left}`);
     }
 
     // A tiny copy of the sky, blurred by CSS behind the image: the glow follows what is on screen.
@@ -598,9 +621,10 @@ export function mount(root: HTMLElement): void
             `<circle cx="${(x + 0.5).toFixed(2)}" cy="${(y + 0.5).toFixed(2)}" r="${r}" class="${cls}" fill="none" vector-effect="non-scaling-stroke"/>`;
         const scale = result.grid.width / 60;
         if (st.gaia && st.mode !== 'diff') {
-            // Each star where it was on this frame's date; with every frame shown at once, halfway through.
+            // Each star where it was on this frame's date; with every frame averaged (Stack), at their mean date.
             const now = result.frames[st.index];
-            const mjd = st.mode === 'blink' && now ? frameMjd(now.frame) : middleMjd(result);
+            const mean = result.frames.reduce((sum, f) => sum + frameMjd(f.frame), 0) / result.frames.length;
+            const mjd = st.mode === 'blink' && now ? frameMjd(now.frame) : mean;
             for (const s of ringsOn(result, mjd, GAIA_RINGS)) {
                 parts.push(ring(s.pix.x, s.pix.y, Math.max(2.4, scale * 0.9), 'gaia'));
             }
@@ -724,6 +748,7 @@ export function mount(root: HTMLElement): void
         for (const b of qa<HTMLButtonElement>('[data-mode]')) {
             b.setAttribute('aria-pressed', String(b.dataset.mode === st.mode));
         }
+        placeSeg();
         const play = q<HTMLButtonElement>('[data-act="play"]');
         play.innerHTML = `<span class="ic">${st.playing ? ICON.pause : ICON.play}</span>`;
         play.setAttribute('aria-label', st.playing ? 'Pause' : 'Play');
@@ -781,7 +806,8 @@ export function mount(root: HTMLElement): void
                 rows.push(['Pipeline', rec.pipelineVersion]);
             }
             const t = st.target ? targetById(st.target) : undefined;
-            if (t && COPY[t.id].kind === 'mover' && n > 1) {
+            // The motion rows describe two single frames, so they show only in Blink.
+            if (t && COPY[t.id].kind === 'mover' && n > 1 && st.mode === 'blink') {
                 if (!shifts.has(st.index)) {
                     shifts.set(st.index, shiftFor(result, t.astrometry, st.index));
                 }
@@ -790,8 +816,10 @@ export function mount(root: HTMLElement): void
                     // The expected shift is the solid number. The measured one leans on a centre the camera can't
                     // see well (the core is saturated), so it is shown as rough and the note says why.
                     rows.push([`Moved, frames 1 to ${sh.to + 1}`, `${sh.predictedArcsec.toFixed(1)}″ expected`]);
-                    rows.push(['Measured here', `about ${sh.measuredArcsec.toFixed(0)}″ (rough)`]);
-                    extraNotes.push('The star’s core is too bright for the camera to measure, so the measured shift is rough. The expected shift comes from its catalogue motion.');
+                    rows.push(['Measured here', sh.measured ? `about ${sh.measured.measuredArcsec.toFixed(0)}″ (rough)` : 'could not measure']);
+                    extraNotes.push(sh.measured
+                        ? 'The star’s core is too bright for the camera to measure, so the measured shift is rough. The expected shift comes from its catalogue motion.'
+                        : 'The star’s centre could not be found close enough to where it should be, so only the expected shift from its catalogue motion is shown.');
                 }
             }
             let html = rows.map(([k, v]) => `<dt>${k}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('');
@@ -1032,7 +1060,22 @@ export function mount(root: HTMLElement): void
 
     // ---------- start ----------
 
-    const shared = decodeView(location.search);
+    new ResizeObserver(() => placeSeg()).observe(q<HTMLElement>('.sk-seg'));
+
+    let shared = decodeView(location.search);
+    // A link with a preset target but no position (?t=rwaur&lam=1.11) opens that target, at its own position.
+    const tParam = params.get('t');
+    const preset = !shared && tParam && Object.hasOwn(COPY, tParam) ? targetById(tParam as TargetId) : undefined;
+    if (preset) {
+        const c = positionAt(preset.astrometry, SKY_EPOCH_MJD);
+        const p = new URLSearchParams(location.search);
+        p.set('ra', String(c.ra));
+        p.set('dec', String(c.dec));
+        shared = decodeView(p.toString());
+        if (shared && !params.has('det')) {
+            shared.detector = preset.detector;
+        }
+    }
     if (shared) {
         st.center = shared.center;
         st.fovDeg = FOVS.includes(shared.fovDeg) ? shared.fovDeg : DEFAULT_FOV;
