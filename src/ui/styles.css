@@ -3,6 +3,8 @@ html, body { margin: 0; background: #000; }
 *, *::before, *::after { box-sizing: border-box; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
+/* Sam's rule: no pills anywhere. Square corners on every control, including native ones. */
+.sk button, .sk input, .sk select, .sk summary { border-radius: 0; }
 [hidden] { display: none !important; }
 .ic svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; display: block; }
 
@@ -127,7 +129,7 @@ button { cursor: pointer; }
 .sk-chip[data-act=gaia]::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--gold); opacity: .35; transition: opacity 150ms ease-out; }
 .sk-chip[data-act=gaia][aria-pressed=true]::before { opacity: 1; }
 .sk-chip .ic svg { width: 14px; height: 14px; }
-.sk-fov select { background: #000; border: 0; box-shadow: inset 0 0 0 1px var(--line); border-radius: 0; padding: 3px 6px; color: #fff; font-family: "Geist Mono", monospace; font-size: 11px; }
+.sk-fov select { -webkit-appearance: none; appearance: none; padding-right: 20px !important; background: #000 linear-gradient(45deg, transparent 50%, #8d8d88 50%) no-repeat right 10px center / 5px 5px; border: 0; box-shadow: inset 0 0 0 1px var(--line); border-radius: 0; padding: 3px 6px; color: #fff; font-family: "Geist Mono", monospace; font-size: 11px; }
 .sk-det { flex-basis: 100%; }
 .sk-det summary { list-style: none; cursor: pointer; }
 .sk-det summary::-webkit-details-marker { display: none; }
