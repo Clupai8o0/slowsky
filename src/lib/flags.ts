@@ -195,6 +195,16 @@ async function rangeRead(fetcher: typeof fetch, url: string, range: ByteRange, s
         }
         throw new FlagsError(`FLAGS range requires 206, received ${response.status}`);
     }
+    // Browsers hide Content-Range unless the host exposes it, so it is checked only when it can be read.
+    const span = /^bytes (\d+)-(\d+)\//.exec(response.headers.get('Content-Range') ?? '');
+    if (span && (Number(span[1]) !== range.start || Number(span[2]) !== range.start + range.length - 1)) {
+        try {
+            await response.body?.cancel();
+        } catch {
+            // Keep the range error.
+        }
+        throw new FlagsError('FLAGS range reply covers other bytes than requested');
+    }
     const output = new Uint8Array(range.length);
     const reader = response.body?.getReader();
     let size = 0;
@@ -233,10 +243,28 @@ async function rangeRead(fetcher: typeof fetch, url: string, range: ByteRange, s
     return output;
 }
 
+const DEFAULT_MAX_BYTES = 16 * 1024 * 1024; // the same cap fits.ts puts on one image read
+
+function total(ranges: ByteRange[]): number
+{
+    return ranges.reduce((sum, range) => sum + range.length, 0);
+}
+
+// The most bytes RICE_1 can need for n pixels: the seed, then every block as an escape block.
+function maxTileBytes(nPixels: number, layout: FlagsLayout): number
+{
+    const blocks = Math.ceil(nPixels / layout.blockSize);
+    return layout.bytePix + Math.ceil(blocks * (5 + 8 * layout.bytePix * layout.blockSize) / 8);
+}
+
 export async function readFlags(url: string, layout: FlagsLayout, box: PixelBox,
-    opts: { signal?: AbortSignal; fetcher?: typeof fetch } = {}): Promise<{ data: Int32Array; width: number; height: number }>
+    opts: { signal?: AbortSignal; fetcher?: typeof fetch; maxBytes?: number } = {}): Promise<{ data: Int32Array; width: number; height: number }>
 {
     opts.signal?.throwIfAborted();
+    const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+        throw new FlagsError('Invalid FLAGS byte limit');
+    }
     for (const key of ['x0', 'y0', 'x1', 'y1'] as const) {
         integer(box[key], `box ${key}`);
     }
@@ -257,6 +285,9 @@ export async function readFlags(url: string, layout: FlagsLayout, box: PixelBox,
     const tableRanges = merged(tiles.map(tile => ({ start: layout.tableStart + tile.index * layout.rowSize, length: layout.rowSize })));
     if (tableRanges.length >= 40) {
         throw new FlagsError('FLAGS cutout exceeds 40 requests');
+    }
+    if (total(tableRanges) > maxBytes) {
+        throw new FlagsError(`FLAGS cutout exceeds ${maxBytes} bytes`);
     }
     for (const range of tableRanges) {
         range.bytes = await rangeRead(fetcher, url, range, opts.signal);
@@ -285,12 +316,19 @@ export async function readFlags(url: string, layout: FlagsLayout, box: PixelBox,
         if (end > layout.heapBytes) {
             throw new FlagsError('Compressed tile lies outside FLAGS heap');
         }
+        // The table is untrusted: a tile longer than RICE_1 could ever write is refused before any byte is fetched.
+        if (length > maxTileBytes(tile.width * tile.height, layout)) {
+            throw new FlagsError('Compressed tile is longer than RICE_1 allows');
+        }
         tile.start = layout.heapStart + offset;
         tile.length = length;
     }
     const heapRanges = merged(tiles);
     if (tableRanges.length + heapRanges.length > 40) {
         throw new FlagsError('FLAGS cutout exceeds 40 requests');
+    }
+    if (total(tableRanges) + total(heapRanges) > maxBytes) {
+        throw new FlagsError(`FLAGS cutout exceeds ${maxBytes} bytes`);
     }
     for (const range of heapRanges) {
         range.bytes = await rangeRead(fetcher, url, range, opts.signal);

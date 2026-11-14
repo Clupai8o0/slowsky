@@ -69,7 +69,96 @@ function synthetic(q = false)
     return { h, layout, table, heap, segments: [{ start: 1000, bytes: table }, { start: layout.heapStart, bytes: heap }] };
 }
 
+// Encodes a tile as RICE_1 escape blocks (selector 26 for 32-bit pixels): the seed, then each mapped
+// difference in 32 bits. Written for the tests only, so the decoder is checked against separate code.
+function riceEscape(values: number[], blockSize = 32): Uint8Array
+{
+    const bits: number[] = [];
+    const put = (value: number, count: number): void => {
+        for (let i = count - 1; i >= 0; i--) {
+            bits.push(Math.floor(value / 2 ** i) % 2);
+        }
+    };
+    put(values[0]! >>> 0, 32);
+    let last = values[0]!;
+    for (let start = 0; start < values.length; start += blockSize) {
+        put(26, 5);
+        for (const value of values.slice(start, start + blockSize)) {
+            const diff = value - last;
+            put(diff >= 0 ? 2 * diff : -2 * diff - 1, 32);
+            last = value;
+        }
+    }
+    while (bits.length % 8) {
+        bits.push(0);
+    }
+    return Uint8Array.from({ length: bits.length / 8 }, (_, i) => bits.slice(i * 8, i * 8 + 8).reduce((a, b) => a * 2 + b, 0));
+}
+
 describe('FLAGS layouts and safety', () => {
+    it('keeps row and column order inside 2-D tiles (a different value in every pixel)', async () => {
+        const { layout } = synthetic();
+        const value = (x: number, y: number): number => 100 * y + x - 7; // some values negative
+        const tiles = [0, 1, 2, 3].map((index) => {
+            const tx = index % 2;
+            const ty = Math.floor(index / 2);
+            const values: number[] = [];
+            for (let y = 0; y < Math.min(2, 3 - ty * 2); y++) {
+                for (let x = 0; x < Math.min(3, 5 - tx * 3); x++) {
+                    values.push(value(tx * 3 + x, ty * 2 + y));
+                }
+            }
+            return riceEscape(values);
+        });
+        const heap = new Uint8Array(tiles.reduce((sum, tile) => sum + tile.length, 0));
+        const table = new Uint8Array(layout.tableBytes);
+        const view = new DataView(table.buffer);
+        let offset = 0;
+        tiles.forEach((tile, i) => {
+            view.setInt32(i * layout.rowSize + 4, tile.length);
+            view.setInt32(i * layout.rowSize + 8, offset);
+            heap.set(tile, offset);
+            offset += tile.length;
+        });
+        const fake = server([{ start: 1000, bytes: table }, { start: layout.heapStart, bytes: heap }]);
+        const whole = await readFlags('https://example.test/frame', { ...layout, heapBytes: heap.length }, { x0: 0, y0: 0, x1: 5, y1: 3 }, fake);
+        expect(whole.data).toEqual(Int32Array.from({ length: 15 }, (_, i) => value(i % 5, Math.floor(i / 5))));
+        const part = await readFlags('https://example.test/frame', { ...layout, heapBytes: heap.length }, { x0: 2, y0: 1, x1: 4, y1: 3 }, fake);
+        expect(part.data).toEqual(Int32Array.of(value(2, 1), value(3, 1), value(2, 2), value(3, 2)));
+    });
+
+    it('refuses to read past the byte limit, and tiles longer than RICE_1 could write', async () => {
+        const fixture = synthetic();
+        const all = { x0: 0, y0: 0, x1: 5, y1: 3 };
+        const first = server(fixture.segments);
+        await expect(readFlags('x', fixture.layout, all, { ...first, maxBytes: 47 })).rejects.toThrow('exceeds 47 bytes');
+        expect(first.calls).toEqual([]);
+        const second = server(fixture.segments);
+        await expect(readFlags('x', fixture.layout, all, { ...second, maxBytes: 60 })).rejects.toThrow('exceeds 60 bytes');
+        expect(second.calls).toEqual([{ start: 1000, length: 48 }]);
+        expect((await readFlags('x', fixture.layout, all, { ...server(fixture.segments), maxBytes: 68 })).data).toHaveLength(15);
+        await expect(readFlags('x', fixture.layout, all, { ...server(fixture.segments), maxBytes: 0 })).rejects.toThrow(FlagsError);
+        const long = synthetic();
+        new DataView(long.table.buffer).setInt32(4, 200);
+        const third = server(long.segments);
+        await expect(readFlags('x', { ...long.layout, heapBytes: 100000 }, { x0: 0, y0: 0, x1: 1, y1: 1 }, third))
+            .rejects.toThrow('longer than RICE_1 allows');
+        expect(third.calls).toHaveLength(1);
+    });
+
+    it('refuses a 206 whose Content-Range names other bytes, and accepts a matching one', async () => {
+        const fixture = synthetic();
+        const all = { x0: 0, y0: 0, x1: 5, y1: 3 };
+        const withRange = (shift: number): typeof fetch => async (url, init) => {
+            const response = await server(fixture.segments).fetcher(url, init);
+            const match = new Headers(init?.headers).get('Range')!.match(/^bytes=(\d+)-(\d+)$/)!;
+            return new Response(await response.arrayBuffer(), { status: 206,
+                headers: { 'Content-Range': `bytes ${Number(match[1]) + shift}-${Number(match[2]) + shift}/99999` } });
+        };
+        await expect(readFlags('x', fixture.layout, all, { fetcher: withRange(12) })).rejects.toThrow('other bytes');
+        expect((await readFlags('x', fixture.layout, all, { fetcher: withRange(0) })).data).toHaveLength(15);
+    });
+
     it('handles a preceding column, THEAP gap and 2-D partial edge tiles', async () => {
         const fixture = synthetic();
         expect(fixture.layout).toMatchObject({ width: 5, height: 3, tileWidth: 3, tileHeight: 2,

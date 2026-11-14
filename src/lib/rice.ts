@@ -14,6 +14,11 @@ export function riceDecode(bytes: Uint8Array, nPixels: number,
         || ![1, 2, 4].includes(opts.bytePix)) {
         throw new RiceError('Invalid RICE_1 pixel count or parameters');
     }
+    // Refuse before allocating: the shortest stream for n pixels is the seed plus one selector per block.
+    const selectorBits = opts.bytePix === 4 ? 5 : opts.bytePix === 2 ? 4 : 3;
+    if (nPixels > 0 && bytes.length * 8 < 8 * opts.bytePix + Math.ceil(nPixels / opts.blockSize) * selectorBits) {
+        throw new RiceError('Truncated RICE_1 input');
+    }
     let output: Int32Array;
     try {
         output = new Int32Array(nPixels);
@@ -44,7 +49,6 @@ export function riceDecode(bytes: Uint8Array, nPixels: number,
         return value;
     }
     const pixelBits = opts.bytePix * 8;
-    const selectorBits = opts.bytePix === 1 ? 3 : opts.bytePix === 2 ? 4 : 5;
     const fsMax = opts.bytePix === 1 ? 6 : opts.bytePix === 2 ? 14 : 25;
     const maxMapped = 2 ** pixelBits - 1;
     let previous = read(pixelBits);

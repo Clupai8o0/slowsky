@@ -62,6 +62,10 @@ describe('RICE_1 wire cases', () => {
         }
     });
 
+    it('refuses a pixel count the bytes could never hold, before allocating', () => {
+        expect(() => riceDecode(new Uint8Array(8), 0x7fffffff, { blockSize: 32, bytePix: 4 })).toThrow('Truncated');
+        expect(() => riceDecode(new Uint8Array(4), 33, { blockSize: 32, bytePix: 4 })).toThrow(RiceError);
+    });
     it('rejects extra bytes, nonzero padding, invalid selectors and parameters', () => {
         for (const bytes of [Uint8Array.of(0, 0, 0, 0, 0, 0), Uint8Array.of(0, 0, 0, 0, 1),
             packed('0'.repeat(32) + '11111')]) {
