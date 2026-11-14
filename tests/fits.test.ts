@@ -105,6 +105,42 @@ describe('FITS range reader', () => {
         await expect(createRangeReader({ fetch: fetcher }).index(url)).rejects.toThrow();
     });
 
+    it('rejects and cancels an oversized range stream that never ends', async () => {
+        let source!: ReadableStreamDefaultController<Uint8Array>;
+        let cancelled = false;
+        const body = new ReadableStream<Uint8Array>({
+            start(controller)
+            {
+                source = controller;
+                controller.enqueue(new Uint8Array(11 * 2880));
+                controller.enqueue(new Uint8Array(1));
+            },
+            cancel()
+            {
+                cancelled = true;
+            },
+        });
+        const fetcher: typeof fetch = async () => new Response(body, { status: 206 });
+        const pending = createRangeReader({ fetch: fetcher }).index(url);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            await expect(Promise.race([
+                pending,
+                new Promise((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('Range read did not stop after exceeding length')), 200);
+                }),
+            ])).rejects.toThrow('Wrong range body length: expected 31680, received 31681');
+            expect(cancelled).toBe(true);
+            expect(body.locked).toBe(false);
+        } finally {
+            clearTimeout(timer);
+            if (!cancelled) {
+                source.close();
+            }
+            await pending.catch(() => {});
+        }
+    });
+
     it('reads an IMAGE-like primary HDU', async () => {
         const data = image('PRIMARY');
         data.set(header(['SIMPLE  = T', 'BITPIX  = -32', 'NAXIS   = 2', 'NAXIS1  = 4', 'NAXIS2  = 3']));

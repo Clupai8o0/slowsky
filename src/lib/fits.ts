@@ -159,7 +159,40 @@ export function createRangeReader(opts: RangeReaderOptions = {}): RangeReader
         if (response.status !== 206) {
             throw new Error(`Range request requires 206, received ${response.status}`);
         }
-        const data = new Uint8Array(await response.arrayBuffer());
+        let data: Uint8Array;
+        const reader = response.body?.getReader();
+        if (reader) {
+            const chunks: Uint8Array[] = [];
+            let size = 0;
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        break;
+                    }
+                    size += value.byteLength;
+                    if (size > length) {
+                        try {
+                            await reader.cancel();
+                        } catch {
+                            // Report the invalid range even when cancellation fails.
+                        }
+                        throw new Error(`Wrong range body length: expected ${length}, received ${size}`);
+                    }
+                    chunks.push(value);
+                }
+            } finally {
+                reader.releaseLock();
+            }
+            data = new Uint8Array(size);
+            let offset = 0;
+            for (const chunk of chunks) {
+                data.set(chunk, offset);
+                offset += chunk.byteLength;
+            }
+        } else {
+            data = new Uint8Array(await response.arrayBuffer());
+        }
         signal?.throwIfAborted();
         if (data.length !== length && !(allowShort && data.length < length)) {
             throw new Error(`Wrong range body length: expected ${length}, received ${data.length}`);

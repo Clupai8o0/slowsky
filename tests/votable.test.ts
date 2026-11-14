@@ -63,6 +63,28 @@ describe('parseVotable', () => {
         expect(() => parseVotable(xml)).toThrow('Bad POS value & more');
     });
 
+    it('ends a self-closing INFO before a following QUERY_STATUS ERROR', () => {
+        const xml = `<VOTABLE><RESOURCE>
+            <INFO name="QUERY_STATUS" value="OK"/>
+            <INFO name="QUERY_STATUS" value="ERROR">bad</INFO>
+        </RESOURCE></VOTABLE>`;
+        expect(() => parseVotable(xml)).toThrow('bad');
+    });
+
+    it('keeps FIELD and TR boundaries with quoted slashes and self-closing tags', () => {
+        const xml = `<VOTABLE><TABLE>
+            <FIELD name="first/path"/><FIELD name="second>path"></FIELD>
+            <DATA><TABLEDATA>
+                <TR/>
+                <TR note="a/>b"><TD>1</TD><TD>2</TD></TR>
+            </TABLEDATA></DATA>
+        </TABLE></VOTABLE>`;
+        expect(parseVotable(xml)).toEqual([
+            { 'first/path': '', 'second>path': '' },
+            { 'first/path': '1', 'second>path': '2' },
+        ]);
+    });
+
     it('throws a clear error for BINARY and BINARY2 serialisations', () => {
         const binary = '<VOTABLE><RESOURCE><TABLE><FIELD name="a"/><DATA><BINARY><STREAM>x</STREAM></BINARY>'
             + '</DATA></TABLE></RESOURCE></VOTABLE>';

@@ -30,15 +30,22 @@ export function parseSiaXml(xml: string): VoRow[]
     return parseVotable(xml.replace(/(<\/?)[A-Za-z_][\w.-]*:(?=[A-Za-z])/g, '$1'));
 }
 
-// Reads the QUERY_STATUS INFO. IRSA can answer HTTP 200 with ERROR, or OVERFLOW when MAXREC cut the list.
+// Reads every QUERY_STATUS INFO. ERROR wins over OVERFLOW when MAXREC cut the list.
 export function queryStatus(xml: string): { status: string; message: string } | null
 {
-    const tag = xml.replace(/(<\/?)[A-Za-z_][\w.-]*:(?=[A-Za-z])/g, '$1').match(/<INFO\b[^>]*\bname="QUERY_STATUS"[^>]*>/i)?.[0];
-    if (!tag) {
-        return null;
+    let result: { status: string; message: string } | null = null;
+    const doc = xml.replace(/(<\/?)[A-Za-z_][\w.-]*:(?=[A-Za-z])/g, '$1');
+    for (const [tag] of doc.matchAll(/<INFO\b[^>]*\bname="QUERY_STATUS"[^>]*>/gi)) {
+        const value = tag.match(/\bvalue="([^"]*)"/i)?.[1] ?? '';
+        const status = { status: value.toUpperCase(), message: value };
+        if (status.status === 'ERROR') {
+            return status;
+        }
+        if (!result || status.status === 'OVERFLOW') {
+            result = status;
+        }
     }
-    const value = tag.match(/\bvalue="([^"]*)"/i)?.[1] ?? '';
-    return { status: value.toUpperCase(), message: value };
+    return result;
 }
 
 export const SIA_MAXREC = 2000;
