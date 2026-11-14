@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { chooseColourFrames, colourParts, colourSentence, falseColourView } from '../src/lib/falsecolour-view';
+import { chooseColourFrames, colourParts as makeColourParts, colourSentence as makeColourSentence, falseColourView as makeFalseColourView } from '../src/lib/falsecolour-view';
 import { colourAt, falseColourRgba, FalseColourError, pairStretch, type ColourAt } from '../src/lib/falsecolour';
 import { stackVisit } from '../src/lib/stack';
 import * as stack from '../src/lib/stack';
@@ -14,6 +14,28 @@ declare const process: { env: Record<string, string | undefined> };
 const both: ColourAt = { short: 4, long: 10, snrShort: 14.3, snrLong: 30.7, index: 0.423, seen: 'both', valid: true };
 const grid: OutputGrid = { center: { ra: 1, dec: 2 }, fovDeg: 0.1, pixelArcsec: 6.15, width: 31, height: 31 };
 const radii = { radius: 2, annulusIn: 4, annulusOut: 7 };
+const readings: string[] = [];
+
+function colourParts(...args: Parameters<typeof makeColourParts>): ReturnType<typeof makeColourParts>
+{
+    const result = makeColourParts(...args);
+    readings.push(Object.values(result).join(' '));
+    return result;
+}
+
+function colourSentence(...args: Parameters<typeof makeColourSentence>): string
+{
+    const result = makeColourSentence(...args);
+    readings.push(result);
+    return result;
+}
+
+function falseColourView(...args: Parameters<typeof makeFalseColourView>): ReturnType<typeof makeFalseColourView>
+{
+    const result = makeFalseColourView(...args);
+    readings.push(result.sentence);
+    return result;
+}
 
 function frame(lambda: number, start = 60000, end = start + 0.001, skyLevel = 0): RegriddedFrame
 {
@@ -95,13 +117,11 @@ function runCell(n: number, source: number, hit: number, draws: number, seed: nu
 {
     const random = simulation(seed);
     let seen = 0;
-    let index = 0;
     for (let i = 0; i < draws; i++) {
         const reading = falseColourView(sky(random.make(1.25, n, source)), sky(random.make(4.6, n, source, hit)), radii).parts.reading;
         if (reading.includes('seen at 4.60 µm') || reading.includes('seen at both wavelengths')) { seen++; }
-        if (/colour index [−+\d]/.test(reading)) { index++; }
     }
-    return { seen, index, draws };
+    return { seen, draws };
 }
 
 describe('seeded reading simulations', () => {
@@ -110,8 +130,8 @@ describe('seeded reading simulations', () => {
         const steady = runCell(4, 10, 0, 100, 302);
         const hit = runCell(2, 3, 12, 100, 303);
         expect(noise.seen).toBe(0);
-        expect(steady.index).toBe(100);
-        expect(hit.index).toBe(0);
+        expect(steady.seen).toBe(100);
+        expect(hit.seen).toBe(0);
     });
 
     it.skipIf(process.env.FC_STUDY !== '1')('runs the extended fixed-seed study', () => {
@@ -121,7 +141,7 @@ describe('seeded reading simulations', () => {
         const scatter: Record<string, unknown> = {};
         for (const n of [2, 4, 12]) {
             const random = simulation(1000 + n);
-            const cells = Array.from({ length: 5 }, () => ({ seen: 0, index: 0, draws: 0 }));
+            const cells = Array.from({ length: 5 }, () => ({ seen: 0, draws: 0 }));
             const targets = [3.25, 3.75, 4.5, 6.5, 10];
             for (let draw = 0; cells.some(cell => cell.draws < 400); draw++) {
                 if (draw > 100000) { throw new Error('Study could not fill the SNR bins'); }
@@ -136,7 +156,6 @@ describe('seeded reading simulations', () => {
                 const cell = cells[bin]!;
                 cell.draws++;
                 if (reading.includes('seen at 4.60 µm') || reading.includes('seen at both wavelengths')) { cell.seen++; }
-                if (/colour index [−+\d]/.test(reading)) { cell.index++; }
             }
             steady[n] = cells;
             noise[n] = runCell(n, 0, 0, 400, 2000 + n);
@@ -151,19 +170,18 @@ describe('seeded reading simulations', () => {
             let lost = 0;
             for (let i = 0; i < 400; i++) {
                 const reading = falseColourView(sky(random.make(1.25, 12, source, 0, undefined, 0.03)), sky(random.make(4.6, 12, source, 0, undefined, 0.03)), radii).parts.reading;
-                if (!/colour index [−+\d]/.test(reading)) { lost++; }
+                if (!reading.includes('seen at 4.60 µm') && !reading.includes('seen at both wavelengths')) { lost++; }
             }
             scatter[source] = { lost, draws: 400 };
         }
         for (const source of [0, 3, 10]) {
             for (const hit of [12, 30, 100]) {
                 const random = simulation(8000 + source * 100 + hit);
-                const cell = { seen: 0, index: 0, draws: 400 };
+                const cell = { seen: 0, draws: 400 };
                 const days = [0, 2, 4, 200];
                 for (let i = 0; i < cell.draws; i++) {
                     const reading = falseColourView(sky(random.make(1.25, 4, source, 0, days)), sky(random.make(4.6, 4, source, hit, days)), radii).parts.reading;
                     if (reading.includes('seen at 4.60 µm') || reading.includes('seen at both wavelengths')) { cell.seen++; }
-                    if (/colour index [−+\d]/.test(reading)) { cell.index++; }
                 }
                 hits[`visit/${source}/${hit}`] = cell;
             }
@@ -243,13 +261,135 @@ describe('seeded reading simulations', () => {
     });
 });
 
+describe('round 9 reading', () => {
+    it('identifies the carrying visit that actually fails its threshold', () => {
+        const days = [0, 1, 200, 201, 400];
+        const values = [1.4, 23.4, 3.3, 24.8, 25.6];
+        const scales = [25.118864315095795, 0.12589254117941673, 0.15848931924611134, 31.622776601683793, 1.2589254117941673];
+        const frames = lookFrames(values, days).map((f, i) => ({ ...f, data: Float32Array.from(f.data, v => v * scales[i]!) }));
+        const reading = falseColourView(sky(lookFrames([20, 20, 20, 20, 20], days, 1.25)), sky(frames), radii).parts.reading;
+        expect(reading).toContain('does not hold up without the 2 frames of its strongest visit');
+    });
+    it('keeps the earliest frame when carrying scores tie', () => {
+        const days = [0, 1, 200];
+        const frames = lookFrames([4, 0, 4], days);
+        frames[2]!.data = frames[0]!.data.slice();
+        const reading = falseColourView(sky(lookFrames([20, 20, 20], days, 1.25)), sky(frames), radii).parts.reading;
+        expect(reading).toContain('4.60 µm shows light that differs between frames');
+        expect(reading).toContain('strong in 2 of 3 frames');
+    });
+    it('uses the number of frames for the agreement threshold', () => {
+        const days = [0, 1, 200, 201];
+        const reading = falseColourView(sky(lookFrames([10, 10, 10, 10], days, 1.25)), sky(lookFrames([10, 10, 13.7, 13.7], days)), radii).parts.reading;
+        expect(reading).toContain('seen at both wavelengths');
+        expect(reading).not.toContain('differs between frames');
+    });
+    it.skipIf(process.env.FC_R9_REPORT !== '1')('prints requested readings', () => {
+        const read = (shortValues: number[], shortDays: number[], longValues: number[], longDays: number[]) => falseColourView(sky(lookFrames(shortValues, shortDays, 1.25)), sky(lookFrames(longValues, longDays)), radii).parts.reading;
+        console.log('R9_REPORT', JSON.stringify({
+            steady: read([4, 4, 4, 4], [0, 3, 200, 203], [4, 4, 4, 4], [0, 3, 200, 203]),
+            single: read([30, 30, 30, 30], [0, 1, 200, 201], [30], [0]),
+            disagreement: read([10, 10, 10, 10], [0, 160, 360, 560], [1.12, 1.29, 1177.54, 1689.28], [0, 160, 360, 560]),
+            carrying: read(Array(12).fill(4), [...Array.from({ length: 11 }, (_, i) => i), 200], [...Array(11).fill(4), 1], [...Array.from({ length: 11 }, (_, i) => i), 200]),
+            visit: read([30, 30], [0, 1], [30, 30], [0, 1]),
+            neither: read([0, 0], [0, 200], [0, 0], [0, 200]),
+            requested: read([30, 30, 30, 30], [0, 1, 2, 200], [33, 33, 33, 3], [0, 1, 2, 200]),
+            mutant3: read([10, 10, 10, 10], [0, 1, 200, 201], [10, 10, 13.7, 13.7], [0, 1, 200, 201]),
+        }));
+    });
+    it('does not print an index for representative inputs', () => {
+        const cases = [[4, 4, 4, 4], [1.12, 1.29, 1177.54, 1689.28], [0, 0, 0, 0]];
+        for (const values of cases) {
+            const days = [0, 1, 200, 201];
+            expect(falseColourView(sky(lookFrames([4, 4, 4, 4], days, 1.25)), sky(lookFrames(values, days)), radii).sentence).not.toMatch(/index/i);
+        }
+        expect(colourSentence(1.25, 4.6, both)).not.toMatch(/index/i);
+    });
+
+    it('describes disagreement without counting the band as seen', () => {
+        const days = [0, 160, 360, 560];
+        const reading = falseColourView(sky(lookFrames([10, 10, 10, 10], days, 1.25)), sky(lookFrames([1.12, 1.29, 1177.54, 1689.28], days)), radii).parts.reading;
+        expect(reading).toContain('4.60 µm shows light that differs between frames by more than a steady source would give (strong in 2 of 4 frames); it may have changed or moved, or be a detector effect');
+        expect(reading).not.toContain('seen at 4.60 µm');
+    });
+
+    it('warns when the strongest visit carries a steady signal', () => {
+        const days = [...Array.from({ length: 11 }, (_, i) => i), 200];
+        const values = [...Array(11).fill(4), 1];
+        const reading = falseColourView(sky(lookFrames(Array(12).fill(4), days, 1.25)), sky(lookFrames(values, days)), radii).parts.reading;
+        expect(reading).toContain('too weak without its strongest visit to count on its own, so it could not be confirmed at a second date');
+    });
+
+    it('distinguishes two visits, one visit, and missing dates', () => {
+        const read = (days: number[]) => falseColourView(sky(lookFrames(days.map(() => 30), days, 1.25)), sky(lookFrames(days.map(() => 30), days)), radii).parts.reading;
+        expect(read([0, 200])).toContain('only 2 frames, so a moving source or two detector hits cannot be ruled out');
+        expect(read([0, 1])).toContain('both frames come from one visit');
+        expect(read([0, 1, 2])).toContain('all 3 frames come from one visit');
+        expect(read([0, NaN])).toContain('not all of its 2 frames have usable dates');
+    });
+
+    it('only describes position comparisons when a multi-frame band is seen', () => {
+        const days = [0, 200];
+        const method = falseColourView(sky(lookFrames([0, 0], days, 1.25)), sky(lookFrames([0, 0], days)), radii).parts.method;
+        expect(method).toContain('Frames taken less than 10 days apart count as one visit.');
+        expect(method).not.toContain('Position is compared');
+    });
+
+    it('gives the single-frame caveat at thirty sigma', () => {
+        const reading = falseColourView(sky(lookFrames([30, 30, 30, 30], [0, 1, 200, 201], 1.25)), sky(lookFrames([30], [0])), radii).parts.reading;
+        expect(reading).toContain('seen at 4.60 µm (signal-to-noise 30, one frame only, so a detector hit cannot be ruled out)');
+    });
+
+    it('does not call a steady eight-sigma stack unconfirmed', () => {
+        const days = [0, 3, 200, 203];
+        const reading = falseColourView(sky(lookFrames([3.3, 3.3, 3.3, 3.3], days, 1.25)), sky(lookFrames([3.3, 3.3, 3.3, 3.3], days)), radii).parts.reading;
+        expect(reading).toContain('seen at both wavelengths');
+        expect(reading).not.toContain('could not be confirmed');
+    });
+
+    it('does not blame chance noise for three strong displaced signals removed by stacking', () => {
+        const frames = lookFrames([12, 12, 12], [0, 200, 400]);
+        for (let i = 0; i < frames.length; i++) {
+            const f = frames[i]!;
+            const centre = 15 * 31 + 15;
+            const target = 15 * 31 + 14 + i;
+            if (target !== centre) {
+                const value = f.data[centre]!;
+                f.data[centre] = f.data[target]!;
+                f.data[target] = value;
+            }
+        }
+        const reading = falseColourView(sky(lookFrames([12, 12, 12], [0, 200, 400], 1.25)), sky(frames), radii).parts.reading;
+        expect(reading).toContain('4.60 µm shows a signal in 3 of 3 frames but not in the combined picture');
+        expect(reading).not.toContain('chance noise alone');
+    });
+
+    it('handles Gaia stars at the boundary and ignores invalid pixel positions', () => {
+        const first = sourceFrame(1.25);
+        const later = sourceFrame(4.6);
+        later.frame = { ...later.frame, tMin: 60200, tMax: 60200.001 };
+        const a = sky([first]);
+        const b = sky([later]);
+        const coord = gridPixToSky(grid, { x: 15, y: 17 });
+        const star = { sourceId: 'edge', ...coord, g: 15, epochJyear: 2000 + (60000.0005 - 51544.5) / 365.25, pmRa: 0, pmDec: -547.875, pix: { x: 15, y: 17 } };
+        a.stars = [star];
+        expect(falseColourView(a, b, radii).parts.method).toContain('passes through that circle, between 12.3″ and 12.6″');
+        a.stars = [{ ...star, pmDec: -36.525 }];
+        expect(falseColourView(a, b, radii).parts.method).toContain('about 12.3″ from the centre, on the edge of that circle');
+        a.stars = [{ ...star, pix: { x: NaN, y: NaN } }];
+        const method = falseColourView(a, b, radii).parts.method;
+        expect(method).toContain('none of the Gaia stars');
+        expect(method).not.toContain('NaN');
+    });
+});
+
 describe('reliable colour readings', () => {
     it('treats chained dates as one visit and withholds their index', () => {
         for (const values of [[100, 99, 98], [99, 100, 98]]) {
             const days = [0, 6, 12];
             const reading = falseColourView(sky(lookFrames(values, days, 1.25)), sky(lookFrames(values, days)), radii).parts.reading;
-            expect(reading).toContain('all 3 frames from one visit');
-            expect(reading).toContain('all the frames at 1.25 µm and 4.60 µm come from one visit');
+            expect(reading).toContain('all 3 frames come from one visit');
+            expect(reading).toContain('so something passing through or a detector effect cannot be ruled out');
             expect(reading).not.toMatch(/colour index [−+\d]|within 10 days of each other/);
         }
     });
@@ -258,33 +398,33 @@ describe('reliable colour readings', () => {
         const days = [0, 2, 4, 200];
         const read = (values: number[]) => falseColourView(sky(lookFrames([10, 10, 10, 10], days, 1.25)), sky(lookFrames(values, days)), radii).parts.reading;
         for (const values of [[22, 10, 10, 10.5], [10, 10, 10, 4]]) {
-            expect(read(values)).toContain('readings differ between frames by more than a steady source would give');
-            expect(read(values)).toContain('the readings at 4.60 µm differ between frames by more than a steady source would give');
-            expect(read(values)).not.toMatch(/colour index [−+\d]/);
+            expect(read(values)).toContain('differs between frames by more than a steady source would give');
+            expect(read(values)).toContain('4.60 µm shows light that differs between frames by more than a steady source would give');
+            expect(read(values)).not.toMatch(/index/i);
         }
     });
 
     it('uses conservative wording for missing dates', () => {
         const reading = falseColourView(sky(lookFrames([100, 98], [0, NaN], 1.25)), sky(lookFrames([100, 98], [0, NaN])), radii).parts.reading;
-        expect(reading).toContain('its 2 frames have no usable dates');
-        expect(reading).toContain('the frames at 1.25 µm and 4.60 µm have no usable dates');
+        expect(reading).toContain('not all of its 2 frames have usable dates');
+        expect(reading).toContain('so something passing through or a detector effect cannot be ruled out');
         expect(reading).not.toContain('10 days');
     });
 
     it('withholds an index for two strong frames from one visit', () => {
         const days = [0, 6];
         const reading = falseColourView(sky(lookFrames([100, 98], days, 1.25)), sky(lookFrames([100, 98], days)), radii).parts.reading;
-        expect(reading).toContain('all 2 frames from one visit');
-        expect(reading).toContain('all the frames at 1.25 µm and 4.60 µm come from one visit');
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).toContain('both frames come from one visit');
+        expect(reading).toContain('so something passing through or a detector effect cannot be ruled out');
+        expect(reading).not.toMatch(/index/i);
     });
 
     it('reports a dip when the remaining visit still supports the source', () => {
         const days = [0, 1, 200];
         const reading = falseColourView(sky(lookFrames([50, 50, 50], days, 1.25)), sky(lookFrames([50, 0, 49], days)), radii).parts.reading;
-        expect(reading).toContain('seen at 4.60 µm');
-        expect(reading).toContain('readings differ between frames');
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).not.toContain('seen at 4.60 µm');
+        expect(reading).toContain('differs between frames');
+        expect(reading).not.toMatch(/index/i);
     });
 
     it('checks the highest signal-to-noise frame as well as the largest sum', () => {
@@ -292,25 +432,25 @@ describe('reliable colour readings', () => {
         frames[0]!.data = Float32Array.from(frames[0]!.data, value => value * 15);
         const reading = falseColourView(sky(lookFrames([30, 30], [0, 200], 1.25)), sky(frames), radii).parts.reading;
         expect(reading).toContain('4.60 µm shows a signal that falls below the limit');
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).not.toMatch(/index/i);
     });
 
     it('reports a thirty-percent dip even with three steady frames', () => {
         const days = [0, 200, 400, 600];
         const reading = falseColourView(sky(lookFrames([100, 100, 100, 100], days, 1.25)), sky(lookFrames([100.1, 100, 100, 70], days)), radii).parts.reading;
-        expect(reading).toContain('seen at 4.60 µm');
-        expect(reading).toContain('readings differ between frames');
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).not.toContain('seen at 4.60 µm');
+        expect(reading).toContain('differs between frames');
+        expect(reading).not.toMatch(/index/i);
     });
 
     it('keeps a steady bright source and flags both a rise and a dip in four visits', () => {
         const days = [0, 200, 400, 600];
         const short = sky(lookFrames([100, 100, 100, 100], days, 1.25));
         const read = (values: number[]) => falseColourView(short, sky(lookFrames(values, days)), radii).parts.reading;
-        expect(read([100, 101, 102, 103])).toMatch(/colour index [−+\d]/);
+        expect(read([100, 101, 102, 103])).toMatch(/seen at (?:both wavelengths|1\.25 µm)/);
         for (const values of [[100, 100, 100, 160], [100, 100, 100, 70]]) {
-            expect(read(values)).toContain('readings differ between frames');
-            expect(read(values)).not.toMatch(/colour index [−+\d]/);
+            expect(read(values)).toContain('differs between frames');
+            expect(read(values)).not.toMatch(/index/i);
         }
     });
 
@@ -318,7 +458,7 @@ describe('reliable colour readings', () => {
         const values = [3.3, 3.3, 3.3, 3.3];
         const days = [0, 3, 200, 203];
         const reading = falseColourView(sky(lookFrames(values, days, 1.25)), sky(lookFrames(values, days)), radii).parts.reading;
-        expect(reading).toMatch(/colour index [−+\d]/);
+        expect(reading).toMatch(/seen at (?:both wavelengths|1\.25 µm)/);
         expect(reading).not.toContain('readings differ');
         expect(reading).not.toContain('one visit');
         expect(Number(reading.match(/signal-to-noise ([\d.]+)/)![1])).toBeGreaterThan(7.5);
@@ -331,9 +471,9 @@ describe('reliable colour readings', () => {
         const mild = [...baseline];
         mild[0] = 13.9;
         const many = falseColourView(sky(lookFrames(baseline, days, 1.25)), sky(lookFrames(mild, days)), radii).parts.reading;
-        expect(many).toMatch(/colour index [−+\d]/);
+        expect(many).toMatch(/seen at (?:both wavelengths|1\.25 µm)/);
         const two = falseColourView(sky(lookFrames([100, 100], [0, 200], 1.25)), sky(lookFrames([100, 118], [0, 200])), radii).parts.reading;
-        expect(two).toMatch(/colour index [−+\d]/);
+        expect(two).toMatch(/seen at (?:both wavelengths|1\.25 µm)/);
     });
 
     it('uses the rounded off-centre limit', () => {
@@ -341,7 +481,7 @@ describe('reliable colour readings', () => {
         const make = (lambda: number, x: number) => ({ ...sourceFrame(lambda, x, 1000), grid: g });
         const result = falseColourView({ ...sky([make(1.25, 16)]), grid: g }, { ...sky([make(4.6, 15)]), grid: g }, radii);
         expect(result.parts.reading).not.toContain('brightest 6.15″ from the centre');
-        expect(result.parts.reading).toMatch(/colour index [−+\d]/);
+        expect(result.parts.reading).toMatch(/seen at (?:both wavelengths|1\.25 µm)/);
         const later = make(4.6, 16);
         later.frame = { ...later.frame, tMin: 60200, tMax: 60200.001 };
         const centred = make(4.6, 15);
@@ -355,9 +495,9 @@ describe('reliable colour readings', () => {
         const short = lookFrames([30, 30, 30], [0, 1, 200], 1.25).map(f => ({ ...f, grid: g }));
         const long = [sourceFrame(4.6, 14, 1000), sourceFrame(4.6, 14, 1000), sourceFrame(4.6, 16, 1800)].map((f, i) => ({ ...f, grid: g, frame: { ...f.frame, tMin: 60000 + [0, 1, 200][i]!, tMax: 60000.001 + [0, 1, 200][i]! } }));
         const reading = falseColourView({ ...sky(short), grid: g }, { ...sky(long), grid: g }, radii).parts.reading;
-        expect(reading.match(/No colour index is given:/g)).toHaveLength(1);
-        expect(reading).toContain('the brightest point at 4.60 µm sits in different places in different frames');
-        expect(reading).toContain('the readings at 4.60 µm differ between frames');
+        expect(reading).not.toContain('seen at 4.60 µm');
+        expect(reading).toContain('its brightest point sits in different places in different frames');
+        expect(reading).toContain('4.60 µm shows light that differs between frames');
     });
 
     it('compares positions in three strong frames but ignores weak peaks', () => {
@@ -369,8 +509,8 @@ describe('reliable colour readings', () => {
         const short = make(1.25, [15, 15, 15], 1000);
         const long = make(4.6, [14, 14, 16], 1000);
         const reading = falseColourView({ ...sky(short), grid: g }, { ...sky(long), grid: g }, radii).parts.reading;
-        expect(reading).toContain('the brightest point at 4.60 µm sits in different places in different frames');
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).toContain('its brightest point sits in different places in different frames');
+        expect(reading).not.toMatch(/index/i);
         const weak = lookFrames([5, 5], [0, 200]);
         for (let i = 0; i < 2; i++) {
             weak[i]!.data[15 * 31 + (i ? 16 : 14)] = weak[i]!.data[15 * 31 + 15]!;
@@ -378,34 +518,34 @@ describe('reliable colour readings', () => {
         }
         const weakReading = falseColourView(sky(lookFrames([5, 5], [0, 200], 1.25)), sky(weak), radii).parts.reading;
         expect(weakReading).not.toContain('different places');
-        expect(weakReading).toContain('no colour index is given because the brightest point is not at the centre at 4.60 µm');
+        expect(weakReading).toContain('its brightest point is not at the centre');
     });
     it('groups the strongest frames by look before counting a signal', () => {
         const values = [1.12, 1.29, 1177.54, 1689.28];
         const frames = lookFrames(values, [0, 190, 360, 366]);
         const result = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25)]), sky(frames), radii);
         expect(result.parts.reading).toContain('without the 2 frames of its strongest visit');
-        expect(result.parts.reading).not.toMatch(/colour index [−+\d]/);
+        expect(result.parts.reading).not.toMatch(/index/i);
     });
 
     it('withholds the index when a bright frame disagrees with a steady source', () => {
         const frames = [sourceFrame(4.6, 15, 1000), sourceFrame(4.6, 15, 1000)];
         frames[0]!.data[15 * 31 + 17] = 5000;
         const result = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25)]), sky(frames), radii);
-        expect(result.parts.reading).toContain('readings differ between frames by more than a steady source would give');
-        expect(result.parts.reading).not.toMatch(/colour index [−+\d]/);
+        expect(result.parts.reading).toContain('differs between frames by more than a steady source would give');
+        expect(result.parts.reading).not.toMatch(/index/i);
     });
 
     it('explains a brightness disagreement even if the other band is faint', () => {
         const frames = [sourceFrame(4.6, 15, 1000), sourceFrame(4.6, 15, 1000)];
         frames[0]!.data[15 * 31 + 17] = 5000;
         const reading = falseColourView(sky([frame(1.25)]), sky(frames), radii).parts.reading;
-        expect(reading).toContain('readings differ between frames by more than a steady source would give');
+        expect(reading).toContain('differs between frames by more than a steady source would give');
     });
 
     it('warns when all frames are from one look', () => {
         const result = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25)]), sky([sourceFrame(4.6), sourceFrame(4.6)]), radii);
-        expect(result.parts.reading).toContain('all 2 frames from one visit');
+        expect(result.parts.reading).toContain('both frames come from one visit');
     });
 
     it('lists stars from both catalogues without double counting ids', () => {
@@ -420,27 +560,27 @@ describe('reliable colour readings', () => {
     it('reports differing readings when separate visits still support the source', () => {
         const reference = sky([sourceFrame(1.25, 15, 1000), sourceFrame(1.25, 15, 1000)]);
         const weak = falseColourView(reference, sky(lookFrames([1.12, 1.29, 1177.54, 1689.28], [0, 160, 360, 560])), radii).parts.reading;
-        expect(weak).toContain('seen at 4.60 µm');
-        expect(weak).toContain('readings differ between frames');
-        expect(weak).not.toMatch(/colour index [−+\d]/);
+        expect(weak).not.toContain('seen at 4.60 µm');
+        expect(weak).toContain('differs between frames');
+        expect(weak).not.toMatch(/index/i);
         const supported = falseColourView(reference, sky(lookFrames([5, 5, 1177, 1689], [0, 160, 360, 560])), radii).parts.reading;
-        expect(supported).toContain('seen at 4.60 µm');
-        expect(supported).toContain('readings differ between frames by more than a steady source would give');
-        expect(supported).not.toMatch(/colour index [−+\d]/);
+        expect(supported).not.toContain('seen at 4.60 µm');
+        expect(supported).toContain('differs between frames by more than a steady source would give');
+        expect(supported).not.toMatch(/index/i);
     });
 
     it('keeps steady independent looks and applies the five percent floor', () => {
         const reference = sky(lookFrames([10, 10, 10, 10], [0, 3, 200, 203], 1.25));
         const steady = falseColourView(reference, sky(lookFrames([1000, 1010, 1020, 1030], [0, 3, 200, 203])), radii).parts.reading;
-        expect(steady).toMatch(/colour index [−+\d]/);
+        expect(steady).toMatch(/seen at (?:both wavelengths|1\.25 µm)/);
         expect(steady).not.toContain('readings differ');
         expect(steady).not.toContain('all 4 frames');
         const variable = falseColourView(reference, sky(lookFrames([100, 100, 100, 160], [0, 3, 200, 203])), radii).parts.reading;
-        expect(variable).toContain('seen at 4.60 µm');
-        expect(variable).toContain('readings differ');
-        expect(variable).not.toMatch(/colour index [−+\d]/);
+        expect(variable).not.toContain('seen at 4.60 µm');
+        expect(variable).toContain('differs between frames');
+        expect(variable).not.toMatch(/index/i);
         const faint = falseColourView(sky(lookFrames([4, 4, 4, 4], [0, 3, 200, 203], 1.25)), sky(lookFrames([4, 4, 4, 4], [0, 3, 200, 203])), radii).parts.reading;
-        expect(faint).toMatch(/colour index [−+\d]/);
+        expect(faint).toMatch(/seen at (?:both wavelengths|1\.25 µm)/);
         expect(faint).not.toContain('all 4 frames');
     });
 
@@ -448,20 +588,20 @@ describe('reliable colour readings', () => {
         const reference = sky([sourceFrame(1.25, 15, 1000), sourceFrame(1.25, 15, 1000)]);
         const read = (days: number[]) => falseColourView(reference, sky(lookFrames([1, 1, 100, 110], days)), radii).parts.reading;
         expect(read([0, 100, 200, 209.99])).toContain('without the 2 frames of its strongest visit');
-        expect(read([0, 100, 200, 210])).toContain('readings differ between frames');
-        expect(read([0, 100, NaN, 210])).toContain('its 4 frames have no usable dates');
+        expect(read([0, 100, 200, 210])).toContain('differs between frames');
+        expect(read([0, 100, NaN, 210])).toContain('not all of its 4 frames have usable dates');
     });
 
     it('rejects a thirty-sigma frame paired with a 2.2-sigma frame', () => {
         const reading = falseColourView(sky([sourceFrame(1.25, 15, 1000)]), sky(lookFrames([30, 2.2], [0, 30])), radii).parts.reading;
         expect(reading).toContain('4.60 µm shows a signal that does not hold up');
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).not.toMatch(/index/i);
     });
 
     it('checks all three frames even when the stack is clear', () => {
         const reading = falseColourView(sky([sourceFrame(1.25)]), sky(lookFrames([3, 1.8, 1.2], [0, 30, 60])), radii).parts.reading;
         expect(reading).toContain('4.60 µm shows a signal that falls below the limit');
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).not.toMatch(/index/i);
     });
 
     it('rejects a one-frame source even when both frames are one look', () => {
@@ -475,7 +615,7 @@ describe('reliable colour readings', () => {
         const short = [sourceFrame(1.25, 15, 1000), sourceFrame(1.25, 15, 1000)].map(f => ({ ...f, grid: g }));
         const long = [sourceFrame(4.6, 13, 1000), sourceFrame(4.6, 17, 1000)].map(f => ({ ...f, grid: g }));
         const reading = falseColourView({ ...sky(short), grid: g }, { ...sky(long), grid: g }, radii).parts.reading;
-        expect(reading).toContain('the brightest point at 4.60 µm sits in different places in different frames.');
+        expect(reading).toContain('its brightest point sits in different places in different frames');
     });
 
     it.each([[1000, 500], [100, 3000]] as const)('withholds an index for an offset hit of %i with source %i', (source, hit) => {
@@ -484,7 +624,7 @@ describe('reliable colour readings', () => {
         const long = [sourceFrame(4.6, 15, source), sourceFrame(4.6, 15, source)].map(f => ({ ...f, grid: g }));
         long[0]!.data[15 * 31 + 17] = hit;
         const reading = falseColourView({ ...sky(short), grid: g }, { ...sky(long), grid: g }, radii).parts.reading;
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).not.toMatch(/index/i);
     });
 
     it('withholds the biased index for a three-times-brighter hit ten arcseconds away', () => {
@@ -493,8 +633,8 @@ describe('reliable colour readings', () => {
         const b = [sourceFrame(4.6, 15, 1000), sourceFrame(4.6, 15, 1000)].map(f => ({ ...f, grid: g }));
         b[0]!.data[15 * 31 + 17] = 3000;
         const reading = falseColourView({ ...sky(a), grid: g }, { ...sky(b), grid: g }, radii).parts.reading;
-        expect(reading).toContain('readings differ between frames');
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).toContain('differs between frames');
+        expect(reading).not.toMatch(/index/i);
     });
 
     it('withholds the biased index for a hundred-sigma hit beside a ten-sigma source', () => {
@@ -511,8 +651,8 @@ describe('reliable colour readings', () => {
             const noise = aperture(b[0]!.data, 31, 31, { x: 15, y: 15 }, { ...radii, noiseScale: resampleNoiseScale(g.pixelArcsec) }).noise;
             b[0]!.data[15 * 31 + 17] = b[0]!.data[15 * 31 + 17]! + 100 * noise;
             const reading = falseColourView({ ...sky(a), grid: g }, { ...sky(b), grid: g }, radii).parts.reading;
-            expect(reading).not.toMatch(/colour index [−+\d]/);
-            expect(reading).toContain('readings differ between frames');
+            expect(reading).not.toMatch(/index/i);
+            expect(reading).toContain('differs between frames');
         }
     });
 
@@ -547,8 +687,7 @@ describe('reliable colour readings', () => {
         const long = [sourceFrame(4.6, 15, 1000), sourceFrame(4.6, 15, 1000)].map(f => ({ ...f, grid: g }));
         const result = falseColourView({ ...sky(short), grid: g }, { ...sky(long), grid: g }, radii);
         expect(result.parts.reading).toContain('brightest 6.16″ from the centre');
-        const centred = falseColourView(sky([sourceFrame(1.25)]), sky([sourceFrame(4.6)]), radii);
-        expect(centred.parts.method).toContain('within 6.15″ of the centre');
+        expect(result.parts.reading).toContain('its brightest point is not at the centre');
     });
 
     it.each([false, true])('uses both bands and all frame dates for a moving Gaia star, reversed: %s', reverse => {
@@ -599,14 +738,15 @@ describe('reliable colour readings', () => {
         }
         const result = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25), sourceFrame(1.25)]), sky(frames), radii);
         expect(result.parts.reading).toContain('seen at 4.60 µm');
-        expect(result.parts.reading).not.toMatch(/colour index [−+\d]/);
+        expect(result.parts.reading).not.toMatch(/index/i);
     });
 
     it('keeps frames of different depth when both support the source', () => {
         const frames = [measuredFrame(4.6, 14.2, 50, 0.2), measuredFrame(4.6, 2.8, 63)];
         const reading = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25)]), sky(frames), radii).parts.reading;
         expect(reading).toContain('seen at 4.60 µm');
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).toContain('too weak without its strongest frame');
+        expect(reading).not.toMatch(/index/i);
     });
 
     it('uses resampling noise in the leave-one-out check', () => {
@@ -626,7 +766,7 @@ describe('reliable colour readings', () => {
     it.each([3, 10])('does not count a one-frame hit among %i frames', n => {
         const frames = Array.from({ length: n }, (_, i) => measuredFrame(4.6, i === 0 ? 30 : 0, 500 + i * 104729));
         const reading = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25)]), sky(frames), radii).parts.reading;
-        expect(reading).not.toMatch(/colour index [−+\d]/);
+        expect(reading).not.toMatch(/index/i);
         expect(reading).toContain('no clear signal at 4.60 µm');
     });
 
@@ -638,7 +778,7 @@ describe('reliable colour readings', () => {
         }
         for (const f of frames.slice(3)) { f.frame = { ...f.frame, tMin: 60010, tMax: 60010.001 }; }
         const reading = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25), sourceFrame(1.25)]), sky(frames), radii).parts.reading;
-        expect(reading).toContain('4.60 µm shows a signal in 2 of 5 frames but not in their average, so it is not counted as seen (chance noise alone can do this; it may have changed or moved, or be detector hits)');
+        expect(reading).toContain('4.60 µm shows a signal in 2 of 5 frames but not in the combined picture, which leaves out values that stand out in only some frames, so it is not counted as seen (chance noise alone can do this; it may have changed or moved, or be detector hits)');
     });
 
     it('uses the two-frame minimum to ignore a hit next to a centred source', () => {
@@ -647,10 +787,10 @@ describe('reliable colour readings', () => {
         const long = [sourceFrame(4.6, 15, 1000), sourceFrame(4.6, 15, 1000)].map(f => ({ ...f, grid: g }));
         long[0]!.data[15 * 31 + 17] = 5000;
         const result = falseColourView({ ...sky(short), grid: g }, { ...sky(long), grid: g }, radii);
-        expect(result.parts.reading).not.toMatch(/colour index [−+\d]/);
-        expect(result.parts.reading).toContain('readings differ between frames');
+        expect(result.parts.reading).not.toMatch(/index/i);
+        expect(result.parts.reading).toContain('differs between frames');
         expect(result.parts.reading).not.toContain('brightest 7.70″ from the centre');
-        expect(result.parts.reading).toContain('brightest point at 4.60 µm sits in different places');
+        expect(result.parts.reading).toContain('its brightest point sits in different places');
     });
 
     it('finds an off-centre peak even if the other colour is blank there', () => {
@@ -700,7 +840,7 @@ describe('reliable colour readings', () => {
         expect(result.rgba[p + 3]).toBe(255);
         expect(result.rgba[p]).toBeLessThan(100);
         expect(result.parts.reading).not.toContain('seen at both');
-        expect(result.parts.reading).not.toMatch(/colour index [−+\d]/);
+        expect(result.parts.reading).not.toMatch(/index/i);
     });
 
     it('does not count a clear two-frame stack when only one frame agrees', () => {
@@ -708,7 +848,7 @@ describe('reliable colour readings', () => {
         for (const i of [15 * 31 + 15, 15 * 31 + 16, 16 * 31 + 15, 16 * 31 + 16]) { hit.data[i] = 5000; }
         const result = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25)]), sky([hit, frame(4.6)]), radii);
         expect(result.parts.reading).toContain('4.60 µm shows a signal that does not hold up without its strongest frame, so it is not counted as seen');
-        expect(result.parts.reading).not.toMatch(/colour index [−+\d]/);
+        expect(result.parts.reading).not.toMatch(/index/i);
     });
 
     it('says nothing about where the light is for a band that is not counted as seen', () => {
@@ -736,8 +876,8 @@ describe('reliable colour readings', () => {
         const long = [sourceFrame(4.6), sourceFrame(4.6), sourceFrame(4.6)];
         const before = colourAt(stackVisit(short, { background: 'none', clipSigma: Infinity }).data, stackVisit(long, { background: 'none', clipSigma: Infinity }).data, 31, 31, { x: 15, y: 15 }, { pixelArcsec: grid.pixelArcsec, ...radii });
         const result = falseColourView(sky(short), sky(long), radii);
-        expect(result.parts.reading).toContain('all 3 frames from one visit');
-        expect(result.parts.reading).not.toMatch(/colour index [−+\d]/);
+        expect(result.parts.reading).toContain('all 3 frames come from one visit');
+        expect(result.parts.reading).not.toMatch(/index/i);
         const reported = Number(result.parts.reading.match(/signal-to-noise ([\d.]+)/)![1]);
         expect(Math.abs(reported - before.snrShort) / before.snrShort).toBeLessThan(0.01);
     });
@@ -844,14 +984,14 @@ describe('reliable colour readings', () => {
         const long = [make(4.6, 15), make(4.6, 15), make(4.6, 15)];
         const far = falseColourView(makeSky([make(1.25, 18), make(1.25, 18), make(1.25, 18)]), makeSky(long), r);
         expect(far.parts.reading).toContain('brightest 9.00″ from the centre');
-        expect(far.parts.reading).toContain('no colour index is given because the brightest point is not at the centre at 1.25 µm');
+        expect(far.parts.reading).toContain('its brightest point is not at the centre');
         expect(far.parts.method).not.toContain("each colour's brightest point");
         const near = falseColourView(makeSky([make(1.25, 16), make(1.25, 16), make(1.25, 16)]), makeSky(long), r);
         expect(near.parts.reading).not.toContain('brightest 3.00″');
         expect(near.parts.reading).toContain('seen at 1.25 µm');
         const visits = (frames: RegriddedFrame[]) => frames.map((f, i) => ({ ...f, frame: { ...f.frame, tMin: 60000 + i * 30, tMax: 60000.001 + i * 30 } }));
         const separate = falseColourView(makeSky(visits([make(1.25, 16), make(1.25, 16), make(1.25, 16)])), makeSky(visits(long)), r);
-        expect(separate.parts.reading).toMatch(/colour index [−+\d]/);
+        expect(separate.parts.reading).toMatch(/seen at (?:both wavelengths|1\.25 µm)/);
     });
 });
 
@@ -1025,7 +1165,7 @@ describe('one frame set per band', () => {
 
     it('prints both readings when an index cannot be formed', () => {
         const parts = colourParts(1.25, 4.6, { short: 10, long: -2, snrShort: 5, snrLong: 4, index: NaN, seen: 'both', valid: false });
-        expect(parts.reading).toBe('At the centre: seen at both wavelengths (signal-to-noise 5.0 at 1.25 µm and 4.0 at 4.60 µm); no colour index could be formed.');
+        expect(parts.reading).toBe('At the centre: seen at both wavelengths (signal-to-noise 5.0 at 1.25 µm and 4.0 at 4.60 µm).');
         expect(parts.method).not.toContain('The colour index is');
     });
 });
@@ -1098,7 +1238,7 @@ describe('false colour view coverage', () => {
         const flatLong = { ...flat, lambdaAtCenter: 4.6 };
         const bothFlat = falseColourView(sky([flat]), sky([flatLong]), radii);
         expect(bothFlat.parts.reading).toContain('4.60 µm cannot be measured here (the noise could not be judged)');
-        expect(bothFlat.parts.method).toBe('');
+        expect(bothFlat.parts.method).toContain('this page does not measure a colour');
         expect(bothFlat.sentence).toBe(Object.values(bothFlat.parts).filter(Boolean).join(' '));
     });
 
@@ -1269,11 +1409,11 @@ describe('false colour sentence', () => {
         const sentence = colourSentence(1.25, 4.6, { ...both, snrShort: value, snrLong: value });
         expect(sentence).not.toMatch(/NaN|Infinity|undefined/);
         expect(sentence).toContain('the noise could not be judged');
-        expect(sentence).not.toMatch(/colour index [−+\d]/);
+        expect(sentence).not.toMatch(/index/i);
     });
     it('omits the method when neither band can be measured', () => {
         const parts = colourParts(1.25, 4.6, { ...both, short: NaN, long: NaN, seen: 'neither', valid: false });
-        expect(parts.method).toBe('');
+        expect(parts.method).toContain('this page does not measure a colour');
         expect(colourSentence(1.25, 4.6, { ...both, short: NaN, long: NaN, seen: 'neither', valid: false }))
             .toBe(Object.values(parts).filter(Boolean).join(' '));
     });
@@ -1288,7 +1428,7 @@ describe('false colour sentence', () => {
 
     it('returns independently usable parts that join to the same sentence', () => {
         const cases: [ColourAt, string][] = [
-            [both, 'At the centre: seen at both wavelengths, colour index +0.42 (signal-to-noise 14 at 1.25 µm and 31 at 4.60 µm).'],
+            [both, 'At the centre: seen at both wavelengths (signal-to-noise 14 at 1.25 µm and 31 at 4.60 µm).'],
             [{ ...both, seen: 'short', valid: false }, 'At the centre: seen at 1.25 µm only (signal-to-noise 14); no clear signal at 4.60 µm (clear means at least 3 times the noise).'],
             [{ ...both, long: NaN, seen: 'short' }, 'At the centre: seen at 1.25 µm (signal-to-noise 14); 4.60 µm cannot be measured here (blank pixels).'],
             [{ ...both, short: NaN, long: NaN }, 'At the centre: cannot be measured here (blank pixels).'],
@@ -1298,7 +1438,7 @@ describe('false colour sentence', () => {
             expect(Object.keys(parts)).toEqual(['labels', 'note', 'warning', 'reading', 'method']);
             expect(Object.values(parts).filter(Boolean).join(' ')).toBe(colourSentence(1.25, 4.6, reading));
             expect(parts.reading).toBe(expected);
-            expect(parts.method.includes('The colour index is')).toBe(reading === both);
+            expect(parts.method).toContain('this page does not measure a colour');
             expect(parts.warning).toBe('');
         }
         const result = falseColourView(sky([frame(1.25)]), sky([frame(4.6)]), radii);
@@ -1306,7 +1446,7 @@ describe('false colour sentence', () => {
         const oldParts = colourParts(1.25, 4.6, colourAt(frame(1.25).data, frame(4.6).data, 31, 31, { x: 15, y: 15 }, { pixelArcsec: grid.pixelArcsec, ...radii, minSnr: 3 }), [[at(60000)], [at(60000)]]);
         expect(result.parts).toEqual({ ...oldParts,
             note: oldParts.note + ' With fewer than 3 frames at 1.25 µm and 4.60 µm, a detector hit in a single frame cannot be rejected from the picture.',
-            method: oldParts.method + " Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it. The reading adds up all light within 12.3″ of the centre; none of the Gaia stars this page loads lies inside that circle. That list holds only the brighter stars, so a fainter star or a source seen only in infrared can still be inside.",
+            method: oldParts.method.replace(' The colours in the picture are for looking; this page does not measure a colour.', '') + " Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it. The reading adds up all light within 12.3″ of the centre; none of the Gaia stars this page loads lies inside that circle. That list holds only the brighter stars, so a fainter star or a source seen only in infrared can still be inside. The colours in the picture are for looking; this page does not measure a colour.",
         });
         expect(result.parts.warning).toBe('');
         expect(colourParts(1.25, 4.6, both, [[], [at(60000)]]).warning).toContain('frame dates are unavailable');
@@ -1331,12 +1471,11 @@ describe('false colour sentence', () => {
             .toContain('Blue: 1.25 µm (the shorter wavelength), 0 frames, dates unavailable.');
     });
 
-    it('places the reading before its method and only explains an index when printed', () => {
+    it('places the reading before its method', () => {
         const withIndex = colourSentence(1.25, 4.6, both, [[at(60000)], [at(60001)]]);
         expect(withIndex.indexOf('The two colours were not taken')).toBeLessThan(withIndex.indexOf('At the centre:'));
-        expect(withIndex.indexOf('At the centre:')).toBeLessThan(withIndex.indexOf('The colour index is'));
-        expect(withIndex.indexOf('The colour index is')).toBeLessThan(withIndex.indexOf('The reading adds up'));
-        expect(withIndex.endsWith('tint of the middle pixels.')).toBe(true);
+        expect(withIndex.indexOf('At the centre:')).toBeLessThan(withIndex.indexOf('The reading adds up'));
+        expect(withIndex.endsWith('The colours in the picture are for looking; this page does not measure a colour.')).toBe(true);
         const noIndex = colourSentence(1.25, 4.6, { ...both, seen: 'short', valid: false });
         expect(noIndex).not.toContain('The colour index is');
         expect(noIndex.indexOf('At the centre:')).toBeLessThan(noIndex.indexOf('The reading adds up'));
@@ -1345,18 +1484,16 @@ describe('false colour sentence', () => {
         const text = colourSentence(1.234, 4.567, both);
         expect(text).toContain('Blue: 1.23 µm');
         expect(text).toContain('Orange: 4.57 µm');
-        expect(text).toContain('At the centre: seen at both wavelengths, colour index +0.42 (signal-to-noise 14 at 1.23 µm and 31 at 4.57 µm).');
-        expect(text).toContain('(long − short) / (long + short)');
-        expect(colourSentence(1.234, 4.567, { ...both, index: -0.125 })).toContain('index −0.13 (');
+        expect(text).toContain('At the centre: seen at both wavelengths (signal-to-noise 14 at 1.23 µm and 31 at 4.57 µm).');
+        expect(text).not.toMatch(/index/i);
     });
 
-    it('prints an index that rounds to zero without a sign', () => {
+    it('describes both bands regardless of the calculated value', () => {
         for (const index of [-0.004, 0.004, 0, -0]) {
             const text = colourSentence(1.25, 4.6, { ...both, index });
-            expect(text).toContain('colour index 0.00 (');
+            expect(text).toContain('seen at both wavelengths');
+            expect(text).not.toMatch(/index/i);
         }
-        expect(colourSentence(1.25, 4.6, { ...both, index: -0.005 })).toContain('colour index −0.01 (');
-        expect(colourSentence(1.25, 4.6, { ...both, index: 0.006 })).toContain('colour index +0.01 (');
     });
 
     it('rounds signal-to-noise before choosing one decimal or none', () => {
@@ -1385,7 +1522,7 @@ describe('false colour sentence', () => {
 
     it('keeps public strings free of overclaims', () => {
         const slots = slotText.split('// False colour.')[1]!.split('// R Draconis')[0]!;
-        expect(text + slots).not.toMatch(/discovery|detected a|confirmed|proves/i);
+        expect(text + slots).not.toMatch(/discovery|detected a|proves/i);
     });
 
     it('labels both signal-to-noise values with their wavelengths', () => {
@@ -1404,7 +1541,7 @@ describe('false colour sentence', () => {
         expect(short).toContain('At the centre: seen at 1.25 µm (signal-to-noise 20); 4.60 µm cannot be measured here (blank pixels).');
         const long = colourSentence(1.25, 4.6, { ...both, short: NaN, seen: 'long', valid: false, snrLong: 20 });
         expect(long).toContain('At the centre: seen at 4.60 µm (signal-to-noise 20); 1.25 µm cannot be measured here (blank pixels).');
-        expect(short + long).not.toMatch(/colour index [−+\d]/);
+        expect(short + long).not.toMatch(/index/i);
         expect(colourSentence(1.25, 4.6, { ...both, short: NaN, long: NaN, seen: 'neither', valid: false }))
             .toContain('At the centre: cannot be measured here (blank pixels).');
     });
@@ -1412,4 +1549,11 @@ describe('false colour sentence', () => {
     it('explains how the reading relates to the picture', () => {
         expect(colourSentence(1.25, 4.6, both)).toContain('The reading adds up a small circle of pixels and takes off the sky just around it, so it need not match the tint of the middle pixels.');
     });
+});
+
+it('never prints index in any reading produced by the fixture and case helpers', () => {
+    expect(readings.length).toBeGreaterThan(0);
+    for (const reading of readings) {
+        expect(reading).not.toMatch(/index/i);
+    }
 });
