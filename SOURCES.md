@@ -57,7 +57,7 @@ The last column says what the source gives, in our own words.
 | Gaia DR3 is under CC BY-NC 3.0 IGO | `DATA-LICENSES.md`, `src/ui/app.ts`, `src/lib/source.ts` | [Gaia licence][gaialic] | The licence name |
 | Gaia credit line "ESA, Gaia DPAC" | `DATA-LICENSES.md`, `README.md`, `src/ui/app.ts`, `src/lib/source.ts` | [ESA archive terms][esdc] | The Gaia credit line |
 | Commercial use of Gaia data needs a request to ESA | `DATA-LICENSES.md` | [ESA archive terms][esdc] | The contact for a commercial licence |
-| Gaia DR3 is doi:10.5270/esa-qa4lep3 | `src/ui/app.ts` | [doi.org][gaiadoi] | The DOI resolves to ESA's DR3 page |
+| Gaia DR3 is doi:10.5270/esa-qa4lep3 | `src/ui/app.ts` (link title) | [doi.org][gaiadoi], [ESA][gaiadr3] | The DOI is registered to ESA's archive page for DR3. On 14 Nov 2026 that ESA page answered "not found", so the page links ESA's own DR3 page and gives the DOI in the link's title |
 | Gaia DR3 positions are given for 2016.0 | `README.md`, `src/lib/gaia.ts`, `src/lib/source.ts` | [Gaia DR3 page][gaiadr3] | Reference epoch 2016.0; DR3 itself came out in June 2022 |
 | SIMBAD is free to use under ODbL; cite Wenger et al. 2000 | `DATA-LICENSES.md` | [SIMBAD at CfA][simbad] | The licence line and the paper to cite |
 
