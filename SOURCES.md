@@ -86,14 +86,18 @@ The last column says what the source gives, in our own words.
 | Human eyes stop at 0.70 µm | `src/ui/app.ts` | [NASA Science][visible] | The eye sees from 380 to 700 nanometres |
 | Parallax is a small shift caused by Earth's orbit round the Sun | `README.md` | [ESA, parallax][esaplx] | A nearby star seems to move against far stars as Earth goes round the Sun; for the nearest stars the shift is under 1 arcsec |
 
-## Wavelengths the AI note may name
+## Wavelengths on the AI note checker's fixed list
+
+The AI note cannot print these. Its checker keeps only fixed sentence forms filled in from the fact sheet, and none of
+them names a spectral feature. The numbers stay on the checker's list of known figures (`CONSTANT_CONTEXT` in
+`src/lib/insight.ts`), so their sources stay here.
 
 | Claim | Where in this repo | Source | What the source gives |
 |---|---|---|---|
-| Helium at 1.083 µm | `src/lib/insight-prompt.ts` | [Explanatory Supplement][supp] | The helium line at 1.083 µm, which the supplement says comes from Earth's atmosphere |
-| Hydrogen at 1.875 and 4.05 µm | `src/lib/insight-prompt.ts` | [NIST hydrogen table][nist]; [Explanatory Supplement][supp] | NIST lists these two lines only in its air-wavelength table, at 18751.01 and 40511.6 Å; its vacuum table stops in the ultraviolet. The supplement gives Brackett α at 4.052 µm |
-| Water ice near 3.05, carbon dioxide ice at 4.27, carbon monoxide ice at 4.67 µm | `src/lib/insight-prompt.ts` | [arXiv:2603.22135][ices] | The three ice features at these wavelengths |
-| PAHs at 3.3 µm | `src/lib/insight-prompt.ts` | [arXiv:2503.21876][pah], abstract | The 3.3 µm PAH band |
+| Helium at 1.083 µm | `src/lib/insight.ts` | [Explanatory Supplement][supp] | The helium line at 1.083 µm, which the supplement says comes from Earth's atmosphere |
+| Hydrogen at 1.875 and 4.05 µm | `src/lib/insight.ts` | [NIST hydrogen table][nist]; [Explanatory Supplement][supp] | NIST lists these two lines only in its air-wavelength table, at 18751.01 and 40511.6 Å; its vacuum table stops in the ultraviolet. The supplement gives Brackett α at 4.052 µm |
+| Water ice near 3.05, carbon dioxide ice at 4.27, carbon monoxide ice at 4.67 µm | `src/lib/insight.ts` | [arXiv:2603.22135][ices] | The three ice features at these wavelengths |
+| PAHs at 3.3 µm | `src/lib/insight.ts` | [arXiv:2503.21876][pah], abstract | The 3.3 µm PAH band |
 
 ## Planet Nine comparison
 

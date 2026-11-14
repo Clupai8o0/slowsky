@@ -21,10 +21,11 @@ describe('plain note counts name the candidate set', () => {
             [2, 3, '2 of the 3 candidates', '2 of the 3 candidates', 'are', 'their'],
         ] as const;
         for (const [n, total, subject, location, verb, possessive] of cases) {
-            const candidates = Array.from({ length: total }, (_, i) => ({ reason: 'spot (candidate).', snrFlagRemoved: i < n, snrMapMissing: i < n }));
+            const candidates = Array.from({ length: total }, (_, i) => ({ reason: 'spot (candidate).', snrFlagRemoved: i < n, snrMapMissing: false }));
             const notes = plainListNotes(candidates, true, 6).slice(1);
-            expect(notes).toEqual([
-                `${subject} ${verb} marked by an archive overflow flag, so ${possessive} S/N is left out; the S/N figure there can be unreliable.`,
+            expect(notes).toEqual([`${subject} ${verb} marked by an archive overflow flag, so ${possessive} S/N is left out; the S/N figure there can be unreliable.`]);
+            const missing = candidates.map(c => ({ ...c, snrMapMissing: c.snrFlagRemoved }));
+            expect(plainListNotes(missing, true, 6).slice(1)).toEqual([
                 `The frames' error maps have no value at ${location}, so ${possessive} S/N is left out; the noise there comes from the difference image alone.`,
             ]);
             expect(notes.every(isSnrNote)).toBe(true);
@@ -35,7 +36,6 @@ describe('plain note counts name the candidate set', () => {
     it('says the 1 candidate, 1 of N, and k of N for both reasons', () => {
         const c = (snrFlagRemoved: boolean, snrMapMissing: boolean) => ({ reason: 'spot (candidate).', snrFlagRemoved, snrMapMissing });
         expect(plainListNotes([c(true, true)], true, 6).slice(1)).toEqual([
-            'The 1 candidate is marked by an archive overflow flag, so its S/N is left out; the S/N figure there can be unreliable.',
             "The frames' error maps have no value at the 1 candidate, so its S/N is left out; the noise there comes from the difference image alone.",
         ]);
         expect(plainListNotes([c(true, false), c(false, true), c(false, true)], true, 6).slice(1)).toEqual([

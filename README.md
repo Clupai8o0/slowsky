@@ -55,6 +55,24 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   looking, not a measurement: it comes from a different telescope at a different wavelength (2.16 µm), its
   brightness cannot be compared with SPHEREx, and the night it was taken on is not known (`src/lib/epoch.ts`,
   `src/ui/epoch-view.ts`).
+- On a live view, read **Candidate changes**: a list of spots where the light differs between the first and the
+  last visit, each marked on the sky with a numbered dashed ring. The two visits are compared only when their
+  wavelengths differ by no more than 0.02 µm. The page reads the archive's error map for each frame of the two
+  visits to judge how far a spot stands out from the noise. It leaves out a spot when, in a frame of a checked
+  visit, the brightest of up to four detector pixels at or beside the brightest point within 12″ of it carries one
+  of the archive's TRANSIENT, OUTLIER, NONFUNC or SUR_ERROR flags, and it says how many it left out. (The page
+  maps that point onto the detector and takes a two-by-two block of detector pixels: on each axis, the pixel at or
+  just before the point and the one after it. Pixels outside the part of the frame the page loaded are left out, so
+  at its last row or column the block is smaller. The page reads the flags of the brightest pixel of that block
+  that holds a value, whether or not it adds any light at the point: when the point sits exactly on a pixel, the
+  others add none. The centre of the pixel it reads can lie outside the 12″ circle, by up to about one and a half
+  detector pixels, about 9″.) The list opens with at
+  most 8 spots that have no Gaia catalogue star
+  within 6″; the rest stay behind a button, because a small shift between two pictures of a star can look like a
+  change. Every line is a candidate only: the page cannot tell a real change in the sky from a detector hit, a
+  sharper star image in one visit or a small shift between the two pictures, and it says so above the list. A
+  saved copy lists nothing, because it is not checked against the error maps and flags (`src/lib/changes.ts`,
+  `src/ui/changes-view.ts`, `src/ui/flag-screen.ts`).
 - Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode, and in Subtract the two
@@ -159,7 +177,7 @@ Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md
 | Tool | Maker | Used for |
 |---|---|---|
 | Claude Code (Claude Fable, Opus, Sonnet and Haiku models) | Anthropic | Writing and reviewing code, tests, planning help, page text drafts; checking the facts in this file and on the page against their sources and writing [SOURCES.md](SOURCES.md) |
-| Claude API (Claude Opus 5.5) | Anthropic | Inside the site: the server route `api/insight.ts` writes the optional research note from the page's own measurements. The note is labelled as written by AI and sits behind a passcode; the route stays off until it is set up. Before a note is shown, a checker (`checkNote` in `src/lib/insight.ts`) drops any sentence with a number that is neither on the fact sheet built from the page's own measurements nor on a short fixed list of mission figures in the code. It cannot catch a real number moved to the wrong subject |
+| Claude API (Claude Opus 5.5) | Anthropic | Inside the site: the server route `api/insight.ts` writes the optional research note from the page's own measurements. The note is labelled as written by AI and sits behind a passcode; the route stays off until it is set up. Before a note is shown, a checker (`checkNote` in `src/lib/insight.ts`) keeps only sentences that match a fixed list of sentence forms, filled in with the words and numbers of the fact sheet built from the page's own measurements, under three fixed headings; it drops every other sentence. It keeps "This is a candidate only" only when the sheet shows a shift in position or a notable change, and the advice to wait for another visit only for a notable change: a difference of 3 sigma or more (our own bar), or a brightness change that is larger than every reference-star scatter on the sheet or has no scatter to be compared with. It is a filter, not a proof: it checks the note against the sheet, not the measurements themselves |
 | Codex (GPT-6.1 Sol and Terra models) | OpenAI | Writing and reviewing code; checking the source list |
 | Gemini (Argon and Carbon models, through Antigravity) | Google | Writing and reviewing code; reviewing the facts and wording in this file and on the page |
 | Grok 4.7 (through Grok Build) | xAI | Reviewing code; checking the source list |
@@ -206,8 +224,13 @@ in it.
 - The offline copy has only the five preset targets, one detector each, and a field of at most 0.1°.
 - Each view uses one detector. A star found by name is placed at its catalogue position, and its marker moves only
   for the presets. Gaia rings move in every view.
-- Bad-pixel flags are only shown, and only when you switch them on, on live frames in Blink. No measurement uses
-  them, so hot pixels and cosmic-ray hits show as they are, and one can upset a point on the brightness curve.
+- Bad-pixel flags are shown only when you switch them on, on live frames in Blink. The pictures, the brightness
+  curve and the motion check do not use them, so hot pixels and cosmic-ray hits show as they are, and one can upset
+  a point on the brightness curve. Only the Candidate changes list uses them: it leaves some spots out and adds a caution to others (next point).
+- The Candidate changes list compares only the first and the last visit, at one wavelength, and it cannot confirm
+  any spot it lists. When a visit has fewer than 3 frames the page cannot rule out a detector hit, and it says so.
+  An OVERFLOW flag near a spot does not remove it: the line says the reading there can be unreliable, and a line
+  that said which visit is brighter no longer says so.
   The Flagged pixels layer leaves out three kinds: SOURCE (set on every pixel mapped to a known source, so it would cover
   the stars themselves), FULLSAMPLE (for information only) and GHOST_FPA (not in use at present). The TRANSIENT
   flag marks cosmic-ray hits, and near a very bright star it can also mark charge spilling into neighbouring
@@ -225,11 +248,10 @@ in it.
 ## In the repository but not switched on
 
 These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
-`src/ui/slots.ts`; Flagged pixels, False colour and Older picture are on). A preview build can switch the first
-three on with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to the page, so its switch shows nothing.
+`src/ui/slots.ts`; Flagged pixels, False colour, Older picture and Candidate changes are on). A preview build can
+switch the first two on with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to the page, so its switch
+shows nothing.
 
-- A list of candidate changes between the first and the last visit, with numbered marks on the sky
-  (`src/lib/changes.ts`).
 - A sentence that reads the colour at one spot of the False colour picture (`fcReading`). It stays off: the page
   shows the picture and does not measure a colour.
 - For R Draconis, the light in a ring around its too-bright centre, look by look, as a line or a table

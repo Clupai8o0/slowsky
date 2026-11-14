@@ -69,14 +69,14 @@ describe('Candidate changes panel', () => {
         expect(changesMarks(changesView(found([], [])), 200, 100)).toBe('');
     });
 
-    it('turns ChangeInputError into a note, hides on any other failure, and stays off by default', () => {
+    it('turns ChangeInputError into a note, hides on any other failure, and is on by default', () => {
         const result = {} as SkyResult;
         const tooFew = changesFor(result, () => { throw new ChangeInputError('Change finding needs two visits; these frames make 1.'); });
         expect(tooFew).toEqual({ candidates: [], notes: ['Change finding needs two visits; these frames make 1.'], ran: false });
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         expect(changesFor(result, () => { throw new RangeError('boom'); })).toBeNull();
         warn.mockRestore();
-        expect(DEFAULT_FEATURES.changes).toBe(false);
+        expect(DEFAULT_FEATURES.changes).toBe(true);
     });
 });
 
@@ -307,6 +307,43 @@ describe('round 11: groups from the review', () => {
 });
 
 describe('plain list (compareVisits plain: true)', () => {
+    it('hides list-specific notes only while no spot is listed', () => {
+        const notes = ['Listed with spots that have no catalogue star within 6″ first, then by noise.',
+            'S/N is left out for 1 candidate where the frames\' error maps have no value, because the noise there comes from the difference image alone.',
+            'Finder note.'];
+        const view = (flags: boolean[]) => changesView({ ...found(flags.map((nearCatalogue, i) => ({ ...cand(String(i), i * 20, 30, 'spot'), reading: 'unclear' as const, nearCatalogue })), notes), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
+        const none = view([true, true, true]);
+        expect(changesHtml(none)).toContain('No spot is shown:');
+        expect(changesHtml(none)).not.toContain(notes[0]);
+        expect(changesHtml(none)).not.toContain(notes[1]);
+        expect(changesHtml(none)).toContain(notes[2]);
+        for (const note of notes) {
+            expect(changesHtml(none, true)).toContain(note);
+            expect(changesHtml(view([false, true, true]))).toContain(note);
+            expect(changesHtml(view([false, true, true]), true)).toContain(note);
+        }
+    });
+    it('names the toggle for zero or one listed and one or three hidden', () => {
+        for (const listed of [0, 1]) {
+            for (const hidden of [1, 3]) {
+                const flags = [...Array(listed).fill(false), ...Array(hidden).fill(true)];
+                const cs = flags.map((nearCatalogue, i) => ({ ...cand(String(i), 20 + i * 20, 30, 'spot'), reading: 'unclear' as const, nearCatalogue }));
+                const v = changesView({ ...found(cs, []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
+                expect(changesHtml(v)).toContain(`aria-expanded="false">${listed ? `Show ${hidden} more` : hidden === 1 ? 'Show it' : 'Show them'}</button>`);
+                expect(changesHtml(v, true)).toContain(`aria-expanded="true">${listed ? 'Show fewer' : hidden === 1 ? 'Hide it' : 'Hide them'}</button>`);
+            }
+        }
+    });
+    it('stops at the first near star, but not at an unknown catalogue status', () => {
+        const flags = [false, undefined, true, false];
+        const cs = flags.map((nearCatalogue, i) => ({ ...cand(String(i), 20 + i * 20, 30, `spot ${i}`), reading: 'unclear' as const, nearCatalogue }));
+        const v = changesView({ ...found(cs, []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
+        expect(changesHtml(v)).toContain('spot 0');
+        expect(changesHtml(v)).toContain('spot 1');
+        expect(changesHtml(v)).not.toContain('spot 2');
+        expect(changesHtml(v)).not.toContain('spot 3');
+        expect(changesHtml(v, true)).toContain('spot 3');
+    });
     it('does not count an unmarked hidden spot as near a star (m01)', () => {
         const flags = [...Array(8).fill(false), true, undefined];
         const cs = flags.map((nearCatalogue, i) => ({ ...cand(String(i), 10 + i, 30, 'spot'), reading: 'unclear' as const, nearCatalogue }));
@@ -323,7 +360,7 @@ describe('plain list (compareVisits plain: true)', () => {
         const c = { ...cand('a', 20, 20, 'spot'), reading: 'unclear' as const, nearCatalogue: true };
         const v = changesView({ ...found([c], []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
         expect(changesHtml(v)).toContain('aria-expanded="false">Show it');
-        expect(changesHtml(v, true)).toContain('aria-expanded="true">Show fewer');
+        expect(changesHtml(v, true)).toContain('aria-expanded="true">Hide it');
     });
     it('keeps nearby ends of the same candidate as separate labels (m15)', () => {
         const pair = { ...cand('pair', 50, 50, 'spot'), reading: 'unclear' as const, ends: [50, 54].map(x => ({ visit: 'later' as const, x, y: 50, radiusPix: 7.8 })) };
@@ -359,7 +396,7 @@ describe('plain list (compareVisits plain: true)', () => {
         for (const [flags, row, button] of rows) {
             const v = view(flags), html = changesHtml(v), open = changesHtml(v, true);
             expect(html).toContain(`${row} <button type="button" class="sk-chg-more" data-chg-more aria-expanded="false">${button}</button>`);
-            expect(open).toContain('aria-expanded="true">Show fewer</button>');
+            expect(open).toContain(`aria-expanded="true">${flags[0] === true ? (flags.length === 1 ? 'Hide it' : 'Hide them') : 'Show fewer'}</button>`);
             expect(open).not.toContain(row);
             expect(html + open).not.toContain('Every spot found');
             expect(html + open).not.toContain('Show all');
@@ -384,8 +421,36 @@ describe('plain list (compareVisits plain: true)', () => {
     it('draws a short line from a label left nearer another ring to its own ring', () => {
         const list = [[3.1, 220], [0.4, 234]].map(([x, y], i) => ({ ...cand(String(i), x!, y!, 'spot'), reading: 'unclear' as const, ends: [{ visit: 'later' as const, x: x!, y: y!, radiusPix: 7.8 }] }));
         const svg = changesMarks(changesView(found(list, [])), 235, 235);
-        expect(svg).toContain('<circle cx="0.4" cy="234.0" r="7.8"/><line x1="11.3" y1="234.0" x2="8.2" y2="234.0"/><text x="15.6" y="233.9" font-size="9.4">2</text>');
-        expect(svg.match(/<line/g)).toHaveLength(1);
+        expect(svg).toContain('<circle cx="0.4" cy="234.0" r="7.8"/><line class="sk-chg-lead-under" x1="11.3" y1="234.0" x2="8.2" y2="234.0"/><line x1="11.3" y1="234.0" x2="8.2" y2="234.0"/><text x="15.6" y="233.9" font-size="9.4">2</text>');
+        expect(svg.match(/<line/g)).toHaveLength(2);
+    });
+    it('draws no line when another ring ties the nearest own ring', () => {
+        const points = [[28.2, 234], [25.1, 234], [15.9, 234], [34.8, 234], [7.6, 234], [4.4, 234]];
+        const cs = points.map(([x, y], i) => ({ ...cand(String(i), x!, y!, 'spot'), reading: 'unclear' as const,
+            ends: [{ visit: 'later' as const, x: x!, y: y!, radiusPix: 7.8 }, ...(i === 0 ? [{ visit: 'later' as const, x: 36.3, y: 233.4, radiusPix: 7.8 }] : [])] }));
+        const svg = plainMarks(changesView(found(cs, [])), 235, 235);
+        expect(svg).toContain('<circle cx="4.4" cy="234.0" r="7.8"/><text x="14.3" y="198.5" font-size="9.4">5, 6</text>');
+    });
+    it('never treats the other end of the same candidate as another ring', () => {
+        const points = [[35.3, 230.6], [27.5, 225.6], [6.6, 213.3]];
+        const cs = points.map(([x, y], i) => ({ ...cand(String(i), x!, y!, 'spot'), reading: 'unclear' as const,
+            ends: [{ visit: 'later' as const, x: x!, y: y!, radiusPix: 7.8 }, ...(i === 0 ? [{ visit: 'later' as const, x: 40.3, y: 225.5, radiusPix: 7.8 }] : [])] }));
+        const svg = plainMarks(changesView(found(cs, [])), 235, 235);
+        expect(svg).toContain('<circle cx="35.3" cy="230.6" r="7.8"/><text x="52.5" y="233.9" font-size="9.4">1</text>');
+    });
+    it('draws a joined 1, 2 label to its nearer own ring', () => {
+        const points = [[2.7, 234], [1.6, 232.5], [18.1, 232.2], [18.3, 230.4]];
+        const cs = points.map(([x, y], i) => ({ ...cand(String(i), x!, y!, 'spot'), reading: 'unclear' as const,
+            ends: [{ visit: 'later' as const, x: x!, y: y!, radiusPix: 7.8 }] }));
+        const svg = plainMarks(changesView(found(cs, [])), 235, 235);
+        expect(svg).toContain('<line x1="1.6" y1="221.8" x2="1.6" y2="224.7"/><text x="14.2" y="220.8" font-size="9.4">1, 2</text>');
+    });
+    it('draws no leader when the gap to the own ring is under 2 px', () => {
+        const points = [[32.4, 209.1], [36.1, 201.7], [11.9, 204.3], [18, 218.3], [19.8, 211.3], [28.3, 221.7]];
+        const cs = points.map(([x, y], i) => ({ ...cand(String(i), x!, y!, 'spot'), reading: 'unclear' as const,
+            ends: [{ visit: 'later' as const, x: x!, y: y!, radiusPix: 7.8 }] }));
+        const svg = plainMarks(changesView(found(cs, [])), 235, 235);
+        expect(svg).toContain('<circle cx="28.3" cy="221.7" r="7.8"/><text x="15.1" y="226.4" font-size="9.4">6</text>');
     });
     it('shares identical plain causes while retaining candidate details', () => {
         const causes = "a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
@@ -445,11 +510,11 @@ describe('plain list (compareVisits plain: true)', () => {
         const threshold = /<text x="[^"]+" y="([^"]+)"/.exec(make(117, 18.2, 235 / 40))!;
         expect(Number(threshold[1])).toBeGreaterThan(18.2 + 5.9);
     });
-    it('checks 500 seeded layouts for bounds, unique ring numbers, overlaps and placement fallbacks', () => {
+    it('checks 2001 seeded layouts for finite, positive leader lines and safe placements', () => {
         let seed = 72931;
         const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
         const layouts = { preferred: 0, soft: 0, hard: 0, apart: 0, grid: 0, last: 0, nearer: 0 };
-        for (let trial = 0; trial < 500; trial++) {
+        for (let trial = 0; trial < 2001; trial++) {
             const n = 1 + Math.floor(random() * 8), anchor = [[0, 0], [234, 0], [0, 234], [234, 234], [117, 117]][trial % 5]!;
             const cs = Array.from({ length: n }, (_, i) => {
                 const x = Math.max(0, Math.min(234, trial % 3 ? anchor[0]! + (random() - 0.5) * 32 : random() * 234));
@@ -460,6 +525,11 @@ describe('plain list (compareVisits plain: true)', () => {
             });
             const counts = { preferred: 0, soft: 0, hard: 0, apart: 0, grid: 0, last: 0 };
             const svg = plainMarks(changesView(found(cs, [])), 235, 235, false, counts);
+            expect(svg).not.toContain('NaN');
+            for (const line of svg.matchAll(/<line(?: class="[^"]+")? x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"\/>/g)) {
+                const [x1, y1, x2, y2] = line.slice(1).map(Number) as [number, number, number, number];
+                expect(Math.hypot(x2 - x1, y2 - y1)).toBeGreaterThan(0);
+            }
             for (const key of Object.keys(counts) as (keyof typeof counts)[]) { if (counts[key]) { layouts[key]++; } }
             const labels = [...svg.matchAll(/<text x="([^"]+)" y="([^"]+)" font-size="([^"]+)">([^<]+)<\/text>/g)].map(m => {
                 const x = Number(m[1]), y = Number(m[2]), s = Number(m[3]), ids = m[4]!.split(', ').map(Number), half = s * m[4]!.length * 0.35 + 1;
@@ -478,7 +548,7 @@ describe('plain list (compareVisits plain: true)', () => {
             cs.forEach((c, i) => expect(labels.filter(l => l.ids.includes(i + 1)).length).toBe(c.ends.length));
             if (nearer) { layouts.nearer++; }
         }
-        console.log('500 layout counts', layouts);
+        console.log('2001 layout counts', layouts);
     });
     it('P2 prints each new sentence exactly and strips only its S/N figure', () => {
         const ending = "a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";

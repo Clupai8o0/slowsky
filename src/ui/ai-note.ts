@@ -1,7 +1,7 @@
 // The AI note panel: a button-started, plain-text reading of the view, written by a language model from the
 // numbers the page measured. It is never a measurement, so it lives in its own framed panel with a fixed
 // disclaimer, and it hides itself when the server route is off.
-import { factSheet, fetchInsight, InsightError, insightStatus, type InsightFacts, type InsightStatus } from '../lib/insight';
+import { ASK_ENABLED, factSheet, fetchInsight, InsightError, insightStatus, type InsightFacts, type InsightStatus } from '../lib/insight';
 import { buildFacts, type FactsInput } from '../lib/insight-facts';
 import { subtract } from '../lib/stack';
 import type { SkyResult } from '../lib/source';
@@ -116,6 +116,8 @@ export function busyText(e: { retryAfter?: number; reason?: string }): string
     return `Too many requests. ${retryText(e.retryAfter)}`;
 }
 
+export const SHARED_DAILY = 'Today’s AI notes and questions are used up. Try again tomorrow.';
+
 export const MSG = {
     unreachable: 'Couldn’t reach the server. Try again.',
     wrong: 'Wrong passcode.',
@@ -128,7 +130,7 @@ export const MSG = {
 
 const LABELS = ['What this shows:', 'How far to trust it:', 'What to check next:'];
 
-type Doc = Pick<Document, 'createElement' | 'createTextNode'> & { activeElement: Element | null };
+type Doc = Pick<Document, 'createElement' | 'createTextNode'> & { activeElement: Element | null; visibilityState?: DocumentVisibilityState; addEventListener?: Document['addEventListener'] };
 
 // Plain text in, DOM nodes out: every string goes through textContent, never innerHTML.
 export function renderNote(box: HTMLElement, text: string, doc: Doc = document): void
@@ -158,19 +160,33 @@ export interface PassStore {
     removeItem(key: string): void;
 }
 
+export interface AiRequest {
+    order: number;
+    generation: number;
+    period: number;
+}
+
 export interface AiNote {
     // Call on every render. A new view (frames, target, centre, curve or shift) drops the old note, which
     // described other numbers, and the panel shows only when the route is on and the view has facts to send.
     update(view: NoteView | null): void;
+    startRequest(): AiRequest;
+    finishRequest(): void;
+    setRemaining(n: number, request?: AiRequest): void;
+    exhaustRemaining(request?: AiRequest, fromQuestion?: boolean): void;
+    recheckRemaining(request: AiRequest | undefined, sent: string | undefined): void;
+    relock(request?: AiRequest): void;
 }
 
 export interface AiNoteDeps {
+    askOn?: boolean;
     status?: typeof insightStatus;
     fetch?: typeof fetchInsight;
     fetcher?: typeof fetch; // the network under insightStatus, wrapped to tell "off" from "unreachable"
     storage?: PassStore | null; // defaults to sessionStorage; never localStorage
     doc?: Doc;
     now?: () => number; // ms clock, for spacing out status re-checks
+    onState?: (state: { ready: boolean; facts: InsightFacts | null; passcode?: string }) => void;
 }
 
 // After a status check that never reached the server, a later view change tries again, at most this often.
@@ -215,6 +231,21 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     let tries = 0; // status answers: only the latest one counts
     let inflight = 0; // status checks still out
     let notice = ''; // a busy reply that came before any view: shown with the first view, then dropped
+    let generation = 0;
+    let requestOrder = 0;
+    let activeRequests = 0;
+    let remaining: number | undefined;
+    let period = 0;
+    let exhausted = false;
+    let checkingCharge = false;
+    let queuedCharge: { request: AiRequest; sent: string | undefined } | undefined;
+    const askOn = deps.askOn ?? ASK_ENABLED;
+
+    function startRequest(): AiRequest
+    {
+        activeRequests++;
+        return { order: ++requestOrder, generation, period };
+    }
 
     function passcode(): string | undefined
     {
@@ -277,8 +308,78 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function setLeft(n: number | undefined): void
     {
-        left.textContent = n === undefined ? '' : leftText(n);
+        remaining = n;
+        left.textContent = n === undefined ? '' : askOn
+            ? n === 1 ? '1 AI note or question left today' : `${n} AI notes or questions left today`
+            : leftText(n);
         left.hidden = n === undefined;
+    }
+
+    function setRequestRemaining(n: number, request: AiRequest): void
+    {
+        if ((request.generation !== generation || request.period !== period) && (remaining === undefined || n >= remaining)) {
+            return;
+        }
+        if (!exhausted && Number.isFinite(n) && (remaining === undefined || n < remaining)) {
+            setLeft(n);
+        }
+    }
+
+    function exhaustRemaining(request?: AiRequest, fromQuestion = false): void
+    {
+        if (request && (request.generation !== generation || request.period !== period)) {
+            return;
+        }
+        exhausted = true;
+        setLeft(undefined);
+        if (fromQuestion && askOn && !ctrl) {
+            setMsg(SHARED_DAILY);
+        }
+    }
+
+    function recheckRemaining(request: AiRequest | undefined, sent: string | undefined): void
+    {
+        if (!request) {
+            return;
+        }
+        if (request.generation !== generation || request.period !== period) {
+            request = { order: request.order, generation, period };
+            sent = passcode();
+        }
+        queuedCharge = { request, sent };
+        if (checkingCharge) {
+            return;
+        }
+        checkingCharge = true;
+        void (async () => {
+            while (queuedCharge) {
+                const pending = queuedCharge;
+                queuedCharge = undefined;
+                try {
+                    const { s, reached } = await check(pending.sent);
+                    if (!reached || s.busy || !s.enabled || (s.locked && !s.unlocked)) {
+                        exhaustRemaining(pending.request);
+                    } else if (typeof s.remaining === 'number' && Number.isFinite(s.remaining)) {
+                        setRequestRemaining(s.remaining, pending.request);
+                    } else {
+                        // The server sends no count without a passcode, so the line cannot be confirmed: a
+                        // request here or in another tab may have been counted. No line is better than one
+                        // that is too high.
+                        exhaustRemaining(pending.request);
+                    }
+                } catch {
+                    exhaustRemaining(pending.request);
+                }
+            }
+            checkingCharge = false;
+        })();
+    }
+
+    function startPeriod(n: number | undefined): void
+    {
+        period++;
+        exhausted = false;
+        setLeft(n);
     }
 
     // The status line stays in the page so screen readers hear each change; empty or `quiet` lines are
@@ -291,9 +392,9 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function busy(e: { retryAfter?: number; reason?: string }): void
     {
-        setMsg(busyText(e));
+        setMsg(askOn && e.reason === 'daily' ? SHARED_DAILY : busyText(e));
         if (e.reason === 'daily') {
-            setLeft(undefined);
+            exhaustRemaining();
         }
     }
 
@@ -318,22 +419,30 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     {
         // Facts are built only once the route is on, so a switched-off site never pays for them.
         panel.hidden = !(st && st.enabled && view && factsNow());
-        if (panel.hidden) {
-            return;
+        if (!panel.hidden) {
+            lock.hidden = !locked();
+            go.hidden = locked();
         }
-        lock.hidden = !locked();
-        go.hidden = locked();
+        const ready = !panel.hidden && !locked();
+        deps.onState?.({ ready, facts: ready ? factsNow() : null, passcode: passcode() });
     }
 
     function showLock(text: string): void
     {
-        const hadFocus = doc.activeElement === go || doc.activeElement === head;
+        generation++;
+        const questionInput = askOn ? panel.querySelector('[data-ask="q"]') : null;
+        const typingQuestion = questionInput !== null && doc.activeElement === questionInput;
+        const hadFocus = doc.activeElement === go || doc.activeElement === head
+            || (askOn && Boolean(panel.querySelector('[data-ask="form"]')?.contains(doc.activeElement)));
         lock.hidden = false;
         go.hidden = true;
         setMsg(text);
-        if (hadFocus) {
+        if (typingQuestion) {
+            head.focus();
+        } else if (hadFocus) {
             pass.focus();
         }
+        deps.onState?.({ ready: false, facts: null, passcode: passcode() });
     }
 
     function clearNote(): void
@@ -376,15 +485,17 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         }
         if (!s.unlocked) {
             savePass(undefined);
+            st = { ...s, locked: true, unlocked: false };
             showLock(MSG.wrong);
             pass.select();
             return;
         }
         savePass(v);
+        generation++;
         pass.value = '';
         st = s;
         setMsg('');
-        setLeft(s.remaining);
+        startPeriod(s.remaining);
         show();
         go.focus();
     });
@@ -406,9 +517,23 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         out.replaceChildren();
         given.hidden = true;
         const sent = passcode();
+        const request = startRequest();
+        let responseStatus: number | undefined;
+        const watchResponse: typeof fetch = async (input, init) => {
+            const response = await net(input, init);
+            responseStatus = response.status;
+            return response;
+        };
         try {
-            const note = await fetchNote(f, { signal: c.signal, ...(sent !== undefined ? { passcode: sent } : {}) });
-            if (c.signal.aborted || ctrl !== c) {
+            const note = await fetchNote(f, { ...(sent !== undefined ? { passcode: sent } : {}), ...(!deps.fetch ? { fetcher: watchResponse } : {}) });
+            if (!note.cached) {
+                if (typeof note.remaining === 'number' && Number.isFinite(note.remaining)) {
+                    setRequestRemaining(note.remaining, request);
+                } else {
+                    recheckRemaining(request, sent);
+                }
+            }
+            if (c.signal.aborted || ctrl !== c || request.generation !== generation) {
                 return;
             }
             renderNote(out, note.text, doc);
@@ -420,20 +545,30 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
             given.hidden = false;
             disc.textContent = disclaimer(note.model);
             setMsg(MSG.written, true);
-            // A cached note carries the allowance from when it was written, so it can't update the count.
-            if (note.remaining !== undefined && !note.cached) {
-                setLeft(note.remaining);
-            }
         } catch (err) {
-            if (c.signal.aborted || ctrl !== c) {
+            const code = err instanceof InsightError ? err.code : 'failed';
+            if (code === 'failed' || code === 'unverified' || (err instanceof InsightError && code === 'busy' && (!err.reason || responseStatus === 503 || responseStatus === 504))
+                || (code === 'off' && (c.signal.aborted || ctrl !== c || request.generation !== generation))) {
+                recheckRemaining(request, sent);
+            }
+            if (err instanceof InsightError && err.code === 'busy' && err.reason === 'daily') {
+                exhaustRemaining(request);
+            }
+            if (c.signal.aborted || ctrl !== c || request.generation !== generation) {
                 return;
             }
-            const code = err instanceof InsightError ? err.code : 'failed';
             if (code === 'off') {
                 // Only the route's own "off" hides the panel; a gateway error looks the same, so ask again.
                 const mine = ++tries;
                 const { s, reached } = await check(sent);
-                if (mine !== tries || ctrl !== c) {
+                if (reached && !s.busy && typeof s.remaining === 'number') {
+                    setRequestRemaining(s.remaining, request);
+                } else {
+                    // No count came back (failed check, busy, locked, or no passcode set): the request may have
+                    // been counted, so the line is hidden rather than left one too high.
+                    exhaustRemaining(request);
+                }
+                if (mine !== tries || ctrl !== c || request.generation !== generation) {
                     return;
                 }
                 if (!reached) {
@@ -472,6 +607,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 setMsg(MSG.failed);
             }
         } finally {
+            activeRequests--;
             if (ctrl === c) {
                 ctrl = null;
                 go.disabled = false;
@@ -506,11 +642,11 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         }
         st = s;
         disc.textContent = disclaimer(s.model);
-        setLeft(s.remaining);
+        startPeriod(s.remaining);
         if (s.busy) {
             busy(s); // shown once; the next view or note clears it
             if (!view) {
-                notice = busyText(s);
+                notice = askOn && (s as InsightStatus & { reason?: string }).reason === 'daily' ? SHARED_DAILY : busyText(s);
             }
         }
         show();
@@ -518,7 +654,42 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     firstCheck();
 
+    let lastVisibleCheck = -Infinity;
+    doc.addEventListener?.('visibilitychange', () => {
+        if (doc.visibilityState !== 'visible' || panel.hidden || !st?.enabled || locked() || remaining === undefined
+            || activeRequests !== 0 || inflight !== 0 || now() - lastVisibleCheck < RECHECK_MS) {
+            return;
+        }
+        lastVisibleCheck = now();
+        recheckRemaining({ order: requestOrder, generation, period }, passcode());
+    });
+
     return {
+        startRequest,
+        finishRequest(): void
+        {
+            activeRequests = Math.max(0, activeRequests - 1);
+        },
+        setRemaining(n: number, request = { order: requestOrder, generation, period }): void
+        {
+            setRequestRemaining(n, request);
+        },
+        exhaustRemaining,
+        recheckRemaining,
+        relock(request?: AiRequest): void
+        {
+            if (request && request.generation !== generation) {
+                return;
+            }
+            const hadPass = passcode() !== undefined;
+            ++tries;
+            clearNote();
+            if (st) {
+                st = { ...st, locked: true, unlocked: false };
+            }
+            savePass(undefined);
+            showLock(hadPass ? MSG.wrong : MSG.enter);
+        },
         update(v: NoteView | null): void
         {
             const next = v ? [v.result, v.targetId, v.center.ra, v.center.dec, v.curve, v.shift] : [];

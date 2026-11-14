@@ -231,8 +231,8 @@ describe('flags slot', () => {
 });
 
 describe('slots for modules still in their lanes', () => {
-    it('ship switched off and show nothing until a module fills them', () => {
-        expect(FEATURES.changes).toBe(false);
+    it('ship switched off and show nothing until a module fills them (the change list is on)', () => {
+        expect(FEATURES.changes).toBe(true);
         expect(FEATURES.falseColour).toBe(true);
         expect(FEATURES.fcReading).toBe(false);
         expect(FEATURES.halo).toBe(false);
@@ -241,7 +241,7 @@ describe('slots for modules still in their lanes', () => {
         dated.frame.tMax = 60000.001;
         const v = view(sky([dated]));
         const el = {} as HTMLElement;
-        // The change panel is wired (switch off): one visit shows only the finder's own message.
+        // The change panel (switched on): one visit read live shows only the finder's own message.
         const box = {} as HTMLElement;
         const marks = {} as HTMLElement;
         expect(mountChanges(() => {}).render(box, marks, v)).toBe(true);

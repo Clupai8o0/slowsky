@@ -3,7 +3,7 @@ import { askViewHtml } from '../src/ui/ask-view';
 import { busyText, MSG } from '../src/ui/ai-note';
 
 describe('ask view', () => {
-    const wrap = (body: string) => `<section class="sk-ask" aria-live="polite">${body}</section>`;
+    const wrap = (body: string) => `<section class="sk-ask">${body}</section>`;
     it('adds the explanation only for a largest-change answer', () => {
         const note = '&quot;Largest change&quot; is the larger of two gaps: from the middle value up to the brightest point, and down to the faintest. It does not say whether the brightness went up or down over time; the time-order line does.';
         const sheet = ['Brightness relative to the reference stars', 'Largest change from the median brightness: 30 percent brighter.', 'Visits: 3.'];
@@ -21,10 +21,10 @@ describe('ask view', () => {
         expect(askViewHtml({ kind: 'busy', retryAfter: 20 })).toBe(wrap(`<p>${busyText({ retryAfter: 20 })}</p>`));
     });
     it('prints the answer and trust rows from the sheet, escaped', () => {
-        expect(askViewHtml({ kind: 'answer', sheet: ['A < B & C', 'Trust'], lines: [1], trust: [2], text: '<script>hostile</script>' })).toBe(wrap('<h3 class="sk-ask-h">Lines from this page&#39;s measurements</h3><p>The AI picked these measured lines as the closest match to your question. They are not a yes or no answer, and they do not say whether a change is real.</p><ul class="sk-ask-rows"><li>A &lt; B &amp; C</li></ul><h3 class="sk-ask-h">How far to trust them</h3><ul class="sk-ask-rows"><li>Trust</li></ul>'));
+        expect(askViewHtml({ kind: 'answer', sheet: ['A < B & C', 'Trust'], lines: [1], trust: [2], text: '<script>hostile</script>' })).toBe(wrap('<h3 class="sk-ask-h">Lines from this page&#39;s measurements</h3><p>These measured lines are the closest match to your question. The AI picked them; when it picks a line about a brightness change, the page itself adds the time-order line. They are not a yes or no answer, and they do not say whether a change is real.</p><ul class="sk-ask-rows"><li>A &lt; B &amp; C</li></ul><h3 class="sk-ask-h">How far to trust them</h3><ul class="sk-ask-rows"><li>Trust</li></ul>'));
         expect(() => askViewHtml({ kind: 'answer', sheet: ['one'], lines: [2], trust: [] })).toThrow();
         expect(() => askViewHtml({ kind: 'answer', sheet: ['one'], lines: [1], trust: [0] })).toThrow();
-        expect(askViewHtml({ kind: 'answer', sheet: ['one'], lines: [1], trust: [] })).toBe(wrap('<h3 class="sk-ask-h">Lines from this page&#39;s measurements</h3><p>The AI picked these measured lines as the closest match to your question. They are not a yes or no answer, and they do not say whether a change is real.</p><ul class="sk-ask-rows"><li>one</li></ul>'));
+        expect(askViewHtml({ kind: 'answer', sheet: ['one'], lines: [1], trust: [] })).toBe(wrap('<h3 class="sk-ask-h">Lines from this page&#39;s measurements</h3><p>These measured lines are the closest match to your question. The AI picked them; when it picks a line about a brightness change, the page itself adds the time-order line. They are not a yes or no answer, and they do not say whether a change is real.</p><ul class="sk-ask-rows"><li>one</li></ul>'));
     });
     it.each([
         ['none', 'The AI did not match this question to any measured line on this page.'],

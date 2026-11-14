@@ -172,7 +172,7 @@ export function factSheet(f: InsightFacts): string[]
     return lines;
 }
 type Bound = 'min' | 'max' | undefined;
-type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound; medianDirection?: 'above' | 'below' | 'either' | 'less'; scatter?: { count: string; values: string[] }; snr?: boolean };
+type NumberFact = { value: number; printed: string; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound; boundText?: string; constant?: boolean; medianDirection?: 'above' | 'below' | 'either' | 'less'; scatter?: { count: string; values: string[] }; snr?: string; readings?: string[]; frames?: boolean };
 function medianSentence(value: string, fact: NumberFact): boolean
 {
     const referent = '(?:it|the median|its median)';
@@ -185,15 +185,17 @@ function scatterSentence(value: string, scatter: NonNullable<NumberFact['scatter
 {
     if (!scatter.count) { return false; }
     const escaped = scatter.values.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const list = escaped.length === 1 ? escaped[0] : `${escaped.slice(0, -1).join(', ')}${escaped.length > 2 ? ',?' : ''} and ${escaped[escaped.length - 1]}`;
+    const list = escaped.length === 1 ? escaped[0] : `${escaped.slice(0, -1).join(', ')}(?:${escaped.length > 2 ? ',?' : ''} and|,) ${escaped[escaped.length - 1]}`;
     const singular = scatter.count === '1';
     return new RegExp(`^the(?: ${scatter.count})? (?:reference|comparison) ${singular ? 'star (?:scatters by|has a scatter of)' : 'stars (?:scatter by|have a scatter of)'} ${list} percent\\.$`, 'i').test(value.trim());
 }
 // The direction of a bound written just before a number: "more than 100" is a floor, "below 1" a ceiling.
 function boundBefore(text: string, ai: boolean): Bound
 {
-    if ((ai ? /\b(?:more than|over|above|greater than|higher than|exceeds?|exceeding|in excess of|at least)\s*$/i : /\b(?:more than|at least)\s*$/i).test(text)) { return 'min'; }
-    if ((ai ? /\b(?:below|under|less than|lower than|fewer than|smaller than|at most)\s*$/i : /\b(?:below|less than)\s*$/i).test(text)) { return 'max'; }
+    if (ai && /\bno more than\s*$/i.test(text)) { return 'max'; }
+    if (ai && /\bno (?:fewer|less) than\s*$/i.test(text)) { return 'min'; }
+    if ((ai ? /\b(?:more than|over|above|greater than|higher than|exceeds?|exceeding|in excess of|at least|no fewer than|no less than|a minimum of)\s*$/i : /\b(?:more than|at least)\s*$/i).test(text)) { return 'min'; }
+    if ((ai ? /\b(?:below|under|less than|lower than|fewer than|smaller than|at most|no more than|a maximum of|up to|as many as|as few as|nearly|almost|close to|roughly|about|around|approximately|some)\s*$/i : /\b(?:below|less than)\s*$/i).test(text)) { return 'max'; }
     return undefined;
 }
 const countNouns: [RegExp, RegExp, RegExp?][] = [
@@ -255,23 +257,32 @@ function sheetFacts(sheet: string[]): NumberFact[]
             const direction = /^Largest change from the median brightness$/i.test(label) ? segment[2]!.match(/(?:\b(above|below) it|\b(either) side|\b(less) than\s+1 percent)\.?$/i) : null;
             const medianDirection = (direction?.[1] ?? direction?.[2] ?? direction?.[3])?.toLowerCase() as NumberFact['medianDirection'];
             for (const list of lists(segment[2]!)) {
-                const bound = boundBefore(segment[2]!.slice(0, list.start), false);
+                const bound = boundBefore(segment[2]!.slice(0, list.start), true);
+                const boundText = segment[2]!.slice(0, list.start).match(/\b(?:more than|at least|below|less than|nearly|almost|close to|roughly|about|around|approximately|some|a minimum of|a maximum of|up to|as many as|as few as|no more than|no fewer than|no less than|at most)\s*$/i)?.[0].trim().toLowerCase();
                 const scatterCount = line.match(/^Reference stars:\s*(\d+) with available scatter\./i)?.[1];
                 const scatter = /^Scatter of each$/i.test(label) ? { count: scatterCount ?? '', values: list.values } : undefined;
-                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined, medianDirection, scatter, snr: /^Lowest signal-to-noise\b/i.test(label) }); });
+                const snr = /^Lowest signal-to-noise\b/i.test(label) ? segment[2]!.match(/^(?:(?:below|more than|at least|less than)\s+)?\d+(?:\.\d+)?/i)?.[0] : undefined;
+                const readings = /^Brightness relative\b/i.test(label) ? list.values : undefined;
+                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), printed: value, integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined, boundText: i === 0 ? boundText : undefined, medianDirection, scatter, snr, readings, frames: /^Frames in each visit$/i.test(label) }); });
             }
         }
     }
     for (const entry of CONSTANT_CONTEXT) {
         const context = entry.context.source;
         const noun = entry.context.test('micron') ? 'micron' : 'arcsec';
-        result.push({ value: entry.value, integer: Number.isInteger(entry.value), unit: noun === 'micron' || noun === 'arcsec' ? noun : '', words: new RegExp(context, 'i') });
+        result.push({ value: entry.value, printed: String(entry.value), integer: Number.isInteger(entry.value), unit: noun === 'micron' || noun === 'arcsec' ? noun : '', words: new RegExp(context, 'i'), constant: true });
     }
     return result;
 }
 // Context matching cannot detect a real number moved to the wrong subject with the same words.
-export function checkNote(text: string, sheet: string[]): { text: string; dropped: number }
+// The server always uses labelled: true; the default preserves the older second-layer checks.
+export function checkNote(text: string, sheet: string[], opts: { labelled?: boolean } = {}): { text: string; dropped: number }
 {
+    if (text.length > 8000) {
+        const prefix = text.slice(0, 8000);
+        const ends = [...text.slice(0, 8001).matchAll(/(?<!\b(?:viz|e\.g|i\.e|approx|cf|vs|etc))[.!?](?=\s)/gi)];
+        text = ends.length ? prefix.slice(0, ends[ends.length - 1]!.index! + 1) : '';
+    }
     const facts = sheetFacts(sheet);
     const visitCount = Number(sheet.join('\n').match(/^Visits:\s*(?:at least\s+)?(\d+)\./m)?.[1] ?? 3);
     const exactLine = sheet.join('\n').match(/^Visits:\s*(\d+)\./m)?.[1];
@@ -296,6 +307,157 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     const namePattern = escapedNames.length ? new RegExp('(?<!\\w)(?:' + escapedNames.join('|') + ')(?!\\w)', 'gi') : undefined;
     const foreign = /^(?:hours?|hrs?|minutes?|mins?|seconds?|secs?|weeks?|months?|nm|mm|cm|metres?|meters?|kilometres?|kilometers?|miles?|arcmin|arcminutes?|mas|milliarcsec(?:onds?)?|radians?|celsius|fahrenheit|kg|grams?|watts?|hz|ev|photons?|electrons?|counts?|pixels?|times|x|trillion)\b/i;
     const countingNoun = /^(?:visits?|epochs?|passes?|frames?|images?|exposures?|points?|readings?|values?|measurements?|observations?|stars?|references?|comparisons?|channels?|bands?|colours?|colors?|wavelengths?|detectors?|times?)$/i;
+    const frameValues = sheet.join(' ').match(/Frames in each visit:\s*([^.]*)/i)?.[1]?.match(/\d+/g) ?? [];
+    const equalFrames = frameValues.length > 0 && frameValues.every((item) => item === frameValues[0]);
+    const change = sheet.join(' ').match(/Largest change from the median brightness:\s*(less than 1|\d+(?:\.\d+)?) percent/i)?.[1];
+    const scatterText = sheet.join(' ').match(/Scatter of each:\s*([\d.,\s]+)\s*percent/i)?.[1];
+    const scatterValues = scatterText?.match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+    const readingValues = facts.find((fact) => fact.readings)?.readings ?? [];
+    const hasShift = sheet.some((line) => /^Shift in position:\s*\d/i.test(line));
+    const referenceLine = sheet.find((line) => /^Reference stars:/i.test(line));
+    const noReferences = !referenceLine || /^Reference stars:\s*(?:0\b|none\b)/i.test(referenceLine);
+    const noScatter = Boolean(referenceLine && /^Reference stars:\s*scatter unavailable\b/i.test(referenceLine));
+    const hasChange = sheet.some((line) => /^(?:Brightness relative to the reference stars, in time order|Difference image at the target):/i.test(line));
+    const differenceLine = sheet.find((line) => /^Difference image at the target:/i.test(line));
+    const caution = differenceLine?.match(/^Difference image at the target: .+?\.\s+(.+\.)$/i)?.[1];
+    const changeSeen = Boolean((change && change !== 'less than 1') || (readingValues.length === 2 && Number(readingValues[0]) !== Number(readingValues[1])) || (differenceLine && !/no change above the noise/i.test(differenceLine)));
+    // A difference line counts as a notable change only at 3 sigma or more. The bar is ours: a weaker strongest pixel is what noise alone gives.
+    const differenceSigma = differenceLine?.match(/strongest pixel (more than 100|\d+(?:\.\d+)?) sigma/i)?.[1];
+    const differenceNotable = Boolean(differenceSigma && (differenceSigma === 'more than 100' || Number(differenceSigma) >= 3));
+    const brightnessSeen = Boolean((change && change !== 'less than 1') || (readingValues.length === 2 && Number(readingValues[0]) !== Number(readingValues[1])));
+    const firstReading = Number(readingValues[0]);
+    const changePercent = change ? (change === 'less than 1' ? null : Number(change)) : readingValues.length === 2 && firstReading > 0 ? Math.abs(Number(readingValues[1]) - firstReading) / Math.abs(firstReading) * 100 : null;
+    const changeNotable = differenceNotable || (brightnessSeen && (!scatterValues.length || (changePercent !== null && changePercent > Math.max(...scatterValues) + 1e-10)));
+    // An endpoint sentence hides a middle reading that lies outside the endpoints.
+    const endsHide = readingValues.length > 2 && readingValues.slice(1, -1).map(Number).some((v) => v > Math.max(Number(readingValues[0]), Number(readingValues.at(-1))) || v < Math.min(Number(readingValues[0]), Number(readingValues.at(-1))));
+    const fewer = sheet.some((line) => /Points too faint to measure are left out/i.test(line));
+    let medianKept = false;
+    let scatterKept = false;
+    const hasTwoVisits = /^Visits:\s*(?:at least\s+)?(\d+)\./im.exec(sheet.join('\n'));
+    function nextForm(value: string): boolean
+    {
+        const sentence = value.toLowerCase();
+        if (sentence === 'wait for another visit to see whether the change repeats.' || sentence === 'change the colour to see whether the change shows at another wavelength.') { return hasChange && changeNotable; }
+        if (sentence === 'compare the target with the reference stars in the same frames.') { return /^Reference stars:\s*[1-9]\d* with available scatter\b/i.test(referenceLine ?? ''); }
+        if (sentence === 'look at subtract to see what is left at the target.') { return Boolean(hasTwoVisits && Number(hasTwoVisits[1]) >= 2); }
+        return [
+            'switch on flagged pixels to see whether one sits on the target.',
+            'step through the frames in blink to see whether one frame stands out.',
+            'switch on brightest gaia stars to see whether a catalogue star lies at the target.',
+            'change the colour to look at another wavelength.',
+        ].includes(sentence);
+    }
+    function readingForm(value: string, values: string[]): boolean
+    {
+        const escape = (part: string) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const lead = exactVisits === null || fewer ? '' : `(?:over ${exactVisits} visits,? )?`;
+        const first = values[0]!;
+        const last = values[values.length - 1]!;
+        const all = values.length === 2 ? `${escape(first)},? (?:and )?${escape(last)}` : `${values.slice(0, -1).map(escape).join(', ')}(?:,? and|,) ${escape(last)}`;
+        if (new RegExp(`^${lead}in time order,? the brightness (?:relative to the reference stars )?(?:is|was|reads|read) ${all}\\.$`, 'i').test(value)) { return true; }
+        const ends = value.match(new RegExp(`^${lead}the brightness went from ${escape(first)} to ${escape(last)}(?: (?:between|from) the first (?:visit )?(?:and|to) the last(?: visit)?)?\\.$`, 'i'));
+        if (ends && Number(first) !== Number(last)) {
+            return !endsHide;
+        }
+        const rank = value.match(new RegExp(`^${lead}the (first|last|highest|lowest) reading (?:is|was) (-?\\d+(?:\\.\\d+)?)\\.$`, 'i'));
+        if (rank) {
+            const key = rank[1]!.toLowerCase();
+            if (endsHide && (key === 'first' || key === 'last')) { return false; }
+            const extreme = key === 'highest' ? Math.max(...values.map(Number)) : Math.min(...values.map(Number));
+            const expected = key === 'first' ? first : key === 'last' ? last : values.find((v) => Number(v) === extreme);
+            return rank[2] === expected && (key === 'first' || key === 'last' || values.filter((v) => Number(v) === extreme).length === 1);
+        }
+        return first === last && !endsHide && new RegExp(`^${lead}the first and last readings are (?:both|the same,) ${escape(first)}\\.$`, 'i').test(value);
+    }
+    function directionInvalid(value: string): boolean
+    {
+        const verdict = /\b(?:variable|variability|var(?:y|ies|ied|ying)|real|genuine|intrinsic\w*|astrophysical|active|activity|certain(?:ly)?|definite(?:ly)?|evidence|significan\w*|confirm\w*|flare\w*|flaring|outburst\w*|burst\w*|erupt\w*|pulsat\w*|eclips\w*|occult\w*|microlens\w*|transit\w*|companion\w*|\w*planet\w*|binary|supernova\w*|nova\w*|quasar\w*|agn|periodic\w*|detected|detection\w*|proves|proof)\b|\bnot\s+(?:an?\s+)?(?:noise|artefact|artifact|chance)\b/i;
+        if (verdict.test(value)) { return true; }
+        if (readingValues.length >= 2 && readingForm(value, readingValues)) { return false; }
+        if (/^the change is (?:several times larger than|larger than|no larger than) that scatter(?:, so it may be noise)?\.$|^there are no reference stars to compare the change with(?:, so the change counts for little)?\.$|^the reference stars' scatter is unavailable, so there is nothing to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return false; }
+        value = value.replace(/\b(?:brighter|fainter)(?: there)? in the later visit\b|\bno change above the noise\b/gi, '');
+        if (/\b(?:mov(?:ed|es|ing)|shift(?:ed|s|ing)|drift(?:ed|s|ing)|motion|displaced|wander\w*|travel\w*|position changed)\b/i.test(value) && !hasShift) { return true; }
+        if (/\b(?:scatter|noise|noisy|errors?)\b/i.test(value) && /\b(?:target|itself|object)\b|(?<!reference )(?<!comparison )\bstar\b/i.test(value)) { return true; }
+        const up = /\b(?:rose|rises?|risen|rising|increas\w*|brighten\w*|brighter|climb\w*|grew|grow\w*|gain\w*|jump\w*|spik\w*|surg\w*|soar\w*|strengthen\w*|peak\w*|went up|go(?:es)? up)\b/i.test(value);
+        const down = /\b(?:fell|falls?|falling|fallen|drop\w*|decreas\w*|fad(?:e|ed|es|ing)|fainter|dimm\w*|darken\w*|weaken\w*|declin\w*|dip\w*|lost|loss|went down|go(?:es)? down)\b/i.test(value);
+        const negated = /\b(?:not|no|never|nothing|neither|nor|without)\b|n't\b/i.test(value);
+        const level = /\b(?:level|flat|steady|stable|unchanged|constant|stayed|held|stayed the same|the same at every \w+)\b/i.test(value) || (negated && /\b(?:chang\w*|var\w*)\b/i.test(value));
+        if (!up && !down && !level) { return false; }
+        if (negated && (up || down)) { return true; }
+        if (readingValues.length < 2 || !scatterValues.length || (up && down) || (level && (up || down))) { return true; }
+        const readings = readingValues.map(Number);
+        const first = readings[0]!;
+        const last = readings[readings.length - 1]!;
+        if (Math.min(...readings) <= 0) { return true; }
+        const percent = (last - first) / first * 100;
+        const scatter = Math.max(...scatterValues);
+        if (up) { return !(percent > scatter); }
+        if (down) { return !(-percent > scatter); }
+        const range = (Math.max(...readings) - Math.min(...readings)) / Math.min(...readings) * 100;
+        return range > scatter || range > 1 + 1e-10;
+    }
+    function comparisonInvalid(value: string): boolean
+    {
+        if (sheet.some((line) => {
+            const difference = line.match(/^Difference image at the target: (.+?\.)(?:\s|$)/i)?.[1];
+            return difference && value.toLowerCase() === `difference image at the target: ${difference}`.toLowerCase();
+        })) { return false; }
+        if (noReferences && /^there are no reference stars to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return false; }
+        if (noScatter && /^the reference stars' scatter is unavailable, so there is nothing to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return false; }
+        if (/^(?:the|its) largest change from (?:the|its) median\b/i.test(value)) { return false; }
+        const scatterWord = /\b(?:scatter|spread|reference[\s-]stars?|references|comparison(?:[\s-]stars?)?|other stars|neighbou?rs?|(?<!signal-to-)noise|errors?|uncertaint\w*|precision|jitter|wobble|chance)\b/i.test(value);
+        const changeWord = /\b(?:change|rise|fall|drop|dip|jump|signal(?![\s-]+to[\s-]+noise)|difference|variation|brightening|fading|dimming)\b|\b(?:target|star|brightness)\b.*\b(?:var(?:y|ies|ied)|changed)\b/i.test(value);
+        const comparative = /\b(?:larger|smaller|bigger|greater|less|more|times|beyond|within|exceeds?|above|below|clear|compared|comparable|similar|dwarfs?|towers?|lost|buried|swamp\w*|drown\w*|size)\b|\bmay be noise\b/i.test(value);
+        if (!(scatterWord && (changeWord || comparative)) && !(changeWord && comparative)) { return false; }
+        if (noReferences || noScatter) { return true; }
+        if (!change || !scatterValues.length) { return true; }
+        const c = change === 'less than 1' ? 1 : Number(change);
+        const s = Math.max(...scatterValues);
+        if (/^the change is several times larger than that scatter\.$/i.test(value)) { return change === 'less than 1' || c < 3 * s; }
+        if (/^the change is no larger than that scatter, so it may be noise\.$/i.test(value)) { return change === 'less than 1' ? s < 1 : c > s; }
+        if (/^the change is larger than that scatter\.$/i.test(value)) { return change === 'less than 1' || c <= s; }
+        return true;
+    }
+    // Closed forms are constructed from printed facts, never from a number found elsewhere on the sheet.
+    function closedForm(value: string): boolean
+    {
+        if (/^this is a candidate only\.$/i.test(value)) { return changeNotable || hasShift; }
+        if (readingValues.length >= 2 && readingForm(value, readingValues)) { return true; }
+        if (facts.some((fact) => fact.medianDirection && medianSentence(value, fact))) { return true; }
+        if (facts.some((fact) => fact.scatter && scatterSentence(value, fact.scatter))) { return true; }
+        if (/^the change is (?:several times larger than that scatter|larger than that scatter|no larger than that scatter, so it may be noise)\.$/i.test(value)) { return medianKept && scatterKept && !comparisonInvalid(value); }
+        if (/^there are no reference stars to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return noReferences && changeSeen; }
+        if (/^the reference stars' scatter is unavailable, so there is nothing to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return noScatter && changeSeen; }
+        if (/^there are fewer than 3 visits, so the change counts for little\.$/i.test(value)) { return exactVisits !== null && exactVisits < 3 && changeSeen; }
+        const snr = sheet.join('\n').match(/^Lowest signal-to-noise among the points:\s*((?:(?:below|more than) )?\d+(?:\.\d+)?)\./im)?.[1];
+        if (/^the lowest signal-to-noise is small, so the change counts for little\.$/i.test(value)) { return changeSeen && Boolean(snr && (snr === 'below 1' || (!snr.includes('than') && Number(snr) < 3))); }
+        if (/^there is nothing measured to interpret yet\.$/i.test(value)) { return !sheet.some((line) => /^(?:Brightness relative to the reference stars, in time order|Difference image at the target|Shift in position):/i.test(line)); }
+        const forms: string[] = [];
+        if (snr) { forms.push(`The lowest signal-to-noise among the points is ${snr}.`); }
+        for (const line of sheet) {
+            const wavelength = line.match(/^Wavelength: (.+)\.$/i)?.[1];
+            if (wavelength) { forms.push(`The wavelength is ${wavelength}.`); }
+            const visit = line.match(/^Visits: (.+?)\. Frames in each visit: (.+?)\.(?: Time from first to last visit: (.+?)\.)?$/i);
+            if (visit) {
+                forms.push(visit[1] === '1' ? 'There was 1 visit.' : `There were ${visit[1]} visits.`, `The frames in each visit were ${visit[2]}.`);
+                if (visit[3]) { forms.push(`The time from first to last visit was ${visit[3]}.`); }
+            }
+            const left = line.match(/^Frames left out because their wavelength did not match: (.+)\.$/i)?.[1];
+            if (left) { forms.push(`Frames left out because their wavelength did not match: ${left}.`); }
+            const shift = line.match(/^Shift in position: (.+)\.$/i)?.[1];
+            if (shift) { forms.push(`The shift in position was ${shift}.`); }
+            const difference = line.match(/^Difference image at the target: (.+?\.)(?:\s|$)/i)?.[1];
+            if (difference) { forms.push(`Difference image at the target: ${difference}`); }
+            if (difference && caution) { forms.push(caution); }
+            const position = line.match(/^Position: (.+)\.$/i)?.[1];
+            if (position) { forms.push(`The position is ${position}.`); }
+            const targetName = line.match(/^Target: (.+)\.$/i)?.[1];
+            if (targetName) { forms.push(`The target is ${targetName}.`); }
+            const source = line.match(/^Frames came from: (.+)\.$/i)?.[1];
+            if (source) { forms.push(`The frames came from ${source}.`); }
+        }
+        return forms.some((form) => form.toLowerCase() === value.toLowerCase());
+    }
     function unsupportedNumbers(value: string): boolean
     {
         for (const list of lists(value)) {
@@ -303,9 +465,12 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             const after = value.slice(list.end).match(/[\p{L}]+(?:\/[\p{L}]+)?|[%″°]/gu) ?? [];
             const context = [...before.slice(-8), ...after.slice(0, 3)].join(' ');
             const follower = list.follower.trimStart().replace(/^-\s*/, '');
-            const nounFollower = follower.replace(/^of\s+(?:the|its|their|these|those)\s+/i, '');
+            const nounFollower = follower;
             const followingWords = nounFollower.match(/^[a-z]+(?:-[a-z]+)*(?:\s+[a-z]+(?:-[a-z]+)*)?/i)?.[0].split(/\s+/) ?? [];
-            const noun = list.unit ? undefined : countingNoun.test(followingWords[0] ?? '') ? followingWords[0] : /^(?:in|on|at|by|over|under|above|below|across|through|from|to|of|for|and|or|the)$/i.test(followingWords[0] ?? '') ? undefined : countingNoun.test(followingWords[1] ?? '') ? followingWords[1] : undefined;
+            const referenceCount = /\breference stars,?\s*$/i.test(value.slice(0, list.start)) && /^with available scatter\b/i.test(follower);
+            const frameList = /^the frames in each visit were /i.test(value) && closedForm(value);
+            const frameLeft = /^frames left out because their wavelength did not match:/i.test(value) && closedForm(value);
+            const noun = referenceCount ? 'stars' : frameList || frameLeft ? 'frames' : list.unit ? undefined : countingNoun.test(followingWords[0] ?? '') ? followingWords[0] : /^(?:in|on|at|by|over|under|above|below|across|through|from|to|of|for|and|or|the)$/i.test(followingWords[0] ?? '') ? undefined : countingNoun.test(followingWords[1] ?? '') ? followingWords[1] : undefined;
             const prefix = value.slice(0, list.start);
             const lead = boundBefore(prefix, true);
             const unitlessBlocked = Boolean(list.unit) || /^[°′″$€£±×^/]/.test(follower) || /^[A-Z]/.test(follower) || foreign.test(follower);
@@ -313,31 +478,42 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
                 const val = Number(raw.replace('−', '-'));
                 const bound = index === 0 ? lead : undefined;
                 const integer = !raw.includes('.');
-                if (integer && MISSION_COUNTS.some((entry) => entry.value === val && entry.nouns.test(follower))) { continue; }
+                if (integer && !lead && !/^\s*(?:detectors?|colou?rs?|channels?|bands?|wavelengths?)?\s*(?:or more|or fewer|or less|and more|plus)\b/i.test(follower) && MISSION_COUNTS.some((entry) => entry.value === val && entry.nouns.test(follower))) { continue; }
                 if (!facts.some((fact) => {
+                    if (/\b(?:signal[\s-]+to[\s-]+noise|s\/n|snr)\b/i.test(value) && !fact.snr) { return false; }
                     if (fact.bound && fact.bound !== bound) { return false; }
-                    // A bound the sheet does not give ("fewer than 30 frames" for exactly 30) is refused. "Over" and
-                    // "above" straight before days or arcsec are prepositions: "10.4 arcsec over 20.0 days".
-                    const preposition = /\b(?:over|above)\s*$/i.test(prefix) && (fact.unit === 'days' || fact.unit === 'arcsec');
-                    if (bound && !fact.bound && !preposition) { return false; }
-                    if (fact.value !== val || (integer && !fact.integer) || !fact.words.test(fact.required && noun ? value : context)) { return false; }
+                    const initialOver = /^over\s*$/i.test(prefix) && /^(?:days?|visits?)\s*(?:,|(?:the|its|this)\s+[a-z]+)/i.test(follower);
+                    const preposition = /\b(?:\d+(?:\.\d+)?|days?|arcsec(?:onds?)?|visits?|frames?|points?|readings?|observations?)\s+over\s*$/i.test(prefix) || initialOver;
+                    const overUnit = fact.unit === 'days' || Boolean(noun && /^(?:visits?|epochs?|passes?|observations?)$/i.test(noun));
+                    if (bound && !fact.bound && !(preposition && overUnit)) { return false; }
+                    const noteBound = prefix.match(/\b(?:more than|at least|below|less than|nearly|almost|close to|roughly|about|around|approximately|some|a minimum of|a maximum of|up to|as many as|as few as|no more than|no fewer than|no less than|at most)\s*$/i)?.[0].trim().toLowerCase();
+                    if ((noteBound && (index === 0 || !frameList) && noteBound !== fact.boundText) || /^\s*(?:(?:reference|comparison)\s+)?(?:frames?|images?|observations?|epochs?|points?|stars?|visits?|days?|arcsec(?:onds?)?|percent|microns?|um|deg|sigma)?\s*(?:or more|or fewer|or less|and more|plus|or so|at most|at least)\b/i.test(follower)) { return false; }
+                    if (fact.value !== val || (fact.printed !== raw && !(fact.constant && fact.value === 5 && raw === '5.0')) || !fact.words.test(fact.required && noun ? value : context)) { return false; }
+                    if (fact.constant && facts.some((other) => !other.constant && other.unit === list.unit && other.value === val && other.printed !== raw) && !/\b(?:helium|hydrogen|water|ice|pahs|carbon dioxide|carbon monoxide)\b/i.test(context)) { return false; }
                     if (fact.scatter && !scatterSentence(value, fact.scatter)) { return false; }
                     if (fact.medianDirection && !medianSentence(value, fact)) { return false; }
+                    if (fact.frames && /\b(?:each|every|per)\s+visit\b/i.test(value) && !equalFrames && !frameList) { return false; }
                     if (fact.nouns && !noun) { return false; }
                     if (noun && (!fact.nouns?.test(noun) || (fact.required && !fact.required.test(value)))) { return false; }
                     if (fact.unit) { return list.unit === fact.unit; }
                     if (unitlessBlocked) { return false; }
-                    if (fact.snr && !/\b(?:signal-to-noise|s\/n|snr)(?:\s+ratio)?(?:\s+among the points)?\s+(?:is only|was only|is|was|of)\s*$/i.test(prefix)) { return false; }
+                    if (fact.snr && value.toLowerCase() !== `the lowest signal-to-noise${/among the points/i.test(value) ? ' among the points' : ''} ${/\bwas\b/i.test(value) ? 'was' : 'is'}${/\bonly\b/i.test(value) ? ' only' : ''} ${fact.snr.toLowerCase()}.`) { return false; }
+                    if (fact.readings && !readingForm(value, fact.readings)) { return false; }
                     return true;
                 })) { return true; }
             }
         }
+        const fromTo = value.match(/\bfrom\s+(\d+(?:\.\d+)?)\s+to\s+(\d+(?:\.\d+)?)/i);
+        if (fromTo && (/\b(?:rose|rise|increased|brightened|climbed|grew|up)\b/i.test(value) && Number(fromTo[2]) <= Number(fromTo[1]) || /\b(?:fell|dropped|decreased|faded|dimmed|declined|down)\b/i.test(value) && Number(fromTo[2]) >= Number(fromTo[1]))) { return true; }
         return false;
     }
     function invalid(value: string): boolean
     {
         if (/[<>]|:\/\/|www\./i.test(value) || (/\d/.test(value) && /\b(?:years?|yrs?|yearly|annual|annually|annum|decade|century)\b/i.test(value))) { return true; }
         if (namePattern) { value = value.replace(namePattern, 'NAME'); }
+        if (/^[\s"'“”‘’\-–—•([{]*\p{Ll}/u.test(value) || comparisonInvalid(value) || directionInvalid(value)) { return true; }
+        if (Array.from(value.matchAll(/\b(?:[A-Za-z]+\d\w*|\d+[A-Za-z]\w*)\s+(?:(?:reference|comparison)\s+)?([a-z]+)\b/gi)).some((match) => countingNoun.test(match[1]!))) { return true; }
+        if (/\b(?:upwards of|just over|just under|more or less|circa|approx\.?|an estimated|almost exactly|barely|close on|at minimum|at maximum)\s+\d|[~≈≥≤]\s*\d|\d[^.!?]*\b(?:give or take|or thereabouts|maybe more|if not more|or so)\b/i.test(value)) { return true; }
         if (/\b[OBAFGKMLTY]\d(?:\.\d)?(?:IV|I{1,3}|V)?[a-z]*\b/.test(value)) { return true; }
         value = value.replace(/\b(?:CO2|H2O|H2|CH4|2MASS|W[1-4]|DR[1-3]|QR3)\b/gi, 'NAME').replace(/−/g, '-');
         // The sheet gives time in days only and never a magnitude, so any other time unit, or a magnitude, is the
@@ -351,20 +527,12 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
         // The prompt's own trust rule, "fewer than 3 visits", is true only when the sheet counts fewer than 3.
         if (exactVisits !== null && exactVisits < 3) { value = value.replace(/\bfewer\s+than\s+(?:3|three)\s+visits\b/gi, 'few visits'); }
         // A name, or any token that mixes letters and digits, is never a quantity: "It moved WISE J085510.83 arcsec."
-        for (const token of value.matchAll(/(?<![\w.])(?:NAME|[A-Za-z][\w.]*\d[\w.]*)(?![\w])/g)) {
+        for (const token of value.matchAll(/(?<![\w.])(?:NAME|[A-Za-z]+\d\w*(?:\.\d+)?)(?![\w])/g)) {
             const after = value.slice(token.index + token[0].length);
             if (unitAtStart.test(after) || foreign.test(after.trimStart().replace(/^-\s*/, ''))) { return true; }
         }
         const ordinals = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth'];
         const ordinal = /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+visits?\b/gi;
-        const rank = /\b(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[\s-]+(brightest|faintest)\s+reading\s+was\s+([-−]?\d+(?:\.\d+)?)\b/i;
-        const ranked = value.match(rank);
-        if (ranked) {
-            const readings = sheet.find((line) => /^Brightness relative to the reference stars, in time order:/i.test(line))?.split(':')[1];
-            const values = readings ? lists(readings).flatMap((list) => list.values.map(Number)).sort((a, b) => ranked[2]!.toLowerCase() === 'brightest' ? b - a : a - b) : [];
-            if (values[ordinals.indexOf(ranked[1]!.toLowerCase())] !== Number(ranked[3]!.replace('−', '-'))) { return true; }
-            value = value.replace(rank, `reading was ${ranked[3]}`);
-        }
         return /discover/i.test(value)
             || /\b(?:second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[\s-]+(?:nearest|closest|brightest|faintest|largest|smallest|coldest|coolest|hottest|fastest|most|least)\b/i.test(value)
             || /\b[\p{L}-]*(?:hundredth|thousandth|millionth|billionth)s?\b/iu.test(value)
@@ -384,34 +552,76 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             || /(?:\d\s+May\b|\bMay\s+\d)/.test(value)
             || Array.from(value.matchAll(ordinal)).some((match) => ordinals.indexOf(match[1]!.toLowerCase()) + 1 > visitCount
                 && !/^\s+(?:would|could|will|should|might)\b/i.test(value.slice(match.index + match[0].length))
-                && !/\b(?:would|could|will|should|might|next|later|another|one more)(?:\s+[\p{L}-]+){0,4}\s*$/iu.test(value.slice(0, match.index)))
+                && !/\b(?:would|could|will|should|might|next|later|another|one more|wait|until|await)(?:\s+[\p{L}-]+){0,4}\s*$/iu.test(value.slice(0, match.index)))
             || unsupportedNumbers(value);
     }
     let dropped = 0;
     let count = 0;
+    let measuredCount = 0;
+    let activeLabel = '';
     const paragraphs: string[] = [];
-    for (const raw of text.split(/\r?\n/)) {
+    const rawLines = text.split(/\r?\n/);
+    if (opts.labelled) {
+        const groups = new Map<string, { label: string; bodies: string[] }>();
+        const preamble: string[] = [];
+        let group: { label: string; bodies: string[] } | undefined;
+        for (const raw of rawLines) {
+            const line = raw.trim();
+            if (!line) { continue; }
+            const match = line.match(/^(?:\*\*)?(What this shows|How far to trust it|What to check next)\s*(?:\*\*)?\s*:(?:\*\*)?/i);
+            if (match) {
+                const key = match[1]!.toLowerCase();
+                group = groups.get(key);
+                if (!group) { group = { label: ({ 'what this shows': 'What this shows:', 'how far to trust it': 'How far to trust it:', 'what to check next': 'What to check next:' } as Record<string, string>)[key]!, bodies: [] }; groups.set(key, group); }
+            }
+            const body = line.slice(match?.[0].length ?? 0).trim();
+            if (body) { (group ? group.bodies : preamble).push(body); }
+        }
+        rawLines.splice(0, rawLines.length, ...preamble, ...[...groups.values()].map(({ label, bodies }) => `${label} ${bodies.join(' ')}`));
+    }
+    for (const raw of rawLines) {
         const line = raw.trim();
         if (!line) { continue; }
-        const label = line.match(/^(?:What this shows|How far to trust it|What to check next):/i)?.[0] ?? '';
-        const body = line.slice(label.length).trim();
-        const sentences = body.match(/.*?(?:[.!?](?=\s|$)|$)/g)?.map((s) => s.trim()).filter(Boolean) ?? [];
+        const labelMatch = line.match(/^(?:\*\*)?(What this shows|How far to trust it|What to check next)\s*(?:\*\*)?\s*:(?:\*\*)?/i);
+        const label = labelMatch ? `${labelMatch[1]}:` : '';
+        if (label) { activeLabel = label; }
+        const body = line.slice(labelMatch?.[0].length ?? 0).trim();
+        const chunks = body.match(/.*?(?:[.!?](?=\s|$)|$)/g)?.map((s) => s.trim()).filter(Boolean) ?? [];
+        const sentences: string[] = [];
+        for (const chunk of chunks) {
+            if (sentences.length && /\b(?:viz|e\.g|i\.e|approx|cf|vs|etc)\.$/i.test(sentences[sentences.length - 1]!)) { sentences[sentences.length - 1] += ` ${chunk}`; }
+            else { sentences.push(chunk); }
+        }
         if (invalid(label)) {
             dropped += sentences.length;
             continue;
         }
-        const kept = sentences.filter((sentence) => {
+        let previousKeptDifference = false;
+        const kept = sentences.filter((sentence, index) => {
             const labeled = `${label} ${sentence}`;
-            if (!/[.!?]$/.test(sentence) || /^\p{Ll}/u.test(sentence) || invalid(sentence) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
+            const pairs = [['(', ')'], ['[', ']'], ['{', '}'], ['“', '”']];
+            const unbalanced = pairs.some(([left, right]) => sentence.split(left!).length !== sentence.split(right!).length) || (sentence.match(/"/g)?.length ?? 0) % 2 !== 0;
+            const closed = /^(?:What this shows|How far to trust it):$/i.test(activeLabel);
+            const next = /^What to check next:$/i.test(activeLabel);
+            const lower = sentence.toLowerCase();
+            const differenceForm = /^difference image at the target:/i.test(sentence);
+            const cautionMissing = closed && caution !== undefined && ((differenceForm && sentences[index + 1]?.toLowerCase() !== caution.toLowerCase()) || (lower === caution.toLowerCase() && !previousKeptDifference));
+            const sheetWarning = closed && caution !== undefined && lower === caution.toLowerCase() && previousKeptDifference;
+            if (!/[.!?]$/.test(sentence) || unbalanced || cautionMissing || (opts.labelled && !activeLabel) || (closed && !closedForm(sentence)) || (next && !nextForm(sentence)) || (!sheetWarning && invalid(sentence)) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
                 dropped++;
+                previousKeptDifference = false;
                 return false;
             }
+            previousKeptDifference = differenceForm;
             count++;
+            if (closed && !/^this is a candidate only\.$/i.test(sentence)) { measuredCount++; }
+            if (closed && facts.some((fact) => fact.medianDirection && medianSentence(sentence, fact))) { medianKept = true; }
+            if (closed && facts.some((fact) => fact.scatter && scatterSentence(sentence, fact.scatter))) { scatterKept = true; }
             return true;
         });
         if (kept.length) { paragraphs.push([label, ...kept].filter(Boolean).join(' ')); }
     }
-    if (count < 2) { throw new InsightError('unverified'); }
+    if (count < 2 || (opts.labelled && measuredCount === 0)) { throw new InsightError('unverified'); }
     return { text: paragraphs.join('\n'), dropped };
 }
 const cache = new Map<string, InsightNote>();
