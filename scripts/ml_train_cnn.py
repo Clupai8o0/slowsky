@@ -488,7 +488,8 @@ def main(args):
                         'training': attempt['training'], 'gate': attempt['gate'],
                         'configurationSelection': 'Development validation, not an untouched benchmark: the CNN was '
                                                   'chosen over gradient-boosted trees on these same held-out folds, '
-                                                  'and an earlier smaller CNN was dropped on them.',
+                                                  'and an earlier smaller CNN and a 20-epoch run (artifact '
+                                                  'precision 0.839) were dropped on them.',
                         'worstFold': min(folds, key=lambda fold: fold['macroF1'])['testTarget'],
                         **metrics(y, predictions, snrs)})
     summary['comparison'] = [{'testTarget': f['testTarget'], 'cnn': {k: f[k] for k in KEYS},
@@ -528,7 +529,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seed', type=int, default=20261114)
     parser.add_argument('--per-class', type=int, default=2500)
-    parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--epochs', type=int, default=30)  # 20 stopped short: best epoch 18-20 in every fold
     parser.add_argument('--batch-size', type=int, default=256)
     parser.add_argument('--verify-determinism', action='store_true')
     parser.add_argument('--check', action='store_true')
