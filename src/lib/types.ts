@@ -199,6 +199,7 @@ export interface RegriddedFrame {
     frame: FrameRecord;
     grid: OutputGrid;
     data: Float32Array; // NaN where the detector does not cover
+    variance?: Float32Array; // Same grid as data, NaN wherever data is NaN.
     lambdaAtCenter: number; // µm, from the wave grid at the view centre
     bandwidthAtCenter: number;
 }

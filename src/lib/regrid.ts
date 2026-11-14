@@ -79,12 +79,28 @@ export function gridSkyToPix(grid: OutputGrid, c: SkyCoord): PixelCoord
 // Outside the detector the output is NaN.
 export function regridNorthUp(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float32Array
 {
+    return resample(cutout, wcs, grid, 'image');
+}
+
+// Interpolate V itself: its spatial shape is used to rescale finder noise.
+// Invalid V adds holes only to this plane; IMAGE and ZODI define its footprint.
+export function regridVariance(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float32Array | undefined
+{
+    if (!cutout.variance) {
+        return undefined;
+    }
+    return resample(cutout, wcs, grid, 'variance');
+}
+
+function resample(cutout: Cutout, wcs: Wcs, grid: OutputGrid, plane: 'image' | 'variance'): Float32Array
+{
     const { width, height } = grid;
     const out = new Float32Array(width * height);
     const cw = cutout.width;
     const ch = cutout.height;
     const img = cutout.image;
     const zodi = cutout.zodi;
+    const variance = plane === 'variance' ? cutout.variance : undefined;
     const bx = cutout.box.x0;
     const by = cutout.box.y0;
 
@@ -182,6 +198,20 @@ export function regridNorthUp(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float
                 out[row + i] = NaN;
             } else {
                 out[row + i] = top + (bot - top) * fy;
+            }
+            if (variance && !Number.isNaN(out[row + i])) {
+                const v00 = variance[k] ?? NaN;
+                const v10 = variance[k + 1] ?? NaN;
+                const v01 = variance[k + cw] ?? NaN;
+                const v11 = variance[k + cw + 1] ?? NaN;
+                if (!Number.isFinite(v00) || v00 < 0 || !Number.isFinite(v10) || v10 < 0
+                    || !Number.isFinite(v01) || v01 < 0 || !Number.isFinite(v11) || v11 < 0) {
+                    out[row + i] = NaN;
+                } else {
+                    const top = v00 + (v10 - v00) * fx;
+                    const bot = v01 + (v11 - v01) * fx;
+                    out[row + i] = top + (bot - top) * fy;
+                }
             }
         }
     }
