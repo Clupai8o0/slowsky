@@ -262,7 +262,7 @@ function shell(): string
     <div class="sk-ctrl">
     <div class="sk-legrow">
       <div class="sk-leg">
-        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-SA 3.0 IGO)">Gaia DR3</a></span>
+        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
