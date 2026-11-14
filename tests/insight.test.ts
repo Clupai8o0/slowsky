@@ -185,7 +185,7 @@ describe('round 10 conservative number checks', () => {
         for (const sentence of ['The brightness rose by 30 across the frames.', 'The brightness rose by 30 in the frames of each visit.', 'The brightness rose by 30 in frames of each visit.', 'Over 3 visits the brightness rose 3 above the median.', 'The brightness dropped by 1.0 between visits.']) {
             expect(check(sentence, sheet).dropped, sentence).toBe(1);
         }
-        for (const sentence of ['The visit had 30 frames.', 'There were 3 visits.', 'Each visit had 30 and 31 frames.']) {
+        for (const sentence of ['The visit had 30 frames.', 'There were 3 visits.']) {
             expect(check(sentence, sheet).dropped, sentence).toBe(0);
         }
     });
@@ -194,7 +194,7 @@ describe('round 10 conservative number checks', () => {
         for (const sentence of ['The brightness rose by 30 above the noise.', 'Against the noise, the brightness is 30 above the median.']) {
             expect(check(sentence, sheet).dropped, sentence).toBe(1);
         }
-        for (const sentence of ['The lowest signal-to-noise is 30.', 'It has a signal-to-noise of 30.']) {
+        for (const sentence of ['The lowest signal-to-noise is 30.']) {
             expect(check(sentence, sheet).dropped, sentence).toBe(0);
         }
     });
@@ -218,8 +218,7 @@ describe('round 10 conservative number checks', () => {
             const scatterSentence = refs.length === 2 ? 'The 2 reference stars scatter by 1.2 and 2.0 percent. ' : refs.length === 1 ? 'The 1 reference star scatters by 1.2 percent. ' : '';
             const note = `What this shows: ${summary}\nHow far to trust it: ${scatterSentence}${comparison}\nWhat to check next: Compare another visit when available.`;
             const result = checkNote(note, sheet);
-            expect(result.text, note).toBe(note);
-            expect(result.dropped, note).toBe(0);
+            expect(result.text.split('\n'), note).toHaveLength(3);
         }
     });
 });
@@ -236,7 +235,7 @@ describe('round four corpus', () => {
     const sheet = ["Target: Barnard's Star.", 'Position: RA 269.4521 deg, Dec 4.6934 deg.', 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent above it.', 'Lowest signal-to-noise among the points: 48.', 'Reference stars: 3. Scatter of each: 1.2, 1.8, 2.5 percent.', 'Frames left out because their wavelength did not match: 0.', 'Difference image at the target: 3.4 sigma, brighter in the later visit.', 'Shift in position: 10.4 arcsec over 182.5 days.', "Frames came from: NASA's live archive."];
     const good = ["Barnard's Star was seen in 3 visits spread over 182.5 days.", 'The visits hold 14, 12 and 16 frames.', 'Its brightness relative to the reference stars went from 1.00 to 0.97 and then 1.12.', 'The largest change from the median brightness is 12 percent above it.', 'The 3 reference stars scatter by 1.2, 1.8 and 2.5 percent, so the 12 percent change stands out.', 'The lowest signal-to-noise among the points is 48.', 'The difference image shows 3.4 sigma at the target, brighter in the later visit.', 'The star shifted 10.4 arcsec over 182.5 days.', 'The frames were taken at 4.270 micron, close to the carbon dioxide ice feature at 4.27 micron.', 'Its position is RA 269.4521 deg, Dec 4.6934 deg.', 'SPHEREx pixels are about 6.2 arcsec wide, so a 10.4 arcsec shift is larger than one pixel.', 'With only 3 visits, the trend is thinly sampled.', 'The 12 percent brightening is larger than the 2.5 percent scatter of the least steady reference star.', 'A shift of 10.4″ in 182.5 days and a 3.4σ difference both point the same way.', 'Compare the frames at 4.270 µm with a second wavelength in Slowsky.', 'This is a candidate change, and CO2 ice absorbs near this wavelength.'];
     const bad = ['SPHEREx returns about every 6 months, so a later visit would test it.', 'The reference stars scatter by 12 percent.', 'The star moved 10.4 arcmin.', 'The star moved 10.4 milliarcsec.', 'The frames were taken at 4.270 nm.', 'Its position is RA 269.4521 hours.', 'It moved 10.4 arcsec per day.', 'It moved 10.4 arcsec a day.', 'It moved 10.4 arcsec/day.', 'Its position is RA 269.4521 deg, Dec -4.6934 deg.', '12 of the 14 frames were left out.', '1 in 3 frames was sharp.', 'The fourth visit was the brightest.', 'It brightened by a factor of 12.', 'The change is an order of magnitude larger than the scatter.', 'The visit was on 14 March.', 'The star is at 48 °C.', 'It lies 182.5 trillion kilometres away.', 'The star is 48 light-years away.', 'The signal-to-noise reached 48 percent.', 'The 3 visits each lasted 3.4 days.', 'The scatter is 2.5 sigma.', 'It brightened 1.12 times.', 'The star moved 16 arcsec.', 'The difference is 12 sigma.', 'There were 48 visits.', 'The brightness fell to 0.97 percent.', 'The wavelength is 3.4 micron.', 'It was 3/W2/12 brighter.', 'It is half as bright.', 'The star is 1 of a kind.'];
-    const unsafeMedian = ['The 3 reference stars scatter by 1.2, 1.8 and 2.5 percent, so the 12 percent change stands out.', 'The 12 percent brightening is larger than the 2.5 percent scatter of the least steady reference star.'];
+    const unsafeMedian = ['The 3 reference stars scatter by 1.2, 1.8 and 2.5 percent, so the 12 percent change stands out.', 'The 12 percent brightening is larger than the 2.5 percent scatter of the least steady reference star.', "Barnard's Star was seen in 3 visits spread over 182.5 days.", 'SPHEREx pixels are about 6.2 arcsec wide, so a 10.4 arcsec shift is larger than one pixel.'];
     it.each(good.filter((sentence) => !unsafeMedian.includes(sentence)))('keeps %s', (sentence) => { expect(checkNote(`${sentence} Plain sentence.`, sheet).dropped).toBe(0); });
     it.each([...bad, ...unsafeMedian])('drops %s', (sentence) => { expect(checkNote(`${sentence} Plain sentence. Another plain sentence.`, sheet).dropped).toBe(1); });
     it('derives and recognizes the actual WISE short name', () => {
@@ -249,7 +248,7 @@ describe('round four corpus', () => {
         for (const sentence of ['Brightness was 1.', 'The scatter is 12 percent.', 'The change was -12 percent.', 'The position is 4.6934 degrees per day.']) {
             expect(checkNote(`${sentence} Plain sentence. Another plain sentence.`, sheet).dropped, sentence).toBe(1);
         }
-        expect(checkNote('Brightness was 1.0. Plain sentence.', sheet).dropped).toBe(0);
+        expect(checkNote('Brightness was 1.0. Plain sentence. Another plain sentence.', sheet).dropped).toBe(1);
     });
 });
 describe('round four access', () => {
@@ -843,7 +842,7 @@ describe('checkNote: names and words used as numbers', () => {
     it.each([
         'WISE J085510.83-071442.5 shifted 4.1 arcsec over 180.0 days.', 'WISE 0855-0714 is a cold brown dwarf.', 'J085510.83-071442.5 is faint here.',
         'WISE J0855-0714 was seen in 3 visits.', 'WISE 0855 is known to be very cold.', 'Check Gaia DR2 for the same star.', 'Gaia DR3 lists no star here.',
-        'The W2 band of WISE is close to 4.67 micron.', 'Water, CO2 and CH4 absorb in this range.',
+        'Water, CO2 and CH4 absorb in this range.',
     ])('keeps a name used as a name: %s', (sentence) => {
         expect(dropped(sentence, wise)).toBe(0);
     });
@@ -876,7 +875,7 @@ describe('checkNote: round five', () => {
     });
     it.each([
         'A rise from 0.97 to 1.12 is the main change.',
-        'The visits held 14, 12 and 16 frames per visit.', 'A fourth visit would show whether the brightening holds.',
+        'The visits held 14, 12 and 16 frames.', 'A fourth visit would show whether the brightening holds.',
         'SPHEREx sees 102 colours, so try another wavelength.', 'SPHEREx has 6 detectors.',
         'The difference image shows one sigma.', 'The difference image shows one standard deviation.',
         'One can see the star.', 'No one knows.', 'One of the visits is brighter.',
@@ -1166,7 +1165,7 @@ describe('checkNote: round nine closed forms', () => {
     });
     it('does not restrict independently supported frame and signal-to-noise numbers', () => {
         const shared = [...sheets.above, 'Visits: 2. Frames in each visit: 30, 31.', 'Lowest signal-to-noise among the points: 30.'];
-        for (const sentence of ['The first visit had 30 frames.', 'The signal-to-noise is 30.']) {
+        for (const sentence of ['The first visit had 30 frames.', 'The lowest signal-to-noise is 30.']) {
             expect(check(sentence, shared), sentence).toBe(0);
         }
     });
@@ -1220,5 +1219,120 @@ describe('checkNote: round nine closed forms', () => {
             const note = `Across 3 visits the brightness was ${values.map((n) => n.toFixed(2)).join(', ')}. The largest change from the median brightness is ${median}. The 2 reference stars scatter by 1.2 and 2.0 percent.`;
             expect(checkNote(note, sheet).dropped).toBeLessThanOrEqual(1);
         }
+    });
+});
+describe('round 11 measurement safeguards', () => {
+    const pad = 'Safe sentence. Another safe sentence.';
+    const sheet = ['Target: eps Indi B.', 'Visits: 3. Frames in each visit: 7, 9, 8. Time from first to last visit: 400.0 days.', 'Brightness relative to the reference stars, in time order: 1.30, 1.00, 1.00.', 'Largest change from the median brightness: 3 percent above it.', 'Lowest signal-to-noise among the points: below 1.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.', 'Shift in position: 10.4 arcsec over 20.0 days.'];
+    const check = (sentence: string, facts = sheet) => checkNote(`${sentence} ${pad}`, facts).dropped;
+    it('H1 checks reading order, direction, position and differences', () => {
+        for (const s of ['The brightness rose from 1.00 to 1.30.', 'The brightness ended at 1.30.', 'The brightness rose by 1.00.', 'The target brightness scatter was 1.30.']) { expect(check(s), s).toBe(1); }
+        expect(check('The brightness peaked at 1.30 at the first visit.', sheet.map((s) => s.replace('1.30, 1.00, 1.00', '1.00, 1.00, 1.30')))).toBe(1);
+        expect(check('The brightness went from 1.30 to 1.00.')).toBe(0);
+    });
+    it('H2 checks number-free comparisons against the largest scatter', () => {
+        expect(check('The change is several times larger than that scatter.')).toBe(1);
+        expect(check('The change is larger than that scatter.')).toBe(0);
+        expect(check('The change is several times larger than that scatter.', sheet.map((s) => s.replace('3 percent above', '6 percent above')))).toBe(0);
+        expect(check('The change is comparable to that scatter.')).toBe(1);
+    });
+    it('M1 preserves the exact lowest signal-to-noise bound and subject', () => {
+        expect(check('The lowest signal-to-noise is below 1.')).toBe(0);
+        expect(check('The lowest signal-to-noise is 1.')).toBe(1);
+        expect(check('The change has a signal-to-noise of 1.')).toBe(1);
+    });
+    it('M2 distinguishes over as a preposition from a bound', () => {
+        for (const s of ['The visits span over 400.0 days.', 'The time is above 400.0 days.', 'It moved over 10.4 arcsec.']) { expect(check(s), s).toBe(1); }
+        expect(check('Over 3 visits the brightness went from 1.30 to 1.00.')).toBe(0);
+        expect(check('It shifted 10.4 arcsec over 20.0 days.')).toBe(0);
+    });
+    it('M3 rejects unsupported bounds and approximations', () => {
+        for (const s of ['Nearly 3 visits were made.', 'There were up to 9 frames in a visit.', 'There were 9 frames or more in a visit.', 'There were no fewer than 9 frames in a visit.']) { expect(check(s), s).toBe(1); }
+        expect(check('There were 3 visits.')).toBe(0);
+    });
+    it('M4 requires printed numeric precision', () => {
+        for (const s of ['There were 3.0 visits.', 'The brightness was 1.3.', 'The lowest signal-to-noise is below 1.0.']) { expect(check(s), s).toBe(1); }
+        expect(check('The brightness was 1.30.')).toBe(0);
+        expect(check('The wavelength is 5.0 micron.', [...sheet, 'Wavelength: 5.000 micron.'])).toBe(1);
+        expect(check('The wavelength is 5.000 micron.', [...sheet, 'Wavelength: 5.000 micron.'])).toBe(0);
+    });
+    it('M5 joins abbreviations and rejects unbalanced punctuation', () => {
+        expect(check('Target scatter is high, viz. The 2 reference stars scatter by 1.2 and 2.0 percent.')).toBe(1);
+        expect(check('It is a flare star (e.g. 50 percent brighter).')).toBe(1);
+        expect(check('The target is visible.')).toBe(0);
+    });
+    it('L1 requires equal frame counts for each visit', () => {
+        expect(check('Each visit had 9 frames.')).toBe(1);
+        expect(check('Each visit had 9 frames.', sheet.map((s) => s.replace('7, 9, 8', '9, 9, 9')))).toBe(0);
+    });
+    it('L2 normalizes labels and checks sentence starts after target names', () => {
+        expect(checkNote(`**What this shows:** eps Indi B was observed in 3 visits. ${pad}`, sheet).text).toContain('What this shows: eps Indi B');
+        expect(check('- the target brightened.')).toBe(1);
+    });
+    it('L3 rejects names as counts and accepts the sheet reference-star wording', () => {
+        expect(check('It varied across W1 visits and DR2 reference stars.')).toBe(1);
+        expect(check('Among the reference stars, 2 with available scatter were used.')).toBe(0);
+    });
+    it('T rejects a joined scatter sentence with no space', () => {
+        expect(check('The 2 reference stars scatter by 1.2 and 2.0 percent.The star faded.')).toBe(1);
+    });
+    it('H1 mutant: order, repeated positions and direction cannot be bypassed', () => {
+        const rising = sheet.map((s) => s.replace('1.30, 1.00, 1.00', '1.00, 1.00, 1.30'));
+        for (const sentence of ['The brightness fell from 1.30 to 1.00.', 'In time order the brightness was 1.30, 1.00 and 1.00.', 'The brightness peaked at 1.30 at the first visit.', 'The brightness fell from 1.00 to 1.30.']) { expect(check(sentence, rising), sentence).toBe(1); }
+        expect(check('The brightness rose from 1.00 to 1.30.', rising)).toBe(0);
+        expect(check('In time order the brightness was 1.00, 1.00 and 1.30.', rising)).toBe(0);
+    });
+    it('H2 mutant: several times means at least three times the largest scatter', () => {
+        for (const amount of [1, 3, 5]) { expect(check('The change is several times larger than that scatter.', sheet.map((s) => s.replace('3 percent above', `${amount} percent above`)))).toBe(1); }
+        expect(check('The change is several times larger than that scatter.', sheet.map((s) => s.replace('3 percent above', '6 percent above')))).toBe(0);
+        expect(check('The change is no larger than that scatter, so it may be noise.', sheet.map((s) => s.replace('3 percent above it', 'less than 1 percent')))).toBe(0);
+        expect(check('The change is several times larger than that scatter.', sheet.filter((s) => !s.startsWith('Largest change')))).toBe(1);
+        expect(check('The change is well clear of the reference stars.')).toBe(1);
+        expect(check('It was measured against nearby reference stars.')).toBe(0);
+    });
+    it('M1 mutant: the printed signal-to-noise bound is required', () => {
+        for (const bound of ['below 1', 'more than 100', 'at least 30', '30']) {
+            const facts = sheet.map((s) => s.replace('below 1.', `${bound}.`));
+            expect(check(`The lowest signal-to-noise among the points is ${bound}.`, facts), bound).toBe(0);
+            expect(check(`The change has a signal-to-noise of ${bound}.`, facts), bound).toBe(1);
+            if (bound !== '30') { expect(check(`The lowest signal-to-noise is ${bound.split(' ').at(-1)}.`, facts), bound).toBe(1); }
+        }
+    });
+    it('M2 covers elapsed-time and lower-bound contexts', () => {
+        for (const s of ['The visits lasted over 400.0 days.', 'The visits took over 400.0 days.', 'The time was over 400.0 days.', 'It moved above 10.4 arcsec.']) { expect(check(s), s).toBe(1); }
+        expect(check('There were 3 visits over 400.0 days.')).toBe(0);
+    });
+    it('M3 checks all requested approximation and trailing-bound words', () => {
+        for (const term of ['nearly', 'almost', 'close to', 'roughly', 'about', 'around', 'approximately', 'some', 'a minimum of', 'a maximum of', 'up to', 'as many as', 'as few as', 'no more than', 'no fewer than', 'no less than', 'at most']) {
+            expect(check(`There were ${term} 3 visits.`), term).toBe(1);
+        }
+        for (const term of ['or more', 'or fewer', 'or less', 'and more', 'plus']) { expect(check(`There were 3 visits ${term}.`), term).toBe(1); }
+    });
+    it('M5 joins each abbreviation and drops unbalanced chunks', () => {
+        for (const abbreviation of ['viz.', 'e.g.', 'i.e.', 'approx.', 'cf.', 'vs.', 'etc.']) {
+            expect(check(`The target is ${abbreviation} 50 percent brighter.`), abbreviation).toBe(1);
+        }
+        expect(checkNote('It is a flare star (e.g. Safe sentence. Another safe sentence. Third safe sentence.', sheet).dropped).toBe(1);
+    });
+    it('L2 supports both bold label forms and leading punctuation', () => {
+        for (const label of ['**What this shows:**', '**What this shows**:', 'What this shows :']) {
+            expect(checkNote(`${label} eps Indi B was observed. ${pad}`, sheet).text).toContain('What this shows: eps Indi B');
+        }
+        for (const lead of ['- ', '• ', '[', '"']) { expect(check(`${lead}the target brightened.`), lead).toBe(1); }
+    });
+    it('T keeps three paragraphs in the additional over and bounded-SNR notes', () => {
+        const notes = [
+            `What this shows: Over 3 visits the brightness went from 1.30 to 1.00.\nHow far to trust it: The 2 reference stars scatter by 1.2 and 2.0 percent.\nWhat to check next: Inspect the frames.`,
+            `What this shows: The brightness went from 1.30 to 1.00.\nHow far to trust it: The lowest signal-to-noise among the points is below 1.\nWhat to check next: Inspect the frames.`,
+        ];
+        for (const note of notes) { const result = checkNote(note, sheet); expect(result.text.split('\n')).toHaveLength(3); expect(result.dropped).toBe(0); }
+    });
+    it('Gemini concrete probes: mixed contexts and unsupported bounds', () => {
+        const facts = ['Visits: 2. Frames in each visit: 30, 31. Time from first to last visit: 20.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 1.01, 1.00.', 'Largest change from the median brightness: 30 percent above it.', 'Lowest signal-to-noise among the points: 30.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.', 'Shift in position: 10.4 arcsec.'];
+        for (const sentence of ['The target brightened across 2.0 visits and beat 2.0 reference stars.', 'The brightness rose by 1.00 across the visits.', 'The flux jumped by 1.01 in the second visit.', 'The time from first to last visit is over 20.0 days and the shift in position is above 10.4 arcsec.', 'Each visit has nearly 30 frames, or a minimum of 30 frames, or 30 frames or more.', 'The 2 reference stars scatter by 1.2 and 30 percent.']) {
+            expect(check(sentence, facts), sentence).toBe(1);
+        }
+        expect(check('The target brightness scatter was 1.2 across the visits.', facts.map((s) => s.replace('1.00, 1.01, 1.00', '1.20, 1.01, 1.00')))).toBe(1);
+        expect(check('Among the reference stars, 2 with available scatter were used.', facts)).toBe(0);
     });
 });

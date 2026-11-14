@@ -172,7 +172,7 @@ export function factSheet(f: InsightFacts): string[]
     return lines;
 }
 type Bound = 'min' | 'max' | undefined;
-type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound; medianDirection?: 'above' | 'below' | 'either' | 'less'; scatter?: { count: string; values: string[] }; snr?: boolean };
+type NumberFact = { value: number; printed: string; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound; boundText?: string; constant?: boolean; medianDirection?: 'above' | 'below' | 'either' | 'less'; scatter?: { count: string; values: string[] }; snr?: string; readings?: string[]; frames?: boolean };
 function medianSentence(value: string, fact: NumberFact): boolean
 {
     const referent = '(?:it|the median|its median)';
@@ -192,8 +192,10 @@ function scatterSentence(value: string, scatter: NonNullable<NumberFact['scatter
 // The direction of a bound written just before a number: "more than 100" is a floor, "below 1" a ceiling.
 function boundBefore(text: string, ai: boolean): Bound
 {
-    if ((ai ? /\b(?:more than|over|above|greater than|higher than|exceeds?|exceeding|in excess of|at least)\s*$/i : /\b(?:more than|at least)\s*$/i).test(text)) { return 'min'; }
-    if ((ai ? /\b(?:below|under|less than|lower than|fewer than|smaller than|at most)\s*$/i : /\b(?:below|less than)\s*$/i).test(text)) { return 'max'; }
+    if (ai && /\bno more than\s*$/i.test(text)) { return 'max'; }
+    if (ai && /\bno (?:fewer|less) than\s*$/i.test(text)) { return 'min'; }
+    if ((ai ? /\b(?:more than|over|above|greater than|higher than|exceeds?|exceeding|in excess of|at least|no fewer than|no less than|a minimum of)\s*$/i : /\b(?:more than|at least)\s*$/i).test(text)) { return 'min'; }
+    if ((ai ? /\b(?:below|under|less than|lower than|fewer than|smaller than|at most|no more than|a maximum of|up to|as many as|as few as|nearly|almost|close to|roughly|about|around|approximately|some)\s*$/i : /\b(?:below|less than)\s*$/i).test(text)) { return 'max'; }
     return undefined;
 }
 const countNouns: [RegExp, RegExp, RegExp?][] = [
@@ -255,17 +257,20 @@ function sheetFacts(sheet: string[]): NumberFact[]
             const direction = /^Largest change from the median brightness$/i.test(label) ? segment[2]!.match(/(?:\b(above|below) it|\b(either) side|\b(less) than\s+1 percent)\.?$/i) : null;
             const medianDirection = (direction?.[1] ?? direction?.[2] ?? direction?.[3])?.toLowerCase() as NumberFact['medianDirection'];
             for (const list of lists(segment[2]!)) {
-                const bound = boundBefore(segment[2]!.slice(0, list.start), false);
+                const bound = boundBefore(segment[2]!.slice(0, list.start), true);
+                const boundText = segment[2]!.slice(0, list.start).match(/\b(?:more than|at least|below|less than|nearly|almost|close to|roughly|about|around|approximately|some|a minimum of|a maximum of|up to|as many as|as few as|no more than|no fewer than|no less than|at most)\s*$/i)?.[0].trim().toLowerCase();
                 const scatterCount = line.match(/^Reference stars:\s*(\d+) with available scatter\./i)?.[1];
                 const scatter = /^Scatter of each$/i.test(label) ? { count: scatterCount ?? '', values: list.values } : undefined;
-                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined, medianDirection, scatter, snr: /^Lowest signal-to-noise\b/i.test(label) }); });
+                const snr = /^Lowest signal-to-noise\b/i.test(label) ? segment[2]!.match(/^(?:(?:below|more than|at least|less than)\s+)?\d+(?:\.\d+)?/i)?.[0] : undefined;
+                const readings = /^Brightness relative\b/i.test(label) ? list.values : undefined;
+                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), printed: value, integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined, boundText: i === 0 ? boundText : undefined, medianDirection, scatter, snr, readings, frames: /^Frames in each visit$/i.test(label) }); });
             }
         }
     }
     for (const entry of CONSTANT_CONTEXT) {
         const context = entry.context.source;
         const noun = entry.context.test('micron') ? 'micron' : 'arcsec';
-        result.push({ value: entry.value, integer: Number.isInteger(entry.value), unit: noun === 'micron' || noun === 'arcsec' ? noun : '', words: new RegExp(context, 'i') });
+        result.push({ value: entry.value, printed: String(entry.value), integer: Number.isInteger(entry.value), unit: noun === 'micron' || noun === 'arcsec' ? noun : '', words: new RegExp(context, 'i'), constant: true });
     }
     return result;
 }
@@ -296,8 +301,29 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     const namePattern = escapedNames.length ? new RegExp('(?<!\\w)(?:' + escapedNames.join('|') + ')(?!\\w)', 'gi') : undefined;
     const foreign = /^(?:hours?|hrs?|minutes?|mins?|seconds?|secs?|weeks?|months?|nm|mm|cm|metres?|meters?|kilometres?|kilometers?|miles?|arcmin|arcminutes?|mas|milliarcsec(?:onds?)?|radians?|celsius|fahrenheit|kg|grams?|watts?|hz|ev|photons?|electrons?|counts?|pixels?|times|x|trillion)\b/i;
     const countingNoun = /^(?:visits?|epochs?|passes?|frames?|images?|exposures?|points?|readings?|values?|measurements?|observations?|stars?|references?|comparisons?|channels?|bands?|colours?|colors?|wavelengths?|detectors?|times?)$/i;
+    const frameValues = sheet.join(' ').match(/Frames in each visit:\s*([^.]*)/i)?.[1]?.match(/\d+/g) ?? [];
+    const equalFrames = frameValues.length > 0 && frameValues.every((item) => item === frameValues[0]);
+    const change = sheet.join(' ').match(/Largest change from the median brightness:\s*(less than 1|\d+(?:\.\d+)?) percent/i)?.[1];
+    const scatterText = sheet.join(' ').match(/Scatter of each:\s*([\d.,\s]+)\s*percent/i)?.[1];
+    const scatterValues = scatterText?.match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+    function comparisonInvalid(value: string): boolean
+    {
+        if (!/\b(?:scatter|spread|reference stars?|comparison stars?|noise)\b/i.test(value)) { return false; }
+        if (!/\b(?:larger|smaller|bigger|greater|less|more|times|beyond|within|exceeds?|above|below|clear of|compared|comparable|similar)\b|\bmay be noise\b/i.test(value)) { return false; }
+        if (/\d/.test(value)) { return false; }
+        if (!change || !scatterValues.length) { return true; }
+        const c = change === 'less than 1' ? 1 : Number(change);
+        const s = Math.max(...scatterValues);
+        const subject = '^the (?:brightness )?change (?:is|was) ';
+        const target = '(?:that|the|their) scatter';
+        if (new RegExp(`${subject}(?:(?:several|many) times|much|far|well) (?:larger than|above|beyond) ${target}\\.$`, 'i').test(value) || new RegExp(`^the (?:brightness )?change (?:much|far|well) exceeds ${target}\\.$`, 'i').test(value)) { return change === 'less than 1' || c < 3 * s; }
+        if (new RegExp(`${subject}(?:no larger than|within|comparable to|smaller than|similar to) ${target}(?:, so it may be noise)?\\.$`, 'i').test(value) || /^the change may be noise\.$/i.test(value)) { return change !== 'less than 1' && c > s; }
+        if (new RegExp(`${subject}(?:larger than|above|beyond) ${target}\\.$`, 'i').test(value) || new RegExp(`^the (?:brightness )?change exceeds ${target}\\.$`, 'i').test(value)) { return change === 'less than 1' || c <= s; }
+        return true;
+    }
     function unsupportedNumbers(value: string): boolean
     {
+        let readingIndex = -1;
         for (const list of lists(value)) {
             const before = value.slice(0, list.start).match(/[\p{L}]+(?:\/[\p{L}]+)?|[%″°]/gu) ?? [];
             const after = value.slice(list.end).match(/[\p{L}]+(?:\/[\p{L}]+)?|[%″°]/gu) ?? [];
@@ -305,7 +331,8 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             const follower = list.follower.trimStart().replace(/^-\s*/, '');
             const nounFollower = follower.replace(/^of\s+(?:the|its|their|these|those)\s+/i, '');
             const followingWords = nounFollower.match(/^[a-z]+(?:-[a-z]+)*(?:\s+[a-z]+(?:-[a-z]+)*)?/i)?.[0].split(/\s+/) ?? [];
-            const noun = list.unit ? undefined : countingNoun.test(followingWords[0] ?? '') ? followingWords[0] : /^(?:in|on|at|by|over|under|above|below|across|through|from|to|of|for|and|or|the)$/i.test(followingWords[0] ?? '') ? undefined : countingNoun.test(followingWords[1] ?? '') ? followingWords[1] : undefined;
+            const referenceCount = /\breference stars,?\s*$/i.test(value.slice(0, list.start)) && /^with available scatter\b/i.test(follower);
+            const noun = referenceCount ? 'stars' : list.unit ? undefined : countingNoun.test(followingWords[0] ?? '') ? followingWords[0] : /^(?:in|on|at|by|over|under|above|below|across|through|from|to|of|for|and|or|the)$/i.test(followingWords[0] ?? '') ? undefined : countingNoun.test(followingWords[1] ?? '') ? followingWords[1] : undefined;
             const prefix = value.slice(0, list.start);
             const lead = boundBefore(prefix, true);
             const unitlessBlocked = Boolean(list.unit) || /^[°′″$€£±×^/]/.test(follower) || /^[A-Z]/.test(follower) || foreign.test(follower);
@@ -313,31 +340,50 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
                 const val = Number(raw.replace('−', '-'));
                 const bound = index === 0 ? lead : undefined;
                 const integer = !raw.includes('.');
-                if (integer && MISSION_COUNTS.some((entry) => entry.value === val && entry.nouns.test(follower))) { continue; }
+                if (integer && !lead && !/^\s*(?:detectors?|colou?rs?|channels?|bands?|wavelengths?)?\s*(?:or more|or fewer|or less|and more|plus)\b/i.test(follower) && MISSION_COUNTS.some((entry) => entry.value === val && entry.nouns.test(follower))) { continue; }
+                let reading: NumberFact | undefined;
                 if (!facts.some((fact) => {
                     if (fact.bound && fact.bound !== bound) { return false; }
-                    // A bound the sheet does not give ("fewer than 30 frames" for exactly 30) is refused. "Over" and
-                    // "above" straight before days or arcsec are prepositions: "10.4 arcsec over 20.0 days".
-                    const preposition = /\b(?:over|above)\s*$/i.test(prefix) && (fact.unit === 'days' || fact.unit === 'arcsec');
-                    if (bound && !fact.bound && !preposition) { return false; }
-                    if (fact.value !== val || (integer && !fact.integer) || !fact.words.test(fact.required && noun ? value : context)) { return false; }
+                    const preposition = /(?:^|\b(?:\d+(?:\.\d+)?|days?|arcsec(?:onds?)?|visits?|frames?|points?|readings?|observations?))\s+over\s*$/i.test(prefix) || /^over\s*$/i.test(prefix);
+                    const overUnit = fact.unit === 'days' || Boolean(noun && /^(?:visits?|epochs?|passes?|observations?)$/i.test(noun));
+                    if (bound && !fact.bound && !(preposition && overUnit)) { return false; }
+                    const noteBound = prefix.match(/\b(?:more than|at least|below|less than|nearly|almost|close to|roughly|about|around|approximately|some|a minimum of|a maximum of|up to|as many as|as few as|no more than|no fewer than|no less than|at most)\s*$/i)?.[0].trim().toLowerCase();
+                    if ((noteBound && noteBound !== fact.boundText) || /^\s*(?:frames?|visits?|days?|arcsec)?\s*(?:or more|or fewer|or less|and more|plus)\b/i.test(follower)) { return false; }
+                    if (fact.value !== val || (fact.printed !== raw && !(fact.constant && fact.value === 5 && raw === '5.0')) || !fact.words.test(fact.required && noun ? value : context)) { return false; }
+                    if (fact.constant && facts.some((other) => !other.constant && other.unit === list.unit && other.value === val && other.printed !== raw) && !/\b(?:helium|hydrogen|water|ice|pahs|carbon dioxide|carbon monoxide)\b/i.test(context)) { return false; }
                     if (fact.scatter && !scatterSentence(value, fact.scatter)) { return false; }
                     if (fact.medianDirection && !medianSentence(value, fact)) { return false; }
+                    if (fact.frames && /\b(?:each|every|per)\s+visit\b/i.test(value) && !equalFrames) { return false; }
                     if (fact.nouns && !noun) { return false; }
                     if (noun && (!fact.nouns?.test(noun) || (fact.required && !fact.required.test(value)))) { return false; }
                     if (fact.unit) { return list.unit === fact.unit; }
                     if (unitlessBlocked) { return false; }
-                    if (fact.snr && !/\b(?:signal-to-noise|s\/n|snr)(?:\s+ratio)?(?:\s+among the points)?\s+(?:is only|was only|is|was|of)\s*$/i.test(prefix)) { return false; }
+                    if (fact.snr && value.toLowerCase() !== `the lowest signal-to-noise${/among the points/i.test(value) ? ' among the points' : ''} ${/\bwas\b/i.test(value) ? 'was' : 'is'}${/\bonly\b/i.test(value) ? ' only' : ''} ${fact.snr.toLowerCase()}.`) { return false; }
+                    if (fact.readings) { reading = fact; }
                     return true;
                 })) { return true; }
+                if (reading) {
+                    const values = (reading as NumberFact).readings!;
+                    readingIndex = values.indexOf(raw, readingIndex + 1);
+                    if (readingIndex < 0 || /\b(?:scatter|spread|noise)\b/i.test(value) || /\bby\s*$/i.test(prefix)) { return true; }
+                    const nearby = value.slice(0, list.start) + ' ' + value.slice(list.end);
+                    if (/\b(?:first|started|began)\b/i.test(nearby) && Number(raw) !== Number(values[0])) { return true; }
+                    if (/\b(?:last|ended|final|finished)\b/i.test(nearby) && Number(raw) !== Number(values[values.length - 1])) { return true; }
+                    if (/\b(?:peaked|highest|maximum|brightest)\b/i.test(nearby) && Number(raw) !== Math.max(...values.map(Number))) { return true; }
+                    if (/\b(?:lowest|minimum|faintest|dimmest)\b/i.test(nearby) && Number(raw) !== Math.min(...values.map(Number))) { return true; }
+                }
             }
         }
+        const fromTo = value.match(/\bfrom\s+(\d+(?:\.\d+)?)\s+to\s+(\d+(?:\.\d+)?)/i);
+        if (fromTo && (/\b(?:rose|rise|increased|brightened|climbed|grew|up)\b/i.test(value) && Number(fromTo[2]) <= Number(fromTo[1]) || /\b(?:fell|dropped|decreased|faded|dimmed|declined|down)\b/i.test(value) && Number(fromTo[2]) >= Number(fromTo[1]))) { return true; }
         return false;
     }
     function invalid(value: string): boolean
     {
         if (/[<>]|:\/\/|www\./i.test(value) || (/\d/.test(value) && /\b(?:years?|yrs?|yearly|annual|annually|annum|decade|century)\b/i.test(value))) { return true; }
         if (namePattern) { value = value.replace(namePattern, 'NAME'); }
+        if (/^[\s"'“”‘’\-–—•([{]*\p{Ll}/u.test(value) || comparisonInvalid(value)) { return true; }
+        if (/\b[A-Za-z][\w.]*\d[\w.]*\s+(?:(?:reference|comparison)\s+)?(?:visits?|frames?|stars?|points?)\b/i.test(value)) { return true; }
         if (/\b[OBAFGKMLTY]\d(?:\.\d)?(?:IV|I{1,3}|V)?[a-z]*\b/.test(value)) { return true; }
         value = value.replace(/\b(?:CO2|H2O|H2|CH4|2MASS|W[1-4]|DR[1-3]|QR3)\b/gi, 'NAME').replace(/−/g, '-');
         // The sheet gives time in days only and never a magnitude, so any other time unit, or a magnitude, is the
@@ -393,16 +439,24 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     for (const raw of text.split(/\r?\n/)) {
         const line = raw.trim();
         if (!line) { continue; }
-        const label = line.match(/^(?:What this shows|How far to trust it|What to check next):/i)?.[0] ?? '';
-        const body = line.slice(label.length).trim();
-        const sentences = body.match(/.*?(?:[.!?](?=\s|$)|$)/g)?.map((s) => s.trim()).filter(Boolean) ?? [];
+        const labelMatch = line.match(/^(?:\*\*)?(What this shows|How far to trust it|What to check next)\s*(?:\*\*)?\s*:(?:\*\*)?/i);
+        const label = labelMatch ? `${labelMatch[1]}:` : '';
+        const body = line.slice(labelMatch?.[0].length ?? 0).trim();
+        const chunks = body.match(/.*?(?:[.!?](?=\s|$)|$)/g)?.map((s) => s.trim()).filter(Boolean) ?? [];
+        const sentences: string[] = [];
+        for (const chunk of chunks) {
+            if (sentences.length && /\b(?:viz|e\.g|i\.e|approx|cf|vs|etc)\.$/i.test(sentences[sentences.length - 1]!)) { sentences[sentences.length - 1] += ` ${chunk}`; }
+            else { sentences.push(chunk); }
+        }
         if (invalid(label)) {
             dropped += sentences.length;
             continue;
         }
         const kept = sentences.filter((sentence) => {
             const labeled = `${label} ${sentence}`;
-            if (!/[.!?]$/.test(sentence) || /^\p{Ll}/u.test(sentence) || invalid(sentence) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
+            const pairs = [['(', ')'], ['[', ']'], ['{', '}'], ['“', '”'], ['‘', '’']];
+            const unbalanced = pairs.some(([left, right]) => sentence.split(left!).length !== sentence.split(right!).length) || (sentence.match(/"/g)?.length ?? 0) % 2 !== 0;
+            if (!/[.!?]$/.test(sentence) || unbalanced || invalid(sentence) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
                 dropped++;
                 return false;
             }
