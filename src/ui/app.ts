@@ -45,6 +45,7 @@ interface State {
     index: number;
     playing: boolean;
     gaia: boolean;
+    live: boolean; // read a target live from the archive instead of the saved copy
     wantFrame?: string; // obsId from a shared link, applied after load
 }
 
@@ -168,7 +169,7 @@ function shell(): string
   </section>
 </main>
 <aside class="sk-rail sk-right">
-  <div class="sk-status"><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div>
+  <div class="sk-status"><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span><button type="button" class="sk-btn2 sk-golive" data-act="live" data-ref="golive" hidden>Go live</button><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div>
   <section class="sk-mod sk-m-colour" aria-labelledby="sk-h3">
     <h2 class="sk-mh" id="sk-h3"><i>3</i>Try another colour</h2>
     <div class="sk-readout"><p><b data-bind="lam"></b><small>µm</small></p><span data-bind="det"></span></div>
@@ -218,9 +219,11 @@ export function mount(root: HTMLElement): void
         index: 0,
         playing: false,
         gaia: true,
+        live: false,
     };
     let result: SkyResult | null = null;
     let sourceKind: SourceKind = 'live';
+    let liveFailed = false; // the saved copy is showing because the live archive did not answer
     let stretch: ReturnType<typeof sharedStretch> | null = null;
     let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
     let timer = 0;
@@ -256,6 +259,7 @@ export function mount(root: HTMLElement): void
         st.center = { ra: t.astrometry.ra, dec: t.astrometry.dec };
         st.detector = t.detector;
         st.lambda = undefined;
+        st.live = false;
         st.label = COPY[id].display;
         void load();
     }
@@ -307,15 +311,23 @@ export function mount(root: HTMLElement): void
             signal,
             onProgress: progress,
         };
-        const order: SourceKind[] = demoOnly ? ['demo'] : ['live', 'snapshot'];
+        // The five targets open from the saved copy at once (a live read takes 20-45 s);
+        // "Read live" or another colour on another detector goes to the archive.
+        const saved = st.target ? targetById(st.target) : undefined;
+        const savedFirst = !st.live && saved !== undefined && st.detector === saved.detector;
+        const order: SourceKind[] = demoOnly ? ['demo'] : savedFirst ? ['snapshot', 'live'] : ['live', 'snapshot'];
         let res: SkyResult | null = null;
         let got: SourceKind = 'live';
         let lastErr: unknown = null;
         let allMissing = true;
+        let failedLive = false;
         for (const kind of order) {
             try {
                 res = await loadFrom(kind, req);
                 got = kind;
+                if (kind === 'snapshot' && savedFirst && res.frames.length === 0) {
+                    continue;
+                }
                 break;
             } catch (e) {
                 if (signal.aborted) {
@@ -323,6 +335,7 @@ export function mount(root: HTMLElement): void
                 }
                 lastErr = e;
                 allMissing = allMissing && isNotImplemented(e);
+                failedLive ||= kind === 'live';
                 // A spot that is not one of the five targets has no saved copy.
                 if (kind === 'live' && !st.target && !isNotImplemented(e)) {
                     break;
@@ -357,6 +370,7 @@ export function mount(root: HTMLElement): void
         }
         result = res;
         sourceKind = got;
+        liveFailed = failedLive;
         st.lambda = res.lambda;
         st.detector = detectorOf(res.lambda);
         stretch = sharedStretch(res.frames);
@@ -569,6 +583,7 @@ export function mount(root: HTMLElement): void
         root.dataset.gaia = String(st.gaia);
         root.dataset.source = sourceKind;
         ref<HTMLElement>('sim').hidden = !(result && sourceKind === 'demo');
+        ref<HTMLElement>('golive').hidden = !(result && sourceKind === 'snapshot' && st.target);
         const copy = st.target ? COPY[st.target] : null;
         bind('name', copy ? copy.display : st.label);
         bind('coords', `${formatRa(st.center.ra)}  ${formatDec(st.center.dec)}`);
@@ -653,9 +668,10 @@ export function mount(root: HTMLElement): void
             ref<HTMLElement>('dl').innerHTML = html;
         }
         bind('statusShort', sourceKind === 'live' ? 'Live from NASA’s SPHEREx archive'
-            : sourceKind === 'snapshot' ? 'Saved copy of SPHEREx frames' : 'Simulated sky · not real data');
+            : sourceKind === 'snapshot' ? 'Saved copy' : 'Simulated sky · not real data');
         const status = sourceKind === 'live' ? 'Live: read straight from NASA’s SPHEREx archive on Amazon S3.'
-            : sourceKind === 'snapshot' ? 'Saved copy of NASA SPHEREx frames (the live archive did not answer).'
+            : sourceKind === 'snapshot' ? (liveFailed ? 'Saved copy of NASA SPHEREx frames (the live archive did not answer).'
+                : 'Saved copy of real NASA SPHEREx frames, so it opens at once. Go live reads them from the archive (about 30 s).')
                 : 'Simulated sky for building the page. Not real data.';
         bind('status', status);
         const credits = ['NASA SPHEREx via IRSA (NASA/IPAC).', ...(sourceKind === 'demo' ? [] : result.credits)];
@@ -770,6 +786,9 @@ export function mount(root: HTMLElement): void
             const url = linkFor(true);
             navigator.clipboard?.writeText(url).then(() => toast('Link copied. It opens this exact view.'), () => toast(url));
         } else if (b.dataset.act === 'retry') {
+            void load();
+        } else if (b.dataset.act === 'live') {
+            st.live = true;
             void load();
         }
     });

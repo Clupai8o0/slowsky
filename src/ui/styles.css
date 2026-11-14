@@ -146,6 +146,8 @@ button { cursor: pointer; }
 .sk-btn2 { margin-left: auto; height: 32px; padding: 0 11px; border: 1px solid var(--edge); border-radius: 4px; background: none; color: var(--ink2); font-size: 12.5px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; transition: border-color 140ms ease-out, background 140ms ease-out; }
 .sk-btn2:hover { border-color: var(--edge-hi); background: var(--raise); color: var(--ink); }
 .sk-btn2 .ic svg { width: 14px; height: 14px; }
+.sk-golive:not([hidden]) + .sk-btn2 { margin-left: 0; }
+.sk-status [data-bind=statusShort] { white-space: nowrap; }
 .sk-err .sk-btn2 { margin: 0; }
 
 .sk-readout { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 4px; }
