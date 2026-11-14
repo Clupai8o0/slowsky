@@ -118,6 +118,7 @@ through the CfA mirror. The full list, with licences and credit lines: [DATA-LIC
 |---|---|---|
 | Claude Code (Claude Opus, Sonnet and Haiku models) | Anthropic | Writing and reviewing code, tests, planning help, page text drafts |
 | Codex | OpenAI | Writing and reviewing code |
+| Gemini (through Antigravity) | Google | Writing and reviewing code |
 | Grok (through Grok Build) | xAI | Writing and reviewing code |
 | ElevenLabs | ElevenLabs | AI voice in the demo video |
 | GPT Image | OpenAI | Decorative images, if used, marked where they appear |
@@ -132,25 +133,29 @@ Sam chose the idea and makes every product decision (see `DECISIONS.md`).
   bright enough for SPHEREx has already been searched by ZTF, DES and Pan-STARRS1; what is left is fainter than
   these frames can show (Brown, Holman & Batygin 2024, arXiv:2401.17977; SPHEREx depths: Bock et al. 2025,
   arXiv:2511.02985). This repo does not compute that limit itself.
-- Live loading reads many files from the archive and takes 20 to 45 seconds. It reads at most 60 frames per view,
-  spread evenly across visits, and says so when it does.
+- Live loading reads many files from the archive and takes 20 to 45 seconds. It reads at most 60 frames per view
+  and says so when it does. To choose them it guesses each frame's wavelength at the spot from the frame's corner
+  positions in the archive list (about 10 pixels off), then reads the frames nearest the chosen wavelength.
+  When a frame has no corner positions, or the guess does not check out against the first header, frames are spread evenly in time as before.
 - At very busy spots, such as near the ecliptic poles, the archive can cut its frame list short. The page then
   says some visits may be missing.
 - Gaia rings are moved from the 2016 catalogue to each frame's date using the stars' proper motion (Stack uses
   the middle date). The source keeps only stars that were on the field in 2016, so a fast star that walked in
   from just outside it since then has no ring. Live views show rings only within 0.2° of the centre, and skip them
   if the catalogue is slow to answer.
-- The brightness curve (RW Aurigae, Epsilon Indi B, WISE 0855) divides the target by two to four steady Gaia stars
-  in the field. It appears only when the field holds at least two such stars; in the offline copy that is RW
-  Aurigae only. The shaded band shows how much those steady stars wobble; a faint target can wobble more. It is a
-  rough check, not calibrated photometry.
+- The brightness curve (RW Aurigae, Epsilon Indi B, WISE 0855) divides the target by two to four Gaia comparison
+  stars in the field. They are not checked for steadiness, so a variable one shows up as wobble. The curve appears
+  only when the field holds at least two such stars; in the offline copy that is RW Aurigae only. The shaded band
+  shows how much those comparison stars wobble; a faint target can wobble more. It is a rough check, not
+  calibrated photometry.
 - For Barnard's Star the page measures how far the star moved between two frames and shows the distance its
   catalogue proper motion predicts beside it. The prediction leaves out parallax (the small yearly loop caused by
   Earth's orbit), and the star's bright core is hard to centre, so the two numbers can differ.
 - The offline copy has only the five preset targets, one detector each, and a field of at most 0.1°.
 - Each view uses one detector. A star found by name is placed at its catalogue position, and its marker moves only
   for the presets. Gaia rings move in every view.
-- Bad-pixel flags in the files are not read, so hot pixels and cosmic-ray hits show as they are.
+- Bad-pixel flags in the files are not read, so hot pixels and cosmic-ray hits show as they are, and one can
+  upset a point on the brightness curve.
 - The picture's brightness scale is for viewing. The brightness curve is relative to nearby stars, not in physical
   units. The centres of Barnard's Star and R Draconis are too bright for the camera, so neither gets a curve.
 - Stack is a plain average of all frames. Subtract compares only the first and last frame.
