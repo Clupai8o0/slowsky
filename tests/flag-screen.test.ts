@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { plainListNotes } from '../src/lib/changes';
 import type { ChangeCandidate, VisitChangeResult } from '../src/lib/changes';
 import type { OutputGrid, RangeReader, RegriddedFrame, Wcs } from '../src/lib/types';
 import type { SkyResult } from '../src/lib/source';
@@ -128,19 +129,54 @@ function found(result: SkyResult): VisitChangeResult
 }
 
 describe('change slot', () => {
+    it('rebuilds plain list notes after archive flags remove spots', async () => {
+        for (const all of [false, true]) {
+            const a = frame('a', 0), b = frame('b', 20);
+            a.data[20 * 40 + 20] = b.data[20 * 40 + 20] = 5;
+            const find = (result: SkyResult): VisitChangeResult => {
+                const value = found(result);
+                value.candidates = value.candidates.map(c => ({ ...c, reading: 'moreLater', kind: 'unknown', snrMapMissing: true,
+                    reason: 'More light here (candidate).', sentence: 'More light here (candidate).' }));
+                value.plainListInfo = { usedErrorMap: true, matchArcsec: 6 };
+                value.notes = ['Every spot listed is a candidate only; this page cannot tell which, if any, are real changes in the sky.',
+                    'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise estimated from the difference image; that figure is used only for this order.',
+                    "S/N is left out for 2 candidates where the frames' error maps have no value, because the noise there comes from the difference image alone."];
+                return value;
+            };
+            const reader = { index: async () => ({}), readFloat32: async () => new Float32Array(1600) } as unknown as RangeReader;
+            const read = vi.fn(async (url: string) => {
+                const data = new Int32Array(1600);
+                if (url === 'b') { data[10 * 40 + 10] = 1; if (all) { data[20 * 40 + 20] = 1; } }
+                return { data, width: 40, height: 40 };
+            });
+            const onChange = vi.fn(), box = {} as HTMLElement, marks = {} as HTMLElement;
+            const slot = mountChanges(onChange, { find, reader, read, variance: async () => null });
+            const view = { source: 'live', result: sky([a, b]), index: 0, mode: 'blink' } as SlotView;
+            slot.render(box, marks, view);
+            await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
+            slot.render(box, marks, view);
+            if (all) {
+                expect(box.innerHTML.includes('Listed with spots')).toBe(false);
+                expect(box.innerHTML.includes('S/N is left out')).toBe(false);
+                expect(box.innerHTML.includes('Every spot listed')).toBe(false);
+            } else {
+                expect(box.innerHTML.includes("S/N is left out for 1 candidate where the frames' error maps have no value, because the noise there comes from the difference image alone.")).toBe(true);
+            }
+        }
+    });
     it('keeps the plain confirmation note above the caveat after screening', () => {
         const find = (result: SkyResult): VisitChangeResult => {
             const value = found(result);
             value.candidates = [{ ...value.candidates[0]!, reading: 'unclear', reason: 'Plain spot (candidate).', sentence: 'Plain spot (candidate).',
                 caveat: 'Each visit has fewer than 3 frames, so a detector hit cannot be ruled out.' }];
-            value.notes = ['None of these spots has been confirmed as a real change.'];
+            value.notes = ['Every spot listed is a candidate only; this page cannot tell which, if any, are real changes in the sky.'];
             return value;
         };
         const a = frame('a', 0), b = frame('b', 20);
         delete a.context; delete b.context;
         const box = {} as HTMLElement;
         mountChanges(vi.fn(), { find }).render(box, {} as HTMLElement, { source: 'snapshot', result: sky([a, b]), index: 0, mode: 'blink' });
-        expect(box.innerHTML).toBe('<p class="sk-chg-lead">None of these spots has been confirmed as a real change.</p><p class="sk-chg-lead">Archive flags are not checked in a saved view, so these spots are listed without that check.</p><p class="sk-chg-lead">Each visit has fewer than 3 frames, so a detector hit cannot be ruled out.</p><ol class="sk-chg"><li><b>Candidate 1</b> Plain spot (candidate).</li></ol>');
+        expect(box.innerHTML).toBe('<p class="sk-chg-lead">Every spot listed is a candidate only; this page cannot tell which, if any, are real changes in the sky.</p><p class="sk-chg-lead">Archive flags are not checked in a saved view, so these spots are listed without that check.</p><p class="sk-chg-lead">Each visit has fewer than 3 frames, so a detector hit cannot be ruled out.</p><ol class="sk-chg"><li><b>Candidate 1</b> Plain spot (candidate).</li></ol>');
     });
     it('shows the finder at once, then updates once with screened marks', async () => {
         const a = frame('a', 0);
@@ -365,10 +401,16 @@ describe('plain list (compareVisits plain: true)', () => {
         for (const visit of ['earlier', 'later'] as const) {
             const flags = new Map([['early', at(1, visit === 'earlier' ? ['OVERFLOW'] : [])], ['late', at(1, visit === 'later' ? ['OVERFLOW'] : [])]]);
             const kept = screen([plain], { earlier: [earlier], later: [later] }, flags, []).kept[0]!;
-            expect(kept.line).toBe(`The light here differs between the two visits, and which visit has more is not clear; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate). In at least one frame of the ${visit} visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW; an overflowing pixel can make the reading here unreliable.`);
+            expect(kept.line).toBe(`The light here differs between the two visits, and which visit has more is not clear; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (candidate). In at least one frame of the ${visit} visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW; an overflowing pixel can make the reading here unreliable.`);
             expect(kept.reading).toBe('unclear');
             expect(kept.kind).toBe('unknown');
         }
+    });
+
+    it('does not call mapped ordering difference-image noise when overflow hides every S/N', () => {
+        const flags = new Map([['early', at(1, ['OVERFLOW'])], ['late', at(1, [])]]);
+        const kept = screen([plain], { earlier: [earlier], later: [later] }, flags, []).kept;
+        expect(plainListNotes(kept, true, 6)).toEqual([]);
     });
 
     it('truncates S/N for overflowed comparison readings', () => {
@@ -377,11 +419,32 @@ describe('plain list (compareVisits plain: true)', () => {
         expect(screen([c], { earlier: [earlier], later: [later] }, flags, []).kept[0]!.line).toBe('The two visits differ here, at S/N 49.9 (candidate). In at least one frame of the earlier visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW, so the brightness comparison is not shown; an overflowing pixel can make the reading here unreliable.');
     });
 
+    it('does not print a non-finite S/N for an overflowed comparison', () => {
+        const flags = new Map([['early', at(1, ['OVERFLOW'])], ['late', at(1, [])]]);
+        const c = { ...plain, reading: 'brighter' as const, snr: NaN };
+        expect(screen([c], { earlier: [earlier], later: [later] }, flags, []).kept[0]!.line).toBe('The two visits differ here (candidate). In at least one frame of the earlier visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW, so the brightness comparison is not shown; an overflowing pixel can make the reading here unreliable.');
+    });
+
     it('drops a plain spot flagged in its light visit, with one-spot wording', () => {
         const flags = new Map([['early', at(9, [])], ['late', at(1, ['TRANSIENT'])]]);
         const out = screen([plain], { earlier: [earlier], later: [later] }, flags, ['TRANSIENT']);
         expect(out.kept).toHaveLength(0);
         expect(out.dropNote).toBe('1 candidate is not listed: in at least one frame of a checked visit, that frame’s brightest pixel within 12″ of its spot carries the archive flag TRANSIENT.');
+    });
+
+    it('drops a plain spot flagged in the earlier visit', () => {
+        const flags = new Map([['early', at(1, ['TRANSIENT'])], ['late', at(1, [])]]);
+        const out = screen([plain], { earlier: [earlier], later: [later] }, flags, ['TRANSIENT']);
+        expect(out.kept).toHaveLength(0);
+        expect(out.dropNote).toBe('1 candidate is not listed: in at least one frame of a checked visit, that frame’s brightest pixel within 12″ of its spot carries the archive flag TRANSIENT.');
+    });
+
+    it('counts a plain spot unread in full only when neither visit is read', () => {
+        const flags = new Map([['early', at(1, [])], ['late', null]]);
+        const out = screen([plain], { earlier: [earlier], later: [later] }, flags, []);
+        expect(out.allUnread).toBe(false);
+        expect(out.kept[0]!.line).toBe(`${plain.sentence} Some of the archive flags for this spot could not be read, so that check is incomplete.`);
+        expect(screen([plain], { earlier: [earlier], later: [later] }, new Map(), []).allUnread).toBe(true);
     });
 
     it('does not claim a direction when a drop flag and OVERFLOW occur in opposite visits', () => {

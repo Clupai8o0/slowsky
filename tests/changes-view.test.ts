@@ -176,8 +176,8 @@ describe('plain list (compareVisits plain: true)', () => {
     it('places the confirmation note before the shared caveat and list', () => {
         const c = { ...cand('p', 10, 10, 'The light differs (candidate).'), reading: 'unclear' as const,
             caveat: 'Each visit has fewer than 3 frames, so a detector hit cannot be ruled out.' };
-        const v = changesView(found([c], ['None of these spots has been confirmed as a real change.']));
-        expect(changesHtml(v)).toBe('<p class="sk-chg-lead">None of these spots has been confirmed as a real change.</p><p class="sk-chg-lead">Each visit has fewer than 3 frames, so a detector hit cannot be ruled out.</p><ol class="sk-chg"><li><b>Candidate 1</b> The light differs (candidate).</li></ol>');
+        const v = changesView(found([c], ['Every spot listed is a candidate only; this page cannot tell which, if any, are real changes in the sky.']));
+        expect(changesHtml(v)).toBe('<p class="sk-chg-lead">Every spot listed is a candidate only; this page cannot tell which, if any, are real changes in the sky.</p><p class="sk-chg-lead">Each visit has fewer than 3 frames, so a detector hit cannot be ruled out.</p><ol class="sk-chg"><li><b>Candidate 1</b> The light differs (candidate).</li></ol>');
         expect(changesMarks(v, 100, 100)).toBe(changesMarks(changesView(found([{ ...c, reading: 'moreLater' }], [])), 100, 100));
     });
     const plain = (id: string, snr: number, reading: 'moreLater' | 'lessLater', near: boolean) => ({ ...cand(id, 10 + snr, 10, `${id} (candidate).`), snr, reading, nearCatalogue: near,
