@@ -36,6 +36,7 @@ export function createGestures(opts?: GestureOptions): {
     feed(sample: PointerSample): GestureAction[];
     tick(t: number): GestureAction[];
     holdDueAt(): number | null;
+    isIdle(): boolean;
     reset(): GestureAction[];
 }
 {
@@ -151,7 +152,7 @@ export function createGestures(opts?: GestureOptions): {
         return wasHolding ? ['hold-end'] : [];
     }
 
-    return { feed, tick, holdDueAt, reset };
+    return { feed, tick, holdDueAt, isIdle: () => downIds.size === 0, reset };
 }
 
 export interface GestureHandlers {
@@ -162,9 +163,11 @@ export interface GestureHandlers {
 }
 
 export interface GestureTarget {
-    addEventListener(type: string, listener: (event: any) => void, options?: { passive?: boolean }): void;
-    removeEventListener(type: string, listener: (event: any) => void): void;
+    addEventListener(type: string, listener: (event: any) => void, options?: { passive?: boolean; capture?: boolean }): void;
+    removeEventListener(type: string, listener: (event: any) => void, options?: { capture?: boolean }): void;
     style?: { touchAction?: string };
+    ownerDocument?: GestureTarget | null;
+    setPointerCapture?(pointerId: number): void;
 }
 
 interface PointerEventLike {
@@ -187,6 +190,7 @@ const EVENT_KINDS: ReadonlyArray<readonly [string, PointerSample['kind']]> = [
 export function attachGestures(target: GestureTarget, handlers: GestureHandlers, opts?: GestureOptions & {
     setTimer?: (fn: () => void, ms: number) => unknown;
     clearTimer?: (handle: unknown) => void;
+    root?: GestureTarget;
 }): () => void
 {
     const machine = createGestures(opts);
@@ -207,6 +211,9 @@ export function attachGestures(target: GestureTarget, handlers: GestureHandlers,
     let timerHandle: unknown = undefined;
     let scheduledDue: number | null = null;
     let timerGen = 0;
+    const root = opts?.root ?? target.ownerDocument;
+    const seenAtRoot = new WeakSet<object>();
+    let rootListening = false;
 
     function dispatch(actions: GestureAction[]): void
     {
@@ -281,18 +288,62 @@ export function attachGestures(target: GestureTarget, handlers: GestureHandlers,
             kind,
             primary: event.isPrimary === true,
         };
+        const wasIdle = machine.isIdle();
         const actions = machine.feed(sample);
+        if (wasIdle && !machine.isIdle()) {
+            addRootListeners();
+            try {
+                target.setPointerCapture?.(sample.id);
+            } catch {
+                // Capture is optional; root listeners still follow the pointer.
+            }
+        } else if (!wasIdle && machine.isIdle()) {
+            removeRootListeners();
+        }
         syncTimer(sample.t);
         dispatch(actions);
     }
 
     const listeners: Array<readonly [string, (event: PointerEventLike | null | undefined) => void]> = [];
+    const rootListeners: Array<readonly [string, (event: PointerEventLike | null | undefined) => void]> = [];
     for (const [type, kind] of EVENT_KINDS) {
         const listener = (event: PointerEventLike | null | undefined): void => {
+            if (event && seenAtRoot.has(event)) {
+                seenAtRoot.delete(event);
+                return;
+            }
             handleEvent(kind, event);
         };
         listeners.push([type, listener]);
         target.addEventListener(type, listener, { passive: true });
+        rootListeners.push([type, (event): void => {
+            if (event) {
+                seenAtRoot.add(event);
+            }
+            handleEvent(kind, event);
+        }]);
+    }
+
+    function addRootListeners(): void
+    {
+        if (!root || root === target || rootListening) {
+            return;
+        }
+        rootListening = true;
+        for (const [type, listener] of rootListeners) {
+root.addEventListener(type, listener, { passive: true, capture: true });
+        }
+    }
+
+    function removeRootListeners(): void
+    {
+        if (!root || !rootListening) {
+            return;
+        }
+        rootListening = false;
+        for (const [type, listener] of rootListeners) {
+            root.removeEventListener(type, listener, { capture: true });
+        }
     }
 
     function detach(): void
@@ -301,6 +352,7 @@ export function attachGestures(target: GestureTarget, handlers: GestureHandlers,
             return;
         }
         detached = true;
+        removeRootListeners();
         for (const [type, listener] of listeners) {
             target.removeEventListener(type, listener);
         }

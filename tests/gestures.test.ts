@@ -55,12 +55,18 @@ function createFakeTarget(initialStyle?: { touchAction?: string })
 {
     const listeners = new Map<string, Set<(event: any) => void>>();
     const passiveFlags: Array<boolean | undefined> = [];
+    const captureFlags: Array<boolean | undefined> = [];
+    const added: string[] = [];
+    const removed: string[] = [];
+    const removeCaptureFlags: Array<boolean | undefined> = [];
 
     const target: GestureTarget = {
         ...(initialStyle !== undefined ? { style: initialStyle } : {}),
-        addEventListener(type: string, listener: (event: any) => void, options?: { passive?: boolean }): void
+        addEventListener(type: string, listener: (event: any) => void, options?: { passive?: boolean; capture?: boolean }): void
         {
             passiveFlags.push(options?.passive);
+            captureFlags.push(options?.capture);
+            added.push(type);
             let group = listeners.get(type);
             if (!group) {
                 group = new Set();
@@ -68,8 +74,10 @@ function createFakeTarget(initialStyle?: { touchAction?: string })
             }
             group.add(listener);
         },
-        removeEventListener(type: string, listener: (event: any) => void): void
+        removeEventListener(type: string, listener: (event: any) => void, options?: { capture?: boolean }): void
         {
+            removed.push(type);
+            removeCaptureFlags.push(options?.capture);
             const group = listeners.get(type);
             if (group) {
                 group.delete(listener);
@@ -100,13 +108,13 @@ function createFakeTarget(initialStyle?: { touchAction?: string })
         return count;
     }
 
-    return { target, emit, listenerCount, passiveFlags };
+    return { target, emit, listenerCount, passiveFlags, captureFlags, added, removed, removeCaptureFlags };
 }
 
 function createFakeTimers()
 {
     const active = new Map<number, { fn: () => void; ms: number }>();
-    const scheduled: Array<{ id: number; ms: number }> = [];
+    const scheduled: Array<{ id: number; ms: number; fn: () => void }> = [];
     const cleared: unknown[] = [];
     let nextId = 0; // Starts at 0 to verify falsy handles are still cleared.
 
@@ -114,7 +122,7 @@ function createFakeTimers()
     {
         const id = nextId++;
         active.set(id, { fn, ms });
-        scheduled.push({ id, ms });
+        scheduled.push({ id, ms, fn });
         return id;
     }
 
@@ -162,6 +170,11 @@ function recordHandlers(): { log: string[]; handlers: GestureHandlers }
 }
 
 describe('createGestures state machine', () => {
+    it('does not swipe when release precedes down', () => {
+        const g = createGestures();
+        g.feed(sample('down', 100, 50, 100));
+        expect(g.feed(sample('up', 40, 50, 99))).toEqual([]);
+    });
     it('exports expected defaults and honours custom options', () => {
         expect(GESTURE_DEFAULTS).toEqual({
             swipeMinPx: 40,
@@ -376,6 +389,139 @@ describe('createGestures state machine', () => {
 });
 
 describe('attachGestures binder', () => {
+    it('tracks outside moves and releases and ignores bubbling duplicates', () => {
+        const target = createFakeTarget();
+        const root = createFakeTarget();
+        const timers = createFakeTimers();
+        const { log, handlers } = recordHandlers();
+        const captured: number[] = [];
+        const captureTarget = Object.assign(target.target, { setPointerCapture(id: number): void { captured.push(id); } });
+        const detach = attachGestures(captureTarget, handlers, { root: root.target, ...timers });
+
+        target.emit('pointerdown', pointerEvent(100, 50, 0, { pointerType: 'pen' }));
+        expect(captured).toEqual([1]);
+        root.emit('pointermove', pointerEvent(40, 50, 50, { pointerType: 'pen' }));
+        expect(timers.active.size).toBe(0);
+        root.emit('pointerup', pointerEvent(40, 50, 100, { pointerType: 'pen' }));
+        expect(log).toEqual(['next']);
+        expect(root.listenerCount()).toBe(0);
+
+        target.emit('pointerdown', pointerEvent(100, 50, 200));
+        timers.fireAll();
+        const up = pointerEvent(100, 50, 600);
+        root.emit('pointerup', up);
+        target.emit('pointerup', up);
+        expect(log).toEqual(['next', 'hold-start', 'hold-end']);
+        target.emit('pointerdown', pointerEvent(100, 50, 700));
+        timers.fireAll();
+        root.emit('pointercancel', pointerEvent(100, 50, 1100));
+        expect(log).toEqual(['next', 'hold-start', 'hold-end', 'hold-start', 'hold-end']);
+        detach();
+
+        // A bubbling up must not also end a new gesture started by its handler.
+        const target2 = createFakeTarget();
+        const root2 = createFakeTarget();
+        const timers2 = createFakeTimers();
+        const recorded = recordHandlers();
+        const detach2 = attachGestures(target2.target, {
+            ...recorded.handlers,
+            next(): void {
+                recorded.log.push('next');
+                target2.emit('pointerdown', pointerEvent(100, 50, 200));
+            },
+        }, { root: root2.target, ...timers2 });
+        target2.emit('pointerdown', pointerEvent(100, 50, 0));
+        const bubblingUp = pointerEvent(40, 50, 100);
+        root2.emit('pointerup', bubblingUp);
+        target2.emit('pointerup', bubblingUp);
+        timers2.fireAll();
+        expect(recorded.log).toEqual(['next', 'hold-start']);
+        target2.emit('lostpointercapture', pointerEvent(100, 50, 300, { pointerId: 9 }));
+        expect(recorded.log).toEqual(['next', 'hold-start']);
+        target2.emit('lostpointercapture', pointerEvent(100, 50, 301));
+        expect(recorded.log).toEqual(['next', 'hold-start', 'hold-end']);
+        detach2();
+
+        const target3 = createFakeTarget();
+        const root3 = createFakeTarget();
+        const timers3 = createFakeTimers();
+        const recorded3 = recordHandlers();
+        const detach3 = attachGestures(Object.assign(target3.target, {
+            setPointerCapture(): void { throw new Error('capture unavailable'); },
+        }), recorded3.handlers, { root: root3.target, ...timers3 });
+        target3.emit('pointerdown', pointerEvent(100, 50, 0));
+        root3.emit('pointerup', pointerEvent(40, 50, 100));
+        expect(recorded3.log).toEqual(['next']);
+        detach3();
+    });
+
+    it('cancels for a second pointer outside until all pointers end', () => {
+        const target = createFakeTarget();
+        const root = createFakeTarget();
+        const timers = createFakeTimers();
+        const { log, handlers } = recordHandlers();
+        const detach = attachGestures(target.target, handlers, { root: root.target, ...timers });
+        target.emit('pointerdown', pointerEvent(100, 50, 0));
+        root.emit('pointerdown', pointerEvent(150, 50, 10, { pointerId: 2, isPrimary: false }));
+        expect(timers.active.size).toBe(0);
+        root.emit('pointerup', pointerEvent(100, 50, 20));
+        target.emit('pointerdown', pointerEvent(100, 50, 30, { pointerId: 3 }));
+        root.emit('pointerup', pointerEvent(40, 50, 40, { pointerId: 3 }));
+        expect(log).toEqual([]);
+        root.emit('pointerup', pointerEvent(150, 50, 50, { pointerId: 2, isPrimary: false }));
+        target.emit('pointerdown', pointerEvent(100, 50, 60, { pointerId: 4 }));
+        root.emit('pointerup', pointerEvent(40, 50, 100, { pointerId: 4 }));
+        expect(log).toEqual(['next']);
+        target.emit('pointerdown', pointerEvent(100, 50, 120, { pointerId: 5 }));
+        root.emit('pointerdown', pointerEvent(150, 50, 130, { pointerId: 6, pointerType: 'mouse' }));
+        timers.fireAll();
+        expect(log).toEqual(['next', 'hold-start']);
+        root.emit('pointerdown', pointerEvent(150, 50, 500, { pointerId: 7, isPrimary: false }));
+        expect(log).toEqual(['next', 'hold-start', 'hold-end']);
+        root.emit('pointercancel', pointerEvent(100, 50, 510, { pointerId: 5 }));
+        root.emit('pointercancel', pointerEvent(150, 50, 520, { pointerId: 7, isPrimary: false }));
+        detach();
+    });
+
+    it('removes matching passive root and target listeners across a gesture and detach', () => {
+        const target = createFakeTarget();
+        const root = createFakeTarget();
+        const timers = createFakeTimers();
+        const { handlers } = recordHandlers();
+        const detach = attachGestures(Object.assign(target.target, { ownerDocument: root.target }), handlers, timers);
+        expect(root.listenerCount()).toBe(0);
+        target.emit('pointerdown', pointerEvent(100, 50, 0));
+        expect(root.listenerCount()).toBeGreaterThan(0);
+        expect(root.passiveFlags.every(Boolean)).toBe(true);
+        expect(root.captureFlags[root.added.indexOf('pointerdown')]).toBe(true);
+        root.emit('pointerup', pointerEvent(100, 50, 10));
+        expect(root.listenerCount()).toBe(0);
+        expect(root.removed.slice().sort()).toEqual(root.added.slice().sort());
+        expect(root.removeCaptureFlags.every(flag => flag === true)).toBe(true);
+        target.emit('pointerdown', pointerEvent(100, 50, 20));
+        detach();
+        detach();
+        expect(timers.active.size).toBe(0);
+        expect(root.listenerCount()).toBe(0);
+        expect(target.listenerCount()).toBe(0);
+        expect(root.removed.slice().sort()).toEqual(root.added.slice().sort());
+        expect(target.removed.slice().sort()).toEqual(target.added.slice().sort());
+    });
+
+    it('ignores a cancelled timer callback after a replacement is scheduled', () => {
+        const { target, emit } = createFakeTarget();
+        const timers = createFakeTimers();
+        const { log, handlers } = recordHandlers();
+        const detach = attachGestures(target, handlers, timers);
+        emit('pointerdown', pointerEvent(100, 50, 100));
+        emit('pointerup', pointerEvent(100, 50, 110));
+        emit('pointerdown', pointerEvent(100, 50, 20));
+        timers.scheduled[0]!.fn();
+        expect(log).toEqual([]);
+        timers.fireAll();
+        expect(log).toEqual(['hold-start']);
+        detach();
+    });
     it('fires swipe and hold handlers from pointer events without calling preventDefault', () => {
         const { target, emit, passiveFlags } = createFakeTarget({ touchAction: '' });
         const timers = createFakeTimers();
