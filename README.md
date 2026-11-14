@@ -265,6 +265,13 @@ behind its switch (`mlHint`) and stays off; the reason is given below.
   whether anything can be seen there. The sums run in the browser (`src/lib/uptonight.ts`), ask the visitor for
   nothing, and are checked against astropy 8.0.2 (`tests/fixtures/uptonight-astropy.json`, made by
   `scripts/uptonight_fixture.py`).
+- A "Save picture" button beside the B − A and A + B buttons (`shareCard`): it draws one PNG in the browser with the
+  earlier visit, the later visit and their difference side by side. Under them it prints what the colours of the
+  difference mean, the SPHEREx data release (on the simulated sky, a line saying it is not NASA data instead), a
+  line saying the code was written with AI tools, a line saying a difference is a candidate only, and the link to
+  the view. The credit lines are also stored in the PNG's text
+  fields. Where the browser can share files it opens the share sheet; otherwise it downloads the file. The page
+  itself sends the picture nowhere (`src/lib/sharecard.ts`, `src/ui/share-view.ts`).
 
 **The change sort hint.** A small neural network (`public/models/change-classifier.json`, run by
 `src/lib/classify.ts`). Its card is `public/models/change-classifier.card.json`; its test results are in `models/`.
