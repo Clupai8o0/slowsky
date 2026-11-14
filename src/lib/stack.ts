@@ -116,14 +116,13 @@ function frameBackground(data: Float32Array): number
         return med;
     }
     const lim = 3 * sigma;
-    const loLim = Math.fround(med - lim);
-    const hiLim = Math.fround(med + lim);
+    // A value whose distance from the median equals the limit is kept, here and in stackVisit's own clip.
     let lo = 0;
     let hi = count;
-    while (lo < hi && vals[lo]! < loLim) {
+    while (lo < hi && med - vals[lo]! > lim) {
         lo++;
     }
-    while (hi > lo && vals[hi - 1]! > hiLim) {
+    while (hi > lo && vals[hi - 1]! - med > lim) {
         hi--;
     }
     if (hi <= lo) {
@@ -232,16 +231,13 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
                     break;
                 }
                 const lim = clipSigma * sigma;
-                const loLim = Math.fround(med - lim);
-                const hiLim = Math.fround(med + lim);
                 let w = 0;
                 for (let i = 0; i < m; i++) {
-                    const v = vals[i]!;
-                    if (v >= loLim && v <= hiLim) {
+                    if (Math.abs(vals[i]! - med) <= lim) {
                         if (indices) {
                             indices[w] = indices[i]!;
                         }
-                        vals[w++] = v;
+                        vals[w++] = vals[i]!;
                     }
                 }
                 if (w === m) {
