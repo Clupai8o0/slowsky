@@ -380,7 +380,7 @@ export function mount(root: HTMLElement): void
     const qa = <T extends Element>(sel: string) => [...root.querySelectorAll(sel)] as T[];
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
     let aiNoteRef: ReturnType<typeof mountAiNote> | undefined;
-    const ask = mountAsk(ref<HTMLElement>('ai'), { onRequestStart: () => aiNoteRef?.startRequest(), onRemaining: (n, request) => aiNoteRef?.setRemaining(n, request), onDailyLimit: (request, current) => aiNoteRef?.exhaustRemaining(request, current), onChargeUnknown: (request, sent) => aiNoteRef?.recheckRemaining(request, sent), onLocked: (request) => aiNoteRef?.relock(request) });
+    const ask = mountAsk(ref<HTMLElement>('ai'), { onRequestStart: () => aiNoteRef?.startRequest(), onRequestEnd: () => aiNoteRef?.finishRequest(), onRemaining: (n, request) => aiNoteRef?.setRemaining(n, request), onDailyLimit: (request, current) => aiNoteRef?.exhaustRemaining(request, current), onChargeUnknown: (request, sent) => aiNoteRef?.recheckRemaining(request, sent), onLocked: (request) => aiNoteRef?.relock(request) });
     const aiNote = mountAiNote(ref<HTMLElement>('ai'), { onState: (s) => ask.sync(s) });
     aiNoteRef = aiNote;
     const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());

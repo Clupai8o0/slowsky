@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { busyText, disclaimer, factsInput, leftText, modelName, mountAiNote, MSG, PASS_KEY, RECHECK_MS, retryText, visitGroups, type AiNoteDeps, type NoteView } from '../src/ui/ai-note';
 import { InsightError, type InsightStatus } from '../src/lib/insight';
 import { buildFacts } from '../src/lib/insight-facts';
@@ -199,6 +199,11 @@ class FakeEl {
 
 class FakeDoc {
     activeElement: FakeEl | null = null;
+    visibilityState?: DocumentVisibilityState;
+    listeners = new Map<string, () => void>();
+    addEventListener(type: string, fn: () => void): void { this.listeners.set(type, fn); }
+    removeEventListener(type: string): void { this.listeners.delete(type); }
+    fire(type: string): void { this.listeners.get(type)?.(); }
     parts = new Map<string, FakeEl>();
     head: FakeEl;
     panel: FakeEl;
@@ -296,6 +301,36 @@ function setup(opts: { status?: StatusFn; fetch?: FetchFn; store?: MemStore | nu
 }
 
 describe('mountAiNote', () => {
+    it('C4 checks once per 30 seconds when a counted unlocked panel becomes visible', async () => {
+        const doc = new FakeDoc();
+        let time = 0;
+        let checks = 0;
+        const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+            doc: doc as never, storage: new MemStore(), now: () => time,
+            status: async () => ({ ...OPEN, remaining: 5 - checks++ }),
+        });
+        await flush();
+        doc.visibilityState = 'visible';
+        doc.fire('visibilitychange');
+        expect(checks).toBe(1);
+        doc.visibilityState = undefined;
+        ai.update(noteView());
+        doc.fire('visibilitychange');
+        expect(checks).toBe(1);
+        doc.visibilityState = 'visible';
+        doc.fire('visibilitychange');
+        await flush();
+        expect(doc.el('left').textContent).toContain('4 ');
+        time = 29_999;
+        doc.fire('visibilitychange');
+        await flush();
+        expect(checks).toBe(2);
+        time = 30_000;
+        doc.fire('visibilitychange');
+        await flush();
+        expect(checks).toBe(3);
+        expect(doc.el('left').textContent).toContain('3 ');
+    });
     it('stays hidden while the route is off, and with no view', async () => {
         const off = setup({ status: async () => ({ enabled: false, locked: false, unlocked: false }) });
         await flush();
@@ -931,6 +966,7 @@ describe('note and question coordination', () => {
         const ask = mountAsk(doc.panel as unknown as HTMLElement, {
             enabled: true, doc: doc as never, ask: question,
             onRequestStart: () => ai.startRequest(),
+            onRequestEnd: () => ai.finishRequest(),
             onRemaining: (n, request) => ai.setRemaining(n, request),
             onDailyLimit: (request, current) => ai.exhaustRemaining(request, current),
             onChargeUnknown: (request, sent) => ai.recheckRemaining(request, sent),
@@ -946,6 +982,361 @@ describe('note and question coordination', () => {
 
     const noteReply = (remaining: number): InsightNote => ({ text: NOTE_TEXT, model: 'm', dropped: 0, cached: false, remaining });
     const answer = (remaining: number): InsightAnswer => ({ ...noteReply(remaining), cached: false, kind: 'none', picked: [], lines: [], trust: [] });
+
+    for (const behavior of ['daily hides count', 'keeps newer button busy', 'error prints nothing', 'failure is rechecked'] as const) {
+        it(`C7 superseded note: ${behavior}`, async () => {
+            const old = deferred<InsightNote>();
+            const newer = deferred<InsightNote>();
+            let calls = 0;
+            let checks = 0;
+            const { doc, ai } = pair(() => calls++ === 0 ? old.promise : newer.promise, async () => answer(3), async () => ({ ...OPEN, remaining: checks++ === 0 ? 5 : 3 }));
+            await flush();
+            ai.update(noteView());
+            const first = doc.el('go').fire('click');
+            ai.update(noteView(61001));
+            const second = doc.el('go').fire('click');
+            old.reject(new InsightError(behavior === 'daily hides count' ? 'busy' : 'failed', undefined, behavior === 'daily hides count' ? 'daily' : undefined));
+            await first;
+            await flush();
+            if (behavior === 'daily hides count') { expect(doc.el('left').hidden).toBe(true); }
+            if (behavior === 'keeps newer button busy') { expect(doc.el('go').disabled).toBe(true); }
+            if (behavior === 'error prints nothing') { expect(doc.el('msg').textContent).toBe(MSG.writing); }
+            if (behavior === 'failure is rechecked') { expect(checks).toBe(2); expect(doc.el('left').textContent).toContain('3 '); }
+            newer.resolve(noteReply(2));
+            await second;
+        });
+    }
+
+    it('C7 superseded question does not show the daily message', async () => {
+        const old = deferred<InsightAnswer>();
+        const newer = deferred<InsightAnswer>();
+        let calls = 0;
+        const { doc, ai, form, input } = pair(async () => noteReply(4), () => calls++ === 0 ? old.promise : newer.promise);
+        await flush();
+        ai.update(noteView());
+        input.value = 'What changed?';
+        const first = form.fire('submit');
+        const second = form.fire('submit');
+        old.reject(new InsightError('busy', undefined, 'daily'));
+        await first;
+        expect(doc.el('msg').textContent).toBe('');
+        expect(doc.panel.querySelector('[data-ask="out"]')!.innerHTML).not.toContain('used up');
+        newer.resolve(answer(2));
+        await second;
+    });
+
+    it('C1 checks an ambiguous busy note and question, but not a reasoned 429', async () => {
+        let checks = 0;
+        let questions = 0;
+        const { doc, ai, form, input } = pair(async () => { throw new InsightError('busy'); }, async () => {
+            if (questions++ === 0) { throw new InsightError('busy'); }
+            throw new InsightError('busy', 60, 'minute');
+        }, async () => ({ ...OPEN, remaining: 5 - checks++ }));
+        await flush();
+        ai.update(noteView());
+        await doc.el('go').fire('click');
+        await flush();
+        expect(doc.el('left').textContent).toContain('4 ');
+        input.value = 'What changed?';
+        await form.fire('submit');
+        await flush();
+        expect(doc.el('left').textContent).toContain('3 ');
+        await form.fire('submit');
+        await flush();
+        expect(checks).toBe(3);
+    });
+
+    it('C1 checks a 503 busy even if it carries a reason', async () => {
+        let checks = 0;
+        const doc = new FakeDoc();
+        vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ error: 'busy', reason: 'minute' }), { status: 503 }));
+        try {
+            let ai!: ReturnType<typeof mountAiNote>;
+            const ask = mountAsk(doc.panel as unknown as HTMLElement, {
+                enabled: true, doc: doc as never, onRequestStart: () => ai.startRequest(), onRequestEnd: () => ai.finishRequest(),
+                onChargeUnknown: (req, sent) => ai.recheckRemaining(req, sent),
+            });
+            ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                askOn: true, doc: doc as never, storage: new MemStore(),
+                status: async () => ({ ...OPEN, remaining: 5 - checks++ }), onState: (state) => ask.sync(state),
+            });
+            await flush();
+            ai.update(noteView());
+            await doc.el('go').fire('click');
+            await flush();
+            expect(checks).toBe(2);
+            expect(doc.el('left').textContent).toContain('4 ');
+            const input = doc.panel.querySelector('[data-ask="q"]')!;
+            input.value = 'What changed?';
+            await doc.panel.querySelector('[data-ask="form"]')!.fire('submit');
+            await flush();
+            expect(checks).toBe(3);
+            expect(doc.el('left').textContent).toContain('3 ');
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
+    it('C2 accepts only lower old-generation counts after a lock and unlock', async () => {
+        const old = deferred<InsightNote>();
+        const q = deferred<InsightAnswer>();
+        const { doc, ai, form, input } = pair(() => old.promise, () => q.promise);
+        await flush();
+        ai.update(noteView());
+        const oldRequest = ai.startRequest();
+        const pending = doc.el('go').fire('click');
+        input.value = 'What changed?';
+        const locked = form.fire('submit');
+        q.reject(new InsightError('locked'));
+        await locked;
+        doc.el('pass').value = 'same';
+        await doc.el('lock').fire('submit');
+        old.resolve(noteReply(4));
+        await pending;
+        expect(doc.el('left').textContent).toContain('4 ');
+        ai.setRemaining(5, oldRequest);
+        expect(doc.el('left').textContent).toContain('4 ');
+        expect(doc.el('out').textContent).toBe('');
+    });
+
+    it('C2 rechecks an old failure after a new unlock with the current passcode', async () => {
+        const old = deferred<InsightNote>();
+        const q = deferred<InsightAnswer>();
+        const codes: (string | undefined)[] = [];
+        let truth = 5;
+        const { doc, ai, form, input } = pair(() => old.promise, () => q.promise, async (opts) => {
+            codes.push(opts?.passcode);
+            return { enabled: true, locked: true, unlocked: true, remaining: truth };
+        });
+        await flush();
+        ai.update(noteView());
+        const note = doc.el('go').fire('click');
+        input.value = 'What changed?';
+        const question = form.fire('submit');
+        q.reject(new InsightError('locked'));
+        await question;
+        doc.el('pass').value = 'new';
+        await doc.el('lock').fire('submit');
+        truth = 4;
+        old.reject(new InsightError('failed'));
+        await note;
+        await flush();
+        expect(codes).toEqual(['old', 'new', 'new']);
+        expect(doc.el('left').textContent).toContain('4 ');
+        expect(doc.el('msg').textContent).toBe('');
+    });
+
+    it('C4 visibility waits until both note and question requests finish', async () => {
+        const n = deferred<InsightNote>();
+        const q = deferred<InsightAnswer>();
+        let checks = 0;
+        const { doc, ai, form, input } = pair(() => n.promise, () => q.promise, async () => ({ ...OPEN, remaining: 5 - checks++ }));
+        await flush();
+        ai.update(noteView());
+        doc.visibilityState = 'visible';
+        const note = doc.el('go').fire('click');
+        input.value = 'What changed?';
+        const question = form.fire('submit');
+        doc.fire('visibilitychange');
+        expect(checks).toBe(1);
+        n.resolve(noteReply(4));
+        await note;
+        doc.fire('visibilitychange');
+        expect(checks).toBe(1);
+        q.resolve(answer(3));
+        await question;
+        doc.fire('visibilitychange');
+        await flush();
+        expect(checks).toBe(2);
+        expect(doc.el('left').textContent).toContain('3 ');
+    });
+
+    it('C3 checks a superseded off note and question without changing the new view', async () => {
+        const n = deferred<InsightNote>();
+        const q = deferred<InsightAnswer>();
+        let checks = 0;
+        const { doc, ai, form, input } = pair(() => n.promise, () => q.promise, async () => ({ ...OPEN, remaining: 5 - checks++ }));
+        await flush();
+        ai.update(noteView());
+        const pn = doc.el('go').fire('click');
+        input.value = 'What changed?';
+        const pq = form.fire('submit');
+        ai.update(noteView(61001));
+        n.reject(new InsightError('off'));
+        await pn;
+        await flush();
+        q.reject(new InsightError('off'));
+        await pq;
+        await flush();
+        expect(checks).toBe(3);
+        expect(doc.el('left').textContent).toContain('3 ');
+        expect(doc.el('msg').textContent).toBe('');
+        expect(doc.el('lock').hidden).toBe(true);
+    });
+
+    it('C5 keeps an open-mode count after a reached count-less failure check', async () => {
+        let notes = 0;
+        const { doc, ai } = pair(async () => { if (notes++ === 0) { return noteReply(4); } throw new InsightError('failed'); }, async () => answer(3), async () => ({ enabled: true, locked: false, unlocked: true }));
+        await flush();
+        ai.update(noteView());
+        await doc.el('go').fire('click');
+        ai.update(noteView(61001));
+        await doc.el('go').fire('click');
+        await flush();
+        expect(doc.el('left').textContent).toContain('4 ');
+        expect(doc.el('left').hidden).toBe(false);
+    });
+
+    it('C6 note 502 no_note rechecks the charged count', async () => {
+        let checks = 0;
+        const doc = new FakeDoc();
+        const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+            doc: doc as never, storage: new MemStore(),
+            status: async () => ({ ...OPEN, remaining: 5 - checks++ }),
+            fetch: async (facts) => {
+                const { fetchInsight } = await import('../src/lib/insight');
+                return fetchInsight(facts, { fetcher: async () => new Response(JSON.stringify({ error: 'no_note' }), { status: 502 }) });
+            },
+        });
+        await flush();
+        ai.update(noteView());
+        await doc.el('go').fire('click');
+        await flush();
+        expect(checks).toBe(2);
+        expect(doc.el('left').textContent).toContain('4 ');
+    });
+
+    it('seeded 500 interleavings never finish above the fake server count', async () => {
+        let randomState = 0x5a17c0de;
+        const rand = (n: number) => {
+            randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
+            return (randomState >>> 8) % n;
+        };
+        const seen = new Set<string>();
+        const drain = async () => { for (let i = 0; i < 12; i++) { await Promise.resolve(); } };
+        const viewA = noteView();
+        const viewB = noteView(61001);
+        for (let run = 0; run < 500; run++) {
+            let truth = 5;
+            let daily = false;
+            let had401 = false;
+            let checkFailed = false;
+            let canSlow = false;
+            const checks: { resolve: (s: InsightStatus) => void; snapshot: number }[] = [];
+            const pending: { kind: 'note' | 'question'; resolve: (n: number) => void; reject: (e: unknown) => void; done: Promise<unknown> }[] = [];
+            const doc = new FakeDoc();
+            doc.visibilityState = 'visible';
+            const store = new MemStore();
+            let ai!: ReturnType<typeof mountAiNote>;
+            const ask = mountAsk(doc.panel as unknown as HTMLElement, {
+                enabled: true, doc: doc as never,
+                ask: async () => {
+                    const d = deferred<InsightAnswer>();
+                    pending.push({ kind: 'question', resolve: (n) => d.resolve(answer(n)), reject: d.reject, done: d.promise.catch(() => {}) });
+                    return d.promise;
+                },
+                onRequestStart: () => ai.startRequest(), onRequestEnd: () => ai.finishRequest(),
+                onRemaining: (n, req) => ai.setRemaining(n, req), onDailyLimit: (req, current) => ai.exhaustRemaining(req, current),
+                onChargeUnknown: (req, sent) => ai.recheckRemaining(req, sent), onLocked: (req) => ai.relock(req),
+            });
+            ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                askOn: true, doc: doc as never, storage: store,
+                status: async (opts) => {
+                    if (canSlow && rand(6) === 0) {
+                        seen.add('failed check');
+                        checkFailed = true;
+                        try { await opts?.fetcher?.('/fake', {}); } catch { /* simulated failed wire */ }
+                        return { enabled: false, locked: false, unlocked: false };
+                    }
+                    if (canSlow && rand(4) === 0) {
+                        seen.add('slow check');
+                        const d = deferred<InsightStatus>();
+                        checks.push({ resolve: d.resolve, snapshot: truth });
+                        return d.promise;
+                    }
+                    return { enabled: true, locked: true, unlocked: true, remaining: truth };
+                },
+                fetcher: async () => { throw new Error('simulated offline'); },
+                fetch: async () => {
+                    const d = deferred<InsightNote>();
+                    pending.push({ kind: 'note', resolve: (n) => d.resolve(noteReply(n)), reject: d.reject, done: d.promise.catch(() => {}) });
+                    return d.promise;
+                }, onState: (state) => ask.sync(state),
+            });
+            await drain();
+            canSlow = true;
+            ai.update(viewA);
+            const form = doc.panel.querySelector('[data-ask="form"]')!;
+            const input = doc.panel.querySelector('[data-ask="q"]')!;
+            input.value = 'What changed?';
+            for (let step = 0; step < 8; step++) {
+                const action = rand(7);
+                if (action === 0) { seen.add('note'); void doc.el('go').fire('click'); }
+                if (action === 1) { seen.add('question'); void form.fire('submit'); }
+                if (action === 2) { seen.add('view'); ai.update(rand(2) ? viewA : viewB); }
+                if (action === 3) { seen.add('visible'); doc.fire('visibilitychange'); }
+                if (checks.length && rand(2) === 0) {
+                    const check = checks.shift()!;
+                    check.resolve({ enabled: true, locked: true, unlocked: true, remaining: check.snapshot });
+                    await drain();
+                }
+                if ((action >= 4 || step === 7) && pending.length) {
+                    const item = pending.splice(rand(pending.length), 1)[0]!;
+                    const outcome = rand(8);
+                    seen.add(`outcome ${outcome}`);
+                    if (truth === 0 || outcome === 0) {
+                        daily = true;
+                        item.reject(new InsightError('busy', undefined, 'daily'));
+                    } else if (outcome === 1) {
+                        had401 = true;
+                        item.reject(new InsightError('locked'));
+                    } else if (outcome === 2) {
+                        item.reject(new InsightError('busy', 30, 'minute'));
+                    } else {
+                        truth--;
+                        if (outcome === 3) { item.reject(new InsightError('busy')); }
+                        else if (outcome === 4) { item.reject(new InsightError('off')); }
+                        else if (outcome === 5) { item.reject(new InsightError('failed')); }
+                        else if (outcome === 7) { item.reject(new InsightError('unverified')); }
+                        else { item.resolve(truth); }
+                    }
+                    await item.done;
+                    await drain();
+                    if (!doc.el('lock').hidden) {
+                        expect(had401, `run ${run}`).toBe(true);
+                        seen.add('unlock');
+                        canSlow = false;
+                        doc.el('pass').value = 'test';
+                        await doc.el('lock').fire('submit');
+                        canSlow = true;
+                    }
+                }
+                await drain();
+            }
+            while (pending.length) {
+                const item = pending.splice(rand(pending.length), 1)[0]!;
+                if (truth === 0) { daily = true; item.reject(new InsightError('busy', undefined, 'daily')); }
+                else { truth--; item.resolve(truth); }
+                await item.done;
+                await drain();
+            }
+            canSlow = false;
+            while (checks.length) {
+                const check = checks.shift()!;
+                check.resolve({ enabled: true, locked: true, unlocked: true, remaining: check.snapshot });
+                await drain();
+            }
+            const left = doc.el('left');
+            if (left.hidden) { expect(daily || checkFailed || truth === 0, `hidden run ${run}`).toBe(true); }
+            else { expect(Number.parseInt(left.textContent, 10), `run ${run}`).toBeLessThanOrEqual(truth); }
+            expect(doc.el('go').disabled, `run ${run}`).toBe(false);
+            expect(form.querySelector('button')!.attrs.has('aria-disabled'), `run ${run}`).toBe(false);
+            if (!doc.el('lock').hidden) { expect(had401, `run ${run}`).toBe(true); }
+        }
+        for (const kind of ['note', 'question', 'view', 'visible', 'unlock', 'slow check', 'failed check', ...Array.from({ length: 8 }, (_, i) => `outcome ${i}`)]) {
+            expect(seen.has(kind), kind).toBe(true);
+        }
+    });
 
     it('keeps the period when an off re-check precedes a question count', async () => {
         const recheck = deferred<InsightStatus>();
@@ -1068,7 +1459,7 @@ describe('note and question coordination', () => {
             expect(doc.el('left').textContent).toContain('3 AI notes');
         });
 
-        it(`retains or hides the count for an off re-check busy result (Ask ${askOn})`, async () => {
+        it(`hides the uncertain count for an off re-check busy result (Ask ${askOn})`, async () => {
             for (const daily of [false, true]) {
                 let calls = 0;
                 const doc = new FakeDoc();
@@ -1080,8 +1471,7 @@ describe('note and question coordination', () => {
                 await flush();
                 ai.update(noteView());
                 await doc.el('go').fire('click');
-                expect(doc.el('left').hidden).toBe(daily);
-                if (!daily) { expect(doc.el('left').textContent).toContain('5 AI notes'); }
+                expect(doc.el('left').hidden).toBe(true);
             }
         });
 

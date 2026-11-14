@@ -130,7 +130,7 @@ export const MSG = {
 
 const LABELS = ['What this shows:', 'How far to trust it:', 'What to check next:'];
 
-type Doc = Pick<Document, 'createElement' | 'createTextNode'> & { activeElement: Element | null };
+type Doc = Pick<Document, 'createElement' | 'createTextNode'> & { activeElement: Element | null; visibilityState?: DocumentVisibilityState; addEventListener?: Document['addEventListener'] };
 
 // Plain text in, DOM nodes out: every string goes through textContent, never innerHTML.
 export function renderNote(box: HTMLElement, text: string, doc: Doc = document): void
@@ -171,6 +171,7 @@ export interface AiNote {
     // described other numbers, and the panel shows only when the route is on and the view has facts to send.
     update(view: NoteView | null): void;
     startRequest(): AiRequest;
+    finishRequest(): void;
     setRemaining(n: number, request?: AiRequest): void;
     exhaustRemaining(request?: AiRequest, fromQuestion?: boolean): void;
     recheckRemaining(request: AiRequest | undefined, sent: string | undefined): void;
@@ -232,6 +233,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     let notice = ''; // a busy reply that came before any view: shown with the first view, then dropped
     let generation = 0;
     let requestOrder = 0;
+    let activeRequests = 0;
     let remaining: number | undefined;
     let period = 0;
     let exhausted = false;
@@ -241,6 +243,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function startRequest(): AiRequest
     {
+        activeRequests++;
         return { order: ++requestOrder, generation, period };
     }
 
@@ -314,7 +317,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function setRequestRemaining(n: number, request: AiRequest): void
     {
-        if (request.generation !== generation || request.period !== period) {
+        if ((request.generation !== generation || request.period !== period) && (remaining === undefined || n >= remaining)) {
             return;
         }
         if (!exhausted && Number.isFinite(n) && (remaining === undefined || n < remaining)) {
@@ -336,8 +339,12 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function recheckRemaining(request: AiRequest | undefined, sent: string | undefined): void
     {
-        if (!request || request.generation !== generation || request.period !== period) {
+        if (!request) {
             return;
+        }
+        if (request.generation !== generation || request.period !== period) {
+            request = { order: request.order, generation, period };
+            sent = passcode();
         }
         queuedCharge = { request, sent };
         if (checkingCharge) {
@@ -350,12 +357,9 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 queuedCharge = undefined;
                 try {
                     const { s, reached } = await check(pending.sent);
-                    if (pending.request.generation !== generation || pending.request.period !== period) {
-                        continue;
-                    }
-                    if (!reached || s.busy || !s.enabled || (s.locked && !s.unlocked) || typeof s.remaining !== 'number' || !Number.isFinite(s.remaining)) {
+                    if (!reached || s.busy || !s.enabled || (s.locked && !s.unlocked)) {
                         exhaustRemaining(pending.request);
-                    } else {
+                    } else if (typeof s.remaining === 'number' && Number.isFinite(s.remaining)) {
                         setRequestRemaining(s.remaining, pending.request);
                     }
                 } catch {
@@ -509,8 +513,14 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         given.hidden = true;
         const sent = passcode();
         const request = startRequest();
+        let responseStatus: number | undefined;
+        const watchResponse: typeof fetch = async (input, init) => {
+            const response = await net(input, init);
+            responseStatus = response.status;
+            return response;
+        };
         try {
-            const note = await fetchNote(f, { ...(sent !== undefined ? { passcode: sent } : {}) });
+            const note = await fetchNote(f, { ...(sent !== undefined ? { passcode: sent } : {}), ...(!deps.fetch ? { fetcher: watchResponse } : {}) });
             if (!note.cached) {
                 if (typeof note.remaining === 'number' && Number.isFinite(note.remaining)) {
                     setRequestRemaining(note.remaining, request);
@@ -532,7 +542,8 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
             setMsg(MSG.written, true);
         } catch (err) {
             const code = err instanceof InsightError ? err.code : 'failed';
-            if (code === 'failed' || code === 'unverified') {
+            if (code === 'failed' || code === 'unverified' || (err instanceof InsightError && code === 'busy' && (!err.reason || responseStatus === 503 || responseStatus === 504))
+                || (code === 'off' && (c.signal.aborted || ctrl !== c || request.generation !== generation))) {
                 recheckRemaining(request, sent);
             }
             if (err instanceof InsightError && err.code === 'busy' && err.reason === 'daily') {
@@ -545,11 +556,13 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 // Only the route's own "off" hides the panel; a gateway error looks the same, so ask again.
                 const mine = ++tries;
                 const { s, reached } = await check(sent);
+                if (reached && !s.busy && typeof s.remaining === 'number') {
+                    setRequestRemaining(s.remaining, request);
+                } else if (!reached || s.busy || (s.locked && !s.unlocked)) {
+                    exhaustRemaining(request);
+                }
                 if (mine !== tries || ctrl !== c || request.generation !== generation) {
                     return;
-                }
-                if (reached && !s.busy && s.remaining !== undefined) {
-                    setRequestRemaining(s.remaining, request);
                 }
                 if (!reached) {
                     setMsg(MSG.unreachable);
@@ -587,6 +600,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 setMsg(MSG.failed);
             }
         } finally {
+            activeRequests--;
             if (ctrl === c) {
                 ctrl = null;
                 go.disabled = false;
@@ -633,9 +647,23 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     firstCheck();
 
+    let lastVisibleCheck = -Infinity;
+    doc.addEventListener?.('visibilitychange', () => {
+        if (doc.visibilityState !== 'visible' || panel.hidden || !st?.enabled || locked() || remaining === undefined
+            || activeRequests !== 0 || inflight !== 0 || now() - lastVisibleCheck < RECHECK_MS) {
+            return;
+        }
+        lastVisibleCheck = now();
+        recheckRemaining({ order: requestOrder, generation, period }, passcode());
+    });
+
     return {
         startRequest,
-        setRemaining(n: number, request = startRequest()): void
+        finishRequest(): void
+        {
+            activeRequests = Math.max(0, activeRequests - 1);
+        },
+        setRemaining(n: number, request = { order: requestOrder, generation, period }): void
         {
             setRequestRemaining(n, request);
         },

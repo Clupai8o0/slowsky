@@ -11,6 +11,7 @@ export interface AskPanelDeps {
     ask?: typeof askInsight;
     doc?: Doc; // the same fake-document type ai-note.ts uses
     onRequestStart?: () => AiRequest | undefined;
+    onRequestEnd?: () => void;
     onRemaining?: (n: number, request?: AiRequest) => void;
     onDailyLimit?: (request?: AiRequest, current?: boolean) => void;
     onChargeUnknown?: (request: AiRequest | undefined, sent: string | undefined) => void;
@@ -148,10 +149,17 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
         ctrl = c;
         btn.setAttribute('aria-disabled', 'true');
         render({ kind: 'loading' });
+        let responseStatus: number | undefined;
+        const watchResponse: typeof fetch = async (input, init) => {
+            const response = await fetch(input, init);
+            responseStatus = response.status;
+            return response;
+        };
 
         try {
             const answer = await ask(reqFacts, question, {
                 ...(sentPass !== undefined ? { passcode: sentPass } : {}),
+                ...(!deps.ask ? { fetcher: watchResponse } : {}),
             });
             if ((answer.kind === 'answer' || answer.kind === 'none') && typeof answer.remaining === 'number' && Number.isFinite(answer.remaining)) {
                 deps.onRemaining?.(answer.remaining, request);
@@ -172,7 +180,8 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
                 render({ kind: 'failed' });
             }
         } catch (err) {
-            if (!(err instanceof InsightError) || err.code === 'failed' || err.code === 'unverified') {
+            if (!(err instanceof InsightError) || err.code === 'failed' || err.code === 'unverified' || err.code === 'off'
+                || (err.code === 'busy' && (!err.reason || responseStatus === 503 || responseStatus === 504))) {
                 deps.onChargeUnknown?.(request, sentPass);
             }
             if (err instanceof InsightError && err.code === 'busy' && err.reason === 'daily') {
@@ -208,6 +217,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
                 render({ kind: 'failed' });
             }
         } finally {
+            deps.onRequestEnd?.();
             if (ctrl === c) {
                 ctrl = null;
                 btn.removeAttribute('aria-disabled');
