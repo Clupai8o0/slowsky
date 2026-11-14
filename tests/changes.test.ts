@@ -596,6 +596,19 @@ describe('change finder', () => {
         }
     });
 
+    it('does not turn two changing stars into a mover under a background offset', () => {
+        for (const offset of [-500, 500]) {
+            const a = noise(grid), b = noise(grid);
+            point(a, grid, 57, 60, 2000); point(a, grid, 63, 60, 2000);
+            point(b, grid, 57, 60, 200); point(b, grid, 63, 60, 3800);
+            for (let i = 0; i < b.length; i++) {
+                b[i]! += offset;
+            }
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 57, y: 60, id: 'a' }, { x: 63, y: 60, id: 'b' }]);
+            expect(r.candidates.filter((c) => c.kind === 'mover'), `offset ${offset}`).toHaveLength(0);
+        }
+    });
+
     it('keeps a mover that starts near the image edge (Opus Low 1)', () => {
         const P = grid.pixelArcsec;
         const missed: string[] = [];

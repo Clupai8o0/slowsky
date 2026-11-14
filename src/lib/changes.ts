@@ -520,6 +520,34 @@ function sourceCentroid(data: Float32Array, center: PixelCoord, grid: OutputGrid
     return sum > 0 ? { x: sx / sum, y: sy / sum } : undefined;
 }
 
+// Solves the 3x3 system m·x = v (row-major m) by Gaussian elimination with partial pivoting.
+function solve3(m: number[], v: number[]): number[] | undefined
+{
+    const a = [[m[0]!, m[1]!, m[2]!, v[0]!], [m[3]!, m[4]!, m[5]!, v[1]!], [m[6]!, m[7]!, m[8]!, v[2]!]];
+    const scale = Math.max(...m.map(Math.abs));
+    for (let col = 0; col < 3; col++) {
+        let pivot = col;
+        for (let r = col + 1; r < 3; r++) {
+            if (Math.abs(a[r]![col]!) > Math.abs(a[pivot]![col]!)) {
+                pivot = r;
+            }
+        }
+        if (!(Math.abs(a[pivot]![col]!) > 1e-9 * scale)) {
+            return undefined;
+        }
+        [a[col], a[pivot]] = [a[pivot]!, a[col]!];
+        for (let r = 0; r < 3; r++) {
+            if (r !== col) {
+                const f = a[r]![col]! / a[col]![col]!;
+                for (let c = col; c < 4; c++) {
+                    a[r]![c]! -= f * a[col]![c]!;
+                }
+            }
+        }
+    }
+    return a.map((row, r) => row[3]! / row[r]!);
+}
+
 // How much better two PSFs placed freely (each within 4″ of its spot) explain the difference than two PSFs at
 // the catalogue positions: (SS at stars - SS free) / signal free. Both fits have free amplitudes, so noise and
 // a wrong PSF shape hit both alike. Near 0: the stars explain it. Clearly above 0: something moved.
@@ -532,8 +560,11 @@ function spotsFitBetter(diff: Float32Array, grid: OutputGrid, stars: [PixelCoord
     const x1 = Math.min(grid.width - 1, Math.ceil(Math.max(...all.map((p) => p.x)) + reach));
     const y0 = Math.max(0, Math.floor(Math.min(...all.map((p) => p.y)) - reach));
     const y1 = Math.min(grid.height - 1, Math.ceil(Math.max(...all.map((p) => p.y)) + reach));
+    // Least squares on [PSF 1, PSF 2, constant]: the constant soaks up a background offset between visits,
+    // which would otherwise count as source signal in one model and not the other.
     const fit = (centres: [PixelCoord, PixelCoord]): { ss: number; signal: number } => {
-        let aa = 0, ab = 0, bb = 0, ad = 0, bd = 0, dd = 0;
+        const m = [0, 0, 0, 0, 0, 0, 0, 0, 0], v = [0, 0, 0];
+        let dd = 0, sd = 0, n = 0;
         const g = (p: PixelCoord, x: number, y: number): number => Math.exp(-((x - p.x) ** 2 + (y - p.y) ** 2) / (2 * sigma * sigma));
         for (let y = y0; y <= y1; y++) {
             for (let x = x0; x <= x1; x++) {
@@ -541,17 +572,23 @@ function spotsFitBetter(diff: Float32Array, grid: OutputGrid, stars: [PixelCoord
                 if (!Number.isFinite(d)) {
                     continue;
                 }
-                const a = g(centres[0], x, y), b = g(centres[1], x, y);
-                aa += a * a; ab += a * b; bb += b * b; ad += a * d; bd += b * d; dd += d * d;
+                const basis = [g(centres[0], x, y), g(centres[1], x, y), 1];
+                for (let r = 0; r < 3; r++) {
+                    v[r]! += basis[r]! * d;
+                    for (let c = 0; c < 3; c++) {
+                        m[r * 3 + c]! += basis[r]! * basis[c]!;
+                    }
+                }
+                dd += d * d; sd += d; n++;
             }
         }
-        const det = aa * bb - ab * ab;
-        if (!(det > 1e-9 * aa * bb)) {
+        const coef = solve3(m, v);
+        if (!coef || n === 0) {
             return { ss: dd, signal: 0 };
         }
-        const alpha = (ad * bb - bd * ab) / det, beta = (bd * aa - ad * ab) / det;
-        const signal = alpha * ad + beta * bd;
-        return { ss: dd - signal, signal };
+        // Signal: what the two PSFs add beyond the constant alone.
+        const explained = coef[0]! * v[0]! + coef[1]! * v[1]! + coef[2]! * v[2]!;
+        return { ss: dd - explained, signal: explained - (sd * sd) / n };
     };
     const best: [PixelCoord, PixelCoord] = [{ ...spots[0] }, { ...spots[1] }];
     let atSpots = fit(best);
