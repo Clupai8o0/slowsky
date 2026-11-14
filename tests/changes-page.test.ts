@@ -114,6 +114,59 @@ function pageNotes(html: string): string[]
 }
 
 
+describe('page change list stops reading when the page drops its view', () => {
+    it('stop() ends the pending reads at once; the same result drawn again starts over', async () => {
+        const result = livePair();
+        const signals: AbortSignal[] = [];
+        const variance = (_: RegriddedFrame, signal: AbortSignal) => new Promise<Float32Array | null>((resolve) => {
+            signals.push(signal);
+            signal.addEventListener('abort', () => resolve(null), { once: true });
+        });
+        const onChange = vi.fn(), box = {} as HTMLElement, marks = {} as HTMLElement;
+        const slot = mountChanges(onChange, { variance, read: vi.fn(), reader: {} as RangeReader });
+        const view = { source: 'live' as const, result, index: 0, mode: 'blink' as const };
+        expect(slot.render(box, marks, view)).toBe(true);
+        expect(box.innerHTML).toContain('Reading');
+        expect(signals).toHaveLength(1);
+        expect(signals[0]!.aborted).toBe(false);
+        slot.stop();
+        expect(signals[0]!.aborted).toBe(true);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        // The stopped read ends quietly: no later frame is read and the page is not asked to draw.
+        expect(signals).toHaveLength(1);
+        expect(onChange).not.toHaveBeenCalled();
+        // The same result on screen again: a fresh read, not a half-finished list.
+        expect(slot.render(box, marks, view)).toBe(true);
+        expect(signals).toHaveLength(2);
+        expect(signals[1]!.aborted).toBe(false);
+        slot.stop();
+    });
+
+    it('a list that had finished comes back after stop() without reading again', async () => {
+        const result = livePair();
+        const variance = vi.fn(async (f: RegriddedFrame) => f.variance ?? null);
+        const read = vi.fn(async () => ({ data: new Int32Array(grid.width * grid.height), width: grid.width, height: grid.height }));
+        const frames = new Map(result.frames.map(f => [f.frame.frame.obsId, f.frame]));
+        const reader = { index: async (url: string) => ({ url }),
+            readFloat32: async (index: { url: string }, name: string) => name === 'IMAGE' ? frames.get(index.url)!.data : new Float32Array(grid.width * grid.height),
+        } as unknown as RangeReader;
+        const onChange = vi.fn(), box = {} as HTMLElement, marks = {} as HTMLElement;
+        const slot = mountChanges(onChange, { reader, read, variance });
+        const view = { source: 'live' as const, result, index: 0, mode: 'blink' as const };
+        slot.render(box, marks, view);
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
+        slot.render(box, marks, view);
+        const finished = box.innerHTML;
+        const reads = [variance.mock.calls.length, read.mock.calls.length];
+        expect(finished).toContain('Candidate 1');
+        slot.stop();
+        const again = {} as HTMLElement;
+        expect(slot.render(again, {} as HTMLElement, view)).toBe(true);
+        expect(again.innerHTML).toBe(finished);
+        expect([variance.mock.calls.length, read.mock.calls.length]).toEqual(reads);
+    });
+});
+
 describe('page change list is the plain list', () => {
     beforeEach(() => { seed = 918273; });
 

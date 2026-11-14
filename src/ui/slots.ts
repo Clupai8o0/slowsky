@@ -280,7 +280,7 @@ export interface ChangesDeps {
 export const SAVED_NOTE = 'Candidate changes need a live read. Go live to compare the first and last visit; a saved copy is not checked against the archive’s error maps and flags.';
 export const MAPS_NOTE = 'Reading the archive’s error maps for the two compared visits; the list shows once that is done.';
 
-export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { render: (box: HTMLElement, marks: HTMLElement, view: SlotView) => boolean }
+export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { render: (box: HTMLElement, marks: HTMLElement, view: SlotView) => boolean; stop: () => void }
 {
     const reader = deps.reader ?? createRangeReader({ fetch: deps.fetcher });
     const shown = new WeakMap<HTMLElement, string>();
@@ -475,7 +475,18 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         }
         return true;
     }
-    return { render };
+    // The page dropped its view (a new one is loading): stop reading error maps and flags for the old view at once,
+    // so those reads do not run beside the new view's own. A list that had finished stays in `done` and comes back
+    // without a read; an unfinished one starts over when its result is drawn again.
+    function stop(): void
+    {
+        controller.abort();
+        current = null;
+        currentSource = null;
+        resultView = null;
+        last = null;
+    }
+    return { render, stop };
 }
 
 // False colour. `layer` is an empty layer over the sky (same box as the picture, under the Gaia rings) for a
