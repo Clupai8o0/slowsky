@@ -14,6 +14,8 @@ export interface ApertureResult {
     backgroundSigma: number;
     nPix: number;
     nSky: number;
+    /** Sky noise on `sum`, in the units of `sum`: the value `snr` divides by. Includes `noiseScale`. */
+    noise: number;
     /** Sky noise only; excludes stellar photon, flat-field and pointing noise, so bright-star SNR is an upper limit. */
     snr: number;
 }
@@ -92,6 +94,7 @@ export function aperture(
             backgroundSigma: Number.NaN,
             nPix: 0,
             nSky: 0,
+            noise: Number.NaN,
             snr: 0,
         };
     }
@@ -153,7 +156,7 @@ export function aperture(
     const sum = valid ? total - nPix * background : Number.NaN;
     const noise = backgroundSigma * Math.sqrt(nPix * (1 + Math.PI / 2 * nPix / nSky)) * noiseScale;
     const snr = valid && Number.isFinite(noise) && noise > 0 ? sum / noise : 0;
-    return { valid, sum, background, backgroundSigma, nPix, nSky, snr };
+    return { valid, sum, background, backgroundSigma, nPix, nSky, noise, snr };
 }
 
 export function centroid(

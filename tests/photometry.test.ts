@@ -170,11 +170,24 @@ describe('aperture', () => {
         expect(measured.snr).toBeGreaterThan(1000);
     });
 
+    it('returns the noise that the signal-to-noise divides by, noise scale included', () => {
+        const at = { x: 60.37, y: 41.81 };
+        const data = image([{ ...at, flux: 2000 }]);
+        const plain = aperture(data, width, height, at);
+        const scaled = aperture(data, width, height, at, { noiseScale: 2.8 });
+        const expected = plain.backgroundSigma * Math.sqrt(plain.nPix * (1 + Math.PI / 2 * plain.nPix / plain.nSky));
+        expect(plain.noise).toBeCloseTo(expected, 12);
+        expect(plain.snr).toBeCloseTo(plain.sum / plain.noise, 9);
+        expect(scaled.noise).toBeCloseTo(2.8 * plain.noise, 12);
+        expect(scaled.snr).toBeCloseTo(plain.snr / 2.8, 9);
+        expect(Number.isNaN(aperture(data, width, height, { x: Number.NaN, y: 0 }).noise)).toBe(true);
+    });
+
     it('counts fractional-centre pixels and includes both ring boundaries', () => {
         const data = new Float32Array(41 * 41).fill(0.5);
         data[20 * 41 + 20] = 10.5;
         const result = aperture(data, 41, 41, { x: 20, y: 20 }, { radius: 1, annulusIn: 2, annulusOut: 4 });
-        expect(result).toMatchObject({ valid: true, sum: 10, nPix: 5, nSky: 40, background: 0.5, backgroundSigma: 0, snr: 0 });
+        expect(result).toMatchObject({ valid: true, sum: 10, nPix: 5, nSky: 40, background: 0.5, backgroundSigma: 0, noise: 0, snr: 0 });
         const fractional = aperture(data, 41, 41, { x: 20.5, y: 20.5 }, { radius: 1 });
         expect(fractional.nPix).toBe(4);
     });
