@@ -18,9 +18,9 @@ import type { RegriddedFrame, TargetId } from '../lib/types';
 import { COPY } from './copy';
 import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
 
-export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo';
+export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo' | 'mlHint';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
+    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false, mlHint: false });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
