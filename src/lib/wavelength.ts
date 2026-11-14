@@ -43,7 +43,9 @@ export function sampleWave(grid: WaveGrid, p: PixelCoord): WaveSample
     };
 }
 
-// A visit is a run of frames on one detector within maxGapDays of each other.
+// A visit is a run of frames on one detector that starts within maxGapDays of the visit's first frame.
+// Bounding the length (not just the gap) keeps near-daily coverage, as near the ecliptic poles,
+// from chaining a whole year into one visit.
 export function groupVisits(frames: FrameRecord[], maxGapDays: number): FrameRecord[][]
 {
     const byDetector = new Map<number, FrameRecord[]>();
@@ -60,8 +62,8 @@ export function groupVisits(frames: FrameRecord[], maxGapDays: number): FrameRec
         const sorted = [...(byDetector.get(det) as FrameRecord[])].sort((a, b) => a.tMin - b.tMin);
         let current: FrameRecord[] = [];
         for (const f of sorted) {
-            const prev = current[current.length - 1];
-            if (prev && f.tMin - prev.tMin > maxGapDays) {
+            const first = current[0];
+            if (first && f.tMin - first.tMin > maxGapDays) {
                 visits.push(current);
                 current = [];
             }

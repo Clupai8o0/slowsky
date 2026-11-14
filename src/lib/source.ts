@@ -189,6 +189,11 @@ export function thinFrames(frames: FrameRecord[], gapDays: number, max: number):
 
 function thinVisits(visits: FrameRecord[][], max: number): FrameRecord[]
 {
+    if (visits.length > max) {
+        // More visits than reads: take max visits spread over the whole span, the middle frame of each.
+        const picked = Array.from({ length: max }, (_, k) => visits[Math.floor((k + 0.5) * visits.length / max)] as FrameRecord[]);
+        return picked.map((v) => v[Math.floor(v.length / 2)] as FrameRecord).sort((a, b) => a.tMin - b.tMin);
+    }
     const perVisit = Math.max(1, Math.floor(max / Math.max(1, visits.length)));
     const kept: FrameRecord[] = [];
     for (const v of visits) {

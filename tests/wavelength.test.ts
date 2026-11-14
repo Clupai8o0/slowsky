@@ -67,4 +67,12 @@ describe('groupVisits', () => {
     it('handles empty input', () => {
         expect(groupVisits([], 1)).toEqual([]);
     });
+    it('does not chain daily coverage into one visit', () => {
+        const daily = Array.from({ length: 366 }, (_, i) => fr(`d${i}`, 1, 61000 + i));
+        const v = groupVisits(daily, 10);
+        expect(v.length).toBe(Math.ceil(366 / 11));
+        for (const g of v) {
+            expect(g[g.length - 1]!.tMin - g[0]!.tMin).toBeLessThanOrEqual(10);
+        }
+    });
 });

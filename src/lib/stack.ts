@@ -274,9 +274,10 @@ export function groupByVisit(frames: RegriddedFrame[], gapDays = 10): RegriddedF
         return [];
     }
     const sorted = frames.slice().sort((p, q) => p.frame.tMin - q.frame.tMin);
+    // A visit spans at most gapDays from its first frame, so daily coverage does not chain into one visit.
     const visits: RegriddedFrame[][] = [[sorted[0]!]];
     for (let i = 1; i < sorted.length; i++) {
-        if (sorted[i]!.frame.tMin - sorted[i - 1]!.frame.tMin > gapDays) {
+        if (sorted[i]!.frame.tMin - visits[visits.length - 1]![0]!.frame.tMin > gapDays) {
             visits.push([]);
         }
         visits[visits.length - 1]!.push(sorted[i]!);
