@@ -71,6 +71,20 @@ export function initLayout(root: HTMLElement): Layout
         return Math.max(MIN_W, Math.min(maxFor(s), Math.round(w)));
     }
 
+    // Saved widths can be too wide for this window together, or once a folded rail opens again: fit both.
+    function fit(): void
+    {
+        if (!wide.matches) {
+            return;
+        }
+        for (const s of ['left', 'right', 'left'] as Side[]) {
+            const w = width[s];
+            if (w !== undefined) {
+                width[s] = clamp(s, w);
+            }
+        }
+    }
+
     function apply(): void
     {
         for (const s of ['left', 'right'] as Side[]) {
@@ -107,6 +121,7 @@ export function initLayout(root: HTMLElement): Layout
     function fold(s: Side, v: boolean): void
     {
         folded[s] = v;
+        fit();
         apply();
         save();
     }
@@ -116,6 +131,7 @@ export function initLayout(root: HTMLElement): Layout
         const on = !(folded.left && folded.right);
         folded.left = on;
         folded.right = on;
+        fit();
         apply();
         save();
     }
@@ -205,17 +221,16 @@ export function initLayout(root: HTMLElement): Layout
     addEventListener('resize', () => {
         cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => {
-            for (const s of ['left', 'right'] as Side[]) {
-                const w = width[s];
-                if (w !== undefined && wide.matches) {
-                    width[s] = clamp(s, w);
-                }
-            }
+            fit();
             apply();
         });
     });
-    wide.addEventListener('change', apply);
+    wide.addEventListener('change', () => {
+        fit();
+        apply();
+    });
 
+    fit();
     apply();
     return { toggleFocus };
 }

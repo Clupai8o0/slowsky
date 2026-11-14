@@ -911,7 +911,8 @@ export function mount(root: HTMLElement): void
     });
 
     ref<SVGSVGElement>('lc').addEventListener('click', (e) => {
-        const k = Number((e.target as Element).getAttribute('data-k'));
+        const dot = (e.target as Element).closest('[data-k]');
+        const k = dot ? Number(dot.getAttribute('data-k')) : NaN;
         if (!result || !Number.isInteger(k) || k < 0 || !result.frames[k]) {
             return;
         }
