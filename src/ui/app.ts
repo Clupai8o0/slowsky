@@ -321,12 +321,18 @@ export function mount(root: HTMLElement): void
         let lastErr: unknown = null;
         let allMissing = true;
         let failedLive = false;
+        let spare: SkyResult | null = null; // a saved copy without the linked frame, used if live fails
         for (const kind of order) {
             try {
                 res = await loadFrom(kind, req);
                 got = kind;
-                if (kind === 'snapshot' && savedFirst && res.frames.length === 0) {
-                    continue;
+                if (kind === 'snapshot' && savedFirst) {
+                    const wanted = st.wantFrame;
+                    if (res.frames.length === 0 || (wanted !== undefined && !res.frames.some((f) => f.frame.frame.obsId === wanted))) {
+                        spare = res.frames.length > 0 ? res : null;
+                        res = null;
+                        continue;
+                    }
                 }
                 break;
             } catch (e) {
@@ -341,6 +347,10 @@ export function mount(root: HTMLElement): void
                     break;
                 }
             }
+        }
+        if (!res && spare) {
+            res = spare;
+            got = 'snapshot';
         }
         if (!res && allMissing && !demoOnly) {
             // The live and saved sources are not built yet: show the simulated sky, clearly labelled.
