@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { compareVisits, findTracklets, significance, snrText, NO_SNR_NOTE } from '../src/lib/changes';
+import { compareVisits, findTracklets, significance, snrText, NO_SNR_NOTE, PLAIN_LEAD } from '../src/lib/changes';
 // @ts-expect-error Node types are not included in the browser project.
 import { readFileSync } from 'node:fs';
 import { createSnapshotSource } from '../src/lib/source';
@@ -14,6 +14,71 @@ const grid: OutputGrid = { center: { ra: 20, dec: 30 }, fovDeg: 0.1, pixelArcsec
 
 describe('round 11 public readings', () => {
     beforeEach(() => { seed = 918273; });
+    it('plain wording has no banned terms across all readings and notes', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 25, 25, 1000); point(a, grid, 95, 25, 1000); point(b, grid, 60, 90, 1000);
+        a[90 * grid.width + 64] = NaN;
+        const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { plain: true });
+        expect(r.candidates.map(c => c.reading).sort()).toEqual(['lessLater', 'moreLater', 'unclear']);
+        expect(r.notes[0]).toBe(PLAIN_LEAD);
+        for (const s of [PLAIN_LEAD, ...r.notes, ...r.candidates.flatMap(c => [c.sentence!, c.neutral!])]) {
+            expect(s).not.toMatch(/\b(changed|discover\w*|detected|confirm\w*|proves?|mover|moved|consistent)\b/i);
+        }
+    });
+    it('plain direction is unclear with missing wing pixels in either visit', () => {
+        for (const reverse of [false, true]) {
+            const a = new Float32Array(grid.width * grid.height), b = new Float32Array(a.length);
+            for (let y = 0; y < grid.height; y++) {
+                for (let x = 0; x < grid.width; x++) {
+                    const d2 = ((x - 60) ** 2 + (y - 60) ** 2) * grid.pixelArcsec ** 2;
+                    a[y * grid.width + x] = 3000 * Math.exp(-4 * Math.log(2) * d2 / 12 ** 2);
+                    b[y * grid.width + x] = 3570 * Math.exp(-4 * Math.log(2) * d2 / 11 ** 2);
+                }
+            }
+            for (let y = 57; y <= 63; y++) { a[y * grid.width + 66] = NaN; }
+            const r = compareVisits(mapped(image(reverse ? b : a, 'a')), mapped(image(reverse ? a : b, 'b')), grid, [], { plain: true });
+            const spot = r.candidates.find(c => Math.hypot(c.pix.x - 60, c.pix.y - 60) < 2)!;
+            expect(spot.reading).toBe('unclear');
+            expect(spot.sentence).toBe('The light here differs between the two visits, and which visit has more is not clear; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). Pixels at or near it are missing in at least one visit.');
+            seed = 918273;
+            const c = noise(grid), d = noise(grid);
+            point(d, grid, 60, 60, 1000);
+            c[60 * grid.width + 64] = NaN;
+            const hole = compareVisits(mapped(image(reverse ? d : c, 'a')), mapped(image(reverse ? c : d, 'b')), grid, [], { plain: true }).candidates
+                .find(item => Math.hypot(item.pix.x - 60, item.pix.y - 60) < 2)!;
+            expect(hole.reading).toBe('unclear');
+            expect(hole.sentence).toBe('The light here differs between the two visits, and which visit has more is not clear; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). Pixels at or near it are missing in at least one visit.');
+        }
+    });
+    it('plain direction rejects a ring cancelling more than half the core in either sign', () => {
+        for (const sign of [1, -1]) {
+            for (const ring of [400, 600]) {
+                seed = 918273;
+                const a = noise(grid), b = noise(grid);
+                const core: number[] = [], outer: number[] = [];
+                for (let y = 52; y <= 68; y++) {
+                    for (let x = 52; x <= 68; x++) {
+                        const d = Math.hypot(x - 60, y - 60) * grid.pixelArcsec;
+                        if (d <= 6) { core.push(y * grid.width + x); }
+                        else if (d <= 12) { outer.push(y * grid.width + x); }
+                    }
+                }
+                for (const i of core) { b[i]! += sign * 1000 / core.length; }
+                for (const i of outer) { b[i]! -= sign * ring / outer.length; }
+                const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { plain: true });
+                const c = r.candidates.find(item => Math.hypot(item.pix.x - 60, item.pix.y - 60) < 2)!;
+                expect(c.reading).toBe(ring === 600 ? 'unclear' : sign === 1 ? 'moreLater' : 'lessLater');
+                expect(c.sentence).toBe(`${ring === 600 ? 'The light here differs between the two visits, and which visit has more is not clear' : `${sign === 1 ? 'More' : 'Less'} light here in the later visit than in the earlier one`}; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(c.snr)}; candidate).`);
+            }
+        }
+    });
+    it('plain order note describes a list with no S/N figures', () => {
+        const a = noise(grid), b = noise(grid); point(b, grid, 60, 60, 1000);
+        const va = new Float32Array(a.length).fill(1), vb = new Float32Array(a.length).fill(1);
+        va[60 * grid.width + 60] = NaN;
+        const r = compareVisits({ ...image(a, 'a'), variance: va }, { ...image(b, 'b'), variance: vb }, grid, [], { plain: true });
+        expect(r.notes.find(n => n.startsWith('Listed with'))).toBe('Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise estimated from the difference image; that figure is used only for this order.');
+    });
     it('plain list makes equal-flux changing image widths unclear in either direction', () => {
         for (const reverse of [false, true]) {
             const a = new Float32Array(grid.width * grid.height), b = new Float32Array(a.length);
@@ -69,7 +134,7 @@ describe('round 11 public readings', () => {
         const r = compareVisits({ ...image(a, 'a'), variance: va }, { ...image(b, 'b'), variance: vb }, grid, [], { plain: true });
         expect(r.candidates[0]!.sentence!.includes('S/N')).toBe(true);
         expect(r.notes.find((n) => n.startsWith('Listed with'))).toBe('Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise; spots with no S/N figure come after those with one.');
-        expect(r.notes[0]).toBe('None of these spots has been confirmed as a real change.');
+        expect(r.notes[0]).toBe('Every spot listed is a candidate only; this page cannot tell which, if any, are real changes in the sky.');
     });
     it('plain star facts extend to 15 arcseconds without changing grouping', () => {
         const a = noise(grid), b = noise(grid);
@@ -132,7 +197,18 @@ describe('round 11 public readings', () => {
         const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { plain: true });
         const c = r.candidates.find((item) => Math.hypot(item.pix.x - 60, item.pix.y - 60) < 3)!;
         expect(c).toMatchObject({ nearGap: true, nearEdge: false, nearMissing: false });
-        expect(c.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). It is close to missing pixels or the edge of the picture.');
+        expect(c.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). It is close to pixels that could not be compared, or to the edge of the picture.');
+    });
+    it('plain gap fact remains true when finite visit pixels overflow their difference', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 60, 60, 1000);
+        for (let y = 54; y <= 66; y++) {
+            for (let x = 70; x <= 77; x++) { a[y * grid.width + x] = -3.4e38; b[y * grid.width + x] = 3.4e38; }
+        }
+        const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { plain: true });
+        const c = r.candidates.find(item => Math.hypot(item.pix.x - 60, item.pix.y - 60) < 3)!;
+        expect(c).toMatchObject({ nearGap: true, nearEdge: false, nearMissing: false });
+        expect(c.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). It is close to pixels that could not be compared, or to the edge of the picture.');
     });
     it('plain list marks bottom and right picture edges', () => {
         for (const [x, y] of [[60, 116], [116, 60]]) {
@@ -397,7 +473,7 @@ describe('round 11 public readings', () => {
         expect(edge).toMatchObject({ nearEdge: true });
         expect(edge!.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). It is near the edge of the picture.');
         expect(hole).toMatchObject({ nearMissing: true, nearEdge: false });
-        expect(hole!.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). Pixels at or near it are missing in at least one visit.');
+        expect(hole!.sentence).toBe('The light here differs between the two visits, and which visit has more is not clear; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). Pixels at or near it are missing in at least one visit.');
     });
     it('prints S/N only where both error maps cover the spot (Opus r11), in plain and full mode', () => {
         for (const plain of [false, true]) {
@@ -1866,8 +1942,7 @@ describe('round 8 measurement guards', () => {
         // Every reason and note is a literal in changes.ts, so check the source as well as the outputs above.
         const source = readFileSync(`${process.cwd()}/src/lib/changes.ts`, 'utf8');
         const literals = source.match(/'[^'\n]*'|`[^`]*`/g) ?? [];
-        expect(literals.filter((s: string) => /detected a|confirmed|proves|discovery|%/i.test(s)
-            && s !== "'None of these spots has been confirmed as a real change.'")).toEqual([]);
+        expect(literals.filter((s: string) => /detected a|confirmed|proves|discovery|%/i.test(s))).toEqual([]);
     });
 
     it('hedges a catalogue brightening beside an uncatalogued fade (Codex 3)', () => {

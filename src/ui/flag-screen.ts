@@ -1,5 +1,5 @@
 import { withCaveats, type CandidateEnd, type PanelCandidate, type Reading } from './changes-view';
-import { snrText } from '../lib/changes';
+import { snrText, stripSnr } from '../lib/changes';
 import type { PixelCoord, RangeReader, RegriddedFrame } from '../lib/types';
 import { gridPixToSky } from '../lib/regrid';
 import { readFlags } from '../lib/flags';
@@ -131,9 +131,15 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
     const read = (frames: RegriddedFrame[], at: PixelCoord) => frames.map(f => frameFlags.get(f.frame.obsId)?.names(at) ?? null);
     for (const c of candidates) {
         const ends = endsOf(c);
+        const plain = c.reading === 'moreLater' || c.reading === 'lessLater' || c.reading === 'unclear';
         // Each end in the visit it carries light in: a DROP flag at any end drops the candidate (both ends of a pair go).
         const own = ends.map(end => ({ end, names: read(visits[end.visit], { x: end.x, y: end.y }) }));
-        const bad = own.flatMap(o => o.names.flatMap(names => names?.filter(n => (DROP_FLAGS as readonly string[]).includes(n)) ?? []));
+        const other = ends.length === 1 && c.kind !== 'mover'
+            ? [{ end: { ...ends[0]!, visit: ends[0]!.visit === 'later' ? 'earlier' as const : 'later' as const }, names: read(
+                visits[ends[0]!.visit === 'later' ? 'earlier' : 'later'], { x: ends[0]!.x, y: ends[0]!.y }) }]
+            : [];
+        const checked = [...own, ...other];
+        const bad = (plain ? checked : own).flatMap(o => o.names.flatMap(names => names?.filter(n => (DROP_FLAGS as readonly string[]).includes(n)) ?? []));
         if (bad.length) {
             count++;
             two ||= ends.length > 1;
@@ -143,11 +149,6 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
         }
         // OVERFLOW at any end in its own visit. A single spot is a comparison of one place across both visits, so
         // the other visit at that place counts too; a pair's or mover's other end is that comparison already.
-        const other = ends.length === 1 && c.kind !== 'mover'
-            ? [{ end: { ...ends[0]!, visit: ends[0]!.visit === 'later' ? 'earlier' as const : 'later' as const }, names: read(
-                visits[ends[0]!.visit === 'later' ? 'earlier' : 'later'], { x: ends[0]!.x, y: ends[0]!.y }) }]
-            : [];
-        const checked = [...own, ...other];
         const over = new Set(checked.filter(o => o.names.some(n => n?.includes(CORE_FLAG))).map(o => o.end.visit));
         const said = c.sentence ?? c.reason;
         let line = said;
@@ -166,8 +167,8 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
             // Without the finder's `reading` (before round 11) every non-mover line is withdrawn: hiding a sound
             // reading is safer than showing one OVERFLOW may have spoiled. Only a known comparison is named as one.
             const compares = c.reading ? COMPARES.includes(c.reading) : c.kind !== 'mover';
-            if (c.reading === 'moreLater' || c.reading === 'lessLater' || c.reading === 'unclear') {
-                line = `${c.neutral ?? 'The light here differs between the two visits, and which visit has more is not clear (candidate).'} ${flagged}; an overflowing pixel can make the reading here unreliable.`;
+            if (plain) {
+                line = `${stripSnr(c.neutral ?? 'The light here differs between the two visits, and which visit has more is not clear (candidate).')} ${flagged}; an overflowing pixel can make the reading here unreliable.`;
                 reading = 'unclear';
                 kind = 'unknown';
             } else if (compares) {
@@ -183,7 +184,7 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
         }
         // When no frame of an end's own visit was read, the drop check never ran for it: unread in full, even if
         // the other frames read fine (or that visit has no frames here at all).
-        const endUnread = own.some(o => !o.names.some(n => n !== null));
+        const endUnread = plain ? !checked.some(o => o.names.some(n => n !== null)) : own.some(o => !o.names.some(n => n !== null));
         const missing = checked.some(o => o.names.some(n => n === null));
         kept.push({ ...c, kind, reading, line, unread: endUnread ? 'all' : missing ? 'some' : 'none' });
     }

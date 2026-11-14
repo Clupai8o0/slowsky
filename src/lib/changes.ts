@@ -52,6 +52,8 @@ export interface ChangeCandidate {
     nearMissing?: boolean;
     nearGap?: boolean;
     neutral?: string;
+    /** Plain list: the error maps do not cover this spot. */
+    snrMapMissing?: boolean;
 }
 export type VisitChangeCandidate = ChangeCandidate & {
     sentence: string;
@@ -76,6 +78,7 @@ export interface ChangeResult {
     threshold: number;
     skipped: { obsId: string; reason: string }[];
     notes: string[];
+    plainListInfo?: { usedErrorMap: boolean; matchArcsec: number };
 }
 export interface ChangeOptions {
     threshold?: number;
@@ -108,6 +111,9 @@ type Measurement = { z: Float32Array; background: Float32Array; noise: Float32Ar
     sigma: number; k: number; width: number; height: number };
 const NATIVE = 6.15;
 const PSF_FWHM = 12; // arcsec
+// Require at least half the core signal to remain within the full aperture.
+const PLAIN_CORE_RETAINED = 0.5;
+export const PLAIN_LEAD = 'Every spot listed is a candidate only; this page cannot tell which, if any, are real changes in the sky.';
 const PLAIN_STAR_FACT_ARCSEC = 15;
 const CORE_ARCSEC = PSF_FWHM / 2;
 // Registration wobble between visits: the reviews' sweeps go up to 1.4″; it moves a steady pair's light centre too.
@@ -600,14 +606,36 @@ function finish(result: ChangeResult, opt: Settings, singleFrame = false,
     result.candidates.forEach((c, i) => {
         c.id = `c${i + 1}`;
         const show = shown.get(c);
-        c.sentence = show ? c.reason : c.reason.replace(SNR_IN_TEXT, '(candidate)');
-        if (c.neutral && !show) { c.neutral = c.neutral.replace(SNR_IN_TEXT, '(candidate)'); }
+        c.sentence = show ? c.reason : stripSnr(c.reason);
+        if (c.neutral && !show) { c.neutral = stripSnr(c.neutral); }
         c.reason = c.sentence;
     });
     return result;
 }
 
 const SNR_IN_TEXT = /\(S\/N [^;()]*; candidate\)/g;
+export function stripSnr(text: string): string
+{
+    return text.replace(SNR_IN_TEXT, '(candidate)');
+}
+
+export function plainListNotes(candidates: { line?: string; sentence?: string; reason: string; snrMapMissing?: boolean }[],
+    usedErrorMap: boolean, matchArcsec: number): string[]
+{
+    if (!candidates.length) { return []; }
+    const shown = candidates.filter(c => hasSnrFigure(c.line ?? c.sentence ?? c.reason)).length;
+    const unmapped = usedErrorMap ? candidates.filter(c => c.snrMapMissing).length : 0;
+    const base = `Listed with spots that have no catalogue star within ${matchArcsec}″ first, then by how far each stands out from the noise`;
+    // An overflow can hide a mapped S/N even though the ordering still used the error maps.
+    const hiddenMapped = usedErrorMap && candidates.some(c => !c.snrMapMissing && !hasSnrFigure(c.line ?? c.sentence ?? c.reason));
+    const order = !shown && hiddenMapped ? undefined : !shown ? `${base} estimated from the difference image; that figure is used only for this order.`
+        : `${base}${shown < candidates.length ? '; spots with no S/N figure come after those with one' : ''}.`;
+    return [...(order ? [order] : []), ...(unmapped ? [`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`] : [])];
+}
+export function hasSnrFigure(text: string): boolean
+{
+    return text !== stripSnr(text) && !text.includes('(S/N not measured; candidate)');
+}
 export const NO_SNR_NOTE = 'Signal-to-noise figures are not shown, because this noise estimate leaves out each source\'s own light.';
 
 export function snrText(snr: number): string
@@ -1250,7 +1278,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
             const facts = (starDistance !== undefined && starDistance <= PLAIN_STAR_FACT_ARCSEC ? ` A catalogue star lies ${starDistance < 1 ? 'less than 1″' : `${starDistance.toFixed(1)}″`} away.` : '')
                 + (nearEdge ? ' It is near the edge of the picture.' : '')
                 + (nearMissing ? ' Pixels at or near it are missing in at least one visit.' : '')
-                + (nearGap ? ' It is close to missing pixels or the edge of the picture.' : '');
+                + (nearGap ? ' It is close to pixels that could not be compared, or to the edge of the picture.' : '');
             const corrected = (x: number, y: number): number => {
                 const index = y * grid.width + x;
                 const bin = Math.floor(y / measurement.k) * measurement.width + Math.floor(x / measurement.k);
@@ -1258,18 +1286,21 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
             };
             const cx = Math.round(pix.x), cy = Math.round(pix.y);
             const center = cx >= 0 && cy >= 0 && cx < grid.width && cy < grid.height ? corrected(cx, cy) : NaN;
-            let sum = 0;
+            let sum = 0, core = 0;
             for (let y = Math.max(0, Math.ceil(pix.y - radiusPix)); y <= Math.min(grid.height - 1, Math.floor(pix.y + radiusPix)); y++) {
                 for (let x = Math.max(0, Math.ceil(pix.x - radiusPix)); x <= Math.min(grid.width - 1, Math.floor(pix.x + radiusPix)); x++) {
                     if (Math.hypot(x - pix.x, y - pix.y) <= radiusPix) {
                         const i = y * grid.width + x;
                         if (Number.isFinite(earlier.data[i]!) && Number.isFinite(later.data[i]!)) {
-                            sum += corrected(x, y);
+                            const value = corrected(x, y);
+                            sum += value;
+                            if (Math.hypot(x - pix.x, y - pix.y) <= radiusPix / 2) { core += value; }
                         }
                     }
                 }
             }
-            const clear = Number.isFinite(center) && Number.isFinite(sum) && sign * center > 0 && sign * sum > 0;
+            const clear = !nearMissing && Number.isFinite(center) && Number.isFinite(core) && Number.isFinite(sum)
+                && sign * center > 0 && sign * core > 0 && sign * sum >= PLAIN_CORE_RETAINED * sign * core;
             const ending = `a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}`;
             const neutral = `The light here differs between the two visits, and which visit has more is not clear; ${ending}`;
             out.push({ id: '', kind: 'unknown', pix, sky: gridPixToSky(grid, pix), snr, sign,
@@ -1963,17 +1994,19 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         return true;
     };
     const showsSnr = (c: ChangeCandidate) => measurement.usedErrorMap && (c.ends ?? [c.pix]).every(mappedAt);
+    if (opt.plain && measurement.usedErrorMap) {
+        result.candidates.forEach(c => { c.snrMapMissing = !showsSnr(c); });
+    }
     const finished = finish(result, opt, singleFrame, showsSnr, opt.plain);
     const unmapped = measurement.usedErrorMap ? finished.candidates.filter((c) => !showsSnr(c)).length : 0;
     if (opt.plain && finished.candidates.length) {
-        finished.notes.unshift('None of these spots has been confirmed as a real change.');
-        finished.notes.push(measurement.usedErrorMap
-            ? `Listed with spots that have no catalogue star within ${opt.matchArcsec}″ first, then by how far each stands out from the noise${unmapped ? '; spots with no S/N figure come after those with one' : ''}.`
-            : `Listed with spots that have no catalogue star within ${opt.matchArcsec}″ first, then by how far each stands out from the noise estimated from the difference image; that figure is used only for this order.`);
+        finished.notes.unshift(PLAIN_LEAD);
+        finished.notes.push(...plainListNotes(finished.candidates, measurement.usedErrorMap, opt.matchArcsec));
     }
-    if (unmapped > 0) {
+    if (!opt.plain && unmapped > 0) {
         finished.notes.push(`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`);
     }
+    if (opt.plain) { finished.plainListInfo = { usedErrorMap: measurement.usedErrorMap, matchArcsec: opt.matchArcsec }; }
     return { ...finished, visits, candidates: finished.candidates.map((c) => {
         const ends = c.ends ?? [{ visit: c.sign === 1 ? 'later' as const : 'earlier' as const,
             x: c.pix.x, y: c.pix.y, radiusPix: c.radiusPix ?? 12 / grid.pixelArcsec }];

@@ -18,6 +18,7 @@ import type { RegriddedFrame, TargetId } from '../lib/types';
 import { COPY } from './copy';
 import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
 import { ChangeInputError, findChanges } from '../lib/change-input';
+import { PLAIN_LEAD, hasSnrFigure, plainListNotes } from '../lib/changes';
 import { changesHtml, changesMarks, changesView, type ChangesView } from './changes-view';
 import { createRangeReader } from '../lib/fits';
 import { groupByVisit } from '../lib/stack';
@@ -383,9 +384,18 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
             const order = frames.flatMap(f => f.context?.flags?.names.map(n => n.name) ?? []);
             const finish = (flags: Map<string, FrameFlags | null>) => {
                 const screened = screen(found.candidates, { earlier, later }, flags, order, saved);
-                resultView = { ...found, candidates: screened.kept, lead: [...(screened.kept.length ? (found.lead ?? []).filter((s) => s === 'None of these spots has been confirmed as a real change.') : []), ...screened.lead],
+                const info = found.plainListInfo;
+                if (info) {
+                    screened.kept.sort((a, b) => Number(Boolean(a.nearCatalogue)) - Number(Boolean(b.nearCatalogue))
+                        || Number(hasSnrFigure(b.line)) - Number(hasSnrFigure(a.line)) || b.snr - a.snr);
+                }
+                const listNotes = info ? plainListNotes(screened.kept, info.usedErrorMap, info.matchArcsec) : [];
+                const notes = info ? found.notes.flatMap(note => note.startsWith('Listed with spots that have no catalogue star within ')
+                    ? listNotes.filter(n => n.startsWith('Listed with spots that have no catalogue star within '))
+                    : note.startsWith('S/N is left out for ') ? listNotes.filter(n => n.startsWith('S/N is left out for ')) : [note]) : found.notes;
+                resultView = { ...found, candidates: screened.kept, lead: [...(screened.kept.length ? (found.lead ?? []).filter((s) => s === PLAIN_LEAD) : []), ...screened.lead],
                     ran: screened.dropNote && !screened.kept.length ? false : found.ran,
-                    notes: [...found.notes, ...(screened.dropNote ? [screened.dropNote] : [])] };
+                    notes: [...notes, ...(screened.dropNote ? [screened.dropNote] : [])] };
                 done.set(result, resultView);
             };
             if (saved || !frames.some(f => f.context?.flags)) {

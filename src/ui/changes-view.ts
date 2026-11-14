@@ -3,7 +3,7 @@
 // claim of its own: each line is labelled "Candidate N" so the word stays on every line, and the marks over the
 // sky carry the same N. The finder's counts, noise and threshold are not shown. Pure string builders, no DOM.
 
-import type { ChangeCandidate, ChangeEnd, ChangeReading, ChangeResult } from '../lib/changes';
+import { PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
 
 // Fields the finder is adding (lane/changes r10b): `sentence` (the reason without its caveat), `caveat` (a full
 // sentence, absent when both visits have 2+ frames) and `lightVisit`; `reason` stays as an alias of `sentence`.
@@ -25,6 +25,7 @@ export interface ChangesView {
     notes: string[];
     lead?: string[]; // paragraphs above the list
     visits?: FinderVisits; // the frames of the two compared visits, when the finder says which
+    plainListInfo?: ChangeResult['plainListInfo'];
     ran: boolean; // false when the finder could not run (its message is the only note)
 }
 
@@ -83,7 +84,7 @@ export function changesView(found: ChangeResult | { error: string }): ChangesVie
     const placed = (found.candidates as PanelCandidate[]).filter((c) => Number.isFinite(c.pix.x) && Number.isFinite(c.pix.y))
         .map((c) => ({ ...c, line: c.sentence ?? c.reason }));
     const candidates = isPlain(placed) ? placed : placed.sort((a, b) => groupOf(a) - groupOf(b) || strength(b) - strength(a));
-    const plainLead = isPlain(candidates) && found.notes[0] === 'None of these spots has been confirmed as a real change.' ? [found.notes[0]] : [];
+    const plainLead = isPlain(candidates) && found.notes[0] === PLAIN_LEAD ? [found.notes[0]] : [];
     const lead = [...plainLead, ...withCaveats(candidates)];
     const visits = (found as ChangeResult & { visits?: FinderVisits }).visits;
     return {
@@ -91,6 +92,7 @@ export function changesView(found: ChangeResult | { error: string }): ChangesVie
         notes: plainLead.length ? found.notes.slice(1) : found.notes,
         ...(lead.length ? { lead } : {}),
         ...(visits ? { visits } : {}),
+        ...(found.plainListInfo ? { plainListInfo: found.plainListInfo } : {}),
         // The finder sets sigma to NaN when it measured nothing (no frames within its colour window); then
         // "no candidates" would claim a comparison that never happened, so only its notes show.
         ran: Number.isFinite(found.sigma) || found.candidates.length > 0,
