@@ -65,6 +65,7 @@ export function renderSpectrum(box: HTMLElement, view: SlotView): boolean
 export const FLAGS_LEFT_OUT: ReadonlySet<string> = new Set(['SOURCE', 'FULLSAMPLE', 'GHOST_FPA']);
 export const FLAGS_COLOR: [number, number, number] = [255, 79, 216];
 export const FLAGS_ALPHA = 170;
+export const FLAGS_READ_TIMEOUT_MS = 20000;
 
 export const FLAGS_TEXT = Object.freeze({
     snapshot: 'Flags need a live read. Go live to load this frame from the archive with its flags.',
@@ -96,6 +97,7 @@ type Entry =
 export interface FlagsDeps {
     enabled?: boolean; // defaults to FEATURES.flags (tests switch it on)
     read?: typeof readFlags;
+    timeoutMs?: number; // defaults to FLAGS_READ_TIMEOUT_MS
     // Paints an RGBA mask over the sky; the default uses a canvas inside `layer`.
     paint?: (layer: HTMLElement, rgba: Uint8ClampedArray, width: number, height: number) => void;
 }
@@ -163,8 +165,22 @@ export function mountFlags(layer: HTMLElement, onChange: () => void, deps: Flags
         busy = true;
         cache.set(frame, { status: 'loading' });
         const mine = gen;
-        const signal = ctrl.signal;
-        read(context.url, flags.layout, context.box, { signal }).then(r => {
+        const resetSignal = ctrl.signal;
+        const deadline = new AbortController();
+        const abort = () => deadline.abort();
+        let signal = deadline.signal;
+        if (typeof AbortSignal.any === 'function') {
+            signal = AbortSignal.any([resetSignal, deadline.signal]);
+        } else if (resetSignal.aborted) {
+            abort();
+        } else {
+            resetSignal.addEventListener('abort', abort, { once: true });
+        }
+        const timer = setTimeout(abort, deps.timeoutMs ?? FLAGS_READ_TIMEOUT_MS);
+        read(context.url, flags.layout, context.box, { signal }).finally(() => {
+            clearTimeout(timer);
+            resetSignal.removeEventListener('abort', abort);
+        }).then(r => {
             const used = new Uint8Array(r.data.length);
             const mask = regridFlags(r.data, context.box, context.wcs, frame.grid, bits, used);
             const summary = summariseFlags(r.data, flags.names, bits, used);
