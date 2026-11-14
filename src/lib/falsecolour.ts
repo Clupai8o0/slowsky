@@ -1,6 +1,7 @@
 // Lane: false colour display helper from two infrared wavelengths.
 // Pure functions only; runs in the page and in Web Workers (no DOM globals).
 import { aperture, centroid } from './photometry';
+import type { ApertureOptions } from './photometry';
 import { percentile, stretchValue } from './player';
 import type { PixelCoord, Stretch } from './types';
 
@@ -12,18 +13,31 @@ export class FalseColourError extends Error {
     }
 }
 
-const FALSE_COLOUR_NOTE = 'False colour. The colours show which of two infrared wavelengths is brighter at each spot, '
-    + 'not what an eye would see. Each picture is stretched on its own, so compare colours within this view only.';
+export interface PairStretch {
+    sShort: Stretch;
+    sLong: Stretch;
+    range: number;
+    sigmaShort: number;
+    sigmaLong: number;
+}
 
-// A stretch for one picture on its own: lo = the median of its finite values (the sky level),
-// hi = its `hiPercentile` (default 99.5) of finite values, kind 'asinh'.
-// If hi <= lo (flat picture) return hi = lo + 1 so nothing divides by zero. No finite value: throw.
-export function channelStretch(data: Float32Array, opts?: { hiPercentile?: number }): Stretch
+export interface ColourAt {
+    short: number;
+    long: number;
+    snrShort: number;
+    snrLong: number;
+    index: number;
+    seen: 'both' | 'short' | 'long' | 'neither';
+    valid: boolean;
+}
+
+const FALSE_COLOUR_NOTE = 'False colour, not what an eye would see. Both pictures share one brightness scale after each '
+    + "one's own sky level is taken off: blue means brighter at the shorter wavelength, orange means brighter at the "
+    + 'longer one, grey means about the same. Coloured rims around bright stars can come from the two pictures not '
+    + 'being equally sharp.';
+
+function channelStats(data: Float32Array, hiPercentile: number): { sky: number; top: number; sigma: number }
 {
-    const hiPercentile = opts?.hiPercentile ?? 99.5;
-    if (!Number.isFinite(hiPercentile) || hiPercentile < 0 || hiPercentile > 100) {
-        throw new FalseColourError('High percentile must be between 0 and 100');
-    }
     let count = 0;
     for (let i = 0; i < data.length; i++) {
         const v = data[i];
@@ -43,13 +57,62 @@ export function channelStretch(data: Float32Array, opts?: { hiPercentile?: numbe
         }
     }
     sorted.sort();
-    const lo = percentile(sorted, 50);
-    const rawHi = percentile(sorted, hiPercentile);
-    const hi = rawHi <= lo ? lo + 1 : rawHi;
-    return { lo, hi, kind: 'asinh' };
+    const sky = percentile(sorted, 50);
+    const top = percentile(sorted, hiPercentile) - sky;
+    const deviations = new Float64Array(count);
+    for (let i = 0; i < count; i++) {
+        deviations[i] = Math.abs(sorted[i]! - sky);
+    }
+    deviations.sort();
+    const sigma = 1.4826 * percentile(deviations, 50);
+    return { sky, top, sigma };
 }
 
-// RGBA for canvas putImageData.
+function checkStretch(s: Stretch): void
+{
+    if (!Number.isFinite(s.lo) || !Number.isFinite(s.hi) || !(s.hi > s.lo)) {
+        throw new FalseColourError('Stretch bounds must be finite with hi greater than lo');
+    }
+}
+
+// Subtracts each picture's own median sky level and gives both pictures one shared brightness range above sky
+// (at least `minSigma` times the larger robust noise sigma, and wide enough that `hi > lo` in floating point).
+export function pairStretch(
+    short: Float32Array,
+    long: Float32Array,
+    opts?: { hiPercentile?: number; minSigma?: number },
+): PairStretch
+{
+    const hiPercentile = opts?.hiPercentile ?? 99.5;
+    const minSigma = opts?.minSigma ?? 10;
+    if (!Number.isFinite(hiPercentile) || hiPercentile <= 50 || hiPercentile > 100) {
+        throw new FalseColourError('High percentile must be above 50 and at most 100');
+    }
+    if (!Number.isFinite(minSigma) || minSigma < 0) {
+        throw new FalseColourError('Minimum sigma multiple must be zero or positive');
+    }
+    if (short.length !== long.length) {
+        throw new FalseColourError('Short and long pictures must have the same length');
+    }
+    const stShort = channelStats(short, hiPercentile);
+    const stLong = channelStats(long, hiPercentile);
+    let range = Math.max(stShort.top, stLong.top, minSigma * Math.max(stShort.sigma, stLong.sigma));
+    if (!(range > 0)) {
+        range = Math.max(1, Math.abs(stShort.sky), Math.abs(stLong.sky)) * 1e-3;
+    }
+    for (let i = 0; i < 1100 && (!(stShort.sky + range > stShort.sky) || !(stLong.sky + range > stLong.sky)); i++) {
+        range *= 2;
+    }
+    return {
+        sShort: { lo: stShort.sky, hi: stShort.sky + range, kind: 'asinh' },
+        sLong: { lo: stLong.sky, hi: stLong.sky + range, kind: 'asinh' },
+        range,
+        sigmaShort: stShort.sigma,
+        sigmaLong: stLong.sigma,
+    };
+}
+
+// RGBA pixels for canvas putImageData: blue for short, orange for long, grey where equal, transparent if non-finite.
 export function falseColourRgba(
     short: Float32Array,
     long: Float32Array,
@@ -61,15 +124,17 @@ export function falseColourRgba(
     if (short.length !== long.length) {
         throw new FalseColourError('Short and long pictures must have the same length');
     }
+    checkStretch(sShort);
+    checkStretch(sLong);
     const px = out ?? new Uint8ClampedArray(short.length * 4);
     if (px.length !== short.length * 4) {
         throw new FalseColourError('Output buffer length must be four times the pixel count');
     }
     for (let i = 0; i < short.length; i++) {
-        const vs = short[i]!;
-        const vl = long[i]!;
+        const vs = short[i];
+        const vl = long[i];
         const o = i * 4;
-        if (Number.isNaN(vs) || Number.isNaN(vl)) {
+        if (vs === undefined || vl === undefined || !Number.isFinite(vs) || !Number.isFinite(vl)) {
             px[o] = 0;
             px[o + 1] = 0;
             px[o + 2] = 0;
@@ -78,13 +143,6 @@ export function falseColourRgba(
         }
         const s = stretchValue(vs, sShort);
         const l = stretchValue(vl, sLong);
-        if (Number.isNaN(s) || Number.isNaN(l)) {
-            px[o] = 0;
-            px[o + 1] = 0;
-            px[o + 2] = 0;
-            px[o + 3] = 0;
-            continue;
-        }
         px[o] = 255 * l;
         px[o + 1] = 255 * (s + l) / 2;
         px[o + 2] = 255 * s;
@@ -93,46 +151,58 @@ export function falseColourRgba(
     return px;
 }
 
-// Which picture is brighter at one spot, from background-subtracted aperture sums.
+// Measures background-subtracted aperture sums and signal-to-noise at `at`, reporting which pictures see a source
+// at or above `minSnr` (or positive flux on a noise-free background) and a colour ratio only when both see it.
 export function colourAt(
     short: Float32Array,
     long: Float32Array,
     width: number,
     height: number,
     at: PixelCoord,
-    opts?: { radius?: number; annulusIn?: number; annulusOut?: number },
-): { short: number; long: number; index: number; valid: boolean }
+    opts?: { radius?: number; annulusIn?: number; annulusOut?: number; minSnr?: number },
+): ColourAt
 {
-    const apShort = aperture(short, width, height, at, opts);
-    const apLong = aperture(long, width, height, at, opts);
-    if (!apShort.valid || !apLong.valid) {
-        return {
-            short: apShort.valid ? Math.max(0, apShort.sum) : Number.NaN,
-            long: apLong.valid ? Math.max(0, apLong.sum) : Number.NaN,
-            index: Number.NaN,
-            valid: false,
-        };
+    const minSnr = opts?.minSnr ?? 3;
+    if (!Number.isFinite(minSnr) || minSnr < 0) {
+        throw new FalseColourError('Minimum signal-to-noise ratio must be zero or positive');
     }
-    const s = Math.max(0, apShort.sum);
-    const l = Math.max(0, apLong.sum);
-    const total = s + l;
-    if (total <= 0) {
+    const apOpts: ApertureOptions = {
+        radius: opts?.radius,
+        annulusIn: opts?.annulusIn,
+        annulusOut: opts?.annulusOut,
+    };
+    const apShort = aperture(short, width, height, at, apOpts);
+    const apLong = aperture(long, width, height, at, apOpts);
+    const s = apShort.valid ? Math.max(0, apShort.sum) : Number.NaN;
+    const l = apLong.valid ? Math.max(0, apLong.sum) : Number.NaN;
+    const snrShort = apShort.valid ? apShort.snr : 0;
+    const snrLong = apLong.valid ? apLong.snr : 0;
+    const seenShort = apShort.valid && apShort.sum > 0 && (apShort.backgroundSigma === 0 || apShort.snr >= minSnr);
+    const seenLong = apLong.valid && apLong.sum > 0 && (apLong.backgroundSigma === 0 || apLong.snr >= minSnr);
+
+    if (seenShort && seenLong) {
         return {
             short: s,
             long: l,
-            index: Number.NaN,
-            valid: false,
+            snrShort,
+            snrLong,
+            index: (l - s) / (l + s),
+            seen: 'both',
+            valid: true,
         };
     }
     return {
         short: s,
         long: l,
-        index: (l - s) / total,
-        valid: true,
+        snrShort,
+        snrLong,
+        index: Number.NaN,
+        seen: seenShort ? 'short' : (seenLong ? 'long' : 'neither'),
+        valid: false,
     };
 }
 
-// How far apart the brightest point near `at` is in the two pictures, in output pixels.
+// Measures how far apart the centroid near `at` (within a `2 * half + 1` box) sits between the short and long pictures.
 export function centroidOffset(
     short: Float32Array,
     long: Float32Array,
@@ -156,7 +226,7 @@ export function centroidOffset(
     };
 }
 
-// Fixed legend wording with wavelengths formatted to 2 decimal places.
+// Fixed legend wording with wavelengths formatted to 2 decimal places and the shared-scale note.
 export function falseColourLegend(lambdaShort: number, lambdaLong: number): { red: string; blue: string; note: string }
 {
     if (!Number.isFinite(lambdaShort) || lambdaShort <= 0
