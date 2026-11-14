@@ -158,12 +158,18 @@ export interface PassStore {
     removeItem(key: string): void;
 }
 
+export interface AiRequest {
+    order: number;
+    generation: number;
+}
+
 export interface AiNote {
     // Call on every render. A new view (frames, target, centre, curve or shift) drops the old note, which
     // described other numbers, and the panel shows only when the route is on and the view has facts to send.
     update(view: NoteView | null): void;
-    setRemaining(n: number): void;
-    relock(): void;
+    startRequest(): AiRequest;
+    setRemaining(n: number, request?: AiRequest): void;
+    relock(request?: AiRequest): void;
 }
 
 export interface AiNoteDeps {
@@ -219,6 +225,15 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     let tries = 0; // status answers: only the latest one counts
     let inflight = 0; // status checks still out
     let notice = ''; // a busy reply that came before any view: shown with the first view, then dropped
+    let generation = 0;
+    let requestOrder = 0;
+    let latestRemainingOrder = 0;
+    let remaining: number | undefined;
+
+    function startRequest(): AiRequest
+    {
+        return { order: ++requestOrder, generation };
+    }
 
     function passcode(): string | undefined
     {
@@ -281,10 +296,22 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function setLeft(n: number | undefined): void
     {
+        remaining = n;
         left.textContent = n === undefined ? '' : (deps.askOn ?? ASK_ENABLED)
             ? n === 1 ? '1 AI note or question left today' : `${n} AI notes or questions left today`
             : leftText(n);
         left.hidden = n === undefined;
+    }
+
+    function setRequestRemaining(n: number, request: AiRequest): void
+    {
+        if (request.generation !== generation) {
+            return;
+        }
+        if (request.order >= latestRemainingOrder || remaining === undefined || n < remaining) {
+            setLeft(n);
+            latestRemainingOrder = Math.max(latestRemainingOrder, request.order);
+        }
     }
 
     // The status line stays in the page so screen readers hear each change; empty or `quiet` lines are
@@ -334,6 +361,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function showLock(text: string): void
     {
+        generation++;
         const hadFocus = doc.activeElement === go || doc.activeElement === head;
         lock.hidden = false;
         go.hidden = true;
@@ -390,6 +418,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
             return;
         }
         savePass(v);
+        generation++;
         pass.value = '';
         st = s;
         setMsg('');
@@ -415,9 +444,10 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         out.replaceChildren();
         given.hidden = true;
         const sent = passcode();
+        const request = startRequest();
         try {
             const note = await fetchNote(f, { signal: c.signal, ...(sent !== undefined ? { passcode: sent } : {}) });
-            if (c.signal.aborted || ctrl !== c) {
+            if (c.signal.aborted || ctrl !== c || request.generation !== generation) {
                 return;
             }
             renderNote(out, note.text, doc);
@@ -431,10 +461,10 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
             setMsg(MSG.written, true);
             // A cached note carries the allowance from when it was written, so it can't update the count.
             if (note.remaining !== undefined && !note.cached) {
-                setLeft(note.remaining);
+                setRequestRemaining(note.remaining, request);
             }
         } catch (err) {
-            if (c.signal.aborted || ctrl !== c) {
+            if (c.signal.aborted || ctrl !== c || request.generation !== generation) {
                 return;
             }
             const code = err instanceof InsightError ? err.code : 'failed';
@@ -442,7 +472,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 // Only the route's own "off" hides the panel; a gateway error looks the same, so ask again.
                 const mine = ++tries;
                 const { s, reached } = await check(sent);
-                if (mine !== tries || ctrl !== c) {
+                if (mine !== tries || ctrl !== c || request.generation !== generation) {
                     return;
                 }
                 if (!reached) {
@@ -528,14 +558,19 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     firstCheck();
 
     return {
-        setRemaining(n: number): void
+        startRequest,
+        setRemaining(n: number, request = startRequest()): void
         {
-            setLeft(n);
+            setRequestRemaining(n, request);
         },
-        relock(): void
+        relock(request?: AiRequest): void
         {
+            if (request && request.generation !== generation) {
+                return;
+            }
             const hadPass = passcode() !== undefined;
             ++tries;
+            clearNote();
             if (st) {
                 st = { ...st, locked: true, unlocked: false };
             }

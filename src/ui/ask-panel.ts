@@ -2,6 +2,7 @@
 // picks line numbers from this page's measured fact sheet, and askViewHtml prints those measured lines.
 import { ASK_ENABLED, askInsight, factSheet, InsightError, validateQuestion, type InsightFacts } from '../lib/insight';
 import { askViewHtml, type AskViewState } from './ask-view';
+import type { AiRequest } from './ai-note';
 
 export type Doc = Pick<Document, 'createElement' | 'createTextNode'> & { activeElement: Element | null };
 
@@ -9,8 +10,9 @@ export interface AskPanelDeps {
     enabled?: boolean; // defaults to ASK_ENABLED; tests pass true
     ask?: typeof askInsight;
     doc?: Doc; // the same fake-document type ai-note.ts uses
-    onRemaining?: (n: number) => void;
-    onLocked?: () => void;
+    onRequestStart?: () => AiRequest | undefined;
+    onRemaining?: (n: number, request?: AiRequest) => void;
+    onLocked?: (request?: AiRequest) => void;
 }
 
 export interface AskPanel {
@@ -139,6 +141,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
         const sentKey = currentKey;
         const sentFacts = JSON.parse(sentKey) as InsightFacts;
         const sentPass = passcode;
+        const request = deps.onRequestStart?.();
         const c = new AbortController();
         ctrl = c;
         btn.setAttribute('aria-disabled', 'true');
@@ -156,7 +159,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
                 return;
             }
             if ((answer.kind === 'answer' || answer.kind === 'none') && typeof answer.remaining === 'number' && Number.isFinite(answer.remaining)) {
-                deps.onRemaining?.(answer.remaining);
+                deps.onRemaining?.(answer.remaining, request);
             }
             if (answer.kind === 'answer') {
                 render({ kind: 'answer', sheet: factSheet(sentFacts), lines: [...answer.lines].sort((a, b) => a - b), trust: [...answer.trust].sort((a, b) => a - b) });
@@ -180,7 +183,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
             if (err instanceof InsightError) {
                 if (err.code === 'locked') {
                     out.innerHTML = '';
-                    deps.onLocked?.();
+                    deps.onLocked?.(request);
                 } else if (err.code === 'invalid') {
                     render({ kind: 'invalid' });
                 } else if (err.code === 'busy') {

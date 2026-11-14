@@ -6,6 +6,8 @@ import { validateFacts } from '../src/lib/insight';
 import type { SkyResult } from '../src/lib/source';
 import type { FrameRecord, OutputGrid, RegriddedFrame } from '../src/lib/types';
 import type { Shift } from '../src/ui/measure';
+import { mountAsk } from '../src/ui/ask-panel';
+import type { InsightAnswer, InsightNote } from '../src/lib/insight';
 
 const N = 40;
 const grid: OutputGrid = { center: { ra: 10, dec: 20 }, fovDeg: (N * 6) / 3600, pixelArcsec: 6, width: N, height: N };
@@ -105,6 +107,9 @@ describe('AI label', () => {
 // ---------- mountAiNote, driven through a small hand-made stand-in for the panel's elements ----------
 
 class FakeEl {
+    parent: FakeEl | null = null;
+    attrs = new Map<string, string>();
+    raw = '';
     hidden = false;
     disabled = false;
     value = '';
@@ -122,9 +127,19 @@ class FakeEl {
         this.own = v;
         this.children = [];
     }
-    set innerHTML(_v: string)
+    get innerHTML(): string { return this.raw; }
+    set innerHTML(v: string)
     {
-        throw new Error('innerHTML used');
+        if (this.attrs.get('data-ask') !== 'out') { throw new Error('innerHTML used'); }
+        this.raw = v;
+    }
+    setAttribute(k: string, v: string): void { this.attrs.set(k, v); }
+    removeAttribute(k: string): void { this.attrs.delete(k); }
+    after(node: FakeEl): void
+    {
+        if (!this.parent) { throw new Error('missing parent'); }
+        node.parent = this.parent;
+        this.parent.children.splice(this.parent.children.indexOf(this) + 1, 0, node);
     }
     classList = {
         toggle: (name: string, force?: boolean) => {
@@ -140,6 +155,7 @@ class FakeEl {
     };
     append(...nodes: FakeEl[]): void
     {
+        for (const node of nodes) { node.parent = this; }
         this.children.push(...nodes);
     }
     replaceChildren(...nodes: FakeEl[]): void
@@ -166,7 +182,14 @@ class FakeEl {
             return this.doc.head;
         }
         const m = /data-ai="(\w+)"/.exec(sel);
-        return (m && this.doc.parts.get(m[1]!)) ?? null;
+        if (m) { return this.doc.parts.get(m[1]!) ?? null; }
+        const attr = /data-ask="(\w+)"/.exec(sel);
+        for (const child of this.children) {
+            if ((attr && child.attrs.get('data-ask') === attr[1]) || child.tag === sel) { return child; }
+            const found = child.querySelector(sel);
+            if (found) { return found; }
+        }
+        return null;
     }
 }
 
@@ -181,7 +204,9 @@ class FakeDoc {
         this.panel = new FakeEl('section', this);
         this.panel.hidden = true;
         for (const k of ['lock', 'pass', 'go', 'out', 'msg', 'left', 'disc', 'given', 'givenList']) {
-            this.parts.set(k, new FakeEl(k, this, k));
+            const el = new FakeEl(k, this, k);
+            this.parts.set(k, el);
+            this.panel.append(el);
         }
         this.el('go').textContent = 'Write an AI note';
         this.el('lock').hidden = true;
@@ -866,5 +891,147 @@ describe('mountAiNote onState', () => {
         expect(doc.el('go').hidden).toBe(false);
         await doc.el('go').fire('click');
         expect(doc.el('out').textContent).toContain('What this shows: a star.');
+    });
+});
+
+describe('note and question coordination', () => {
+    function pair(note: FetchFn, question: () => Promise<InsightAnswer>)
+    {
+        const doc = new FakeDoc();
+        const store = new MemStore();
+        store.setItem(PASS_KEY, 'old');
+        let ai: ReturnType<typeof mountAiNote>;
+        const ask = mountAsk(doc.panel as unknown as HTMLElement, {
+            enabled: true, doc: doc as never, ask: question,
+            onRequestStart: () => ai.startRequest(),
+            onRemaining: (n, request) => ai.setRemaining(n, request),
+            onLocked: (request) => ai.relock(request),
+        });
+        ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+            askOn: true, doc: doc as never, storage: store,
+            status: async () => ({ enabled: true, locked: true, unlocked: true, remaining: 5 }),
+            fetch: note, onState: (state) => ask.sync(state),
+        });
+        return { doc, store, ai, form: doc.panel.querySelector('[data-ask="form"]')!, input: doc.panel.querySelector('[data-ask="q"]')! };
+    }
+
+    const noteReply = (remaining: number): InsightNote => ({ text: NOTE_TEXT, model: 'm', dropped: 0, cached: false, remaining });
+    const answer = (remaining: number): InsightAnswer => ({ ...noteReply(remaining), cached: false, kind: 'none', picked: [], lines: [], trust: [] });
+
+    it('aborts the old note on question lock and accepts a new lock after unlock', async () => {
+        const old = deferred<InsightNote>();
+        const next = deferred<InsightNote>();
+        const question = deferred<InsightAnswer>();
+        let call = 0;
+        let oldSignal: AbortSignal | undefined;
+        const { doc, store, ai, form, input } = pair((_facts, opts) => {
+            if (call++ === 0) {
+                oldSignal = opts?.signal;
+                return old.promise;
+            }
+            return next.promise;
+        }, () => question.promise);
+        await flush();
+        ai.update(noteView());
+        const pendingNote = doc.el('go').fire('click');
+        input.value = 'What changed?';
+        const pendingQuestion = form.fire('submit');
+        question.reject(new InsightError('locked'));
+        await pendingQuestion;
+        expect(oldSignal?.aborted).toBe(true);
+        doc.el('pass').value = 'new';
+        await doc.el('lock').fire('submit');
+        old.reject(new InsightError('locked'));
+        await pendingNote;
+        expect(store.getItem(PASS_KEY)).toBe('new');
+        expect(doc.el('lock').hidden).toBe(true);
+        expect(doc.el('go').disabled).toBe(false);
+        const fresh = doc.el('go').fire('click');
+        next.reject(new InsightError('locked'));
+        await fresh;
+        expect(doc.el('lock').hidden).toBe(false);
+        expect(doc.el('msg').textContent).toBe(MSG.wrong);
+        expect(store.getItem(PASS_KEY)).toBeNull();
+    });
+
+    for (const questionFirst of [false, true]) {
+        it(`orders allowance by request start when ${questionFirst ? 'question' : 'note'} starts first`, async () => {
+            const n = deferred<InsightNote>();
+            const q = deferred<InsightAnswer>();
+            const { doc, ai, form, input } = pair(() => n.promise, () => q.promise);
+            await flush();
+            ai.update(noteView());
+            input.value = 'What changed?';
+            let pendingNote: Promise<unknown>;
+            let pendingQuestion: Promise<unknown>;
+            if (questionFirst) {
+                pendingQuestion = form.fire('submit');
+                pendingNote = doc.el('go').fire('click');
+                n.resolve(noteReply(3));
+                await pendingNote;
+                q.resolve(answer(4));
+                await pendingQuestion;
+            } else {
+                pendingNote = doc.el('go').fire('click');
+                pendingQuestion = form.fire('submit');
+                q.resolve(answer(3));
+                await pendingQuestion;
+                n.resolve(noteReply(4));
+                await pendingNote;
+            }
+            expect(doc.el('left').textContent).toBe('3 AI notes or questions left today');
+        });
+    }
+
+    it('allows an older count to lower the display and a later request to raise it', async () => {
+        const n = deferred<InsightNote>();
+        const q = deferred<InsightAnswer>();
+        let questions = 0;
+        const { doc, ai, form, input } = pair(() => n.promise, () => (questions++ === 0 ? q.promise : Promise.resolve(answer(6))));
+        await flush();
+        ai.update(noteView());
+        input.value = 'What changed?';
+        const pendingNote = doc.el('go').fire('click');
+        const pendingQuestion = form.fire('submit');
+        q.resolve(answer(4));
+        await pendingQuestion;
+        n.resolve(noteReply(3));
+        await pendingNote;
+        expect(doc.el('left').textContent).toBe('3 AI notes or questions left today');
+        await form.fire('submit');
+        expect(doc.el('left').textContent).toBe('6 AI notes or questions left today');
+    });
+
+    it('ignores a question from before a note lock and unlock', async () => {
+        const n = deferred<InsightNote>();
+        const q = deferred<InsightAnswer>();
+        const { doc, store, ai, form, input } = pair(() => n.promise, () => q.promise);
+        await flush();
+        ai.update(noteView());
+        input.value = 'What changed?';
+        const pendingQuestion = form.fire('submit');
+        const pendingNote = doc.el('go').fire('click');
+        n.reject(new InsightError('locked'));
+        await pendingNote;
+        doc.el('pass').value = 'new';
+        await doc.el('lock').fire('submit');
+        q.reject(new InsightError('locked'));
+        await pendingQuestion;
+        expect(store.getItem(PASS_KEY)).toBe('new');
+        expect(doc.el('lock').hidden).toBe(true);
+    });
+
+    it('drops a pending question when the view changes', async () => {
+        const q = deferred<InsightAnswer>();
+        const { doc, ai, form, input } = pair(async () => noteReply(4), () => q.promise);
+        await flush();
+        ai.update(noteView());
+        input.value = 'What changed?';
+        const pending = form.fire('submit');
+        ai.update(noteView(61010));
+        q.resolve(answer(1));
+        await pending;
+        expect(doc.el('left').textContent).toBe('5 AI notes or questions left today');
+        expect(doc.panel.querySelector('[data-ask="out"]')!.innerHTML).toBe('');
     });
 });
