@@ -1,5 +1,6 @@
 const COLLECTIONS = ['spherex_dr1', 'spherex_dr1_deep', 'spherex_qr3', 'spherex_qr3_deep'];
 const LIMIT = 8 * 1024 * 1024;
+export const RETRY_DELAYS_MS = Object.freeze([500, 1500] as const);
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'X-Content-Type-Options': 'nosniff' };
 
 export interface SiaParams {
@@ -186,14 +187,51 @@ export async function GET(request: Request): Promise<Response>
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25000);
     try {
-        const response = await fetch(buildUpstreamUrl(params), { signal: controller.signal });
-        if (!response.ok || Number(response.headers.get('content-length')) > LIMIT) {
+        let response: Response | undefined;
+        for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
             try {
-                await response.body?.cancel();
-            } catch {
-                // Still reject the response when upstream cancellation fails.
+                response = await fetch(buildUpstreamUrl(params), { signal: controller.signal });
+            } catch (err) {
+                if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError') || attempt === RETRY_DELAYS_MS.length) {
+                    throw err;
+                }
             }
-            return error(502, 'Invalid upstream response');
+            if (response) {
+                const oversized = Number(response.headers.get('content-length')) > LIMIT;
+                if (response.ok && !oversized) {
+                    break;
+                }
+                try {
+                    await response.body?.cancel();
+                } catch {
+                    // Still reject the response when upstream cancellation fails.
+                }
+                if (controller.signal.aborted) {
+                    throw new Error('Upstream timeout');
+                }
+                if (oversized || ![502, 503, 504].includes(response.status) || attempt === RETRY_DELAYS_MS.length) {
+                    return error(502, 'Invalid upstream response');
+                }
+                response = undefined;
+            }
+            await new Promise<void>((resolve, reject) => {
+                if (controller.signal.aborted) {
+                    reject(new Error('Upstream timeout'));
+                    return;
+                }
+                const onAbort = () => {
+                    clearTimeout(wait);
+                    reject(new Error('Upstream timeout'));
+                };
+                const wait = setTimeout(() => {
+                    controller.signal.removeEventListener('abort', onAbort);
+                    resolve();
+                }, RETRY_DELAYS_MS[attempt]);
+                controller.signal.addEventListener('abort', onAbort, { once: true });
+            });
+        }
+        if (!response || controller.signal.aborted) {
+            throw new Error('Upstream failure');
         }
         const reader = response.body?.getReader();
         const chunks: Uint8Array[] = [];
@@ -201,12 +239,18 @@ export async function GET(request: Request): Promise<Response>
         if (reader) {
             while (true) {
                 const { done, value } = await reader.read();
+                if (controller.signal.aborted) {
+                    throw new Error('Upstream timeout');
+                }
                 if (done) {
                     break;
                 }
                 size += value.length;
                 if (size > LIMIT) {
                     await reader.cancel();
+                    if (controller.signal.aborted) {
+                        throw new Error('Upstream timeout');
+                    }
                     return error(502, 'Upstream response too large');
                 }
                 chunks.push(value);
