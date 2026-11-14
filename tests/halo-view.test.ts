@@ -338,14 +338,14 @@ describe('halo round 11 view', () => {
         expect(h.leftOut).toBe(1);
         expect(h.refs).toBe(first - 1);
         const html = haloHtml(h, 'R Draconis', -1);
-        const out = '<p class="sk-body mute">One comparison star was left out: its readings scattered from look to look more than 3 times as much as the middle value for the other comparison stars. The check below covers only the comparison stars that were kept.</p>';
+        const out = '<p class="sk-body mute">One comparison star was left out: its readings scattered from look to look more than 3 times the median scatter of the other comparison stars. The check below covers only the comparison stars that were kept.</p>';
         expect(html).toContain(`${out}<p class="sk-body mute">${agree}</p>`);
         expect(html).not.toMatch(BANNED);
     });
 
     it('drops the pointer to the check when the module note is hidden or empty', () => {
         const h = { ...haloFor(result([5000, 5000, 5000]), { ring, curve: fake(three(), 0, { note: agree }) })!, leftOut: 2 };
-        expect(haloHtml(h, 'R Draconis', -1)).toContain('2 comparison stars were left out, one at a time: each one’s readings scattered from look to look more than 3 times as much as the middle value for the comparison stars still in use at that step. The check below');
+        expect(haloHtml(h, 'R Draconis', -1)).toContain('2 comparison stars were left out, one at a time: at each step, the left-out star’s readings scattered from look to look more than 3 times the median scatter of the other comparison stars still in use at that step. The check below');
         const quiet = haloHtml({ ...h, note: '' }, 'R Draconis', -1);
         expect(quiet).toContain('still in use at that step.</p>');
         expect(quiet).not.toContain('The check below');

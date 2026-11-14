@@ -215,8 +215,8 @@ export function haloHtml(h: HaloView, name: string, on: number): string
     const out = h.leftOut ?? 0;
     const shown = h.reason ? '' : h.note ?? '';
     const leftOut = out > 0
-        ? (out === 1 ? 'One comparison star was left out: its readings scattered from look to look more than 3 times as much as the middle value for the other comparison stars'
-            : `${out} comparison stars were left out, one at a time: each one’s readings scattered from look to look more than 3 times as much as the middle value for the comparison stars still in use at that step`)
+        ? (out === 1 ? 'One comparison star was left out: its readings scattered from look to look more than 3 times the median scatter of the other comparison stars'
+            : `${out} comparison stars were left out, one at a time: at each step, the left-out star’s readings scattered from look to look more than 3 times the median scatter of the other comparison stars still in use at that step`)
             + (shown ? '. The check below covers only the comparison stars that were kept.' : '.')
         : '';
     const module = [h.caveat, leftOut, shown].filter((t): t is string => !!t)

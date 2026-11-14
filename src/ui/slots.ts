@@ -250,12 +250,16 @@ export function mountFlags(layer: HTMLElement, onChange: () => void, deps: Flags
 // `view.result` and return quickly. Fill both with textContent or trusted SVG only. Return true when there is
 // something to show; false hides the panel and the layer.
 
+// The page asks only for the finder's plain list (one spot each, reading moreLater/lessLater, no star claim):
+// its cause sentences are not safe to show yet (-ba, 14 Nov). Every page call goes through changesFor.
+export const PAGE_CHANGE_OPTIONS = { plain: true } as const;
+
 // The finder's answer for a result, first visit against last, worked out once. Its own error message (too few
 // visits, say) becomes the panel's note; any other failure hides the panel.
 export function changesFor(result: SkyResult, find: typeof findChanges = findChanges): ChangesView | null
 {
     try {
-        return changesView(find(result));
+        return changesView(find(result, {}, PAGE_CHANGE_OPTIONS));
     } catch (e) {
         if (e instanceof ChangeInputError) {
             return changesView({ error: e.message });
