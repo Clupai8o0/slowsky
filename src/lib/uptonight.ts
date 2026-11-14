@@ -6,7 +6,7 @@ export interface UpTonight {
     darkEnd: Date;
     from: Date;
     inside: boolean;
-    sinking: boolean;
+    bestNow: boolean;
     best: Date;
     bestAltDeg: number;
     bestAzDeg: number;
@@ -167,12 +167,12 @@ export function upTonight(raDeg: number, decDeg: number, now: Date, observer: Ob
     const position = altAz(raDeg, decDeg, bestDate, observer);
     const dateDec = precess(raDeg, decDeg, +bestDate).decDeg;
     const maxAltDeg = 90 - Math.abs(observer.latDeg - dateDec);
-    // Highest right now for what is left of the dark, and lower at its end: every later moment of the window is then
-    // no higher than now. A spot that holds its height (the pole) is not called sinking.
-    const sinking = inside && best - from <= 1000 && altitude(end) < altitude(from) - 1e-9;
+    // The highest moment of what is left of the dark is now, to within a second. The sentence then says "highest now"
+    // and nothing about later: the spot may go down all the way, or dip and come part of the way back.
+    const bestNow = inside && best - from <= 1000;
     if (![start, end, +bestDate, position.altDeg, position.azDeg, maxAltDeg].every(Number.isFinite)) {
         return null;
     }
-    return { darkStart: new Date(start), darkEnd: new Date(end), from: new Date(from), inside, sinking, best: bestDate,
+    return { darkStart: new Date(start), darkEnd: new Date(end), from: new Date(from), inside, bestNow, best: bestDate,
         bestAltDeg: position.altDeg, bestAzDeg: position.azDeg, maxAltDeg };
 }

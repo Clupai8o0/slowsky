@@ -27,10 +27,10 @@ describe('astropy fixture', () => {
             expect(+r.best).toBeGreaterThanOrEqual(+r.from - 1000);
             expect(+r.best).toBeLessThanOrEqual(+r.darkEnd + 1000);
             if (c.inside && c.bestAtStart && c.altAfter10 < c.bestAltDeg - 0.05) {
-                expect(r.sinking, c.id).toBe(true);
+                expect(r.bestNow, c.id).toBe(true);
             }
             if (!c.inside || !c.bestAtStart) {
-                expect(r.sinking, c.id).toBe(false);
+                expect(r.bestNow, c.id).toBe(false);
             }
             expect(r.bestAltDeg).toBeLessThanOrEqual(r.maxAltDeg + 0.05);
             const p = altAz(c.ra, c.dec, r.best);
@@ -53,19 +53,19 @@ describe('astropy fixture', () => {
 });
 
 describe('sentences', () => {
-    const base: UpTonight = { darkStart: new Date('2026-11-14T09:00:00Z'), from: new Date('2026-11-14T09:00:00Z'), darkEnd: new Date('2026-11-14T18:30:00Z'), best: new Date('2026-11-14T10:14:00Z'), bestAltDeg: 15, bestAzDeg: 0, maxAltDeg: 20, inside: false, sinking: false };
+    const base: UpTonight = { darkStart: new Date('2026-11-14T09:00:00Z'), from: new Date('2026-11-14T09:00:00Z'), darkEnd: new Date('2026-11-14T18:30:00Z'), best: new Date('2026-11-14T10:14:00Z'), bestAltDeg: 15, bestAzDeg: 0, maxAltDeg: 20, inside: false, bestNow: false };
     const note = 'Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 20:00 to 05:30. This says where the spot is in the sky, not whether anything can be seen there.';
     const cases: [string, Partial<UpTonight>, string, string][] = [
         ['never rises', { maxAltDeg: -2 }, 'This spot never rises above the horizon from Melbourne.', ''],
         ['below', { bestAltDeg: -2 }, 'Tonight from Melbourne: below the horizon while it is dark.', note],
         ['horizon', { bestAltDeg: -0.4 }, 'Tonight from Melbourne: highest in the dark at 21:14, near the horizon, facing north.', note],
-        ['horizon sinking', { bestAltDeg: 0, inside: true, sinking: true }, 'From Melbourne, until the dark ends: near the horizon now, and lower after that, facing north.', note],
-        ['low', { bestAltDeg: 5 }, 'Tonight from Melbourne: very low, at most about 5° above the horizon, at 21:14, facing north.', note],
-        ['low sinking', { bestAltDeg: 5, inside: true, sinking: true }, 'From Melbourne, until the dark ends: very low, about 5° above the horizon now, and lower after that, facing north.', note],
+        ['horizon now', { bestAltDeg: 0, inside: true, bestNow: true }, 'From Melbourne, until the dark ends: highest now, near the horizon, facing north.', note],
+        ['low', { bestAltDeg: 5 }, 'Tonight from Melbourne: highest in the dark at 21:14, very low, about 5° above the horizon, facing north.', note],
+        ['low now', { bestAltDeg: 5, inside: true, bestNow: true }, 'From Melbourne, until the dark ends: highest now, very low, about 5° above the horizon, facing north.', note],
         ['high', {}, 'Tonight from Melbourne: highest in the dark at 21:14, about 15° above the horizon, facing north.', note],
-        ['high sinking', { inside: true, sinking: true }, 'From Melbourne, until the dark ends: about 15° above the horizon now, and lower after that, facing north.', note],
+        ['high now', { inside: true, bestNow: true }, 'From Melbourne, until the dark ends: highest now, about 15° above the horizon, facing north.', note],
         ['overhead', { bestAltDeg: 85 }, 'Tonight from Melbourne: highest in the dark at 21:14, about 85° above the horizon, almost overhead.', note],
-        ['overhead sinking', { bestAltDeg: 85, inside: true, sinking: true }, 'From Melbourne, until the dark ends: about 85° above the horizon now, almost overhead, and lower after that.', note],
+        ['overhead now', { bestAltDeg: 85, inside: true, bestNow: true }, 'From Melbourne, until the dark ends: highest now, about 85° above the horizon, almost overhead.', note],
     ];
     it.each(cases)('prints %s exactly', (_name, changes, line, expectedNote) => {
         const text = upTonightText({ ...base, ...changes })!;
@@ -88,21 +88,21 @@ describe('sentences', () => {
         expect(upTonightText({ ...base, from, best: from, inside: true })!.line).toContain('at 03:01');
         expect(upTonightText({ ...base, from: new Date('2026-11-14T18:12:30Z'), darkEnd: end, best: end })!.line).toContain('at 05:12');
     });
-    it('describes the real sinking case as now', () => {
+    it('says "highest now" for a real spot that is going down', () => {
         const r = upTonight(348.5, -39.58, new Date('2026-11-14T16:00:00Z'))!;
         const text = upTonightText(r)!;
-        expect(text.line).toContain('now, and lower after that');
+        expect(text.line).toContain('highest now, ');
         expect(text.line).not.toContain('21:14');
     });
-    it('says "now" for a spot going down in the last minutes of the dark, never "highest"', () => {
+    it('says "highest now" for a spot going down in the last minutes of the dark, never a clock time', () => {
         const first = upTonight(331.04414658852124, -56.782844195116105, new Date('2026-11-15T16:00:00Z'))!;
         for (const left of [61000, 90000, 9 * 60000]) {
             const r = upTonight(331.04414658852124, -56.782844195116105, new Date(+first.darkEnd - left))!;
             expect(r.inside, String(left)).toBe(true);
-            expect(r.sinking, String(left)).toBe(true);
+            expect(r.bestNow, String(left)).toBe(true);
             const line = upTonightText(r)!.line;
-            expect(line, String(left)).toContain('now, and lower after that');
-            expect(line, String(left)).not.toContain('highest');
+            expect(line, String(left)).toContain('highest now, ');
+            expect(line, String(left)).not.toMatch(/ at \d\d:\d\d/);
         }
     });
     it('speaks about the next dark when under a minute of this one is left', () => {
@@ -111,7 +111,7 @@ describe('sentences', () => {
         for (const left of [5000, 30000, 59000]) {
             const r = upTonight(331.04414658852124, -56.782844195116105, new Date(+first.darkEnd - left))!;
             expect(r.inside, String(left)).toBe(false);
-            expect(r.sinking, String(left)).toBe(false);
+            expect(r.bestNow, String(left)).toBe(false);
             expect(Math.abs(+r.darkStart - +next.darkStart), String(left)).toBeLessThan(1000);
             expect(+r.darkStart, String(left)).toBeGreaterThan(+first.darkEnd);
             expect(upTonightText(r)!.line, String(left)).toMatch(/^Tonight from Melbourne: /);
@@ -137,7 +137,7 @@ describe('sentences', () => {
             }
         }
     });
-    it('calls a spot sinking when it goes down through the last minutes towards its lowest point', () => {
+    it('says "highest now" for a spot going down through the last minutes towards its lowest point', () => {
         const night = upTonight(0, -70, new Date('2026-11-15T16:00:00Z'))!;
         let found = 0;
         for (let ra = 0; ra < 360; ra += 0.25) {
@@ -148,13 +148,13 @@ describe('sentences', () => {
             if (end < here - 1e-6 && after > end) {
                 found++;
                 const r = upTonight(ra, -70, new Date(now))!;
-                expect(r.sinking, String(ra)).toBe(true);
-                expect(upTonightText(r)!.line, String(ra)).toContain('now, and lower after that');
+                expect(r.bestNow, String(ra)).toBe(true);
+                expect(upTonightText(r)!.line, String(ra)).toContain('highest now, ');
             }
         }
         expect(found).toBeGreaterThan(0);
     });
-    it('"now, and lower after that" holds for every later minute, also for a spot that dips and comes part of the way back', () => {
+    it('"highest now" holds for every later minute, also for a spot that dips and comes part of the way back', () => {
         const night = upTonight(0, -70, new Date('2026-11-15T16:00:00Z'))!;
         let said = 0;
         for (let ra = 0; ra < 360; ra += 7.5) {
@@ -168,10 +168,11 @@ describe('sentences', () => {
                     for (let at = +now + 60000; at <= +r.darkEnd; at += 60000) {
                         later = Math.max(later, altAz(ra, dec, new Date(at)).altDeg);
                     }
-                    if (line.includes('lower after that')) {
+                    expect(line, `${ra} ${dec} ${left}`).not.toMatch(/lower|sink|higher/);
+                    if (line.includes('highest now')) {
                         said++;
-                        expect(later, `${ra} ${dec} ${left}`).toBeLessThan(here);
-                    } else if (line.includes('highest')) {
+                        expect(later, `${ra} ${dec} ${left}`).toBeLessThan(here + 1e-6);
+                    } else if (line.includes('highest at')) {
                         expect(later, `${ra} ${dec} ${left}`).toBeGreaterThan(here - 1e-6);
                     }
                 }
@@ -184,14 +185,44 @@ describe('sentences', () => {
         expect(upTonightText(inside)!.line).toBe('From Melbourne, until the dark ends: highest at 21:14, about 15° above the horizon, facing north.');
         expect(upTonightText({ ...inside, bestAltDeg: 0.4 })!.line).toBe('From Melbourne, until the dark ends: highest at 21:14, near the horizon, facing north.');
         expect(upTonightText({ ...inside, bestAltDeg: 85 })!.line).toBe('From Melbourne, until the dark ends: highest at 21:14, about 85° above the horizon, almost overhead.');
-        expect(upTonightText({ ...inside, bestAltDeg: 5 })!.line).toBe('From Melbourne, until the dark ends: very low, at most about 5° above the horizon, at 21:14, facing north.');
+        expect(upTonightText({ ...inside, bestAltDeg: 5 })!.line).toBe('From Melbourne, until the dark ends: highest at 21:14, very low, about 5° above the horizon, facing north.');
         // Barnard's Star at Melbourne midnight: it was up at the start of the dark and has set.
         const set = upTonight(269.4520769586187, 4.693364966576667, new Date('2026-11-15T13:00:00Z'))!;
         expect(set.inside).toBe(true);
         expect(upTonightText(set)!.line).toBe('From Melbourne, until the dark ends: below the horizon.');
-        for (const r of [inside, { ...inside, sinking: true }, { ...inside, bestAltDeg: -2 }, set]) {
+        for (const r of [inside, { ...inside, bestNow: true }, { ...inside, bestAltDeg: -2 }, set]) {
             expect(upTonightText(r)!.line).not.toMatch(/in the dark|while it is dark|Tonight|rest of the night/);
         }
+    });
+    it('says only "highest now" for a spot that dips and then climbs for hours before the dark ends', () => {
+        // Dec -60 from Melbourne at 21:30: spots that are going down towards their lowest point, then rise until dawn
+        // but not back to their height at 21:30. The line must not say or suggest that they keep going down.
+        const now = new Date('2026-11-15T10:30:00Z');
+        let found = 0;
+        for (let ra = 0; ra < 360; ra += 2.5) {
+            const r = upTonight(ra, -60, now)!;
+            const here = altAz(ra, -60, now).altDeg;
+            const end = altAz(ra, -60, r.darkEnd).altDeg;
+            let lowest = Infinity;
+            for (let at = +now; at <= +r.darkEnd; at += 60000) {
+                lowest = Math.min(lowest, altAz(ra, -60, new Date(at)).altDeg);
+            }
+            if (end < here - 0.5 && end - lowest > 5) {
+                found++;
+                expect(r.bestNow, String(ra)).toBe(true);
+                expect(upTonightText(r)!.line, String(ra)).toMatch(/^From Melbourne, until the dark ends: highest now, about \d\d° above the horizon, facing south(-west)?\.$/);
+            }
+        }
+        expect(found).toBeGreaterThan(3);
+    });
+    it('says "highest now" when the spot holds its height or comes back to it exactly', () => {
+        // Close to the pole the height barely changes, and a tie with a later moment is still "highest now".
+        const r = upTonight(0, -89.995, new Date('2026-11-15T17:52:00Z'))!;
+        expect(r.inside).toBe(true);
+        expect(upTonightText(r)!.line).toMatch(/^From Melbourne, until the dark ends: highest (now|at 04:5\d), about 38° above the horizon, facing south\.$/);
+        expect(upTonightText({ ...base, inside: true, bestNow: true, best: base.from })!.line).toBe('From Melbourne, until the dark ends: highest now, about 15° above the horizon, facing north.');
+        // bestNow is only ever set inside the dark; outside it the line keeps its clock time.
+        expect(upTonightText({ ...base, bestNow: true })!.line).toBe('Tonight from Melbourne: highest in the dark at 21:14, about 15° above the horizon, facing north.');
     });
     it('prints the dark hours in the note, start rounded up and end rounded down', () => {
         const text = upTonightText({ ...base, darkStart: new Date('2026-11-14T09:00:20Z'), darkEnd: new Date('2026-11-14T18:29:59Z') })!;
