@@ -81,6 +81,23 @@ describe('Candidate changes panel', () => {
 });
 
 describe('round 11: marks at every end', () => {
+    it('keeps a lone mark unchanged and separates overlapping numbers', () => {
+        const first = cand('a', 50, 50, 'A (candidate).');
+        const one = changesView(found([first], []));
+        expect(changesMarks(one, 100, 100)).toBe('<svg class="sk-chg-marks" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50.0" cy="50.0" r="5.0"/><text x="50.0" y="42.5" font-size="8.0">1</text></svg>');
+        const both = changesMarks(changesView(found([first, cand('b', 54, 50, 'B (candidate).')], [])), 100, 100);
+        expect(both).toBe('<svg class="sk-chg-marks" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50.0" cy="50.0" r="5.0"/><text x="50.0" y="42.5" font-size="8.0">1</text><circle cx="54.0" cy="50.0" r="5.0"/><text x="54.0" y="62.0" font-size="8.0">2</text></svg>');
+    });
+
+    it('tries left and then right when the lower position is outside the picture', () => {
+        const items = [cand('a', 50, 90, 'A (candidate).'), cand('b', 54, 90, 'B (candidate).'), cand('c', 54, 90, 'C (candidate).')];
+        const svg = changesMarks(changesView(found(items, [])), 100, 100);
+        expect([...svg.matchAll(/<text x="([^"]+)" y="([^"]+)" font-size="[^"]+">(\d+)<\/text>/g)]
+            .map(match => [match[1], match[2], match[3]])).toEqual([['50.0', '82.5', '1'], ['45.2', '92.8', '2'], ['62.8', '92.8', '3']]);
+        expect([...svg.matchAll(/<circle cx="([^"]+)" cy="([^"]+)"/g)].map(match => [match[1], match[2]]))
+            .toEqual([['50.0', '90.0'], ['54.0', '90.0'], ['54.0', '90.0']]);
+    });
+
     it('draws one ring per end at the finder\'s aperture, numbered like the list', () => {
         const pair = { ...cand('p', 40, 20, 'Two spots (candidate).'), reading: 'pair' as const,
             ends: [{ visit: 'earlier' as const, x: 30, y: 20, radiusPix: 4 }, { visit: 'later' as const, x: 50, y: 20, radiusPix: 1 }] };
@@ -176,8 +193,8 @@ describe('plain list (compareVisits plain: true)', () => {
     it('P2 prints each new sentence exactly and strips only its S/N figure', () => {
         const ending = "a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
         for (const [reading, start] of [
-            ['moreLater', 'Compared with the sky around it, there is more light here in the later visit than in the earlier one'],
-            ['lessLater', 'Compared with the sky around it, there is less light here in the later visit than in the earlier one'],
+            ['moreLater', 'Measured against the sky around it in each visit, there is more light here in the later visit than in the earlier one'],
+            ['lessLater', 'Measured against the sky around it in each visit, there is less light here in the later visit than in the earlier one'],
             ['unclear', 'The light here differs between the two visits, and which visit has more is not clear'],
         ] as const) {
             const sentence = `${start}; ${ending} (S/N 9.0; candidate). A catalogue star lies 8.0″ away.`;

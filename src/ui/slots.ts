@@ -391,8 +391,8 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
                 }
                 const listNotes = info ? plainListNotes(screened.kept, info.usedErrorMap, info.matchArcsec) : [];
                 const notes = info ? found.notes.flatMap(note => note.startsWith('Listed with spots that have no catalogue star within ')
-                    ? listNotes.filter(n => n.startsWith('Listed with spots that have no catalogue star within '))
-                    : note.startsWith('S/N is left out for ') ? listNotes.filter(n => n.startsWith('S/N is left out for '))
+                    ? listNotes
+                    : note.startsWith('S/N is left out for ') ? []
                     : !screened.kept.length && note.startsWith('No catalogue stars for this view:') ? [] : [note]) : found.notes;
                 resultView = { ...found, candidates: screened.kept, lead: [...(screened.kept.length ? (found.lead ?? []).filter((s) => s === PLAIN_LEAD) : []), ...screened.lead],
                     ran: screened.dropNote && !screened.kept.length ? false : found.ran,
