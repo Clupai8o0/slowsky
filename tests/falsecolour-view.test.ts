@@ -1,12 +1,109 @@
 import { describe, expect, it } from 'vitest';
-import { colourSentence } from '../src/lib/falsecolour-view';
-import type { ColourAt } from '../src/lib/falsecolour';
+import { colourSentence, falseColourView } from '../src/lib/falsecolour-view';
+import { colourAt, falseColourRgba, pairStretch, type ColourAt } from '../src/lib/falsecolour';
+import { stackVisit } from '../src/lib/stack';
+import type { SkyResult } from '../src/lib/source';
+import type { OutputGrid, RegriddedFrame } from '../src/lib/types';
 import text from '../src/lib/falsecolour-view.ts?raw';
 import slotText from '../src/ui/slots.ts?raw';
 
 const both: ColourAt = { short: 4, long: 10, snrShort: 14.3, snrLong: 30.7, index: 0.423, seen: 'both', valid: true };
+const grid: OutputGrid = { center: { ra: 1, dec: 2 }, fovDeg: 0.1, pixelArcsec: 6.15, width: 31, height: 31 };
+const radii = { radius: 2, annulusIn: 4, annulusOut: 7 };
+
+function frame(lambda: number, start = 60000, end = start + 0.001, skyLevel = 0): RegriddedFrame
+{
+    const data = new Float32Array(grid.width * grid.height);
+    for (let y = 0; y < grid.height; y++) {
+        for (let x = 0; x < grid.width; x++) {
+            data[y * grid.width + x] = skyLevel + ((x * 13 + y * 7) % 11 - 5);
+        }
+    }
+    return { frame: { detector: 1, tMin: start, tMax: end } as RegriddedFrame['frame'], grid, data, lambdaAtCenter: lambda, bandwidthAtCenter: 0.01 };
+}
+
+function sky(frames: RegriddedFrame[]): SkyResult
+{
+    return { source: 'live', grid, frames: frames.map(item => ({ frame: item, label: '' })), locked: [], lambda: frames[0]!.lambdaAtCenter, stars: [], credits: [], notes: [] };
+}
+
+function at(mjd: number): [number, number]
+{
+    return [mjd, mjd + 0.001];
+}
+
+describe('false colour view coverage', () => {
+    it('counts and compares only frames finite at the centre', () => {
+        const first = frame(1.25, 60000);
+        const second = frame(1.25, 60001);
+        const blank = frame(1.25, 60010);
+        blank.data[15 * grid.width + 15] = NaN;
+        const sentence = falseColourView(sky([first, second, blank]), sky([frame(4.6, 60000), frame(4.6, 60001)]), radii).sentence;
+        expect(sentence).toContain('Blue: 1.25 µm (the shorter wavelength), 2 frames, 2023-02-25 and 2023-02-26.');
+        expect(sentence).not.toContain('2023-03-07');
+        expect(sentence).not.toContain('The two colours were not taken at the same times');
+    });
+
+    it('rejects a false signal caused by incomplete sky-ring coverage without changing the tint', () => {
+        const low = frame(1.25, 60000, 60000.001, 0);
+        const high = frame(1.25, 60000, 60000.001, 100);
+        const long = frame(4.6);
+        for (let y = 0; y < grid.height; y++) {
+            for (let x = 0; x < grid.width; x++) {
+                const d2 = (x - 15) ** 2 + (y - 15) ** 2;
+                if (d2 >= radii.annulusIn ** 2 && d2 <= radii.annulusOut ** 2 && x >= 13) {
+                    high.data[y * grid.width + x] = NaN;
+                }
+            }
+        }
+        const stacked = stackVisit([low, high], { clipSigma: Infinity, background: 'none' }).data;
+        expect(colourAt(stacked, long.data, grid.width, grid.height, { x: 15, y: 15 }, { pixelArcsec: grid.pixelArcsec, ...radii }).seen).toBe('short');
+        const incomplete = falseColourView(sky([low, high]), sky([long]), radii);
+        expect(incomplete.sentence).toContain('1.25 µm cannot be measured here (frames do not all cover this spot).');
+        expect(incomplete.sentence).not.toContain('seen at 1.25 µm');
+        const stretch = pairStretch(stacked, long.data);
+        expect(incomplete.rgba).toEqual(falseColourRgba(stacked, long.data, stretch.sShort, stretch.sLong));
+        const outside = frame(1.25, 60000, 60000.001, 100);
+        outside.data[0] = NaN;
+        expect(falseColourView(sky([low, outside]), sky([long]), radii).sentence).not.toContain('frames do not all cover this spot');
+        const blank = frame(4.6);
+        blank.data[15 * grid.width + 15] = NaN;
+        const mixed = falseColourView(sky([low, high]), sky([blank]), radii).sentence;
+        expect(mixed).toContain('1.25 µm cannot be measured here (frames do not all cover this spot); 4.60 µm cannot be measured here (blank pixels).');
+    });
+});
 
 describe('false colour sentence', () => {
+    it('distinguishes a weak finite band from a blank band in either order', () => {
+        expect(colourSentence(1.25, 4.6, { ...both, short: 10, snrShort: 2.5, long: NaN, seen: 'neither', valid: false }))
+            .toContain('At the centre: no clear signal at 1.25 µm (clear means at least 3 times the noise); 4.60 µm cannot be measured here (blank pixels).');
+        expect(colourSentence(1.25, 4.6, { ...both, short: NaN, long: 10, snrLong: 2.5, seen: 'neither', valid: false }))
+            .toContain('At the centre: no clear signal at 4.60 µm (clear means at least 3 times the noise); 1.25 µm cannot be measured here (blank pixels).');
+    });
+
+    it('uses midpoint dates for one, two and more distinct dates', () => {
+        const label = (times: [number, number][]) => colourSentence(1.25, 4.6, both, [times, times]);
+        expect(label([[60000.9995, 60001.0007963]])).toContain('1 frame, 2023-02-26.');
+        expect(label([at(60000), at(60000.5)])).toContain('2 frames, 2023-02-25.');
+        expect(label([at(60000), at(60002)])).toContain('2 frames, 2023-02-25 and 2023-02-27.');
+        expect(label([at(60002), at(60000), at(60001)])).toContain('3 frames, 2023-02-25 to 2023-02-27.');
+    });
+
+    it('prints unavailable dates and zero frames for empty times', () => {
+        expect(colourSentence(1.25, 4.6, both, [[], [at(60000)]]))
+            .toContain('Blue: 1.25 µm (the shorter wavelength), 0 frames, dates unavailable.');
+    });
+
+    it('places the reading before its method and only explains an index when printed', () => {
+        const withIndex = colourSentence(1.25, 4.6, both, [[at(60000)], [at(60001)]]);
+        expect(withIndex.indexOf('The two colours were not taken')).toBeLessThan(withIndex.indexOf('At the centre:'));
+        expect(withIndex.indexOf('At the centre:')).toBeLessThan(withIndex.indexOf('The colour index is'));
+        expect(withIndex.indexOf('The colour index is')).toBeLessThan(withIndex.indexOf('The reading adds up'));
+        expect(withIndex.endsWith('tint of the middle pixels.')).toBe(true);
+        const noIndex = colourSentence(1.25, 4.6, { ...both, seen: 'short', valid: false });
+        expect(noIndex).not.toContain('The colour index is');
+        expect(noIndex.indexOf('At the centre:')).toBeLessThan(noIndex.indexOf('The reading adds up'));
+    });
     it('formats both bands, the signed index and measured wavelengths', () => {
         const text = colourSentence(1.234, 4.567, both);
         expect(text).toContain('Blue: 1.23 µm');

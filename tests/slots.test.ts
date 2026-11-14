@@ -208,7 +208,7 @@ describe('false colour slot', () => {
         h.calls[0]!.resolve(sky([c]));
         await flush();
         const note = h.slot.update(v, true).note;
-        expect(note).toContain('Blue: 1.23 µm (the shorter wavelength), 2 frames, 2025-07-01 to 2026-09-01.');
+        expect(note).toContain('Blue: 1.23 µm (the shorter wavelength), 2 frames, 2025-07-01 and 2026-09-01.');
         expect(note).toContain('Orange: 4.57 µm (the longer wavelength), 1 frame, 2025-11-21.');
         expect(note).toContain('The two colours were not taken at the same times, so anything that moved or changed in between shows a false tint.');
     });

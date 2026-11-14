@@ -17,12 +17,14 @@ function frameTimes(frames: RegriddedFrame[]): [number, number][]
 
 function dates(times: [number, number][]): string
 {
-    if (times.some(([start, end]) => !Number.isFinite(start) || !Number.isFinite(end))) {
+    if (times.length === 0 || times.some(([start, end]) => !Number.isFinite(start) || !Number.isFinite(end))) {
         return 'dates unavailable';
     }
-    const start = mjdToDate(Math.min(...times.map(time => time[0])));
-    const end = mjdToDate(Math.max(...times.map(time => time[1])));
-    return start === end ? start : `${start} to ${end}`;
+    const days = [...new Set(times.map(([start, end]) => mjdToDate((start + end) / 2)))].sort();
+    if (days.length === 1) {
+        return days[0]!;
+    }
+    return days.length === 2 ? `${days[0]} and ${days[1]}` : `${days[0]} to ${days[days.length - 1]}`;
 }
 
 function sameTimes(a: [number, number][], b: [number, number][]): boolean
@@ -48,19 +50,29 @@ function signed(index: number): string
     return `${index > 0 ? '+' : '−'}${size}`;
 }
 
-export function colourSentence(lambdaShort: number, lambdaLong: number, reading: ColourAt, times?: [[number, number][], [number, number][]]): string
+export function colourSentence(lambdaShort: number, lambdaLong: number, reading: ColourAt, times?: [[number, number][], [number, number][]], incomplete: [boolean, boolean] = [false, false]): string
 {
     const legend = falseColourLegend(lambdaShort, lambdaLong);
     let centre: string;
+    let indexPrinted = false;
     if (!Number.isFinite(reading.short) || !Number.isFinite(reading.long)) {
-        if (reading.seen === 'short' && Number.isFinite(reading.short) && !Number.isFinite(reading.long)) {
-            centre = `At the centre: seen at ${lambdaShort.toFixed(2)} µm only (signal-to-noise ${snr(reading.snrShort)}); ${lambdaLong.toFixed(2)} µm cannot be measured here (blank pixels).`;
-        } else if (reading.seen === 'long' && Number.isFinite(reading.long) && !Number.isFinite(reading.short)) {
-            centre = `At the centre: seen at ${lambdaLong.toFixed(2)} µm only (signal-to-noise ${snr(reading.snrLong)}); ${lambdaShort.toFixed(2)} µm cannot be measured here (blank pixels).`;
+        const finiteShort = Number.isFinite(reading.short);
+        const finiteLong = Number.isFinite(reading.long);
+        const reason = (band: number) => incomplete[band] ? 'frames do not all cover this spot' : 'blank pixels';
+        if (finiteShort !== finiteLong) {
+            const finiteLambda = finiteShort ? lambdaShort : lambdaLong;
+            const blankLambda = finiteShort ? lambdaLong : lambdaShort;
+            const seen = reading.seen === (finiteShort ? 'short' : 'long');
+            const signal = seen ? `seen at ${finiteLambda.toFixed(2)} µm only (signal-to-noise ${snr(finiteShort ? reading.snrShort : reading.snrLong)})`
+                : `no clear signal at ${finiteLambda.toFixed(2)} µm (clear means at least ${MIN_COLOUR_SNR} times the noise)`;
+            centre = `At the centre: ${signal}; ${blankLambda.toFixed(2)} µm cannot be measured here (${reason(finiteShort ? 1 : 0)}).`;
+        } else if (incomplete[0] || incomplete[1]) {
+            centre = `At the centre: ${lambdaShort.toFixed(2)} µm cannot be measured here (${reason(0)}); ${lambdaLong.toFixed(2)} µm cannot be measured here (${reason(1)}).`;
         } else {
             centre = 'At the centre: cannot be measured here (blank pixels).';
         }
     } else if (reading.seen === 'both' && reading.valid && Number.isFinite(reading.index)) {
+        indexPrinted = true;
         centre = `At the centre: seen at both wavelengths, colour index ${signed(reading.index)} (signal-to-noise ${snr(reading.snrShort)} at ${lambdaShort.toFixed(2)} µm and ${snr(reading.snrLong)} at ${lambdaLong.toFixed(2)} µm).`;
     } else if (reading.seen === 'short' || reading.seen === 'long') {
         const isShort = reading.seen === 'short';
@@ -72,11 +84,34 @@ export function colourSentence(lambdaShort: number, lambdaLong: number, reading:
     }
     const band = (label: string, entries: [number, number][]) => `${label}, ${entries.length} ${entries.length === 1 ? 'frame' : 'frames'}, ${dates(entries)}.`;
     const labels = times ? `${band(legend.blue, times[0])} ${band(legend.red, times[1])}` : `${legend.blue}. ${legend.red}.`;
-    const missingTimes = times?.some(entries => entries.some(time => time.some(t => !Number.isFinite(t))));
+    const missingTimes = times?.some(entries => entries.length === 0 || entries.some(time => time.some(t => !Number.isFinite(t))));
     const warning = missingTimes ? ' The frame dates are unavailable, so the two colours may have been taken at different times.'
         : times && !sameTimes(times[0], times[1])
             ? ' The two colours were not taken at the same times, so anything that moved or changed in between shows a false tint.' : '';
-    return `${labels} ${legend.note}${warning} The colour index is (long − short) / (long + short) of the two brightness sums. The reading adds up a small circle of pixels and takes off the sky just around it, so it need not match the tint of the middle pixels. ${centre}`;
+    const indexMethod = indexPrinted ? ' The colour index is (long − short) / (long + short) of the two brightness sums.' : '';
+    return `${labels} ${legend.note}${warning} ${centre}${indexMethod} The reading adds up a small circle of pixels and takes off the sky just around it, so it need not match the tint of the middle pixels.`;
+}
+
+function incompleteCoverage(n: Uint16Array, width: number, height: number, radius: number, annulusOut: number): boolean
+{
+    const cx = (width - 1) / 2;
+    const cy = (height - 1) / 2;
+    let full = 0;
+    for (let y = Math.max(0, Math.ceil(cy - radius)); y <= Math.min(height - 1, Math.floor(cy + radius)); y++) {
+        for (let x = Math.max(0, Math.ceil(cx - radius)); x <= Math.min(width - 1, Math.floor(cx + radius)); x++) {
+            if ((x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2) {
+                full = Math.max(full, n[y * width + x]!);
+            }
+        }
+    }
+    for (let y = Math.max(0, Math.ceil(cy - annulusOut)); y <= Math.min(height - 1, Math.floor(cy + annulusOut)); y++) {
+        for (let x = Math.max(0, Math.ceil(cx - annulusOut)); x <= Math.min(width - 1, Math.floor(cx + annulusOut)); x++) {
+            if ((x - cx) ** 2 + (y - cy) ** 2 <= annulusOut ** 2 && n[y * width + x]! < full) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: number; annulusIn: number; annulusOut: number }): { rgba: Uint8ClampedArray; width: number; height: number; sentence: string }
@@ -93,8 +128,8 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
         const covered = frames.filter(frame => Number.isFinite(frame.data[centre]));
         const wavelengths = covered.length ? covered : frames;
         const lambda = wavelengths.reduce((sum, frame) => sum + frame.lambdaAtCenter, 0) / wavelengths.length;
-        const data = stackVisit(frames, { clipSigma: Infinity, background: 'none' }).data;
-        return { lambda, data, times: frameTimes(frames) };
+        const { data, n } = stackVisit(frames, { clipSigma: Infinity, background: 'none' });
+        return { lambda, data, n, times: frameTimes(wavelengths) };
     }).sort((x, y) => x.lambda - y.lambda);
     const short = bands[0]!;
     const long = bands[1]!;
@@ -102,5 +137,17 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     const rgba = falseColourRgba(short.data, long.data, stretch.sShort, stretch.sLong);
     const reading = colourAt(short.data, long.data, grid.width, grid.height,
         { x: (grid.width - 1) / 2, y: (grid.height - 1) / 2 }, { pixelArcsec: grid.pixelArcsec, ...radii, minSnr: MIN_COLOUR_SNR });
-    return { rgba, width: grid.width, height: grid.height, sentence: colourSentence(short.lambda, long.lambda, reading, [short.times, long.times]) };
+    const incomplete: [boolean, boolean] = [
+        Number.isFinite(reading.short) && incompleteCoverage(short.n, grid.width, grid.height, radii.radius, radii.annulusOut),
+        Number.isFinite(reading.long) && incompleteCoverage(long.n, grid.width, grid.height, radii.radius, radii.annulusOut),
+    ];
+    if (incomplete[0] || incomplete[1]) {
+        const seenShort = !incomplete[0] && (reading.seen === 'short' || reading.seen === 'both');
+        const seenLong = !incomplete[1] && (reading.seen === 'long' || reading.seen === 'both');
+        reading.short = incomplete[0] ? NaN : reading.short;
+        reading.long = incomplete[1] ? NaN : reading.long;
+        reading.seen = seenShort ? 'short' : seenLong ? 'long' : 'neither';
+        reading.valid = false;
+    }
+    return { rgba, width: grid.width, height: grid.height, sentence: colourSentence(short.lambda, long.lambda, reading, [short.times, long.times], incomplete) };
 }
