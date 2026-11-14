@@ -94,8 +94,20 @@ export function initLayout(root: HTMLElement): Layout
         }
     }
 
-    function apply(): void
+    // Everything that reads the layout (fit's gutter widths, arrange's --under, padding and sky top) runs after the
+    // fold state is on the page, so a fold or Focus sizes the sky exactly as a reload in the same state would.
+    function apply(refit = true): void
     {
+        for (const s of ['left', 'right'] as Side[]) {
+            if (folded[s]) {
+                root.dataset[s] = 'min';
+            } else {
+                delete root.dataset[s];
+            }
+        }
+        if (refit) {
+            fit();
+        }
         for (const s of ['left', 'right'] as Side[]) {
             const w = width[s];
             const prop = s === 'left' ? '--lw' : '--rw';
@@ -103,11 +115,6 @@ export function initLayout(root: HTMLElement): Layout
                 root.style.removeProperty(prop);
             } else {
                 root.style.setProperty(prop, `${w}px`);
-            }
-            if (folded[s]) {
-                root.dataset[s] = 'min';
-            } else {
-                delete root.dataset[s];
             }
             const open = !folded[s];
             root.querySelectorAll(`[data-act="fold-${s}"]`).forEach((b) => {
@@ -133,6 +140,9 @@ export function initLayout(root: HTMLElement): Layout
             root.style.removeProperty('--sky');
             return;
         }
+        // Measure from the stacked layout, as the first arrange after a reload does, whatever it was a moment ago.
+        delete root.dataset.side;
+        root.style.removeProperty('--sky');
         const vw = innerWidth;
         const vh = innerHeight;
         const cs = getComputedStyle(root);
@@ -206,7 +216,6 @@ export function initLayout(root: HTMLElement): Layout
     {
         animate(v ? null : s, () => {
             folded[s] = v;
-            fit();
             apply();
         });
         save();
@@ -219,7 +228,6 @@ export function initLayout(root: HTMLElement): Layout
         animate(opening, () => {
             folded.left = on;
             folded.right = on;
-            fit();
             apply();
         });
         save();
@@ -229,7 +237,7 @@ export function initLayout(root: HTMLElement): Layout
     {
         folded[s] = false;
         width[s] = w === undefined ? undefined : clamp(s, w);
-        apply();
+        apply(false);
     }
 
     // ---------- drag ----------
@@ -310,12 +318,10 @@ export function initLayout(root: HTMLElement): Layout
     addEventListener('resize', () => {
         cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => {
-            fit();
             apply();
         });
     });
     wide.addEventListener('change', () => {
-        fit();
         apply();
     });
 
@@ -323,7 +329,6 @@ export function initLayout(root: HTMLElement): Layout
     const narrow = matchMedia('(max-width: 1080px)');
     narrow.addEventListener('change', () => placeAbout(root, !narrow.matches));
     placeAbout(root, !narrow.matches);
-    fit();
     apply();
     return { toggleFocus };
 }

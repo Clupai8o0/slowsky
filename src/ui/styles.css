@@ -25,7 +25,7 @@ button { cursor: pointer; }
        enters 240 ms, exits shorter than enters. Nothing over 320 ms, nothing linear, nothing that overshoots. */
     --ease: cubic-bezier(.23, 1, .32, 1);
     --ease-move: cubic-bezier(.5, 0, .1, 1);
-    --t-press: 110ms; --t-hover: 150ms; --t-move: 220ms; --t-enter: 240ms; --t-exit: 140ms; --t-reveal: 180ms;
+    --t-press: 110ms; --t-hover: 150ms; --t-move: 220ms; --t-enter: 240ms; --t-exit: 140ms;
     --head: 62px;
     --gap: 22px;
     /* The sky's side when the controls sit under it: the window height less everything stacked above and below. */
@@ -63,11 +63,12 @@ button { cursor: pointer; }
 .sk-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 
 /* ---------- columns ---------- */
-/* A rail scrolls when it is narrow or its notes run long; the thin bar and a soft fade at the bottom say so. */
+/* A rail scrolls when it is narrow or its notes run long; the thin bar and a soft fade at the bottom say so. The
+   bottom padding (48 px) is deeper than the fade (36 px), so at the end of the scroll the last line is fully clear. */
 .sk-rail { min-width: 0; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .22) transparent; display: flex; flex-direction: column; }
 /* The scrollbar lives in a 12 px lane outside the content (the margin gives the lane back), so it never sits on text. */
 @media (min-width: 1081px) {
-    .sk-rail { padding-right: 12px; margin-right: -12px; scrollbar-gutter: stable; padding-bottom: 28px;
+    .sk-rail { padding-right: 12px; margin-right: -12px; scrollbar-gutter: stable; padding-bottom: 48px;
         -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 36px), transparent); }
 }
 /* ---------- dividers: a clear full-height line in each gutter; drag it to resize, or fold the rail ---------- */
@@ -137,7 +138,7 @@ button { cursor: pointer; }
     .sk[data-side] .sk-sub, .sk[data-side] .sk-hint { order: 2; margin-top: 12px; }
     .sk[data-side] .sk-strip { order: 3; flex-wrap: wrap; padding-top: 16px; }
     .sk[data-side] .sk-legrow { order: 4; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 18px; padding-top: 0; }
-    .sk[data-side] .sk-legrow > .sk-fov { margin-left: 0; order: 3; }
+    .sk[data-side] .sk-legrow > .sk-fov { margin-left: 0; }
     .sk[data-side] .sk-flagnote { order: 4; }
 }
 @keyframes sk-in-l { from { opacity: 0; transform: translateX(-8px); } }
@@ -157,6 +158,8 @@ button { cursor: pointer; }
 /* Small icons inside a line of text. */
 .sk-fov .ic svg, .sk-m-details dd a .ic svg { width: 13px; height: 13px; }
 .sk-m-details dd a { display: inline-flex; align-items: center; gap: 5px; }
+/* Links in the facts are as tall as their hit area, so two links on neighbouring rows never share a tap. */
+.sk-m-details dd a, .sk-m-details dd .sk-src { display: inline-flex; align-items: center; min-height: 32px; }
 .sk-body { margin: 0; font-size: var(--fs-body); line-height: 1.6; color: var(--ink2); text-wrap: pretty; max-width: 64ch; }
 .sk-body.mute { color: var(--mute); }
 
@@ -212,12 +215,22 @@ button { cursor: pointer; }
 .sk-m-watch > * { flex: none; }
 .sk-mhrow { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 32px; margin: -8px 0 6px; }
 .sk-mhrow .sk-mh { flex: none; white-space: nowrap; }
-/* A narrow centre keeps the readout whole: the head keeps only its number, Focus only its icon. The hidden words
-   still name the section for screen readers and take no space. */
+/* A narrow centre keeps the readout on one line: the head keeps only its number, Focus only its icon. The hidden
+   words still name the section for screen readers and take no space. Measured: on phones (no Focus button) word and
+   readout share one line down to 441 px, so the words go only at 440; beside the rails, with Focus, the readout
+   wraps at 441 to 500 px, so the words go at 500. */
 .sk-mhrow { container-type: inline-size; }
-@container (max-width: 500px) {
-    .sk-mhrow .sk-mh .w { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
-    .sk-focus > span:last-child { display: none; }
+@media (max-width: 1080px) {
+    @container (max-width: 440px) {
+        .sk-mhrow .sk-mh .w { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+    }
+}
+@media (min-width: 1081px) {
+    @container (max-width: 500px) {
+        .sk-mhrow .sk-mh .w { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+        .sk-focus > span:last-child { display: none; }
+        .sk-focus { padding: 0; width: 32px; }
+    }
 }
 /* Wraps (right-aligned) rather than cut: the dates are never hidden behind an ellipsis. Subtract's visit dates
    use no-break spaces, so they wrap only at the − or + between the two visits. */
@@ -231,9 +244,6 @@ button { cursor: pointer; }
 .sk-focus:hover { border-color: rgba(255, 255, 255, .45); color: #fff; }
 .sk-focus[aria-pressed=true] { border-color: rgba(255, 255, 255, .6); color: #fff; }
 .sk-focus .ic svg { width: 14px; height: 14px; }
-@container (max-width: 500px) {
-    .sk-focus { padding: 0; width: 32px; }
-}
 /* Subtract: two visit pickers and the B − A / A + B choice. */
 div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; margin-top: 8px; }
 .sk-sub[hidden] { display: none; }
@@ -260,11 +270,10 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-slot-layer > canvas, .sk-slot-layer > svg { display: block; width: 100%; height: 100%; }
 .sk-slot-fc > canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
 .sk-slot-flags canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
-/* Loading: the last picture stays where it is, dimmed; the new one is revealed by opacity. Frames themselves always
-   swap as hard cuts (only opacity on the whole canvas moves, and only while loading). */
-.sk-img { image-rendering: pixelated; image-rendering: crisp-edges; transition: opacity var(--t-reveal) var(--ease); }
-.sk[data-loading] .sk-img, .sk[data-loading] .sk-ov { opacity: .3; transition-duration: var(--t-exit); }
-.sk-ov { transition: opacity var(--t-reveal) var(--ease); }
+.sk-img { image-rendering: pixelated; image-rendering: crisp-edges; }
+/* Loading: the old picture, its rings and every layer over it are gone at once (app.ts clears them); only the empty
+   frame, the glow and the progress line show. Frames always swap as hard cuts: nothing over the sky fades. */
+.sk[data-loading] .sk-ov, .sk[data-loading] .sk-slot-layer, .sk[data-loading] .sk-slot-flags { visibility: hidden; }
 .sk-ov circle, .sk-ov path { stroke-width: 1.5; }
 .sk-ov .gaia { stroke: var(--gold); opacity: .7; }
 .sk[data-trackleg=true] .sk-ov .gaia { opacity: .3; }
@@ -290,7 +299,9 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 /* The legend's items and the field select wrap as one set of whole items. */
 .sk-leg { display: contents; }
 .sk-leg > * { max-width: 100%; }
-/* A narrow row: the field select joins the second line, on its right edge, so the row takes three lines, not four. */
+/* A narrow row: the field select joins the second line, on its right edge, so the row takes three lines, not four.
+   Only the path legend (a plain label, never focused) moves after it, so Tab still meets the controls in the order
+   the eye does: Gaia, its source, the layer keys, then the field. */
 @container (max-width: 430px) {
     .sk-legrow > .sk-fov { order: 1; }
     .sk-leg > .sk-key.t { order: 2; }
@@ -373,11 +384,12 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-strip small b { display: block; font-weight: 400; color: var(--ink); }
 
 /* ---------- right: status, 03 colour, this frame ---------- */
-.sk-status { height: var(--head); flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-/* The short status label stays on one line; a long one ends in an ellipsis (the full sentence is in the credit line). */
-.sk-status p { flex: 1 1 auto; min-width: 0; margin: 9px 0 0; display: flex; align-items: center; gap: 9px; font-size: var(--fs-small); line-height: 18px; color: var(--ink2); white-space: nowrap; }
-.sk-status p > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.sk-status .dot { flex: none; width: 6px; height: 6px; border-radius: 1px; background: var(--mute); }
+/* The status notice wraps to as many lines as it needs, in its own column beside the buttons; it is never cut. The
+   band keeps its height (three lines fit in it), so swapping one notice for another never moves the header. */
+.sk-status { min-height: var(--head); flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.sk-status p { flex: 1 1 auto; min-width: 0; margin: 9px 0 0; display: flex; align-items: flex-start; gap: 9px; font-size: var(--fs-small); line-height: 18px; color: var(--ink2); }
+.sk-status p > span:last-child { min-width: 0; overflow-wrap: break-word; text-wrap: pretty; }
+.sk-status .dot { flex: none; width: 6px; height: 6px; margin-top: 6px; border-radius: 1px; background: var(--mute); }
 .sk[data-source=live] .sk-status .dot { background: #5fd49b; box-shadow: 0 0 8px rgba(95, 212, 155, .7); }
 .sk[data-source=snapshot] .sk-status .dot { background: var(--gold); }
 .sk[data-source=demo] .sk-status .dot { background: #fff; }
@@ -410,12 +422,8 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-rng:disabled { opacity: .45; cursor: default; }
 .sk-ticks { position: relative; height: 18px; margin-top: 6px; font: var(--fs-label)/18px var(--mono); color: var(--ink2); }
 .sk-ticks span { position: absolute; top: 0; transform: translateX(-50%); }
-.sk-ticks span:first-child { transform: none; }
+.sk-ticks span:first-child { transform: none; } /* 0.4 starts at the left edge, 5 ends at the right: every label shows */
 .sk-ticks span:last-child { transform: translateX(-100%); }
-/* On a narrow axis 0.4 and 1 would sit closer than 16 px: the 0.4 label steps back (the colour band still marks it). */
-@container (max-width: 340px) {
-    .sk-ticks span:first-child { visibility: hidden; }
-}
 .sk-axl { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; font: var(--fs-label)/18px var(--mono); color: var(--mute); }
 
 /* Brightness over time: a small framed plot. Dots are zero-length round-capped strokes, so they stay round
@@ -436,13 +444,14 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-lcx { display: flex; justify-content: space-between; gap: 12px; margin-right: 52px; font: var(--fs-label)/1.3 var(--mono); color: var(--mute); }
 .sk-halo-t { width: 100%; border-collapse: collapse; margin: 12px 0 6px; font: var(--fs-label) var(--mono); color: var(--ink2); }
 .sk-halo-t th { padding: 0 10px 6px 0; color: var(--mute); font-weight: 400; text-align: left; }
-.sk-halo-t td { padding: 4px 10px 4px 0; white-space: nowrap; }
+.sk-halo-t td { height: 32px; padding: 0 10px 0 0; white-space: nowrap; } /* a row is as tall as the hit area on it */
 .sk-halo-t th:last-child, .sk-halo-t td:last-child { padding-right: 0; text-align: right; }
 .sk-halo-k { position: relative; padding: 0; border: 0; border-radius: 2px; background: none; color: inherit; font: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 .sk-halo-k.on { color: var(--ink); text-decoration-style: solid; }
 .sk-halo-k:focus-visible { outline: 2px solid rgba(255, 255, 255, .6); outline-offset: 2px; }
-@media (max-width: 1080px) {
+@media (max-width: 1080px), (pointer: coarse) {
     .sk-halo-k { min-height: 44px; }
+    .sk-halo-t td { height: 44px; }
 }
 .sk-lcx .b { display: inline-flex; align-items: center; gap: 6px; }
 .sk-lcx .b i { width: 12px; height: 7px; border-radius: 1px; background: rgba(255, 255, 255, .14); }
@@ -567,12 +576,12 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
     .sk-credit { order: 7; margin-top: 36px; padding-top: 0; }
     /* All five targets in view, in one tidy grid of equal framed cells (two across on phones, three on tablets). */
     .sk-tg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 14px 0 0; gap: 8px; }
-    .sk-tg button { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; min-height: 48px; padding: 8px 10px; white-space: nowrap; border: 1px solid var(--hair2); border-radius: 3px; }
+    .sk-tg button { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; min-height: 48px; padding: 8px 10px; border: 1px solid var(--hair2); border-radius: 3px; }
     .sk-tg button:last-child:nth-child(odd) { grid-column: 1 / -1; }
     .sk-tg small { display: none; }
     .sk-tg .k { position: static; flex: none; }
     .sk-tg .k svg { width: 15px; height: 15px; }
-    .sk-tg b { min-width: 0; font-size: 15px; line-height: 20px; overflow-wrap: break-word; }
+    .sk-tg b { flex: 1 1 auto; min-width: 0; font-size: 15px; line-height: 20px; overflow-wrap: break-word; }
     .sk-tg button[aria-pressed=true] { border-color: #fff; background: var(--fill2); }
     .sk-search { margin-left: 0; margin-top: 8px; }
     .sk-legrow, .sk-player, .sk-strip, .sk-flagnote { padding-left: 18px; padding-right: 18px; }
@@ -593,8 +602,9 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
     .sk-tg { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .sk-tg button:last-child:nth-child(odd) { grid-column: auto; }
 }
-/* Touch screens: every control is at least 44 px each way to tap; small marks keep their size and grow their hit area. */
-@media (max-width: 1080px) {
+/* Touch screens (phones, tablets, touch laptops): every control is at least 44 px each way to tap; small marks keep
+   their size and grow their hit area. */
+@media (max-width: 1080px), (pointer: coarse) {
     .sk-fov, .sk-fov select { min-height: 44px; }
     .sk-fov select { padding: 0 24px 0 8px; }
     .sk-key, .sk-key.g { min-height: 44px; height: auto; }
@@ -614,6 +624,15 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
     .sk-tr .sk-btn { height: 44px; min-width: 44px; }
     .sk-strip button { min-height: 44px; }
     .sk-skip { padding: 12px 14px; }
+}
+/* A touch screen wide enough for the rails: the rail controls get 44 px targets too. */
+@media (min-width: 1081px) and (pointer: coarse) {
+    .sk-tg button { min-height: 44px; }
+    .sk-search { height: 44px; }
+    .sk-split { width: 44px; margin-left: -22px; }
+    .sk-split::before { left: 22px; }
+    .sk-focus { position: relative; }
+    .sk-fold::after, .sk-focus::after, .sk-mini::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%); }
 }
 /* Small phones: the view buttons get their own row so "Subtract" never spills out. */
 @media (max-width: 380px) {
