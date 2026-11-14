@@ -1,6 +1,7 @@
 {
-    "url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr3/level2/2026W36_1A/l2b-v27-2026-252/1/level2_2026W36_1A_0476_1D1_spx_l2b-v27-2026-252.fits",
-    "obsId": "2026W36_1A_0476_1",
+    "url": "https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/qr3/level2/2026W36_1A/l2b-v27-2026-252/1/level2_2026W36_1A_0476_1D1_spx_l2b-v27-2026-252.fits",
+    "irsaUrl": "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr3/level2/2026W36_1A/l2b-v27-2026-252/1/level2_2026W36_1A_0476_1D1_spx_l2b-v27-2026-252.fits",
+    "obsId": "2026W36_1A_0476_1D1",
     "collection": "spherex_qr3",
     "sizeBytes": 65638080,
     "hdus": [
@@ -600,5 +601,5 @@
         "HISTORY [CALIB] zodi_scaling_v2 01a09305-6e52-7223-9ffb-fde388d99ade            "
     ],
     "madeBy": "scripts/fixtures.py",
-    "madeAt": "2026-11-14T02:38:14.902912+00:00"
+    "madeAt": "2026-11-14T02:40:06.956212+00:00"
 }
