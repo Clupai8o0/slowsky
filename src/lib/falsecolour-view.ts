@@ -270,10 +270,11 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
             const positions = Number.isFinite(mjd) ? ringsAt(catalogue.stars, grid, mjd).map(ring => ring.pix) : catalogue.stars.map(star => star.pix);
             // Include the boundary, allowing for round-off in the sky-to-grid projection.
             const distances = positions.map(p => Math.hypot(p.x - at.x, p.y - at.y)).filter(d => d <= radii.radius + 1e-9).sort((x, y) => x - y);
-            const stars = distances.length === 0 ? 'no catalogued Gaia star lies inside that circle'
-                : distances.length === 1 ? `1 catalogued Gaia star lies inside that circle, ${(distances[0]! * grid.pixelArcsec).toFixed(1)}″ from the centre`
-                    : `${distances.length} catalogued Gaia stars lie inside that circle, the nearest ${(distances[0]! * grid.pixelArcsec).toFixed(1)}″ from the centre`;
-            parts.method += ` The reading adds up all light within ${radius}″ of the centre; ${stars}.`;
+            // The page's list is cut to the brighter Gaia stars (gaia.ts), so "none on the list" is not "nothing there".
+            const stars = distances.length === 0 ? 'none of the Gaia stars this page loads lies inside that circle'
+                : distances.length === 1 ? `1 of the Gaia stars this page loads lies inside that circle, ${(distances[0]! * grid.pixelArcsec).toFixed(1)}″ from the centre`
+                    : `${distances.length} of the Gaia stars this page loads lie inside that circle, the nearest ${(distances[0]! * grid.pixelArcsec).toFixed(1)}″ from the centre`;
+            parts.method += ` The reading adds up all light within ${radius}″ of the centre; ${stars}. That list holds only the brighter stars, so a fainter star or a source seen only in infrared can still be inside.`;
         }
     }
     const label = (name: string, band: typeof short) => {

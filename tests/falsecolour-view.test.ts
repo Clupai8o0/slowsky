@@ -127,11 +127,11 @@ describe('reliable colour readings', () => {
         const l = sky([sourceFrame(4.6)]);
         const star = (x: number, y: number) => ({ sourceId: `${x},${y}`, ...gridPixToSky(grid, { x, y }), g: 15, epochJyear: 2016, pix: { x, y } });
         const method = () => falseColourView(s, l, radii).parts.method;
-        expect(method()).toContain('within 12″ of the centre; no catalogued Gaia star lies inside that circle');
+        expect(method()).toContain('within 12″ of the centre; none of the Gaia stars this page loads lies inside that circle. That list holds only the brighter stars, so a fainter star or a source seen only in infrared can still be inside.');
         l.stars = [star(16, 15)];
-        expect(method()).toContain('1 catalogued Gaia star lies inside that circle, 6.2″ from the centre');
+        expect(method()).toContain('1 of the Gaia stars this page loads lies inside that circle, 6.2″ from the centre. That list holds only the brighter stars');
         l.stars = [star(17, 15), star(16, 15), star(15.1, 15)];
-        expect(method()).toContain('3 catalogued Gaia stars lie inside that circle, the nearest 0.6″ from the centre');
+        expect(method()).toContain('3 of the Gaia stars this page loads lie inside that circle, the nearest 0.6″ from the centre. That list holds only the brighter stars');
         s.notes.push('Gaia stars are not available for this view.');
         l.notes.push('Gaia stars are not available for this view.');
         l.stars = [];
@@ -589,7 +589,7 @@ describe('false colour sentence', () => {
         const oldParts = colourParts(1.25, 4.6, colourAt(frame(1.25).data, frame(4.6).data, 31, 31, { x: 15, y: 15 }, { pixelArcsec: grid.pixelArcsec, ...radii, minSnr: 3 }), [[at(60000)], [at(60000)]]);
         expect(result.parts).toEqual({ ...oldParts,
             note: oldParts.note + ' With fewer than 3 frames, a detector hit in a single frame cannot be rejected from the picture.',
-            method: oldParts.method + ' The reading adds up all light within 12″ of the centre; no catalogued Gaia star lies inside that circle.',
+            method: oldParts.method + ' The reading adds up all light within 12″ of the centre; none of the Gaia stars this page loads lies inside that circle. That list holds only the brighter stars, so a fainter star or a source seen only in infrared can still be inside.',
         });
         expect(result.parts.warning).toBe('');
         expect(colourParts(1.25, 4.6, both, [[], [at(60000)]]).warning).toContain('frame dates are unavailable');
