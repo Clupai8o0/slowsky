@@ -81,6 +81,95 @@ describe('Candidate changes panel', () => {
 });
 
 describe('round 11: marks at every end', () => {
+    it('keeps lone marks bounded at every edge and corner and preserves valid default positions', () => {
+        for (const [x, y] of [[117, 117], [0, 117], [234, 117], [117, 0], [117, 234], [0, 0], [234, 0], [0, 234], [234, 234]]) {
+            const svg = changesMarks(changesView(found([cand('one', x!, y!, 'Spot (candidate).')], [])), 235, 235);
+            const m = /<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/><text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"/.exec(svg)!;
+            const [cx, cy, r, tx, ty, size] = m.slice(1).map(Number) as [number, number, number, number, number, number];
+            const half = size * 0.35 + 1;
+            expect(tx - half).toBeGreaterThanOrEqual(-0.06);
+            expect(tx + half).toBeLessThanOrEqual(235.06);
+            expect(ty - size - 1).toBeGreaterThanOrEqual(-0.06);
+            expect(ty + 1).toBeLessThanOrEqual(235.06);
+            expect(tx + half <= cx - r || tx - half >= cx + r || ty + 1 <= cy - r || ty - size - 1 >= cy + r).toBe(true);
+            const originalY = y! - 235 / 40 * 1.5;
+            if (y! - 235 / 40 * 3.1 - 1 >= 0 && originalY - size - 1 >= 0 && x! - half >= 0 && x! + half <= 235) {
+                expect(tx).toBe(x);
+                expect(ty).toBeCloseTo(originalY, 0);
+            }
+        }
+    });
+    it('clamps every label in a crowded left-edge layout', () => {
+        const points = [[1, 55], [2, 60], [3, 65], [1, 70], [4, 75], [3, 80]];
+        const svg = changesMarks(changesView(found(points.map(([x, y], i) => cand(String(i), x!, y!, 'Spot (candidate).')), [])), 235, 235);
+        for (const m of svg.matchAll(/<text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"/g)) {
+            const x = Number(m[1]), half = Number(m[3]) * 0.35 + 1;
+            expect(x - half).toBeGreaterThanOrEqual(-0.06);
+            expect(x + half).toBeLessThanOrEqual(235.06);
+        }
+    });
+    it('measures bounded labels across seeded crowded and spread-out layouts', () => {
+        let seed = 73421;
+        const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+        const intersects = (a: number[], b: number[]) => !(a[1]! <= b[0]! || a[0]! >= b[1]! || a[3]! <= b[2]! || a[2]! >= b[3]!);
+        for (const crowded of [true, false]) {
+            const counts = { outside: 0, distant: 0, own: 0, overlaps: 0, nearer: 0, numbers: 0 };
+            for (let layout = 0; layout < 200; layout++) {
+                const points: number[][] = [];
+                const n = 4 + Math.floor(random() * 5);
+                const anchors = [[0, 0], [175, 0], [0, 175], [175, 175], [0, 85], [175, 85], [85, 0], [85, 175], [85, 85]];
+                const anchor = anchors[layout % anchors.length]!;
+                while (points.length < n) {
+                    const x = Math.round(crowded ? anchor[0]! + random() * 59 : random() * 234);
+                    const y = Math.round(crowded ? anchor[1]! + random() * 59 : random() * 234);
+                    if (crowded || points.every(p => Math.hypot(p[0]! - x, p[1]! - y) >= 35)) { points.push([x, y]); }
+                }
+                const svg = changesMarks(changesView(found(points.map(([x, y], i) => cand(String(i), x!, y!, 'Spot (candidate).')), [])), 235, 235);
+                const marks = [...svg.matchAll(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/><text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"/g)]
+                    .map(m => m.slice(1).map(Number));
+                expect(marks).toHaveLength(n);
+                const labels = marks.map(([, , , x, y, s]) => [x! - s! * 0.35 - 1, x! + s! * 0.35 + 1, y! - s! - 1, y! + 1]);
+                marks.forEach(([cx, cy, r, x, y, s], i) => {
+                    const b = labels[i]!, ring = [cx! - r!, cx! + r!, cy! - r!, cy! + r!];
+                    counts.numbers++;
+                    if (b[0]! < -1e-9 || b[1]! > 235 + 1e-9 || b[2]! < -1e-9 || b[3]! > 235 + 1e-9) { counts.outside++; }
+                    const gap = Math.hypot(Math.max(0, ring[0]! - b[1]!, b[0]! - ring[1]!), Math.max(0, ring[2]! - b[3]!, b[2]! - ring[3]!));
+                    if (gap > s! + 1e-9) { counts.distant++; }
+                    if (intersects(b, ring)) { counts.own++; }
+                    if (labels.slice(0, i).some(other => intersects(b, other))) { counts.overlaps++; }
+                    const ownDistance = Math.hypot(x! - cx!, y! - s! / 2 - cy!);
+                    if (marks.some(([ox, oy], j) => j !== i && Math.hypot(x! - ox!, y! - s! / 2 - oy!) < ownDistance - 0.01)) { counts.nearer++; }
+                });
+            }
+            console.log(`${crowded ? 'crowded' : 'spread'} placement counts`, counts);
+            expect([counts.outside, counts.distant, counts.own]).toEqual([0, 0, 0]);
+            expect(counts.overlaps).toBe(0);
+            expect(counts.nearer).toBeLessThanOrEqual(crowded ? 154 : 0);
+        }
+    });
+    it('keeps the reviewers’ crowded edge labels beside their own rings', () => {
+        for (const [width, points] of [[235, [[20, 4], [26, 4]]], [100, [[6, 81], [6, 93], [18, 93]]]] as [number, number[][]][]) {
+            const svg = changesMarks(changesView(found(points.map(([x, y], i) => cand(String(i), x!, y!, 'Spot (candidate).')), [])), width, width);
+            const marks = [...svg.matchAll(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/><text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"/g)];
+            for (const m of marks) {
+                const [cx, cy, r, x, y, size] = m.slice(1).map(Number) as [number, number, number, number, number, number];
+                const half = size * 0.35 + 1;
+                expect(x + half <= cx - r || x - half >= cx + r || y + 1 <= cy - r || y - size - 1 >= cy + r).toBe(true);
+            }
+            if (width === 235) { expect(Number(marks[0]![4])).toBeLessThan(Number(marks[1]![4])); }
+        }
+    });
+    it('keeps the five-spot review case near each own ring', () => {
+        const points = [[15, 82], [15, 82], [50, 90], [54, 90], [54, 90]];
+        const svg = changesMarks(changesView(found(points.map(([x, y], i) => cand(String(i), x!, y!, 'Spot (candidate).')), [])), 100, 100);
+        const marks = [...svg.matchAll(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/><text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"/g)];
+        for (const m of marks) {
+            const [cx, cy, r, x, y, size] = m.slice(1).map(Number) as [number, number, number, number, number, number];
+            const half = size * 0.35 + 1;
+            const gap = Math.max(0, cx - r - (x + half), x - half - cx - r, cy - r - (y + 1), y - size - 1 - cy - r);
+            expect(gap).toBeLessThanOrEqual(size + 0.1);
+        }
+    });
     it('keeps labels outside other rings in the bottom pair and three-spot cluster', () => {
         for (const points of [[[100, 230], [104, 230]], [[100, 230], [104, 230], [108, 230]]]) {
             const svg = changesMarks(changesView(found(points.map(([x, y], i) => cand(String(i), x!, y!, 'Spot (candidate).')), [])), 235, 235);
@@ -114,14 +203,14 @@ describe('round 11: marks at every end', () => {
         const one = changesView(found([first], []));
         expect(changesMarks(one, 100, 100)).toBe('<svg class="sk-chg-marks" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50.0" cy="50.0" r="5.0"/><text x="50.0" y="42.5" font-size="8.0">1</text></svg>');
         const both = changesMarks(changesView(found([first, cand('b', 54, 50, 'B (candidate).')], [])), 100, 100);
-        expect(both).toBe('<svg class="sk-chg-marks" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50.0" cy="50.0" r="5.0"/><text x="50.0" y="42.5" font-size="8.0">1</text><circle cx="54.0" cy="50.0" r="5.0"/><text x="62.8" y="52.8" font-size="8.0">2</text></svg>');
+        expect(both).toBe('<svg class="sk-chg-marks" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50.0" cy="50.0" r="5.0"/><text x="50.0" y="42.5" font-size="8.0">1</text><circle cx="54.0" cy="50.0" r="5.0"/><text x="54.0" y="65.1" font-size="8.0">2</text></svg>');
     });
 
     it('finds clear alternatives when the lower position is outside the picture', () => {
         const items = [cand('a', 50, 90, 'A (candidate).'), cand('b', 54, 90, 'B (candidate).'), cand('c', 54, 90, 'C (candidate).')];
         const svg = changesMarks(changesView(found(items, [])), 100, 100);
         expect([...svg.matchAll(/<text x="([^"]+)" y="([^"]+)" font-size="[^"]+">(\d+)<\/text>/g)]
-            .map(match => [match[1], match[2], match[3]])).toEqual([['50.0', '82.5', '1'], ['62.8', '92.8', '2'], ['42.3', '82.5', '3']]);
+            .map(match => [match[1], match[2], match[3]])).toEqual([['50.0', '82.5', '1'], ['63.9', '94.0', '2'], ['63.9', '82.9', '3']]);
         expect([...svg.matchAll(/<circle cx="([^"]+)" cy="([^"]+)"/g)].map(match => [match[1], match[2]]))
             .toEqual([['50.0', '90.0'], ['54.0', '90.0'], ['54.0', '90.0']]);
     });
@@ -219,7 +308,7 @@ describe('round 11: groups from the review', () => {
 
 describe('plain list (compareVisits plain: true)', () => {
     it('P2 prints each new sentence exactly and strips only its S/N figure', () => {
-        const ending = "a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
+        const ending = "a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
         for (const [reading, start] of [
             ['moreLater', 'Measured against the change in the sky around it, there is more light here in the later visit than in the earlier one'],
             ['lessLater', 'Measured against the change in the sky around it, there is less light here in the later visit than in the earlier one'],

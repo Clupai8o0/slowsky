@@ -637,7 +637,7 @@ export function plainListNotes(candidates: { line?: string; sentence?: string; r
     // An overflow can hide a mapped S/N even though the ordering still used the error maps.
     const hiddenMapped = usedErrorMap && candidates.some(c => !c.snrMapMissing && !hasSnrFigure(c.line ?? c.sentence ?? c.reason));
     const order = !shown && hiddenMapped ? `${base}.` : !shown ? `${base} estimated from the difference image; that figure is used only for this order.`
-        : `${base}${shown < candidates.length ? '; spots with no S/N figure come after those with one' : ''}.`;
+        : `${base}${shown < candidates.length ? '; within each group, spots with no S/N figure come after those with one' : ''}.`;
     const flagged = candidates.filter(c => c.snrFlagRemoved).length;
     return [order, ...(flagged ? [`S/N is left out for ${flagged} ${flagged === 1 ? 'candidate' : 'candidates'} marked by an archive overflow flag, because the S/N figure there can be unreliable.`] : []),
         ...(unmapped ? [`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`] : [])];
@@ -1345,6 +1345,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
             // An uneven ring can itself be lifted by a nearby patch; do not use it to claim a direction.
             const evenRing = sideMedians.every(Number.isFinite)
                 && Math.max(...sideMedians) - Math.min(...sideMedians) <= PLAIN_RING_SPREAD * Math.abs(local)
+                // This guard could decide only above 100 independent core pixels; real cores have at most about 5.
                 && scatter <= PLAIN_RING_SPREAD * Math.abs(local)
                 && bandRange <= PLAIN_RING_SPREAD * Math.abs(local);
             // The local reading (the core against its own ring, with no background tiles) must keep at least half of
@@ -1362,10 +1363,10 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                 || (grid.width - 1 - pix.x) * grid.pixelArcsec < PLAIN_RING_OUTER || (grid.height - 1 - pix.y) * grid.pixelArcsec < PLAIN_RING_OUTER;
             if (!clear && ringClipped && edgeClipped && withinRingEdge && !nearEdge && !nearGap) {
                 facts += ' It is too close to the edge of the picture to compare with the sky around it.';
-            } else if (!clear && ringClipped && !edgeClipped && !nearMissing) {
+            } else if (!clear && ((ringClipped && !edgeClipped) || ring.length < 20) && !nearMissing && !nearGap && !nearEdge) {
                 facts += ' Too few pixels around it could be compared to tell which visit has more light.';
             }
-            const ending = `a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}`;
+            const ending = `a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}`;
             const neutral = `The light here differs between the two visits, and which visit has more is not clear; ${ending}`;
             out.push({ id: '', kind: 'unknown', pix, sky: gridPixToSky(grid, pix), snr, sign,
                 gaiaMatch: catalogueArcsec !== undefined, ...(catalogueArcsec === undefined ? {} : { gaiaDistArcsec: catalogueArcsec, catalogueArcsec }),

@@ -142,14 +142,14 @@ describe('page change list is the plain list', () => {
         const html = await screenedPage(livePair(), x => x < 60 ? 2 : 0);
         const lines = [...html.matchAll(/<li><b>Candidate \d+<\/b> (.*?)<\/li>/g)].map(m => m[1]!);
         expect(lines).toEqual([
-            "Measured against the change in the sky around it, there is more light here in the later visit than in the earlier one; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N &gt; 50; candidate).",
-            "The light here differs between the two visits, and which visit has more is not clear; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (candidate). In at least one frame of the later visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW; an overflowing pixel can make the reading here unreliable.",
+            "Measured against the change in the sky around it, there is more light here in the later visit than in the earlier one; a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N &gt; 50; candidate).",
+            "The light here differs between the two visits, and which visit has more is not clear; a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (candidate). In at least one frame of the later visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW; an overflowing pixel can make the reading here unreliable.",
         ]);
         expect(pageNotes(html)).toEqual([
             'Earlier visit at 2.000 µm, later at 2.000 µm.',
             "Noise estimated using the frames' pixel uncertainty maps.",
             'No source above 5 times the noise at the centre of the view in either visit.',
-            'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise; spots with no S/N figure come after those with one.',
+            'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise; within each group, spots with no S/N figure come after those with one.',
             'S/N is left out for 1 candidate marked by an archive overflow flag, because the S/N figure there can be unreliable.',
             'No catalogue stars for this view: every spot is listed without a catalogue match.',
         ]);
