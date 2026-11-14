@@ -204,11 +204,14 @@ export function initLayout(root: HTMLElement): Layout
     }
 
     root.addEventListener('click', (e) => {
-        const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act^="fold-"], [data-act="focus"]');
+        const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act^="fold-"], [data-act="focus"], [data-act="mini-search"]');
         if (!b) {
             return;
         }
-        if (b.dataset.act === 'focus') {
+        if (b.dataset.act === 'mini-search') {
+            fold('left', false);
+            root.querySelector<HTMLInputElement>('.sk-search input')?.focus();
+        } else if (b.dataset.act === 'focus') {
             toggleFocus();
         } else {
             const s = b.dataset.act === 'fold-left' ? 'left' : 'right';

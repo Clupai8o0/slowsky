@@ -68,24 +68,39 @@ button { cursor: pointer; }
 .sk-fold .ic svg { width: 14px; height: 14px; transition: transform 280ms var(--ease); }
 .sk-fold[aria-expanded=false] .ic svg { transform: rotate(180deg); }
 
-/* A folded rail keeps only its tab: the step label, set on its side. */
-.sk-tab { display: none; }
+/* A folded rail becomes a column of icons: the targets and search on the left, the colour and frame on the right. */
+.sk-mini { display: none; }
 @media (min-width: 1081px) {
     /* The glow round a big sky reaches past the window; clip it there so it never adds a scrollbar. */
     .sk { overflow: clip; }
     .sk[data-left=min] { --lcol: 40px; --lg: 32px; }
     .sk[data-right=min] { --rcol: 40px; --rg: 32px; }
-    .sk[data-left=min] .sk-left > :not(.sk-tab), .sk[data-right=min] .sk-right > :not(.sk-tab) { display: none; }
-    .sk[data-left=min] .sk-left > .sk-tab, .sk[data-right=min] .sk-right > .sk-tab { display: flex; }
+    .sk[data-left=min] .sk-left > :not(.sk-mini), .sk[data-right=min] .sk-right > :not(.sk-mini) { display: none; }
+    .sk[data-left=min] .sk-left > .sk-mini, .sk[data-right=min] .sk-right > .sk-mini { display: flex; }
     /* Both folded is Focus: the sky moves up and grows into the room the step line used. */
     .sk[data-left=min][data-right=min] { --w: min(100%, max(360px, calc(100dvh - 314px))); }
     .sk[data-left=min][data-right=min] .sk-m-watch { padding-top: 0; }
 }
-.sk-tab { flex: 1; position: relative; flex-direction: column; align-items: center; padding: calc(var(--head) + var(--gap)) 0 0; border: 0; background: none;
-    color: var(--mute); font: 500 10.5px/16px var(--mono); letter-spacing: .14em; text-transform: uppercase; transition: color 160ms var(--ease), background 160ms var(--ease); }
-.sk-tab span { writing-mode: vertical-rl; }
-.sk-tab i { position: absolute; top: 8px; width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px 2px rgba(150, 180, 255, .55); }
-.sk-tab:hover { color: var(--ink); background: var(--fill); }
+.sk-mini { flex: 1; position: relative; flex-direction: column; align-items: center; gap: 4px; padding-top: calc(var(--head) + var(--gap) - 8px); }
+/* The dot at the top: the brand mark on the left, the data source (live, saved, demo) on the right. */
+.sk-mini-dot { position: absolute; top: 8px; width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px 2px rgba(150, 180, 255, .55); }
+.sk-right .sk-mini-dot { top: 12px; width: 6px; height: 6px; box-shadow: none; background: var(--faint); }
+.sk[data-source=live] .sk-right .sk-mini-dot { background: #5fd49b; box-shadow: 0 0 8px rgba(95, 212, 155, .7); }
+.sk[data-source=snapshot] .sk-right .sk-mini-dot { background: var(--gold); }
+.sk[data-source=demo] .sk-right .sk-mini-dot { background: #fff; }
+.sk-mi { position: relative; width: 34px; height: 34px; flex: none; padding: 0; display: grid; place-items: center; border: 0; border-radius: 3px; background: none; color: var(--faint);
+    transition: color 160ms var(--ease), background 160ms var(--ease); }
+.sk-mi .ic svg { width: 17px; height: 17px; }
+.sk-mi:hover { color: var(--ink); background: var(--fill); }
+.sk-mi[aria-pressed=true] { color: #fff; background: var(--fill2); }
+/* The chosen target also gets the glowing tick the full list uses. */
+.sk-mi[aria-pressed=true]::before { content: ""; position: absolute; left: -5px; top: 50%; width: 2px; height: 14px; margin-top: -7px; border-radius: 1px; background: #fff; box-shadow: 0 0 8px rgba(150, 180, 255, .7); }
+.sk-mini-gap { height: 10px; flex: none; }
+/* The colour button carries the wavelength itself, so the folded view still says which colour is on screen. */
+.sk-mi-lam { height: auto; padding: 8px 0 7px; gap: 3px; color: var(--ink2); }
+.sk-mi-lam b { font: 400 13px/1 var(--mono); color: #fff; letter-spacing: -.02em; }
+.sk-mi-lam small { font: 9.5px/1 var(--mono); color: var(--faint); letter-spacing: .06em; }
+.sk-mi-lam + .sk-mi { margin-top: 6px; }
 
 /* The centre does not clip, so the sky's glow can spill into the void around it. */
 .sk-mid { min-width: 0; display: flex; justify-content: center; }
@@ -94,6 +109,11 @@ button { cursor: pointer; }
 /* Step labels: small mono caps, the number in full white. */
 .sk-mh { margin: 0; display: flex; align-items: baseline; gap: 10px; font: 500 10.5px/16px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--mute); }
 .sk-mh i { font-style: normal; color: var(--ink); letter-spacing: .06em; }
+.sk-mh .ic { align-self: center; margin-right: -2px; color: var(--faint); }
+.sk-mh .ic svg { width: 14px; height: 14px; }
+/* Small icons inside a line of text. */
+.sk-fov .ic svg, .sk-m-details dd a .ic svg { width: 13px; height: 13px; }
+.sk-m-details dd a { display: inline-flex; align-items: center; gap: 5px; }
 .sk-body { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--ink2); text-wrap: pretty; max-width: 36ch; }
 .sk-body.mute { color: var(--mute); }
 
@@ -106,12 +126,15 @@ button { cursor: pointer; }
 
 .sk-m-pick { margin-top: var(--gap); flex: none; }
 .sk-tg { display: flex; flex-direction: column; margin-top: 12px; }
-.sk-tg button { position: relative; display: flex; flex-direction: column; gap: 1px; padding: 8px 0 8px 18px; border: 0; background: none; text-align: left; }
-.sk-tg button::before { content: ""; position: absolute; left: 1px; top: 17px; width: 5px; height: 5px; border-radius: 50%; background: #fff; opacity: 0; transform: scale(.4); transition: opacity 200ms var(--ease), transform 200ms var(--ease); box-shadow: 0 0 10px 2px rgba(150, 180, 255, .6); }
+.sk-tg button { position: relative; display: flex; flex-direction: column; gap: 1px; padding: 8px 0 8px 27px; border: 0; background: none; text-align: left; }
+/* Each target's kind (mover, variable, cold ...) as a small mark beside its name. */
+.sk-tg .k { position: absolute; left: 0; top: 10px; color: var(--faint); transition: color 160ms var(--ease), filter 200ms var(--ease); }
+.sk-tg .k svg { width: 16px; height: 16px; }
+.sk-tg button:hover .k { color: var(--ink2); }
+.sk-tg button[aria-pressed=true] .k { color: #fff; filter: drop-shadow(0 0 5px rgba(150, 180, 255, .8)); }
 .sk-tg b { font-size: 16px; font-weight: 400; letter-spacing: -.01em; color: var(--mute); transition: color 160ms var(--ease); }
 .sk-tg small { font-size: 12px; color: var(--faint); transition: color 160ms var(--ease); }
 .sk-tg button:hover b { color: var(--ink); }
-.sk-tg button[aria-pressed=true]::before { opacity: 1; transform: none; }
 .sk-tg button[aria-pressed=true] b { color: #fff; }
 .sk-tg button[aria-pressed=true] small { color: var(--mute); }
 
@@ -205,7 +228,8 @@ button { cursor: pointer; }
 .sk-btn.go { width: 64px; background: #fff; color: #000; box-shadow: 0 0 24px rgba(160, 190, 255, .18); }
 .sk-btn.go:hover { background: #fff; box-shadow: 0 0 30px rgba(160, 190, 255, .32); }
 .sk-seg { display: flex; padding: 3px; gap: 2px; border-radius: 4px; background: var(--fill); }
-.sk-seg button { height: 38px; padding: 0 16px; border: 0; border-radius: 2px; background: none; color: var(--mute); font-size: 13.5px; transition: background 160ms var(--ease), color 160ms var(--ease); }
+.sk-seg button { height: 38px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 2px; background: none; color: var(--mute); font-size: 13.5px; transition: background 160ms var(--ease), color 160ms var(--ease); }
+.sk-seg .ic svg { width: 15px; height: 15px; }
 .sk-seg button:hover { color: var(--ink); }
 .sk-seg button[aria-pressed=true] { background: #fff; color: #000; }
 
@@ -274,6 +298,8 @@ button { cursor: pointer; }
 .sk-lcy { position: relative; }
 .sk-lcy span { position: absolute; right: 0; transform: translateY(-50%); font: 10px/1 var(--mono); color: var(--faint); white-space: nowrap; }
 .sk-lcx { display: flex; justify-content: space-between; margin-right: 44px; font: 10px/1 var(--mono); color: var(--faint); }
+.sk-lcx .b { display: inline-flex; align-items: center; gap: 6px; }
+.sk-lcx .b i { width: 12px; height: 7px; border-radius: 1px; background: rgba(255, 255, 255, .14); }
 .sk-m-details { margin-top: 44px; gap: 14px; flex: none; }
 .sk-m-details dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 16px; margin: 0; font: 11px/1.45 var(--mono); }
 .sk-m-details dl:empty::before { content: "Appears when the frames load."; grid-column: 1 / -1; font-family: "Geist", system-ui, sans-serif; font-size: 12.5px; color: var(--faint); }
@@ -302,6 +328,7 @@ button { cursor: pointer; }
     .sk-tr .sk-btn.go { width: 54px; }
     .sk-seg { flex: 1; min-width: 0; }
     .sk-seg button { flex: 1; min-width: 0; padding: 0 6px; }
+    .sk-seg .ic { display: none; }
 }
 
 /* ---------- short laptop screens: tighter, so the whole tool fits without scrolling ---------- */
@@ -310,8 +337,8 @@ button { cursor: pointer; }
     .sk { --gap: 16px; --w: min(100%, max(320px, calc(100dvh - 404px))); --pt: 20px; --pb: 18px; }
     .sk[data-left=min][data-right=min] { --w: min(100%, max(320px, calc(100dvh - 326px))); }
     .sk-tg small { display: none; }
-    .sk-tg button { padding: 6px 0 6px 18px; }
-    .sk-tg button::before { top: 15px; }
+    .sk-tg button { padding: 6px 0 6px 27px; }
+    .sk-tg .k { top: 7px; }
     .sk-strip canvas { width: 44px; height: 44px; }
     .sk-m-about { padding-top: 24px; }
     .sk-h { font-size: 21px; }
@@ -322,7 +349,7 @@ button { cursor: pointer; }
     .sk { display: flex; flex-direction: column; height: auto; min-height: 100dvh; padding: 0 0 40px;
         background: radial-gradient(120% 50% at 50% 34%, rgba(40, 70, 160, .26), transparent 70%), var(--void); }
     .sk-rail, .sk-mid { display: contents; }
-    .sk-gut, .sk-tab, .sk-focus { display: none; }
+    .sk-gut, .sk-mini, .sk-focus { display: none; }
     .sk-brand, .sk-mod, .sk-status, .sk-credit { padding-left: 18px; padding-right: 18px; width: 100%; max-width: 680px; align-self: center; }
     .sk-brand { order: 0; height: auto; padding-top: 20px; }
     .sk-m-pick { order: 1; margin-top: 22px; }
@@ -338,8 +365,10 @@ button { cursor: pointer; }
     .sk-credit { order: 7; margin-top: 36px; padding-top: 0; }
     .sk-tg { flex-direction: row; overflow-x: auto; margin: 14px -18px 0; padding: 0 18px; gap: 6px; scrollbar-width: none; }
     .sk-tg::-webkit-scrollbar { display: none; }
-    .sk-tg button { flex: none; padding: 9px 13px; border: 1px solid var(--hair2); border-radius: 3px; }
-    .sk-tg button::before, .sk-tg small { display: none; }
+    .sk-tg button { flex: none; flex-direction: row; align-items: center; gap: 7px; padding: 9px 13px; border: 1px solid var(--hair2); border-radius: 3px; }
+    .sk-tg small { display: none; }
+    .sk-tg .k { position: static; }
+    .sk-tg .k svg { width: 14px; height: 14px; }
     .sk-tg b { font-size: 14px; }
     .sk-tg button[aria-pressed=true] { border-color: #fff; background: var(--fill2); }
     .sk-search { margin-left: 0; }
