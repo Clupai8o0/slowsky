@@ -567,9 +567,14 @@ export function mount(root: HTMLElement): void
         const scatter = c.lc.refScatter.filter(Number.isFinite).sort((a, b) => a - b);
         const noise = scatter.length ? scatter[Math.floor(scatter.length / 2)]! : 0;
         const ys = pts.map((o) => o.p.relative);
-        // Each point's own error: the comparison stars' wobble plus the target's photon noise (1 / its signal-to-noise),
-        // so a faint target's dot can't look significant just because the reference stars are bright.
-        const err = pts.map((o) => o.p.relative * Math.hypot(noise, o.p.target.snr > 0 ? 1 / o.p.target.snr : 0));
+        // Each point's own error: the comparison stars' wobble plus the target's own noise (sky noise over its
+        // aperture), scaled the same way as the point, so a faint or missing target still gets an honest bar.
+        const scales = pts.filter((o) => o.p.relative !== 0 && o.p.ratio !== 0).map((o) => o.p.ratio / o.p.relative).sort((a, b) => a - b);
+        const med = scales.length ? scales[Math.floor(scales.length / 2)]! : NaN;
+        const err = pts.map((o) => {
+            const own = o.p.target.backgroundSigma * Math.sqrt(o.p.target.nPix) / (o.p.refSum * med);
+            return Math.hypot(Math.abs(o.p.relative) * noise, Number.isFinite(own) ? own : 0);
+        });
         let lo = Math.min(...ys.map((v, i) => v - err[i]!), 1 - noise);
         let hi = Math.max(...ys.map((v, i) => v + err[i]!), 1 + noise);
         const pad = Math.max((hi - lo) * 0.18, 0.01);
