@@ -423,13 +423,19 @@ button { cursor: pointer; }
 .sk-ai-go:disabled { cursor: progress; color: var(--faint); }
 .sk-ai-lock { display: flex; gap: 8px; align-items: stretch; margin: 0; }
 .sk-ai-lock label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--hair2); border-radius: 3px; font-size: 12px; color: var(--faint); }
-.sk-ai-lock label:focus-within { border-color: rgba(255, 255, 255, .5); }
+.sk-ai-lock label:focus-within { border-color: rgba(255, 255, 255, .5); outline: 2px solid rgba(255, 255, 255, .85); outline-offset: 2px; }
+/* The ring is drawn on the framed label around the field (above), so the field itself needs none. */
 .sk-ai-lock input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font-size: 13.5px; }
 .sk-ai-msg { margin: 0; font-size: 12.5px; color: var(--ink2); }
 .sk-ai-out { display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.55; color: var(--ink2); }
 .sk-ai-out p { margin: 0; }
 .sk-ai-out b { font-weight: 500; color: var(--ink); }
-.sk-ai-out:not([hidden]) { animation: sk-rise 320ms var(--ease) both; }
+.sk-ai-out:empty { display: none; }
+.sk-ai-out:not(:empty) { animation: sk-rise 320ms var(--ease) both; }
+.sk-ai-given { font-size: 12px; color: var(--mute); }
+.sk-ai-given summary { cursor: pointer; width: fit-content; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .28); text-underline-offset: 3px; }
+.sk-ai-given summary:hover { color: var(--ink2); }
+.sk-ai-given ul { margin: 8px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; line-height: 1.45; }
 .sk-ai-disc, .sk-ai-left { margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--faint); }
 @media (max-width: 1080px) {
     .sk { display: flex; flex-direction: column; height: auto; min-height: 100dvh; padding: 0 0 40px;
@@ -480,6 +486,7 @@ button { cursor: pointer; }
     .sk-rng { height: 40px; top: -6px; } /* same centre line as the 28 px desktop slider */
     .sk-search input { min-height: 40px; }
     .sk-ai-lock label { height: 40px; }
+    .sk-ai-given summary { padding: 11px 0; }
     .sk-ai-tag, .sk-ai-disc, .sk-ai-left { font-size: 12px; }
     .sk-m-details dd a { display: inline-flex; align-items: center; min-height: 40px; }
     .sk-mh, .sk-fov, .sk-bar b, .sk-strip small, .sk-readout > span, .sk-ticks, .sk-axl, .sk-sim { font-size: 12px; }

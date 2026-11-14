@@ -310,12 +310,13 @@ function shell(): string
     <div class="sk-slot-spec" data-ref="specBox"></div>
   </section>
   <section class="sk-mod sk-m-ai" aria-labelledby="sk-h7" data-ref="ai" data-ai-generated="true" hidden>
-    <h2 class="sk-mh" id="sk-h7"><span class="ic">${ICON.note}</span>AI note<span class="sk-ai-tag">AI-written</span></h2>
+    <h2 class="sk-mh" id="sk-h7" tabindex="-1"><span class="ic">${ICON.note}</span>AI note<span class="sk-ai-tag">AI-written</span></h2>
     <p class="sk-body mute">A short reading of this view by a language model, from the numbers this page measured.</p>
     <form class="sk-ai-lock" data-ai="lock" hidden><label><span>Passcode</span><input type="password" autocomplete="off" data-ai="pass" aria-label="AI note passcode"></label><button type="submit" class="sk-btn2">Unlock</button></form>
     <button type="button" class="sk-btn2 sk-ai-go" data-ai="go" hidden>Write an AI note</button>
-    <p class="sk-ai-msg" data-ai="msg" role="status" hidden></p>
-    <div class="sk-ai-out" data-ai="out" hidden></div>
+    <p class="sk-ai-msg sk-sr" data-ai="msg" role="status"></p>
+    <div class="sk-ai-out" data-ai="out" aria-live="polite"></div>
+    <details class="sk-ai-given" data-ai="given" hidden><summary>What the AI was given</summary><ul data-ai="givenList"></ul></details>
     <p class="sk-ai-disc" data-ai="disc"></p>
     <p class="sk-ai-left" data-ai="left" hidden></p>
   </section>

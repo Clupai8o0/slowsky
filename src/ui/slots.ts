@@ -5,7 +5,7 @@
 // - flags: a "Flags" toggle in the sky legend and a layer over the sky, for src/lib/flags-view.ts.
 import type { SkyResult } from '../lib/source';
 
-export const FEATURES = { spectrum: false, flags: false };
+export const FEATURES = Object.freeze({ spectrum: false, flags: false });
 
 export interface SlotView {
     result: SkyResult;

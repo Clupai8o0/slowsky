@@ -1,7 +1,7 @@
 // The AI note panel: a button-started, plain-text reading of the view, written by a language model from the
 // numbers the page measured. It is never a measurement, so it lives in its own framed panel with a fixed
 // disclaimer, and it hides itself when the server route is off.
-import { fetchInsight, InsightError, insightStatus, type InsightFacts, type InsightStatus } from '../lib/insight';
+import { factSheet, fetchInsight, InsightError, insightStatus, type InsightFacts, type InsightStatus } from '../lib/insight';
 import { buildFacts, type FactsInput } from '../lib/insight-facts';
 import { subtract } from '../lib/stack';
 import type { SkyResult } from '../lib/source';
@@ -98,18 +98,40 @@ export function leftText(n: number): string
     return n === 1 ? '1 AI note left today' : `${n} AI notes left today`;
 }
 
+// Seconds up to 90 read as seconds; longer waits read in whole minutes.
+export function retryText(seconds?: number): string
+{
+    if (seconds === undefined || !Number.isFinite(seconds)) {
+        return 'Try again in a minute.';
+    }
+    return seconds > 90 ? `Try again in ${Math.ceil(seconds / 60)} min.` : `Try again in ${Math.max(1, Math.round(seconds))} s.`;
+}
+
+// The route says "daily" both for one visitor's cap and for the whole site's, so it never blames the visitor.
 export function busyText(e: { retryAfter?: number; reason?: string }): string
 {
     if (e.reason === 'daily') {
-        return 'You have used today’s AI notes.';
+        return 'Today’s AI notes are used up. Try again tomorrow.';
     }
-    return e.retryAfter !== undefined ? `Too many requests. Try again in ${e.retryAfter} s.` : 'Too many requests. Try again in a minute.';
+    return `Too many requests. ${retryText(e.retryAfter)}`;
 }
+
+export const MSG = {
+    unreachable: 'Couldn’t reach the server. Try again.',
+    wrong: 'Wrong passcode.',
+    enter: 'Enter the passcode.',
+    failed: 'Couldn’t write the note. Try again.',
+    unverified: 'No AI note for this view.',
+    writing: 'Writing an AI note. This takes 5 to 10 seconds.',
+    written: 'AI note written.',
+};
 
 const LABELS = ['What this shows:', 'How far to trust it:', 'What to check next:'];
 
+type Doc = Pick<Document, 'createElement' | 'createTextNode'> & { activeElement: Element | null };
+
 // Plain text in, DOM nodes out: every string goes through textContent, never innerHTML.
-export function renderNote(box: HTMLElement, text: string): void
+export function renderNote(box: HTMLElement, text: string, doc: Doc = document): void
 {
     box.replaceChildren();
     for (const line of text.split('\n')) {
@@ -117,12 +139,12 @@ export function renderNote(box: HTMLElement, text: string): void
         if (!s) {
             continue;
         }
-        const p = document.createElement('p');
+        const p = doc.createElement('p');
         const label = LABELS.find((l) => s.startsWith(l));
         if (label) {
-            const b = document.createElement('b');
+            const b = doc.createElement('b');
             b.textContent = label;
-            p.append(b, document.createTextNode(` ${s.slice(label.length).trim()}`));
+            p.append(b, doc.createTextNode(` ${s.slice(label.length).trim()}`));
         } else {
             p.textContent = s;
         }
@@ -130,38 +152,44 @@ export function renderNote(box: HTMLElement, text: string): void
     }
 }
 
-function readPass(): string | undefined
-{
-    try {
-        return sessionStorage.getItem(PASS_KEY) ?? undefined;
-    } catch {
-        return undefined;
-    }
-}
-
-function writePass(v: string | undefined): void
-{
-    try {
-        if (v === undefined) {
-            sessionStorage.removeItem(PASS_KEY);
-        } else {
-            sessionStorage.setItem(PASS_KEY, v);
-        }
-    } catch {
-        // Private mode without storage: the passcode lasts until reload.
-    }
+export interface PassStore {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+    removeItem(key: string): void;
 }
 
 export interface AiNote {
-    // Call when the view changes: drops the old note (it described other frames) and shows or hides the panel.
+    // Call on every render. A new view (frames, target, centre, curve or shift) drops the old note, which
+    // described other numbers, and the panel shows only when the route is on and the view has facts to send.
     update(view: NoteView | null): void;
 }
 
-export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightStatus; fetch?: typeof fetchInsight } = {}): AiNote
+export interface AiNoteDeps {
+    status?: typeof insightStatus;
+    fetch?: typeof fetchInsight;
+    fetcher?: typeof fetch; // the network under insightStatus, wrapped to tell "off" from "unreachable"
+    storage?: PassStore | null; // defaults to sessionStorage; never localStorage
+    doc?: Doc;
+}
+
+function defaultStore(): PassStore | null
+{
+    try {
+        return globalThis.sessionStorage ?? null;
+    } catch {
+        return null;
+    }
+}
+
+export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 {
     const status = deps.status ?? insightStatus;
     const fetchNote = deps.fetch ?? fetchInsight;
+    const net: typeof fetch = deps.fetcher ?? ((input, init) => fetch(input, init));
+    const store = deps.storage === undefined ? defaultStore() : deps.storage;
+    const doc: Doc = deps.doc ?? document;
     const q = <T extends Element>(name: string) => panel.querySelector(`[data-ai="${name}"]`) as T;
+    const head = panel.querySelector('h2') as HTMLElement;
     const lock = q<HTMLFormElement>('lock');
     const pass = q<HTMLInputElement>('pass');
     const go = q<HTMLButtonElement>('go');
@@ -169,16 +197,61 @@ export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightS
     const msg = q<HTMLElement>('msg');
     const left = q<HTMLElement>('left');
     const disc = q<HTMLElement>('disc');
+    const given = q<HTMLElement>('given');
+    const givenList = q<HTMLElement>('givenList');
+    const goLabel = go.textContent ?? '';
     disc.textContent = disclaimer();
     let st: InsightStatus | null = null;
     let view: NoteView | null = null;
+    let sig: unknown[] = [];
+    let facts: InsightFacts | null | undefined; // undefined: not built yet for this view
     let ctrl: AbortController | null = null;
     let memPass: string | undefined; // used only when sessionStorage is unavailable
-    let goLabel = go.textContent ?? '';
+    let tries = 0; // status answers: only the latest one counts
+    let notice = ''; // a busy reply that came before any view: shown with the first view, then dropped
 
     function passcode(): string | undefined
     {
-        return readPass() ?? memPass;
+        try {
+            return store?.getItem(PASS_KEY) ?? memPass;
+        } catch {
+            return memPass;
+        }
+    }
+
+    function savePass(v: string | undefined): void
+    {
+        memPass = v;
+        try {
+            if (v === undefined) {
+                store?.removeItem(PASS_KEY);
+            } else {
+                store?.setItem(PASS_KEY, v);
+            }
+        } catch {
+            // Private mode without storage: the in-memory copy lasts until reload.
+        }
+    }
+
+    // insightStatus reads a network failure as "off". Watch the wire so a blip is not taken for the route
+    // being switched off.
+    async function check(code?: string): Promise<{ s: InsightStatus; reached: boolean }>
+    {
+        let reached = true;
+        const watched: typeof fetch = async (input, init) => {
+            try {
+                const r = await net(input, init);
+                if (r.status >= 500 && r.status <= 504) {
+                    reached = false;
+                }
+                return r;
+            } catch (e) {
+                reached = false;
+                throw e;
+            }
+        };
+        const s = await status({ ...(code !== undefined ? { passcode: code } : {}), fetcher: watched });
+        return { s, reached: reached || s.busy === true };
     }
 
     function setLeft(n: number | undefined): void
@@ -187,33 +260,58 @@ export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightS
         left.hidden = n === undefined;
     }
 
-    // `quiet` keeps a line for screen readers only, e.g. "written" when the note itself is on screen.
+    // The status line stays in the page so screen readers hear each change; empty or `quiet` lines are
+    // visually hidden only.
     function setMsg(text: string, quiet = false): void
     {
         msg.textContent = text;
-        msg.hidden = !text;
-        msg.classList.toggle('sk-sr', quiet);
+        msg.classList.toggle('sk-sr', quiet || !text);
     }
 
-    function showLock(text: string): void
+    function busy(e: { retryAfter?: number; reason?: string }): void
     {
-        lock.hidden = false;
-        go.hidden = true;
-        setMsg(text);
+        setMsg(busyText(e));
+        if (e.reason === 'daily') {
+            setLeft(undefined);
+        }
+    }
+
+    function locked(): boolean
+    {
+        return Boolean(st && st.locked && !st.unlocked);
+    }
+
+    function factsNow(): InsightFacts | null
+    {
+        if (facts === undefined) {
+            try {
+                facts = view ? buildFacts(factsInput(view)) : null;
+            } catch {
+                facts = null;
+            }
+        }
+        return facts;
     }
 
     function show(): void
     {
-        panel.hidden = !(st && st.enabled && view);
-        if (panel.hidden || !st) {
+        // Facts are built only once the route is on, so a switched-off site never pays for them.
+        panel.hidden = !(st && st.enabled && view && factsNow());
+        if (panel.hidden) {
             return;
         }
-        if (st.locked && !st.unlocked) {
-            lock.hidden = false;
-            go.hidden = true;
-        } else {
-            lock.hidden = true;
-            go.hidden = false;
+        lock.hidden = !locked();
+        go.hidden = locked();
+    }
+
+    function showLock(text: string): void
+    {
+        const hadFocus = doc.activeElement === go || doc.activeElement === head;
+        lock.hidden = false;
+        go.hidden = true;
+        setMsg(text);
+        if (hadFocus) {
+            pass.focus();
         }
     }
 
@@ -222,26 +320,32 @@ export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightS
         ctrl?.abort();
         ctrl = null;
         out.replaceChildren();
-        out.hidden = true;
+        given.hidden = true;
+        givenList.replaceChildren();
         go.disabled = false;
         go.textContent = goLabel;
-        setMsg(st?.busy ? busyText(st) : '');
+        setMsg(notice);
+        notice = '';
     }
 
-    let tries = 0; // only the latest Unlock answer counts
     lock.addEventListener('submit', async (e) => {
         e.preventDefault();
         const v = pass.value;
         if (!v) {
+            setMsg(MSG.enter);
             return;
         }
         const mine = ++tries;
-        const s = await status({ passcode: v });
+        const { s, reached } = await check(v);
         if (mine !== tries) {
             return;
         }
+        if (!reached) {
+            setMsg(MSG.unreachable);
+            return;
+        }
         if (s.busy) {
-            setMsg(busyText(s));
+            busy(s);
             return;
         }
         if (!s.enabled) {
@@ -250,12 +354,12 @@ export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightS
             return;
         }
         if (!s.unlocked) {
-            showLock('Wrong passcode.');
+            savePass(undefined);
+            showLock(MSG.wrong);
             pass.select();
             return;
         }
-        writePass(v);
-        memPass = v;
+        savePass(v);
         pass.value = '';
         st = s;
         setMsg('');
@@ -265,55 +369,74 @@ export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightS
     });
 
     go.addEventListener('click', async () => {
-        if (!view) {
-            return;
-        }
-        let facts: InsightFacts;
-        try {
-            facts = buildFacts(factsInput(view));
-        } catch {
-            setMsg('No AI note for this view.');
+        const f = factsNow();
+        if (!view || !f) {
             return;
         }
         ctrl?.abort();
         const c = new AbortController();
         ctrl = c;
+        if (doc.activeElement === go) {
+            head.focus(); // a disabled button drops focus to the page
+        }
         go.disabled = true;
         go.textContent = 'Writing the note…';
-        setMsg('Writing an AI note. This takes 5 to 10 seconds.');
-        out.hidden = true;
+        setMsg(MSG.writing);
+        out.replaceChildren();
+        given.hidden = true;
+        const sent = passcode();
         try {
-            const note = await fetchNote(facts, { signal: c.signal, passcode: passcode() });
-            if (c.signal.aborted) {
+            const note = await fetchNote(f, { signal: c.signal, ...(sent !== undefined ? { passcode: sent } : {}) });
+            if (c.signal.aborted || ctrl !== c) {
                 return;
             }
-            renderNote(out, note.text);
+            renderNote(out, note.text, doc);
+            givenList.replaceChildren(...factSheet(f).map((line) => {
+                const li = doc.createElement('li');
+                li.textContent = line;
+                return li;
+            }));
+            given.hidden = false;
             disc.textContent = disclaimer(note.model);
-            out.hidden = false;
-            setMsg('AI note written.', true);
+            setMsg(MSG.written, true);
             // A cached note carries the allowance from when it was written, so it can't update the count.
             if (note.remaining !== undefined && !note.cached) {
                 setLeft(note.remaining);
             }
         } catch (err) {
-            if (c.signal.aborted) {
+            if (c.signal.aborted || ctrl !== c) {
                 return;
             }
             const code = err instanceof InsightError ? err.code : 'failed';
             if (code === 'off') {
-                st = { enabled: false, locked: false, unlocked: false };
-                show();
+                // Only the route's own "off" hides the panel; a gateway error looks the same, so ask again.
+                const mine = ++tries;
+                const { s, reached } = await check(sent);
+                if (mine !== tries || ctrl !== c) {
+                    return;
+                }
+                if (reached && !s.enabled) {
+                    st = s;
+                    show();
+                } else {
+                    setMsg(MSG.unreachable);
+                }
             } else if (code === 'locked') {
-                writePass(undefined);
-                memPass = undefined;
                 if (st) {
                     st = { ...st, locked: true, unlocked: false };
                 }
-                showLock('Wrong passcode.');
+                if (sent === undefined) {
+                    showLock(MSG.enter);
+                } else {
+                    savePass(undefined);
+                    showLock(MSG.wrong);
+                }
             } else if (code === 'busy') {
-                setMsg(busyText(err as InsightError));
+                busy(err as InsightError);
+            } else if (code === 'unverified') {
+                setMsg(MSG.unverified);
             } else {
-                setMsg('No AI note for this view.');
+                setMsg(MSG.failed);
             }
         } finally {
             if (ctrl === c) {
@@ -324,23 +447,39 @@ export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightS
         }
     });
 
-    void status({ passcode: passcode() }).then((s) => {
+    const first = passcode();
+    const mine = ++tries;
+    void check(first).then(({ s, reached }) => {
+        if (mine !== tries) {
+            return; // an Unlock answered first and is newer
+        }
+        if (!reached) {
+            return; // the panel was never on: stay hidden rather than guess
+        }
+        if (first !== undefined && s.enabled && s.locked && !s.unlocked) {
+            savePass(undefined); // stale: don't spend a guess on it at every reload
+        }
         st = s;
         disc.textContent = disclaimer(s.model);
         setLeft(s.remaining);
         if (s.busy) {
-            setMsg(busyText(s));
+            busy(s); // shown once; the next view or note clears it
+            if (!view) {
+                notice = busyText(s);
+            }
         }
         show();
     });
 
-    goLabel = go.textContent ?? '';
     return {
         update(v: NoteView | null): void
         {
-            const changed = v?.result !== view?.result || v?.targetId !== view?.targetId;
+            const next = v ? [v.result, v.targetId, v.center.ra, v.center.dec, v.curve, v.shift] : [];
+            const changed = next.length !== sig.length || next.some((x, i) => !Object.is(x, sig[i]));
             view = v;
             if (changed) {
+                sig = next;
+                facts = undefined;
                 clearNote();
             }
             show();
