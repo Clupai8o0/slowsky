@@ -1040,9 +1040,12 @@ export function mount(root: HTMLElement): void
         if (kind === 'variable' && curve) {
             const valid = curve.lc.points.filter((p) => p.valid && Number.isFinite(p.relative));
             const rel = valid.map((p) => p.relative);
-            // Ratios only mean something when the star itself is seen above the sky in every look.
-            if (rel.length >= 2 && (Math.min(...rel) <= 0 || valid.some((p) => !(p.target.sum > 0)))) {
-                return { fact: `Across ${rel.length} looks it fades to nothing measurable in at least one, against ${curve.refs} comparison stars.` };
+            // Ratios only mean something when the star itself is clearly seen (3 sigma over the sky noise in its
+            // aperture, scaled for regridded pixels sharing a detector pixel's noise) in every look.
+            const spread = Math.max(1, NATIVE_ARCSEC / result.grid.pixelArcsec);
+            const seen = (p: (typeof valid)[number]): boolean => p.target.sum > 3 * p.target.backgroundSigma * Math.sqrt(p.target.nPix) * spread;
+            if (rel.length >= 2 && (Math.min(...rel) <= 0 || !valid.every(seen))) {
+                return { fact: `Across ${rel.length} looks it is not clearly seen above the sky in at least one, so no change is given.` };
             }
             if (rel.length >= 2) {
                 const change = (Math.max(...rel) / Math.min(...rel) - 1) * 100;
