@@ -167,7 +167,7 @@ export interface Wcs {
 
 // ---------- wavelength ----------
 
-// The WCS-WAVE table: a 9x9 grid of (lambda, bandwidth) over the detector,
+// The WCS-WAVE table: a 9x9 grid (9x14 on detector 3) of (lambda, bandwidth) over the detector,
 // looked up bilinearly. Lambda changes mostly along y.
 export interface WaveGrid {
     xs: number[]; // 9 pixel positions, 0-based
