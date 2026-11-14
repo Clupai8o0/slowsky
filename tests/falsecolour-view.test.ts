@@ -522,7 +522,8 @@ describe('reliable colour readings', () => {
         }
         const weakReading = falseColourView(sky(lookFrames([5, 5], [0, 200], 1.25)), sky(weak), radii).parts.reading;
         expect(weakReading).not.toContain('different places');
-        expect(weakReading).toContain('is not counted as seen at the centre');
+        // Frames this weak cannot be placed one by one: the combined picture decides, and the 2-frame caution stays.
+        expect(weakReading).toBe('At the centre: seen at 1.25 µm (signal-to-noise 7.6, only 2 frames, so a moving source or two detector hits cannot be ruled out); seen at 4.60 µm (signal-to-noise 7.7, only 2 frames, so a moving source or two detector hits cannot be ruled out).');
     });
     it('groups the strongest frames by look before counting a signal', () => {
         const values = [1.12, 1.29, 1177.54, 1689.28];
@@ -1616,7 +1617,7 @@ describe('round 9c: fixes from the second review of round 9', () => {
         });
         const reading = falseColourView({ ...sky(make(1.25, [15, 15, 15])), grid: g }, { ...sky(make(4.6, [14, 14, 16])), grid: g }, radii).parts.reading;
         expect(reading).toContain('seen at 4.60 µm');
-        expect(reading).toContain('its brightest point sits in different places in different frames, so it may be a moving source or more than one source');
+        expect(reading).toContain('seen at 4.60 µm (signal-to-noise 27; its brightest point sits in different places in different frames, which a steady star can also show because each detector pixel is 6.15″ wide, and it may also be a moving source or more than one source)');
     });
 
     it('places a Gaia star from its sky position when its saved pixel is unusable', () => {
@@ -1677,8 +1678,11 @@ describe('round 9c: fixes from the recheck of round 9b', () => {
             return { ...f, grid: g, frame: { ...f.frame, tMin: 60000 + [0, 200, 400][i]!, tMax: 60000.001 + [0, 200, 400][i]! } };
         });
         const reading = falseColourView({ ...sky(make(1.25, [17, 17, 13])), grid: g }, { ...sky(make(4.6, [15, 15, 15])), grid: g }, radii).parts.reading;
-        expect(reading).toContain('1.25 µm shows light here that is brightest 8.00″ from the centre and its brightest point sits in different places in different frames, so it may be a moving source or a neighbouring one and is not counted as seen at the centre');
-        expect(reading).not.toContain('seen at 1.25 µm');
+        // 16″ between the frames' brightest points is more than a steady star gives on 6.15″ pixels: no such excuse.
+        expect(reading).toBe('At the centre: 1.25 µm shows light here that is brightest 8.00″ from the centre in the combined picture, and its brightest point sits in different places in different frames; it may be a moving source or a neighbouring one, and it is not counted as seen at the centre; seen at 4.60 µm (signal-to-noise 80).');
+        // 8″ is within what one detector pixel's diagonal allows: the coarse pixels are named as a possible cause.
+        const near = falseColourView({ ...sky(make(1.25, [17, 17, 15])), grid: g }, { ...sky(make(4.6, [15, 15, 15])), grid: g }, radii).parts.reading;
+        expect(near).toBe('At the centre: 1.25 µm shows light here that is brightest 8.00″ from the centre in the combined picture, and its brightest point sits in different places in different frames, which a steady star can also show because each detector pixel is 6.15″ wide; it may be a moving source or a neighbouring one, and it is not counted as seen at the centre; seen at 4.60 µm (signal-to-noise 80).');
     });
 
     it('keeps the entry that can be placed when a star is listed twice', () => {
@@ -1708,4 +1712,81 @@ it('never prints index in any reading produced by the fixture and case helpers',
     for (const reading of readings) {
         expect(reading).not.toMatch(/index/i);
     }
+});
+
+describe('round 9d: fixes from the review of round 9c', () => {
+    const g3 = { ...grid, pixelArcsec: 3 };
+    const r3 = { radius: 4, annulusIn: 5, annulusOut: 7 };
+    const dated = (lambda: number, xs: number[], levels: number[], days: number[], g = g3) => xs.map((x, i) => {
+        const f = sourceFrame(lambda, x, levels[i]!);
+        return { ...f, grid: g, frame: { ...f.frame, tMin: 60000 + days[i]!, tMax: 60000.001 + days[i]! } };
+    });
+    const view = (s: RegriddedFrame[], l: RegriddedFrame[], g = g3, r = r3) => falseColourView({ ...sky(s), grid: g }, { ...sky(l), grid: g }, r).parts;
+
+    it('says where changing light is when it is away from the centre', () => {
+        const days = [0, 200, 400, 600];
+        const reading = view(dated(1.25, [15, 15, 15, 15], [2000, 2000, 2000, 2000], days), dated(4.6, [18, 18, 18, 18], [2000, 2000, 2000, 8000], days)).reading;
+        expect(reading).toContain('it may have changed or moved, or be a detector effect; it is brightest 9.00″ from the centre, so it may belong to a neighbouring source');
+    });
+
+    it.each([2000, 8000, 40000])('prints no distance when 2 frames show the light at different places (level %i)', (level) => {
+        const reading = view(dated(1.25, [15, 15], [2000, 2000], [0, 200]), dated(4.6, [13, 17], [level, level], [0, 200])).reading;
+        expect(reading).not.toContain('12.00″');
+        expect(reading).toContain('4.60 µm shows light here, but its two frames do not agree on where it is brightest, so it may be a moving source, a neighbouring one or a detector hit, and it is not counted as seen at the centre');
+        expect(reading).not.toContain('seen at 4.60 µm');
+    });
+
+    it('takes the pixel nearest the centre when a frame has two equally bright pixels', () => {
+        const g = { ...grid, pixelArcsec: 4 };
+        const days = [0, 200, 400];
+        const frames = dated(4.6, [15, 15, 15], [3000, 3000, 3000], days, g);
+        // The third frame has an equal pixel 8″ away, inside the circle, that is scanned before the centre one.
+        frames[2]!.data[15 * 31 + 13] = frames[2]!.data[15 * 31 + 15]!;
+        frames[0]!.data[15 * 31 + 13] = frames[0]!.data[15 * 31 + 15]! - 1;
+        frames[1]!.data[15 * 31 + 13] = frames[1]!.data[15 * 31 + 15]! - 1;
+        const reading = view(dated(1.25, [15, 15, 15], [3000, 3000, 3000], days, g), frames, g, radii).reading;
+        expect(reading).toContain('4.60 µm');
+        expect(reading).not.toContain('different places');
+    });
+
+    it('prints the position sentence only when the comparison ran', () => {
+        // The 4.60 µm band fails the frame-by-frame check, so no positions were compared in it; 1.25 µm has one frame.
+        const parts = falseColourView(sky([sourceFrame(1.25)]), sky(lookFrames([100, 1, 100, 1], [360, 0, 366, 190])), radii).parts;
+        expect(parts.reading).toContain('without the 2 frames of its strongest visit, so it is not counted as seen');
+        expect(parts.method).not.toContain('Position is compared');
+    });
+
+    it('prints the visit sentence only for a measurable band with 2 or more frames', () => {
+        const blank = dated(4.6, [15, 15], [100, 100], [0, 1]);
+        blank.forEach(f => { f.data[15 * 31 + 15] = NaN; });
+        const parts = view(dated(1.25, [15], [100], [0]), blank);
+        expect(parts.method).not.toContain('count as one visit');
+    });
+
+    it('places an undated star at its saved pixel before its catalogue position', () => {
+        const undated = (lambda: number) => lookFrames([30], [NaN], lambda);
+        const s = sky(undated(1.25));
+        const l = sky(undated(4.6));
+        l.stars = [{ sourceId: 'saved', ...gridPixToSky(grid, { x: 25, y: 25 }), g: 15, epochJyear: 2016, pmRa: 0, pmDec: 0, pix: { x: 15, y: 15 } }];
+        const method = falseColourView(s, l, radii).parts.method;
+        expect(method).toContain('1 of the Gaia stars this page loads lies inside that circle');
+    });
+
+    it('lets the combined picture place 2 frames too weak to place one by one', () => {
+        const weak = lookFrames([5, 5], [0, 200]);
+        for (let i = 0; i < 2; i++) {
+            weak[i]!.data[15 * 31 + (i ? 17 : 13)] = weak[i]!.data[15 * 31 + 15]!;
+            weak[i]!.data[15 * 31 + 15] = 0;
+        }
+        const reading = falseColourView(sky(lookFrames([5, 5], [0, 200], 1.25)), sky(weak), radii).parts.reading;
+        expect(reading).toContain('4.60 µm shows light here that is brightest 12.30″ from the centre, so it may belong to a neighbouring source and is not counted as seen at the centre');
+    });
+
+    it('drops the coarse-pixel excuse from a seen band when the gap is too wide for it', () => {
+        const days = [0, 200, 400];
+        const g = { ...grid, pixelArcsec: 4 };
+        const wide = view(dated(1.25, [15, 15, 15], [3000, 3000, 3000], days, g), dated(4.6, [15, 15, 19], [3000, 3000, 3000], days, g), g, { radius: 4, annulusIn: 5, annulusOut: 7 }).reading;
+        expect(wide).toContain('its brightest point sits in different places in different frames, so it may be a moving source or more than one source)');
+        expect(wide).not.toContain('steady star');
+    });
 });
