@@ -306,7 +306,7 @@ function shell(): string
     <p class="sk-body mute" data-bind="lcNote"></p>
   </section>
   <section class="sk-mod sk-m-details" aria-labelledby="sk-h5">
-    <h2 class="sk-mh" id="sk-h5"><span class="ic">${ICON.info}</span>This frame</h2>
+    <h2 class="sk-mh" id="sk-h5"><span class="ic">${ICON.info}</span><span data-bind="dlh">This frame</span></h2>
     <dl data-ref="dl"></dl>
     <ul class="sk-notes" data-ref="notes"></ul>
   </section>
@@ -928,31 +928,49 @@ export function mount(root: HTMLElement): void
             bind('frame', `Frame ${st.index + 1} of ${n}`);
             bind('when', niceDate(f.frame.frame.tMin));
         } else if (st.mode === 'stack' && first && last) {
-            bind('frame', `All ${n} frames, averaged`);
-            bind('when', `${monthYear(first.tMin)} to ${monthYear(last.tMin)}`);
+            bind('frame', `Average of ${n}`);
+            bind('when', `${monthYear(first.tMin)} – ${monthYear(last.tMin)}`);
         } else if (first && last) {
-            bind('frame', 'Last look minus first');
-            bind('when', `${monthYear(last.tMin)} minus ${monthYear(first.tMin)}`);
+            bind('frame', 'Last − first');
+            bind('when', `${monthYear(last.tMin)} − ${monthYear(first.tMin)}`);
         }
         sizeBar();
+        bind('dlh', st.mode === 'blink' || n < 2 ? 'This frame' : 'These frames');
 
         const extraNotes: string[] = [];
         if (cored) {
             extraNotes.push('The white core is a star too bright for the camera there: SPHEREx records no value for those pixels.');
         }
         if (f && lf) {
-            const rec = f.frame.frame;
-            const rows: [string, string][] = [
-                ['Taken', `${mjdToDate(rec.tMin).toISOString().slice(0, 16).replace('T', ' ')} UTC`],
-                ['Frame', `${st.index + 1} of ${n}`],
-                ['Colour here', `${lf.lambda.toFixed(3)} µm (${lf.dLambda >= 0 ? '+' : '−'}${Math.abs(lf.dLambda).toFixed(3)})`],
+            // Blink describes the frame on screen; Stack and Subtract describe the frames they combine.
+            const many = st.mode !== 'blink' && n > 1;
+            const shown = !many ? [st.index] : st.mode === 'stack' ? result.frames.map((_, i) => i) : [0, n - 1];
+            const rec = many ? result.frames[shown[0]!]!.frame.frame : f.frame.frame;
+            const utc = (mjd: number): string => `${mjdToDate(mjd).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+            const lams = shown.map((i) => result!.locked[i]?.lambda).filter((v): v is number => v !== undefined && Number.isFinite(v));
+            const rows: [string, string][] = many
+                ? [
+                    ['Shows', st.mode === 'stack' ? `Average of all ${n} frames` : `Frame ${n} minus frame 1`],
+                    ['Taken', st.mode === 'stack' ? `${niceDate(first!.tMin)} to ${niceDate(last!.tMin)}` : `${utc(last!.tMin)} − ${utc(first!.tMin)}`],
+                    ['Colour', lams.length ? `${Math.min(...lams).toFixed(3)} to ${Math.max(...lams).toFixed(3)} µm` : '—'],
+                ]
+                : [
+                    ['Taken', utc(rec.tMin)],
+                    ['Frame', `${st.index + 1} of ${n}`],
+                    ['Colour here', `${lf.lambda.toFixed(3)} µm (${lf.dLambda >= 0 ? '+' : '−'}${Math.abs(lf.dLambda).toFixed(3)})`],
+                ];
+            rows.push(
                 ['Detector', `D${rec.detector}`],
                 ['Release', rec.collection],
                 ['Field', `${Number(result.grid.fovDeg.toFixed(3))}° · ${result.grid.width} × ${result.grid.height} px`],
                 ['Scale', `${result.grid.pixelArcsec.toFixed(2)}″ per pixel`],
-                ['File', rec.obsId],
-            ];
-            if (rec.pipelineVersion) {
+            );
+            if (!many) {
+                rows.push(['File', rec.obsId]);
+            } else if (st.mode === 'diff') {
+                rows.push(['Files', `${last!.obsId} − ${first!.obsId}`]);
+            }
+            if (rec.pipelineVersion && !many) {
                 rows.push(['Pipeline', rec.pipelineVersion]);
             }
             const t = st.target ? targetById(st.target) : undefined;
@@ -981,10 +999,16 @@ export function mount(root: HTMLElement): void
                 return `<dt>${k}</dt><dd>${val}</dd>`;
             }).join('');
             const links: string[] = [];
-            if (rec.url) {
+            if (many && st.mode === 'diff') {
+                for (const [r, label] of [[first!, 'first'], [last!, 'last']] as const) {
+                    if (r.url) {
+                        links.push(`<a href="${esc(r.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS, ${label}</a>`);
+                    }
+                }
+            } else if (rec.url && !many) {
                 links.push(`<a href="${esc(rec.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS file</a>`);
             }
-            if (rec.irsaUrl) {
+            if (rec.irsaUrl && !many) {
                 links.push(`<a href="${esc(rec.irsaUrl)}" rel="noopener" target="_blank"><span class="ic">${ICON.out}</span>IRSA</a>`);
             }
             if (links.length) {
@@ -993,10 +1017,10 @@ export function mount(root: HTMLElement): void
             ref<HTMLElement>('dl').innerHTML = html;
         }
         bind('statusShort', sourceKind === 'live' ? 'Live from NASA’s SPHEREx archive'
-            : sourceKind === 'snapshot' ? 'Saved copy' : 'Simulated sky · not real data');
+            : sourceKind === 'snapshot' ? (liveFailed ? 'Saved copy · archive did not answer' : 'Saved copy') : 'Simulated sky · not real data');
         const status = sourceKind === 'live' ? 'Live: read straight from NASA’s SPHEREx archive on Amazon S3.'
-            : sourceKind === 'snapshot' ? (liveFailed ? 'Saved copy of NASA SPHEREx frames (the live archive did not answer).'
-                : 'Saved copy of real NASA SPHEREx frames, so it opens at once. Go live reads them from the archive (about 30 s).')
+            : sourceKind === 'snapshot' ? (liveFailed ? 'NASA’s live archive did not answer, so this is the saved copy: real SPHEREx frames stored with this page. Go live tries the archive again.'
+                : 'Saved copy: real NASA SPHEREx frames stored with this page, so it opens at once. Go live reads them fresh from the archive (about 30 s).')
                 : 'Simulated sky for building the page. Not real data.';
         bind('status', status);
         ref<HTMLElement>('notes').innerHTML = [...extraNotes, ...result.notes].map((t) => `<li>${esc(t)}</li>`).join('');
@@ -1301,7 +1325,8 @@ export function mount(root: HTMLElement): void
     }
     if (shared) {
         st.center = shared.center;
-        st.fovDeg = FOVS.includes(shared.fovDeg) ? shared.fovDeg : DEFAULT_FOV;
+        // No fov= in the link (?t=barnard): the app's 0.1°, not the URL module's default, so a target opens from the saved copy.
+        st.fovDeg = params.has('fov') && FOVS.includes(shared.fovDeg) ? shared.fovDeg : DEFAULT_FOV;
         st.detector = shared.detector;
         st.lambda = shared.lambda;
         st.target = shared.target;
