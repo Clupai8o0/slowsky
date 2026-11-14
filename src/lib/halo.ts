@@ -3,6 +3,10 @@ import { aperture } from './photometry';
 import type { ApertureOptions, ApertureResult, LightCurve, LightCurvePoint } from './photometry';
 
 const NATIVE_PIXEL_ARCSEC = 6.15;
+// Radial fill bins are half a native pixel wide; a straight-line fit in radius fills each bin's gaps.
+const RING_BIN_NATIVE = 0.5;
+
+type RingBin = { all: number; finite: number; total: number; sr: number; srr: number; svr: number; mr: number };
 
 export class HaloError extends Error {
     constructor(message: string)
@@ -195,6 +199,24 @@ function ringContained(width: number, height: number, at: PixelCoord, ringOut: n
         && Math.hypot(nearestX - at.x, Math.max(height, nearestY) - at.y) >= ringOut;
 }
 
+// A bin's finite pixels plus its missing ones, read off a least-squares line of value against radius.
+function binSum(bin: RingBin): number
+{
+    const missing = bin.all - bin.finite;
+    const meanR = bin.sr / bin.finite;
+    const meanV = bin.total / bin.finite;
+    const spread = bin.srr - bin.finite * meanR * meanR;
+    const slope = missing > 0 && spread > 1e-9 * bin.finite ? (bin.svr - bin.finite * meanR * meanV) / spread : 0;
+    return bin.total + missing * meanV + slope * (bin.mr - missing * meanR);
+}
+
+// True when a blank area that starts inside ringIn reaches the ring's pixel footprints.
+function blankInRing(f: RegriddedFrame, at: PixelCoord, ringIn: number, ringOut: number): boolean
+{
+    const blank = blankSearch(f.data, f.grid.width, f.grid.height, at, { seed: ringIn, maxRadius: ringOut }, true);
+    return blank.touchesLimit || (blank.pixels > 0 && blank.reach + Math.SQRT1_2 >= ringIn);
+}
+
 // Measures the ring alone; haloCurve checks whether the blank middle reaches it.
 export function ringAperture(
     data: Float32Array,
@@ -214,7 +236,7 @@ export function ringAperture(
     }
     let allRing = 0;
     let nPix = 0;
-    const bins = new Map<number, { all: number; finite: number; total: number }>();
+    const bins = new Map<number, RingBin>();
     const sky: number[] = [];
     const xMin = Math.max(0, Math.ceil(at.x - skyOut));
     const xMax = Math.min(width - 1, Math.floor(at.x + skyOut));
@@ -227,12 +249,17 @@ export function ringAperture(
             if (distance >= ringIn && distance < ringOut) {
                 allRing++;
                 const binIndex = Math.floor((distance - ringIn) / binWidth);
-                const bin = bins.get(binIndex) ?? { all: 0, finite: 0, total: 0 };
+                const bin = bins.get(binIndex) ?? { all: 0, finite: 0, total: 0, sr: 0, srr: 0, svr: 0, mr: 0 };
                 bin.all++;
                 if (Number.isFinite(value)) {
                     bin.total += value;
                     bin.finite++;
+                    bin.sr += distance;
+                    bin.srr += distance * distance;
+                    bin.svr += value * distance;
                     nPix++;
+                } else {
+                    bin.mr += distance;
                 }
                 bins.set(binIndex, bin);
             } else if (distance >= skyIn && distance < skyOut && Number.isFinite(value)) {
@@ -244,7 +271,7 @@ export function ringAperture(
     const backgroundSigma = 1.4826 * median(sky.map((value) => Math.abs(value - background)));
     const valid = ringContained(width, height, at, ringOut) && allRing > 0 && sky.length >= 8
         && [...bins.values()].every((bin) => bin.finite / bin.all >= minFraction);
-    const sum = valid ? [...bins.values()].reduce((total, bin) => total + bin.total / bin.finite * bin.all, 0)
+    const sum = valid ? [...bins.values()].reduce((total, bin) => total + binSum(bin), 0)
         - background * allRing : Number.NaN;
     const snr = valid && backgroundSigma > 0 ? sum / (backgroundSigma * Math.sqrt(allRing)) : 0;
     return { valid, sum, background, backgroundSigma, nPix, nSky: sky.length, snr };
@@ -302,8 +329,8 @@ export function ringFor(
     const thickness = opts.thickness ?? 3 * native;
     const blankOpts = { seed: opts.seed, maxRadius: opts.maxRadius ?? Math.max(opts.seed ?? 1.5, 6 * native) };
     checkBlankOptions(blankOpts);
-    if (!Number.isFinite(margin) || margin < 0 || !Number.isFinite(thickness) || thickness <= 0) {
-        throw new HaloError('Require a finite nonnegative margin and positive thickness');
+    if (!Number.isFinite(margin) || margin <= 0 || !Number.isFinite(thickness) || thickness <= 0) {
+        throw new HaloError('Require a finite positive margin and positive thickness');
     }
     let largest = 0;
     const selected = selectFrames(frames, opts).kept;
@@ -326,8 +353,12 @@ export function ringFor(
     const ringIn = largest + margin;
     const ringOut = ringIn + thickness;
     checkRingOptions({ ringIn, ringOut });
-    if (!locations.some(({ frame, at }) => ringContained(frame.grid.width, frame.grid.height, at, ringOut))) {
+    const fits = locations.filter(({ frame, at }) => ringContained(frame.grid.width, frame.grid.height, at, ringOut));
+    if (fits.length === 0) {
         throw new HaloError('The ring does not fit in the picture: use a wider view');
+    }
+    if (fits.every(({ frame, at }) => blankInRing(frame, at, ringIn, ringOut))) {
+        throw new HaloError('A blank area reaches the ring in every frame');
     }
     return { ringIn, ringOut };
 }
@@ -362,11 +393,9 @@ export function haloCurve(
     for (const { frame: f, index } of kept) {
         const at = typeof target === 'function' ? target(f, index) : target;
         const measured = ringAperture(f.data, f.grid.width, f.grid.height, at,
-            { ...opts, binWidth: NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec });
+            { ...opts, binWidth: RING_BIN_NATIVE * NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec });
         if (Number.isFinite(at.x) && Number.isFinite(at.y)) {
-            const blank = blankSearch(f.data, f.grid.width, f.grid.height, at,
-                { seed: opts.ringIn, maxRadius: opts.ringOut }, true);
-            if (blank.touchesLimit || (blank.pixels > 0 && blank.reach + Math.SQRT1_2 >= opts.ringIn)) {
+            if (blankInRing(f, at, opts.ringIn, opts.ringOut)) {
                 measured.valid = false;
                 measured.sum = Number.NaN;
                 measured.snr = 0;

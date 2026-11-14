@@ -71,6 +71,19 @@ function frame(visit: number, scale = 1, hole = 0, at = target, lambda = 2): Reg
     };
 }
 
+// A steep Moffat halo (beta 3.5) on the 3.075 arcsec grid, NaN where it would saturate.
+function steepFrame(at: PixelCoord): RegriddedFrame
+{
+    const f = frame(0, 0, 0, at);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const halo = 1e7 * (1 + (Math.hypot(x - at.x, y - at.y) / 1.5) ** 2) ** -3.5;
+            f.data[y * width + x] = halo > 2e4 ? NaN : f.data[y * width + x]! + halo;
+        }
+    }
+    return f;
+}
+
 describe('blankRadius', () => {
     it('marks each image border and includes neighbours exactly at the limit', () => {
         for (const at of [{ x: 0, y: 10 }, { x: 19, y: 10 }, { x: 10, y: 0 }, { x: 10, y: 19 }]) {
@@ -297,6 +310,7 @@ describe('ringAperture', () => {
         { ringIn: 0 }, { ringIn: -1 }, { ringIn: NaN }, { ringOut: Infinity }, { ringOut: 6 },
         { skyIn: 9 }, { skyIn: NaN }, { skyOut: 14 }, { skyOut: Infinity },
         { minFraction: 0 }, { minFraction: 1.01 }, { minFraction: NaN },
+        { binWidth: 0 }, { binWidth: -1 }, { binWidth: NaN }, { binWidth: Infinity },
     ])('throws HaloError for bad options %j', (bad) => {
         expect(() => ringAperture(frame(0).data, width, height, target, { ...options, ...bad })).toThrow(HaloError);
     });
@@ -336,6 +350,13 @@ describe('ringFor', () => {
         const f = frame(0, 1, 2.2, { x: 4, y: 40 });
         expect(() => ringFor([f], { x: 4, y: 40 })).toThrow('The ring does not fit in the picture: use a wider view');
         expect(() => ringFor([frame(0, 1, 2.2)], target, { seed: 13 })).not.toThrow();
+        const moving = [target, { x: 4, y: 40 }];
+        const frames = moving.map((at, i) => frame(i, 1, 2.2, at));
+        expect(() => ringFor(frames, (_f, i) => moving[i]!)).not.toThrow();
+        expect(() => ringFor([frame(0, 1, 2.2), frame(1, 2, 3.2)], target, { margin: 0 })).toThrow(HaloError);
+        const neighbour = frame(0, 1, 2.2);
+        neighbour.data[41 * width + 46] = NaN;
+        expect(() => ringFor([neighbour], target)).toThrow('A blank area reaches the ring in every frame');
     });
     it('uses the largest hole, native-pixel defaults and explicit margins', () => {
         const frames = [frame(0, 1, 2.2), frame(1, 2, 3.2), frame(2, 4, 4.2)];
@@ -421,6 +442,53 @@ describe('haloCurve', () => {
         }
         const point = haloCurve([f], at, refs, { ...options, seed: 0.5 }).points[0]!;
         expect(!point.valid || Math.abs(point.target.sum / truth - 1) < 0.02).toBe(true);
+    });
+
+    it('stays within 2 percent or rejects NaN bands on a steep halo', () => {
+        const at = { x: 40.3, y: 39.6 };
+        const ring = ringFor([steepFrame(at)], at);
+        const opts = { ...options, ...ring, skyIn: ring.ringOut + 2, skyOut: ring.ringOut + 6 };
+        const truth = haloCurve([steepFrame(at)], at, refs, opts).points[0]!.target.sum;
+        for (const lo of [0, 0.25, 0.5, 0.75, 1.5]) {
+            for (const w of [0.25, 0.5, 0.75]) {
+                for (const arc of [0.3, 0.5, 0.7, 0.95]) {
+                    const f = steepFrame(at);
+                    for (let y = 0; y < height; y++) {
+                        for (let x = 0; x < width; x++) {
+                            const r = Math.hypot(x - at.x, y - at.y);
+                            const turn = (Math.atan2(y - at.y, x - at.x) / (2 * Math.PI) + 1.5) % 1;
+                            if (turn < arc && r >= ring.ringIn + lo && r < ring.ringIn + lo + w) {
+                                f.data[y * width + x] = NaN;
+                            }
+                        }
+                    }
+                    const point = haloCurve([f], at, refs, opts).points[0]!;
+                    expect(!point.valid || Math.abs(point.target.sum / truth - 1) < 0.02).toBe(true);
+                }
+            }
+        }
+    });
+
+    it('rejects a zero or negative halo among positive visits', () => {
+        for (const value of [3, -7]) {
+            const flat = frame(2);
+            indices(target, 6, 10).forEach((offset) => { flat.data[offset] = value; });
+            indices(target, 14, 18).forEach((offset) => { flat.data[offset] = 3; });
+            const curve = haloCurve([frame(0), frame(1, 2), flat], target, refs, options);
+            expect(curve.points.map((point) => point.valid)).toEqual([true, true, false]);
+        }
+    });
+
+    it('counts a blank pixel footprint that reaches the ring, exactly at the edge', () => {
+        const at = (dx: number, dy: number, ringIn = 6) => {
+            const f = frame(0);
+            f.data[(target.y + dy) * width + target.x + dx] = NaN;
+            return haloCurve([f], target, refs, { ...options, ringIn, ringOut: ringIn + 4 }).points[0]!.valid;
+        };
+        expect(at(5, 2)).toBe(false);
+        expect(at(5, 0)).toBe(true);
+        expect(at(5, 0, 5 + Math.SQRT1_2)).toBe(false);
+        expect(at(6, 0)).toBe(true);
     });
 
     it('recovers evenly scattered missing ring pixels', () => {
