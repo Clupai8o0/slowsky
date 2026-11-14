@@ -299,7 +299,7 @@ function shell(): string
   </section>
   <section class="sk-mod sk-m-curve" aria-labelledby="sk-h6" data-ref="curve" hidden>
     <h2 class="sk-mh" id="sk-h6"><span class="ic">${ICON.curve}</span>Brightness over time</h2>
-    <div class="sk-lc"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
+    <div class="sk-lc" data-ref="lcwrap"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
     <div class="sk-lcx" data-ref="lcx" aria-hidden="true"></div>
     <p class="sk-body mute" data-bind="lcNote"></p>
   </section>
@@ -348,7 +348,7 @@ export function mount(root: HTMLElement): void
     let sourceKind: SourceKind = 'live';
     let liveFailed = false; // the saved copy is showing because the live archive did not answer
     let curve: Curve | null = null; // brightness against nearby comparison stars, for targets that change
-    const shifts = new Map<number, ReturnType<typeof shiftFor>>(); // measured motion, by frame index
+    let shift: ReturnType<typeof shiftFor> | undefined; // motion from the first look to the last, worked out once per result
     let stretch: ReturnType<typeof sharedStretch> | null = null;
     let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
     let timer = 0;
@@ -415,7 +415,7 @@ export function mount(root: HTMLElement): void
         // Drop the previous view so nothing (play, strip, details) acts on frames of another spot.
         result = null;
         curve = null;
-        shifts.clear();
+        shift = undefined;
         renderCurve();
         stretch = null;
         composed = {};
@@ -641,8 +641,19 @@ export function mount(root: HTMLElement): void
         sec.hidden = false;
         const W = 300;
         const H = 100;
-        const scatter = c.lc.refScatter.filter(Number.isFinite).sort((a, b) => a - b);
-        const noise = scatter.length ? scatter[Math.floor(scatter.length / 2)]! : 0;
+        const noise = Number.isFinite(c.noise) ? c.noise : 0;
+        const name = st.target ? COPY[st.target].display : 'the target';
+        // A catalogued star inside the measuring circle mixes its light in. A cold brown dwarf is fainter than that
+        // star below 4.4 µm, so its chart stays hidden there; for other targets the note just says so.
+        const blendAt = c.blend ? `A Gaia star (G ${c.blend.g.toFixed(1)}) sits ${(c.blend.px * result.grid.pixelArcsec).toFixed(0)}″ from ${name}` : '';
+        const cold = st.target ? COPY[st.target].kind === 'cold' : false;
+        const hideChart = c.blend !== null && cold && c.lc.lambda < 4.4;
+        ref<HTMLElement>('lcwrap').hidden = hideChart;
+        ref<HTMLElement>('lcx').hidden = hideChart;
+        if (hideChart) {
+            bind('lcNote', `${blendAt}, inside the measuring circle. At ${c.lc.lambda.toFixed(2)} µm that star outshines it, so no curve is drawn. Try 4.4 µm or longer, where ${name} is the brighter one.`);
+            return;
+        }
         const ys = pts.map((o) => o.p.relative);
         // Each point's own error: the comparison stars' wobble plus the target's own noise (sky noise over its
         // aperture), scaled the same way as the point, so a faint or missing target still gets an honest bar.
@@ -680,7 +691,7 @@ export function mount(root: HTMLElement): void
         const off = c.lc.dropped > 0 ? ` ${c.lc.dropped} ${c.lc.dropped === 1 ? 'frame was' : 'frames were'} too far off this colour.` : '';
         const bad = c.lc.points.length - pts.length;
         const left = off + (bad > 0 ? ` ${bad} ${bad === 1 ? 'look' : 'looks'} could not be measured.` : '');
-        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} nearby comparison stars from Gaia. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%); the bar on each dot adds the star’s own noise. A change inside its bar may be noise.${left}`);
+        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} nearby comparison stars from Gaia. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%); the bar on each dot adds the star’s own noise. A change inside its bar may be noise.${left}${blendAt ? ` ${blendAt}, too close for SPHEREx to split, so the curve includes its light.` : ''}`);
     }
 
     // A tiny copy of the sky, blurred by CSS behind the image: the glow follows what is on screen.
@@ -908,15 +919,16 @@ export function mount(root: HTMLElement): void
             const t = st.target ? targetById(st.target) : undefined;
             // The motion rows describe two single frames, so they show only in Blink.
             if (t && COPY[t.id].kind === 'mover' && n > 1 && st.mode === 'blink') {
-                if (!shifts.has(st.index)) {
-                    shifts.set(st.index, shiftFor(result, t.astrometry, st.index));
+                if (shift === undefined) {
+                    shift = shiftFor(result, t.astrometry);
                 }
-                const sh = shifts.get(st.index);
-                if (sh) {
+                const sh = shift;
+                // Under twice the measuring error the shift can't be seen, so the rows stay out.
+                if (sh && sh.significant) {
                     // The expected shift is the solid number. The measured one leans on a centre the camera can't
-                    // see well (the core is saturated), so it is shown as rough and the note says why.
-                    rows.push([`Moved, frames 1 to ${sh.to + 1}`, `${sh.predictedArcsec.toFixed(1)}″ expected`]);
-                    rows.push(['Measured here', sh.measured ? `about ${sh.measured.measuredArcsec.toFixed(0)}″ (rough)` : 'could not measure']);
+                    // see well (the core is saturated), so it carries its error and the note says why.
+                    rows.push([`Moved, looks 1 to ${sh.to + 1}`, `${sh.predictedArcsec.toFixed(1)}″ expected`]);
+                    rows.push(['Measured here', sh.measured ? `${sh.measured.measuredArcsec.toFixed(0)}″ ± ${sh.errArcsec.toFixed(0)}″` : 'could not measure']);
                     extraNotes.push(sh.measured
                         ? 'The star’s core is too bright for the camera to measure, so the measured shift is rough. The expected shift comes from its catalogue motion.'
                         : 'The star’s centre could not be found close enough to where it should be, so only the expected shift from its catalogue motion is shown.');
