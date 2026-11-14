@@ -306,11 +306,13 @@ behind its switch (`mlHint`) and stays off; the reason is given below.
 14 Dec 2025, which step from 3.96 to 4.36 µm, and reads by byte range only the rows it needs from each file (about
 4.9 MB in all). It writes `public/comet/3i-atlas.json`: a 41 × 41 pixel cut-out around the predicted spot, the mean
 of the 3 × 3 pixels there, and the median of the cut-out's 5-pixel border. The card draws the cut-outs on one shared
-linear scale and charts core minus border against wavelength (`src/lib/comet.ts`, `src/ui/comet-view.ts`).
+linear scale (its top is the brightest pixel in any 3 × 3 box) and charts core minus border against wavelength (`src/lib/comet.ts`, `src/ui/comet-view.ts`).
 - What the numbers are: raw L2 image values in MJy/sr, with nothing subtracted except that border median.
-- What they are not: a calibrated measurement of the comet. The 3 × 3 box is not an aperture, the border still holds
-  coma light, and the frames were taken over about 3.3 hours, each at a different wavelength, so the row mixes
-  colour and time. The fall from 39 to 1 MJy/sr between 4.25 and 4.36 µm happens in four frames that started within 7 minutes of each other.
+- What they are not: a calibrated measurement of the comet. The 3 × 3 box is not an aperture and sits on the
+  predicted position, not on the brightest pixel. The border is not empty sky: the reported coma (about 3 arcminutes
+  in radius) is wider than the cut-out (about 4 arcminutes across). The frames were taken over about 3.3 hours,
+  each at a different wavelength, so the row mixes colour and time. The values 39 (at 4.25 µm) and 1 MJy/sr (at
+  4.36 µm) come from four frames that started within 7 minutes of each other.
 - At 4.25 µm core minus border is 39 MJy/sr; at 3.96 to 4.18 µm it is 0.6 to 0.7 MJy/sr, over 50 times less
   (36 to 47 times less before the border is taken off). The SPHEREx team reports carbon dioxide gas emission at
   4.25 to 4.27 µm in this comet and a carbon dioxide coma about 3 arcminutes in radius (Lisse et al. 2025, RNAAS 9,

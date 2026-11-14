@@ -2,7 +2,7 @@
 import { readFileSync as nodeRead } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
-    BLANK_RGB, CO2_BAND_UM, COMET_BANNED, COMET_TITLE, COMET_URL, CometDataError, cometCaption, cometPoints, cutoutRgba, frameLabel, parseComet,
+    BLANK_RGB, CO2_BAND_UM, COMET_BANNED, COMET_TITLE, corePixels, COMET_URL, CometDataError, cometCaption, cometPoints, cutoutRgba, frameLabel, parseComet,
     nearCo2, sharedScale,
 } from '../src/lib/comet';
 import { COMET_FAILED, cometBodyHtml, cometChartSvg, cometTableHtml, mountComet } from '../src/ui/comet-view';
@@ -145,10 +145,17 @@ describe('comet: labels, chart, caption', () => {
         }
     });
 
-    it('one shared scale from the darkest border to the brightest core', () => {
+    it('one shared scale from the darkest border to the brightest pixel of any 3×3 box, so no box pixel is clipped', () => {
         const s = sharedScale(doc);
         expect(s.lo).toBe(Math.min(...doc.frames.map(f => f.borderMedian)));
-        expect(s.hi).toBe(Math.max(...doc.frames.map(f => f.coreMean)));
+        expect(s.hi).toBeCloseTo(79.98, 2);
+        expect(s.hi).toBeGreaterThan(Math.max(...doc.frames.map(f => f.coreMean)));
+        for (const f of doc.frames) {
+            expect(corePixels(f, doc.size)).toHaveLength(9);
+            expect(Math.max(...corePixels(f, doc.size))).toBeLessThanOrEqual(s.hi);
+            // the stored mean is the mean of those nine pixels
+            expect(corePixels(f, doc.size).reduce((a, v) => a + v, 0) / 9).toBeCloseTo(f.coreMean, 1);
+        }
     });
 
     it('caption says colour not time, 3x3 mean not calibrated, shared scale, and who reported the coma', () => {
@@ -157,7 +164,9 @@ describe('comet: labels, chart, caption', () => {
         expect(text).toMatch(/4\.25 to 4\.36 µm started within 7 minutes/);
         expect(text).toMatch(/39\.2 MJy\/sr at 4\.25 µm and 1\.03 at 4\.36 µm/);
         expect(text).toMatch(/there most of the change is colour, not time/);
-        expect(text).toMatch(/border still holds some of the comet’s own glow/);
+        expect(text).toMatch(/not on the brightest pixel/);
+        expect(text).toMatch(/border is not empty sky: the coma the SPHEREx team reports \(about 3 arcminutes in radius\) is wider than these pictures \(about 4 arcminutes across\)/);
+        expect(text).toMatch(/its top is the brightest pixel in any of the 3×3 boxes/);
         expect(text).toMatch(/drawn dark red/);
         expect(text).toMatch(/not turned north up/);
         expect(text).toMatch(/does not separate gas light from dust light/);

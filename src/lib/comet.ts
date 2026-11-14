@@ -39,6 +39,8 @@ export const COMET_TITLE = 'Comet 3I/ATLAS across the CO₂ band';
 export const CO2_BAND_UM: readonly [number, number] = [4.25, 4.27]; // Lisse et al. 2026 abstract
 // A frame within this many µm of the band counts as on it: about one SPHEREx colour step in this detector.
 export const CO2_NEAR_UM = 0.03;
+export const COMA_RADIUS_ARCMIN = 3; // CO2 gas coma radius in both Lisse et al. abstracts
+export const PIXEL_ARCSEC = 6.15; // SPHEREx native pixel, as in src/lib/source.ts (SOURCES.md)
 // Pixels with no value in the archive are drawn in this colour, so they cannot pass for dark sky.
 export const BLANK_RGB: readonly [number, number, number] = [96, 28, 28];
 
@@ -179,12 +181,25 @@ export function cometPoints(doc: CometDoc): CometPoint[]
     return doc.frames.map(f => ({ wavelength: f.wavelength, core: f.coreMean, border: f.borderMedian, value: f.coreMean - f.borderMedian }));
 }
 
-// One linear scale for every picture: from the darkest border median to the brightest core mean. Brighter
-// pixels (field stars) show white, darker ones black.
+// The nine pixels of a frame's 3×3 box (the parser has already refused a blank one).
+export function corePixels(f: CometFrame, size: number): number[]
+{
+    const mid = (size - 1) / 2;
+    const out: number[] = [];
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            out.push(f.cutout[(mid + dy) * size + mid + dx] as number);
+        }
+    }
+    return out;
+}
+
+// One linear scale for every picture: from the darkest border median to the brightest single pixel in any 3×3 box,
+// so no pixel of a box is clipped. Brighter pixels elsewhere (field stars, hot pixels) show white, darker ones black.
 export function sharedScale(doc: CometDoc): { lo: number; hi: number }
 {
     const lo = Math.min(...doc.frames.map(f => f.borderMedian));
-    const hi = Math.max(...doc.frames.map(f => f.coreMean));
+    const hi = Math.max(...doc.frames.flatMap(f => corePixels(f, doc.size)));
     return hi > lo ? { lo, hi } : { lo, hi: lo + 1 };
 }
 
@@ -275,10 +290,13 @@ export function cometCaption(doc: CometDoc): string[]
         `${doc.frames.length} SPHEREx frames from ${day}, taken over ${spanText(doc)} at wavelengths from ${f0.wavelength.toFixed(2)} to ${fn.wavelength.toFixed(2)} µm.`
             + ' Each frame sees a different wavelength, so the row mixes colour and time.',
         groupSentence(doc, top),
-        'All the pictures share one linear brightness scale, so they can be compared. The faint frames look almost black, and anything brighter than the top of the scale (a star, a hot pixel or a cosmic-ray hit) shows white.'
-            + ' Pixels with no value in the archive are drawn dark red. The pictures keep the detector’s orientation; they are not turned north up.',
+        'All the pictures share one linear brightness scale, so they can be compared; its top is the brightest pixel in any of the 3×3 boxes. The faint frames look almost black.'
+            + ' Anything brighter than the top shows white, such as a star, a hot pixel or a cosmic-ray hit. Pixels with no value in the archive are drawn dark red.'
+            + ' The pictures keep the detector’s orientation; they are not turned north up.',
         `The numbers are the mean of the 3×3 pixels at the comet’s predicted position (from IRSA’s Moving Object Search Tool), minus the median of each picture’s border.`
-            + ' The border still holds some of the comet’s own glow, so the numbers read low where the comet is bright. They are raw pixel values, not a calibrated measurement.',
+            + ' The box sits on the predicted position, not on the brightest pixel, so it can miss part of the peak.'
+            + ` The border is not empty sky: the coma the SPHEREx team reports (about ${COMA_RADIUS_ARCMIN} arcminutes in radius) is wider than these pictures (about ${Math.round(doc.size * PIXEL_ARCSEC / 60)} arcminutes across).`
+            + ' They are raw pixel values, not a calibrated measurement.',
         `Here the core is brightest at ${top.wavelength.toFixed(2)} µm (${fmt(top.value)} MJy/sr above its border).`
             + (nearCo2(top.wavelength) ? ' The SPHEREx team reports carbon dioxide gas glowing at 4.25 to 4.27 µm in this comet (Lisse et al. 2026). This card does not separate gas light from dust light.' : ''),
         'The SPHEREx team reported this comet’s wide carbon dioxide coma (Lisse et al. 2025 and 2026). This card redraws public frames with rough numbers of its own and adds nothing new to that work.',
