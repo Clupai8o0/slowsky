@@ -45,6 +45,10 @@ describe('SIA proxy', () => {
         ['<html>Maintenance<VOTABLE/>', false],
         ['</VOTABLE>', false],
         ['<VOTABLE><RESOURCE>', false],
+        ['<VOTABLE><!-- </VOTABLE>', false],
+        ['<VOTABLE><![CDATA[</VOTABLE>', false],
+        ['<VOTABLE><?pi </VOTABLE>', false],
+        ['<VOTABLE><![CDATA[a </VOTABLE> b]]><!-- c --></VOTABLE>', true],
         ['', false],
     ])('isVotable(%j) is %s', (xml, expected) => {
         expect(isVotable(xml)).toBe(expected);
