@@ -78,11 +78,12 @@ describe('blankRadius', () => {
         const blank = blankRadius(f.data, width, height, target);
         expect(Math.abs(blank.radius - 2.2)).toBeLessThan(1);
         expect(blank.radius).toBeCloseTo(2 + Math.SQRT1_2, 12);
+        expect(blank.reach).toBe(2);
         expect(blank.pixels).toBe(13);
         expect(blank.touchesLimit).toBe(false);
         f.data.fill(3);
         f.data[40 * width + 46] = Number.NaN;
-        expect(blankRadius(f.data, width, height, target)).toEqual({ radius: 0, pixels: 0, touchesLimit: false });
+        expect(blankRadius(f.data, width, height, target)).toEqual({ radius: 0, reach: 0, pixels: 0, touchesLimit: false });
     });
 
     it('seeds every nearby blank pixel and joins diagonal neighbours', () => {
@@ -115,6 +116,46 @@ describe('blankRadius', () => {
         }
         expect(() => blankRadius(data.subarray(1), width, height, target)).toThrow(HaloError);
         expect(() => blankRadius(data, width, height, { x: NaN, y: 0 })).toThrow(HaloError);
+    });
+
+    it('detects continuation beyond the search circle and image edge, but not closed discs', () => {
+        const diagonal = new Float32Array(40 * 40).fill(1);
+        for (let y = 0; y < 40; y++) {
+            for (let x = 0; x < 40; x++) {
+                if ((x === y && x >= 20 && x <= 28) || (x >= 29 && y >= 29)) {
+                    diagonal[y * 40 + x] = NaN;
+                }
+            }
+        }
+        expect(blankRadius(diagonal, 40, 40, { x: 20.1, y: 20.1 }).touchesLimit).toBe(true);
+        const corner = new Float32Array(20 * 20).fill(1);
+        for (let y = 0; y < 20; y++) {
+            for (let x = 0; x < 20; x++) {
+                if (x + y <= 9) {
+                    corner[y * 20 + x] = NaN;
+                }
+            }
+        }
+        expect(blankRadius(corner, 20, 20, { x: 4, y: 4 }).touchesLimit).toBe(true);
+        for (const radius of [11.4, 4]) {
+            const disc = new Float32Array(40 * 40).fill(1);
+            for (let y = 0; y < 40; y++) {
+                for (let x = 0; x < 40; x++) {
+                    if (Math.hypot(x - 20, y - 20) <= radius) {
+                        disc[y * 40 + x] = NaN;
+                    }
+                }
+            }
+            const result = blankRadius(disc, 40, 40, { x: 20, y: 20 });
+            expect(result.touchesLimit).toBe(false);
+            expect(result.reach).toBeLessThanOrEqual(radius);
+        }
+    });
+
+    it('includes a seed pixel exactly on the seed radius', () => {
+        const data = new Float32Array(width * height).fill(1);
+        data[target.y * width + target.x + 2] = NaN;
+        expect(blankRadius(data, width, height, target, { seed: 2 }).pixels).toBe(1);
     });
 });
 
@@ -175,7 +216,7 @@ describe('ringAperture', () => {
         const sparse = ringAperture(data, width, height, target, options);
         expect(sparse.valid).toBe(false);
         expect(sparse.sum).toBeNaN();
-        expect(sparse.snr).toBeNaN();
+        expect(sparse.snr).toBe(0);
     });
 
     it('uses inclusive inner and exclusive outer edges for ring and sky', () => {
@@ -213,7 +254,7 @@ describe('ringAperture', () => {
             const result = ringAperture(data, width, height, at, options);
             expect(result.valid).toBe(false);
             expect(result.sum).toBeNaN();
-            expect(result.snr).toBeNaN();
+            expect(result.snr).toBe(0);
         }
         expect(ringAperture(data, width, height, target, { ringIn: 0.1, ringOut: 0.2 }).valid).toBe(false);
     });
@@ -232,13 +273,35 @@ describe('ringAperture', () => {
             expect(() => ringAperture(new Float32Array(0), w, 0, target, options)).toThrow(HaloError);
         }
     });
+
+    it('allows a clipped sky when every whole ring pixel is inside', () => {
+        const result = ringAperture(new Float32Array(400).fill(10), 20, 20, { x: 3, y: 10 },
+            { ringIn: 1, ringOut: 3.6, skyIn: 4, skyOut: 8 });
+        expect(result.valid).toBe(true);
+        expect(result.sum).toBe(0);
+    });
+
+    it('accepts exactly 80 percent finite pixels and uses the full ring count for SNR', () => {
+        const opts = { ringIn: 2, ringOut: 5, skyIn: 6, skyOut: 8 };
+        const ring = indices(target, opts.ringIn, opts.ringOut);
+        expect(ring.length % 5).toBe(0);
+        const data = new Float32Array(width * height).fill(10);
+        ring.forEach((offset, i) => { data[offset] = i < ring.length / 5 ? NaN : 20; });
+        indices(target, 6, 8).forEach((offset, i) => { data[offset] = 9 + i % 3; });
+        const result = ringAperture(data, width, height, target, opts);
+        expect(result.valid).toBe(true);
+        expect(result.nPix / ring.length).toBe(0.8);
+        expect(result.snr).toBeCloseTo(result.sum / (result.backgroundSigma * Math.sqrt(ring.length)), 10);
+    });
 });
 
 describe('ringFor', () => {
     it('uses the largest hole, native-pixel defaults and explicit margins', () => {
         const frames = [frame(0, 1, 2.2), frame(1, 2, 3.2), frame(2, 4, 4.2)];
         const largest = Math.max(...frames.map((f) => blankRadius(f.data, width, height, target).radius));
-        expect(ringFor(frames, target)).toEqual({ ringIn: largest + 2, ringOut: largest + 6 });
+        expect(ringFor(frames, target)).toEqual({ ringIn: largest + 4, ringOut: largest + 10 });
+        frames.forEach((f) => { f.grid.pixelArcsec = 6.15; });
+        expect(ringFor(frames, target)).toEqual({ ringIn: largest + 2, ringOut: largest + 5 });
         expect(ringFor(frames, target, { margin: 1, thickness: 3 })).toEqual({ ringIn: largest + 1, ringOut: largest + 4 });
     });
 
@@ -267,9 +330,78 @@ describe('ringFor', () => {
         expect(seen).toEqual([0, 1]);
         expect(result.ringIn).toBeCloseTo(Math.sqrt(10) + Math.SQRT1_2 + 1, 12);
     });
+
+    it('rejects mixed grids and invalid scales before filtering', () => {
+        for (const key of ['width', 'height', 'pixelArcsec'] as const) {
+            const frames = [frame(0, 1, 2.2), frame(1, 1, 2.2, target, 3)];
+            frames[1]!.grid[key] += 1;
+            expect(() => ringFor(frames, target, { lambda: 2 })).toThrow(HaloError);
+        }
+        for (const scale of [0, NaN, Infinity]) {
+            const f = frame(0, 1, 2.2);
+            f.grid.pixelArcsec = scale;
+            expect(() => ringFor([f], target)).toThrow(HaloError);
+        }
+    });
+
+    it('filters out-of-band holes using the curve wavelength rules', () => {
+        const frames = [frame(0, 1, 2.2), frame(1, 1, 7.2, target, 3)];
+        const filtered = ringFor(frames, target, { lambda: 2 });
+        expect(filtered).toEqual(ringFor([frames[0]!], target));
+        expect(ringFor(frames, target).ringIn).toBeGreaterThan(filtered.ringIn);
+        expect(ringFor(frames, target, { maxDeltaUm: 0.02 })).toEqual(filtered);
+    });
+
+    it('sets the default search limit to six native pixels', () => {
+        const f = frame(0, 1, 7.2);
+        expect(() => ringFor([f], target)).not.toThrow();
+        f.grid.pixelArcsec = 6.15;
+        expect(() => ringFor([f], target)).toThrow(HaloError);
+        expect(() => ringFor([f], target, { maxRadius: 12 })).not.toThrow();
+    });
 });
 
 describe('haloCurve', () => {
+    it('rejects a connected blank core entering the ring while a chosen ring recovers brightness', () => {
+        const frames = [frame(0, 1, 2.2), frame(1, 2, 6), frame(2, 4, 3.2)];
+        const ring = indices(target, 6, 10);
+        const edge = ring.filter((offset) => Math.hypot(offset % width - target.x, Math.floor(offset / width) - target.y) < 6.4);
+        edge.slice(0, 8).forEach((offset) => { frames[1]!.data[offset] = NaN; });
+        expect(8 / ring.length).toBeGreaterThanOrEqual(0.02);
+        expect(8 / ring.length).toBeLessThanOrEqual(0.05);
+        const curve = haloCurve(frames, target, refs, options);
+        expect(curve.points.map((point) => point.valid)).toEqual([true, false, true]);
+        expect(curve.points[1]!.target.sum).toBeNaN();
+        expect(curve.points[1]!.target.snr).toBe(0);
+        const chosen = ringFor(frames, target);
+        const safe = haloCurve(frames, target, refs, { ...options, ...chosen, skyIn: chosen.ringOut + 2, skyOut: chosen.ringOut + 6 });
+        expect(safe.points.every((point) => point.valid)).toBe(true);
+        safe.points.forEach((point, i) => {
+            expect(Math.abs(point.relative / [0.5, 1, 2][i]! - 1)).toBeLessThan(0.02);
+        });
+    });
+
+    it('keeps scattered missing ring pixels disconnected from the core', () => {
+        const f = frame(0, 1, 2.2);
+        const ring = indices(target, 6, 10);
+        ring.forEach((offset, i) => { if (i % 10 === 0) { f.data[offset] = NaN; } });
+        expect(haloCurve([f], target, refs, options).points[0]!.valid).toBe(true);
+    });
+
+    it('honours the seed option when locating a connected blank', () => {
+        const f = frame(0);
+        for (let x = target.x + 2; x <= target.x + 6; x++) {
+            f.data[target.y * width + x] = NaN;
+        }
+        expect(haloCurve([f], target, refs, { ...options, seed: 1 }).points[0]!.valid).toBe(true);
+        expect(haloCurve([f], target, refs, { ...options, seed: 2 }).points[0]!.valid).toBe(false);
+    });
+
+    it('uses lightCurve’s lower default wavelength for even distinct inputs', () => {
+        const frames = [1.8, 1.9, 2.1, 2.2].map((lambda, i) => frame(i, 1, 0, target, lambda));
+        expect(haloCurve(frames, target, refs, options).lambda).toBe(lightCurve(frames, target, refs, options).lambda);
+        expect(haloCurve(frames, target, refs, options).lambda).toBe(1.9);
+    });
     it('recovers 1:2:4 variability through growing blank cores', () => {
         const frames = [frame(0, 1, 2.2), frame(1, 2, 3.2), frame(2, 4, 4.2)];
         const ring = ringFor(frames, target, { margin: 1, thickness: 4 });
