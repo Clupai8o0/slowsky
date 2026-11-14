@@ -2,7 +2,7 @@
 // against steady Gaia stars, and how far a fast mover really moved compared with its catalogue motion.
 import { GaiaError, ringsAt, shiftReadout, type Ring, type ShiftReadout } from '../lib/gaia';
 import { separationDeg } from '../lib/coords';
-import { aperture, lightCurve, PhotometryError, type LightCurve } from '../lib/photometry';
+import { aperture, lightCurve, PhotometryError, resampleNoiseScale, type LightCurve } from '../lib/photometry';
 import { positionAt } from '../lib/targets';
 import type { SkyResult, TrackPoint } from '../lib/source';
 import type { Astrometry, OutputGrid, PixelCoord, RegriddedFrame } from '../lib/types';
@@ -225,12 +225,14 @@ export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
     const frameOf = order.slice();
     const validFrames = frameOf.filter((_, i) => lc.points[i]!.valid).map((i) => frames[i]!);
     const native = NATIVE_ARCSEC / result.grid.pixelArcsec;
-    // Per star: its median flux, and its sky noise over the aperture (scaled up because regridded pixels share
-    // a detector pixel's noise) as a fraction of that flux.
+    // Per star: its median flux, and its sky noise over the aperture (aperture()'s noise, scaled up as lightCurve
+    // does because regridded pixels share a detector pixel's noise) as a fraction of that flux. The pixel size
+    // already passed lightCurve, so this cannot throw here.
+    const noiseScale = resampleNoiseScale(result.grid.pixelArcsec);
     const perStar = refs.map((r) => {
-        const ap = validFrames.map((f) => aperture(f.data, width, height, r.pix, options));
+        const ap = validFrames.map((f) => aperture(f.data, width, height, r.pix, { ...options, noiseScale }));
         const flux = median(ap.map((a) => a.sum));
-        const sky = median(ap.map((a) => a.backgroundSigma * Math.sqrt(a.nPix) * Math.max(1, native)));
+        const sky = median(ap.map((a) => a.noise));
         return { flux, phot: flux > 0 ? sky / flux : NaN };
     });
     const noise = sumNoise(perStar.map((p) => p.flux), lc.refScatter, perStar.map((p) => p.phot));
