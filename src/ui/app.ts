@@ -557,7 +557,8 @@ export function mount(root: HTMLElement): void
         }
         const skyPx = ref<HTMLElement>('sky').clientWidth;
         const fovArcsec = result.grid.pixelArcsec * result.grid.width;
-        const bar = st.fovDeg >= 0.5 ? 600 : 60;
+        // The source may show less than was asked for (the saved copy caps at 0.1°), so size from the grid.
+        const bar = result.grid.fovDeg >= 0.5 ? 600 : 60;
         ref<HTMLElement>('bar').style.width = `${Math.max(12, (bar / fovArcsec) * skyPx).toFixed(1)}px`;
         bind('bar', `${bar / 60}′`);
     }
@@ -586,7 +587,10 @@ export function mount(root: HTMLElement): void
         const play = q<HTMLButtonElement>('[data-act="play"]');
         play.innerHTML = `<span class="ic">${st.playing ? ICON.pause : ICON.play}</span>`;
         play.setAttribute('aria-label', st.playing ? 'Pause' : 'Play');
-        q<HTMLButtonElement>('[data-act="gaia"]').setAttribute('aria-pressed', String(st.gaia));
+        const gaiaBtn = q<HTMLButtonElement>('[data-act="gaia"]');
+        gaiaBtn.setAttribute('aria-pressed', String(st.gaia));
+        // No catalogue stars came back (live Gaia is not wired yet): hide the toggle rather than offer an empty one.
+        gaiaBtn.hidden = !result || result.stars.length === 0;
         fovSelect.value = String(st.fovDeg);
         bind('det', `Detector ${lamDraft === null ? st.detector : detectorOf(lamDraft)} of 6`);
 
@@ -628,7 +632,7 @@ export function mount(root: HTMLElement): void
                 ['Colour here', `${lf.lambda.toFixed(3)} µm (${lf.dLambda >= 0 ? '+' : '−'}${Math.abs(lf.dLambda).toFixed(3)})`],
                 ['Detector', `D${rec.detector}`],
                 ['Release', rec.collection],
-                ['Field', `${st.fovDeg}° · ${result.grid.width} × ${result.grid.height} px`],
+                ['Field', `${Number(result.grid.fovDeg.toFixed(3))}° · ${result.grid.width} × ${result.grid.height} px`],
                 ['Scale', `${result.grid.pixelArcsec.toFixed(2)}″ per pixel`],
                 ['File', rec.obsId],
             ];
