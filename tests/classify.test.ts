@@ -55,10 +55,10 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     expect(card.limits).toBe('Labels change spots only; it does not find planets. Not tested on a real asteroid. '
         + `Mover recall is ${low.classes.mover.recall!.toFixed(2)} at S/N 3-5. `
         + `${prevalence}; if real ones are rarer, more mover labels are wrong.`
-        + ' The browser helper gives no label when the change is too faint, brighter than in training or on '
-        + `image values above ${classifier.MAX_IMAGE_SNR.toLocaleString('en-US')} noise units; when channels disagree or nothing is localised; `
-        + `when the top two scores are close; or when a change off-centre is over ${classifier.MAX_OFF_CENTRE_RATIO} times the centre's peak.`
-        + (classifier.MAX_OFF_CENTRE_RATIO >= 5 ? ' Otherwise the label covers the whole 15x15 stamp, so a brighter off-centre change can decide it.' : ''));
+        + ' The browser helper gives no label when the stamp is malformed; when the change is too faint, or over twice the brightest change in training; '
+        + `when image values exceed ${classifier.MAX_IMAGE_SNR.toLocaleString('en-US')} noise units; when its channels disagree or nothing is localised; `
+        + `when the top two scores are close; or when a change more than ${classifier.CORE_RADIUS} pixels from the centre is over ${classifier.MAX_OFF_CENTRE_RATIO} times `
+        + `the brightest change within ${classifier.CORE_RADIUS} pixels of it. Otherwise the label covers the whole 15x15 stamp, so a brighter change away from the centre can decide it.`);
     for (const text of [JSON.stringify(card), weights.aiNote, weights.madeBy]) {
         expect(text).not.toMatch(/detected a|confirmed|proves|discovery/i);
     }
@@ -77,7 +77,7 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     expect(card.evalSha256).toBe(digest);
     expect(card.confirmSha256).toBe(createHash('sha256').update(readFileSync(new URL('../models/change-classifier.confirm.json', import.meta.url))).digest('hex'));
     expect(card.seed).toBe(evaluation.seed);
-    expect(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url)).length).toBeLessThan(2048);
+    expect(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url)).length).toBeLessThan(2304);
     // The one frozen retest is on the card with its caveat, its numbers from the result file (-ba, 14 Nov).
     const confirm = JSON.parse(readFileSync(new URL('../models/change-classifier.confirm.json', import.meta.url), 'utf8'));
     expect(confirm.evalSha256).toBe(digest);
@@ -145,7 +145,8 @@ function expectParity(model: ClassifierModel, samples: readonly { stamp: number[
     expect(samples).toHaveLength(20);
     for (const sample of samples) {
         const result = classify(model, Float32Array.from(sample.stamp));
-        const core = sample.stamp.slice(450).filter((_, i) => (i % 15 - 7) ** 2 + (Math.floor(i / 15) - 7) ** 2 <= 16);
+        const core = sample.stamp.slice(450).filter((_, i) => (i % 15 - 7) ** 2 + (Math.floor(i / 15) - 7) ** 2 <= classifier.CORE_RADIUS ** 2);
+        expect(result).not.toEqual({ kind: 'declined', reason: 'image values too large to check' });
         const scores = sample.probabilities.slice().sort((a, b) => b - a);
         if (Math.max(...core.map(Math.abs)) < 2.5) {
             expect(result).toEqual({ kind: 'declined', reason: 'too faint to label' });
@@ -206,6 +207,8 @@ def checkout(folder):
     result_path.write_text(json.dumps(result))
     (folder / 'src/lib').mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / 'src/lib/classify.ts', folder / 'src/lib/classify.ts')
+    (folder / 'tests/fixtures').mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / 'tests/fixtures/classify-parity.json', folder / 'tests/fixtures/classify-parity.json')
 def snapshot(folder):
     return {str(p.relative_to(folder)): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in folder.rglob('*') if p.is_file() and '.git' not in p.relative_to(folder).parts}
@@ -219,6 +222,44 @@ ${body}`, ...args], { cwd: new URL('../', import.meta.url), encoding: 'utf8', ti
 
 // A Node-only checkout has no optional fixture-rebuild virtualenv; the Python gate still runs with --check.
 describe.skipIf(!existsSync(pythonExecutable))('frozen confirmation guards without training or a confirmation run', () => {
+    it.each(['public/models/change-classifier.json', 'models/change-classifier-cnn.json',
+        'models/change-classifier-trees.json', 'models/change-classifier.eval.json', 'tests/fixtures/classify-parity.json'])(
+        'check names modified pinned output %s', (name) => {
+            pythonProbe(`
+with TemporaryDirectory(prefix='slowsky-pin-') as temporary:
+    folder = Path(temporary)
+    checkout(folder)
+    for name in ['confirmation-plan.json', 'change-classifier.confirm.json']:
+        shutil.copyfile(ROOT / 'models' / name, folder / 'models' / name)
+    path = folder / sys.argv[1]
+    path.write_bytes(path.read_bytes() + b' ')
+    run = cli(folder, 'ml_train_cnn.py', '--check')
+    assert run.returncode != 0 and sys.argv[1] in run.stderr, (run.returncode, run.stderr)
+`, [name]);
+        });
+
+    it('card write refuses an orphan lock and an oversized card before writing', () => {
+        pythonProbe(`
+with TemporaryDirectory(prefix='slowsky-card-guard-') as temporary:
+    folder = Path(temporary)
+    checkout(folder)
+    (folder / 'models/change-classifier.confirm.json').unlink()
+    (folder / 'models/change-classifier.confirm.lock').touch()
+    before = snapshot(folder)
+    run = cli(folder, 'ml_train_cnn.py', '--write-card')
+    assert run.returncode != 0 and snapshot(folder) == before, run.stderr
+    scope = dict(ROOT=folder, json=json, sha=lambda _: '', model_card=lambda *_: {'x': 'x' * 2304},
+                 encode=lambda value: json.dumps(value).encode(),
+                 write_json=lambda path, value: path.write_text('bad'),
+                 guarded_write=lambda write, *args, **kwargs: write(*args))
+    functions(source('ml_train_cnn.py'), ['write_card'], scope)
+    before = snapshot(folder)
+    try: scope['write_card']()
+    except AssertionError: pass
+    else: raise AssertionError('oversized card accepted')
+    assert snapshot(folder) == before, 'oversized card was written'
+`);
+    });
     it.each(['lowRecall', 'redistributed', 'excessCount', 'excessCountWithoutHash'])(
         'rejects edited confirmation bins: %s', (mode) => {
             pythonProbe(`
@@ -253,6 +294,56 @@ with TemporaryDirectory(prefix='slowsky-bins-') as temporary:
     assert run.returncode != 0, f'accepted {mode}: {run.stdout}'
     if mode == 'excessCountWithoutHash': assert 'bin totals' in run.stderr, run.stderr
     else: assert 'Confirmation result hash mismatch' in run.stderr, run.stderr
+`, [mode]);
+        });
+
+    it('guards every CNN training output against a late lock', () => {
+        pythonProbe(`
+tree = source('ml_train_cnn.py')
+main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'main')
+calls = [n for n in ast.walk(main) if isinstance(n, ast.Call) and (
+    isinstance(n.func, ast.Name) and n.func.id in {'guarded_write', 'write_json'} or
+    isinstance(n.func, ast.Attribute) and n.func.attr == 'write_bytes')]
+assert len(calls) == 6, f'Expected six training output sites, got {len(calls)}'
+with TemporaryDirectory(prefix='slowsky-cnn-write-') as temporary:
+    folder = Path(temporary)
+    lock, result = folder / 'lock', folder / 'result'
+    scope = dict(CONFIRM_LOCK=lock, CONFIRM_RESULT=result)
+    functions(source('ml_train.py'), ['guard_training', 'guarded_write'], scope)
+    for call in calls:
+        assert isinstance(call.func, ast.Name) and call.func.id == 'guarded_write', ast.dump(call)
+        lock.touch()
+        try: scope['guarded_write'](lambda: (folder / 'output').write_text('bad'))
+        except SystemExit: pass
+        else: raise AssertionError('late lock allowed output')
+        assert not (folder / 'output').exists()
+`);
+    });
+
+    it.each(['belowZero', 'aboveOne', 'omittedCorrect'])(
+        'check rejects invalid confirmation bin %s beyond the result hash', (mode) => {
+            pythonProbe(`
+with TemporaryDirectory(prefix='slowsky-bin-bound-') as temporary:
+    folder = Path(temporary)
+    checkout(folder)
+    for name in ['confirmation-plan.json', 'change-classifier.confirm.json']:
+        shutil.copyfile(ROOT / 'models' / name, folder / 'models' / name)
+    path = folder / 'models/change-classifier.confirm.json'
+    result = json.loads(path.read_text())
+    fold = result['folds'][0]
+    item = fold['recallBySnrBin'][0]['classes']['mover']
+    if sys.argv[1] == 'belowZero': item['recall'] = -1
+    elif sys.argv[1] == 'aboveOne': item['recall'] = 2
+    else:
+        fold['recallBySnrBin'][0]['classes']['nothing'].update(count=sum(fold['confusionMatrix'][3]), recall=0)
+    path.write_text(json.dumps(result))
+    script = folder / 'scripts/ml_train_cnn.py'
+    import re
+    code = re.sub(r"CONFIRM_RESULT_SHA256 = '[0-9a-f]+'", "CONFIRM_RESULT_SHA256 = '" + hashlib.sha256(path.read_bytes()).hexdigest() + "'", script.read_text())
+    script.write_text(code)
+    run = cli(folder, 'ml_train_cnn.py', '--check')
+    expected = 'bin totals mismatch' if sys.argv[1] == 'omittedCorrect' else 'bin recall invalid'
+    assert run.returncode != 0 and expected in run.stderr, (run.returncode, run.stderr)
 `, [mode]);
         });
 
@@ -372,7 +463,7 @@ class EvidenceRoot:
     def exists(self): return True
     def read_text(self): return json.dumps(confirm)
 scope = dict(ROOT=EvidenceRoot(), json=json, TREES_NOTE=summary['cnnAttempt']['sameTestTrees']['note'],
-             classifier_limits=lambda: (131072, 73), CONFIRM_RESULT_SHA256='test')
+             classifier_limits=lambda: (131072, 73, 4), CONFIRM_RESULT_SHA256='test')
 functions(source('ml_train_cnn.py'), ['model_card'], scope)
 card = scope['model_card'](summary, confirm['evalSha256'])
 assert not {'accuracy', 'treesMacroF1'} & card.keys()
@@ -612,7 +703,7 @@ scope = dict(ROOT=ReadPath(ROOT), np=np, hashlib=hashlib, json=SimpleNamespace(l
              CONFIRM_LOCK=ReadPath(ROOT / 'models/change-classifier.confirm.lock'),
              CLASSES=['mover', 'brightness', 'artifact', 'nothing'],
              KEYS=('macroF1', 'accuracy', 'moverRecallSnr10', 'artifactPrecision'), model_card=lambda *_: card,
-             CONFIRM_RESULT_SHA256=hashlib.sha256((ROOT / 'models/change-classifier.confirm.json').read_bytes()).hexdigest())
+             PINNED_OUTPUTS={}, CONFIRM_RESULT_SHA256=hashlib.sha256((ROOT / 'models/change-classifier.confirm.json').read_bytes()).hexdigest())
 functions(source('ml_train_cnn.py'), ['check', 'sha', 'mean_metrics', 'confirmation_fold_metrics', 'check_confirmation', 'confirmation_checks'], scope)
 try:
     scope['check']()
@@ -628,9 +719,9 @@ describe('snapshot change classifier', () => {
     it('pins the decline reasons documented by the card', () => {
         // Adding a reason means updating the card sentence.
         const source = readFileSync(new URL('../src/lib/classify.ts', import.meta.url), 'utf8');
-        const reasons = [...source.matchAll(/reason: '([^']+)'/g)].map((match) => match[1]).filter((reason) => reason !== 'invalid stamp');
-        expect(reasons).toEqual(['image values too large to check', 'stamp channels disagree', 'too faint to label',
-            'brighter than anything in training', 'brighter change outside the centre', 'no localized change to label', 'no clear label']);
+        const reasons = [...source.matchAll(/reason: '([^']+)'/g)].map((match) => match[1]);
+        expect(reasons).toEqual(['invalid stamp', 'image values too large to check', 'stamp channels disagree', 'too faint to label',
+            'over twice the brightest change in training', 'brighter change outside the centre', 'no localized change to label', 'no clear label']);
     });
     it.each([[1_000_000, 2.3125, 2.5], [1_040_000, 2.3125, 2.55]])(
         'declines unverifiable image channels at %i', (base, actual, claimed) => {
@@ -755,11 +846,28 @@ describe('snapshot change classifier', () => {
         });
     });
 
+    it('uses the exported core radius for both faintness and the off-centre gate', () => {
+        const cnn = cnnWeights();
+        cnn.training.peakSnrMax = 10_000;
+        const model = loadClassifier(cnn), centre = 112;
+        const inside = centre + classifier.CORE_RADIUS;
+        const outside = inside + 1;
+        const stamp = new Float32Array(675);
+        stamp[225 + inside] = stamp[450 + inside] = 10;
+        expect(classify(model, stamp).kind).toBe('nothing');
+        stamp[225 + centre] = stamp[450 + centre] = 10;
+        stamp[225 + outside] = stamp[450 + outside] = 1000;
+        expect(classify(model, stamp)).toEqual({ kind: 'declined', reason: 'brighter change outside the centre' });
+    });
+
     it('accepts channel rounding in every parity stamp and seeded random float32 images up to 1e6', () => {
         const model = loadClassifier(cnnWeights());
         for (const sample of [...parity.cases, ...parity.treeCases, ...parity.cnnCases]) {
             expect(classify(model, Float32Array.from(sample.stamp))).not.toEqual({
                 kind: 'declined', reason: 'stamp channels disagree',
+            });
+            expect(classify(model, Float32Array.from(sample.stamp))).not.toEqual({
+                kind: 'declined', reason: 'image values too large to check',
             });
         }
         let state = 731905;
@@ -791,7 +899,7 @@ describe('snapshot change classifier', () => {
         stamp[225] = stamp[450] = 30_000;
         for (const candidate of [model, loadClassifier(weights)]) {
             expect(classify(candidate, stamp)).toEqual({
-                kind: 'declined', reason: 'brighter than anything in training',
+                kind: 'declined', reason: 'over twice the brightest change in training',
             });
         }
     });
@@ -829,7 +937,7 @@ describe('snapshot change classifier', () => {
             const stamp = new Float32Array(675);
             stamp[225 + 112] = stamp[450 + 112] = -3 * peakSnrMax;
             expect(classify(loadClassifier(cnn), stamp)).toEqual({
-                kind: 'declined', reason: 'brighter than anything in training',
+                kind: 'declined', reason: 'over twice the brightest change in training',
             });
         }
     });

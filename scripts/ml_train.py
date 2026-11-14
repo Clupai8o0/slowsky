@@ -128,8 +128,12 @@ def guard_training():
                          'do not overwrite its evaluation or model')
 
 
-def guarded_write(write, *args):
-    guard_training()
+def guarded_write(write, *args, allow_confirmed_card=False):
+    if allow_confirmed_card:
+        if CONFIRM_LOCK.exists() and not CONFIRM_RESULT.exists():
+            raise SystemExit('Card write refused: confirmation lock exists without a result')
+    else:
+        guard_training()
     return write(*args)
 
 

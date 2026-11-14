@@ -27,6 +27,13 @@ ARCHITECTURE = 'cnn-3x3-gap-features-12-16-16'
 KEYS = ('macroF1', 'accuracy', 'moverRecallSnr10', 'artifactPrecision')
 TREES_NOTE = 'Trees saw 600 stamps per class per target, the CNN 2,500: not like-for-like.'
 CONFIRM_RESULT_SHA256 = 'b1059a79494cbf6d9117121734fab11debe6ad906c165cb3ac4718f53f69a4e4'
+PINNED_OUTPUTS = {
+    'public/models/change-classifier.json': '33976758a68c0fe93fde92e75ed95c31665cfc43d6cde8affab5a0415e0c5cb7',
+    'models/change-classifier-cnn.json': '33976758a68c0fe93fde92e75ed95c31665cfc43d6cde8affab5a0415e0c5cb7',
+    'models/change-classifier-trees.json': '34c889e283c7c2dd903832c96056b7a60dc7a93130478312e45699d4a8d7d84d',
+    'models/change-classifier.eval.json': '328fc52f6ef2dc1bbb46b1ad52586c40497866ef3cf629c40d1669855fc9417b',
+    'tests/fixtures/classify-parity.json': '2c4e78b96de8b1d20a4552416b78cd02caf5a6f174100f0e9d0df633fdeff9ef',
+}
 
 
 def feature_batch(stamps):
@@ -259,8 +266,9 @@ def classifier_limits():
     source = (ROOT / 'src/lib/classify.ts').read_text()
     image_expr = re.search(r'export const MAX_IMAGE_SNR = 2 \*\* (\d+);', source)
     ratio_expr = re.search(r'export const MAX_OFF_CENTRE_RATIO = (\d+);', source)
-    assert image_expr and ratio_expr, 'Missing classifier limits'
-    return 2 ** int(image_expr.group(1)), int(ratio_expr.group(1))
+    radius_expr = re.search(r'export const CORE_RADIUS = (\d+);', source)
+    assert image_expr and ratio_expr and radius_expr, 'Missing classifier limits'
+    return 2 ** int(image_expr.group(1)), int(ratio_expr.group(1)), int(radius_expr.group(1))
 
 
 def model_card(summary, eval_digest):
@@ -276,13 +284,13 @@ def model_card(summary, eval_digest):
     mover_count = summary['perClass']['mover']['count']
     total = sum(value['count'] for value in summary['perClass'].values())
     share = ('A quarter' if mover_count * 4 == total else f'{100 * mover_count / total:.2f}'.rstrip('0').rstrip('.') + '%')
-    image_limit, ratio_limit = classifier_limits()
-    helper_limit = (f'The browser helper gives no label when the change is too faint, brighter than in training or on '
-                    f'image values above {image_limit:,} noise units; when channels disagree or nothing is localised; '
-                    f'when the top two scores are close; or when a change off-centre is over {ratio_limit} times '
-                    f"the centre's peak.")
-    if ratio_limit >= 5:
-        helper_limit += ' Otherwise the label covers the whole 15x15 stamp, so a brighter off-centre change can decide it.'
+    image_limit, ratio_limit, radius = classifier_limits()
+    helper_limit = ('The browser helper gives no label when the stamp is malformed; when the change is too faint, '
+                    'or over twice the brightest change in training; '
+                    f'when image values exceed {image_limit:,} noise units; when its channels disagree or nothing is localised; '
+                    f'when the top two scores are close; or when a change more than {radius} pixels from the centre is over '
+                    f'{ratio_limit} times the brightest change within {radius} pixels of it. '
+                    'Otherwise the label covers the whole 15x15 stamp, so a brighter change away from the centre can decide it.')
     card = {
         'meanFoldMacroF1': round(summary['meanFoldMetrics']['macroF1'], 3),
         'syntheticTestAccuracy': round(summary['meanFoldMetrics']['accuracy'], 3),
@@ -358,8 +366,8 @@ def write_card():
     """Rebuild only the public wording from existing evidence; never fit a model."""
     eval_raw = (ROOT / 'models/change-classifier.eval.json').read_bytes()
     card = model_card(json.loads(eval_raw), sha(eval_raw))
-    write_json(ROOT / 'public/models/change-classifier.card.json', card)
-    assert len(encode(card)) < 2048, f'Model card exceeds the 2048-byte budget: {len(encode(card))} bytes'
+    assert len(encode(card)) < 2304, f'Model card exceeds the 2304-byte budget: {len(encode(card))} bytes'
+    guarded_write(write_json, ROOT / 'public/models/change-classifier.card.json', card, allow_confirmed_card=True)
     return 0
 
 
@@ -475,6 +483,8 @@ def check_confirmation(evaluation, eval_digest):
 
 def check():
     assert CONFIRM_RESULT.exists() and sha(CONFIRM_RESULT.read_bytes()) == CONFIRM_RESULT_SHA256, 'Confirmation result hash mismatch'
+    for path, expected in PINNED_OUTPUTS.items():
+        assert (ROOT / path).exists() and sha((ROOT / path).read_bytes()) == expected, f'{path} hash mismatch'
     folder = ROOT / 'models'
     eval_raw = (folder / 'change-classifier.eval.json').read_bytes()
     evaluation = json.loads(eval_raw)
@@ -512,7 +522,7 @@ def check():
     assert sha(shipped) == evaluation['modelSha256']
     assert len(shipped) <= 200_000 and evaluation['gate']['passed']
     card = (ROOT / 'public/models/change-classifier.card.json').read_bytes()
-    assert len(card) < 2048, 'Model card exceeds the 2048-byte budget'
+    assert len(card) < 2304, 'Model card exceeds the 2304-byte budget'
     assert json.loads(card) == model_card(evaluation, sha((folder / 'change-classifier.eval.json').read_bytes()))
     for raw in (shipped, trees, cnn):
         maximum = json.loads(raw)['training']['peakSnrMax']
@@ -657,7 +667,7 @@ def main(args):
     eval_path = folder / 'change-classifier.eval.json'
     guarded_write(write_json, eval_path, summary)
     card = model_card(summary, sha(eval_path.read_bytes()))
-    assert len(encode(card)) < 2048, 'Model card exceeds the 2048-byte budget'
+    assert len(encode(card)) < 2304, 'Model card exceeds the 2304-byte budget'
     guarded_write(write_json, public / 'change-classifier.card.json', card)
     selected = [int(np.flatnonzero((targets == target) & (y == kind) & (peak_snrs >= 2.5))[0])
                 for target in names for kind in range(4)]

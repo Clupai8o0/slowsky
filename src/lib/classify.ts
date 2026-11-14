@@ -53,6 +53,7 @@ export type ClassifierModel = TreesModel | CnnModel;
 /** Training mover/brightness 99th percentile, rounded up to two significant figures. */
 export const MAX_OFF_CENTRE_RATIO = 73;
 export const MAX_IMAGE_SNR = 2 ** 17;
+export const CORE_RADIUS = 4;
 
 export const MIN_SCORE_MARGIN = 0.2;
 export const HELPER_LABEL = 'Experimental sort hint, trained only on fake changes added to single frames. '
@@ -253,9 +254,9 @@ export function stampFor(earlier: Float32Array, later: Float32Array, grid: Outpu
 function corePeak(diff: Float32Array): { peak: number; px: number; py: number }
 {
     let peak = -1, px = 7, py = 7;
-    for (let y = 3; y <= 11; y++) {
-        for (let x = 3; x <= 11; x++) {
-            if ((x - 7) ** 2 + (y - 7) ** 2 <= 16 && Math.abs(diff[y * SIZE + x]!) > peak) {
+    for (let y = 7 - CORE_RADIUS; y <= 7 + CORE_RADIUS; y++) {
+        for (let x = 7 - CORE_RADIUS; x <= 7 + CORE_RADIUS; x++) {
+            if ((x - 7) ** 2 + (y - 7) ** 2 <= CORE_RADIUS ** 2 && Math.abs(diff[y * SIZE + x]!) > peak) {
                 peak = Math.abs(diff[y * SIZE + x]!);
                 px = x;
                 py = y;
@@ -460,11 +461,11 @@ export function classify(model: ClassifierModel, stamp: Float32Array): Classific
     }
     const fullPeak = diff.reduce((maximum, value) => Math.max(maximum, Math.abs(value)), 0);
     if (fullPeak > 2 * model.training.peakSnrMax) {
-        return { kind: 'declined', reason: 'brighter than anything in training' };
+        return { kind: 'declined', reason: 'over twice the brightest change in training' };
     }
     let outsidePeak = 0;
     for (let i = 0; i < AREA; i++) {
-        if ((i % SIZE - 7) ** 2 + (Math.floor(i / SIZE) - 7) ** 2 > 16) {
+        if ((i % SIZE - 7) ** 2 + (Math.floor(i / SIZE) - 7) ** 2 > CORE_RADIUS ** 2) {
             outsidePeak = Math.max(outsidePeak, Math.abs(diff[i]!));
         }
     }
