@@ -79,13 +79,14 @@ function fakeBand(obsId: string, tMin: number, lambda: number, bandwidth = 0.030
     return f;
 }
 
-function fakeReader(fakes = FAKES): RangeReader & { reads: number; indexes: string[]; boxes: { url: string; name: string; box: PixelBox }[] }
+function fakeReader(fakes = FAKES): RangeReader & { reads: number; names: string[]; indexes: string[]; boxes: { url: string; name: string; box: PixelBox }[] }
 {
     const byUrl = new Map(fakes.map((f) => [f.record.url, f]));
     const reader = {
         reads: 0,
         indexes: [] as string[],
         boxes: [] as { url: string; name: string; box: PixelBox }[],
+        names: [] as string[],
         async index(url: string): Promise<FitsIndex>
         {
             reader.indexes.push(url);
@@ -115,12 +116,16 @@ function fakeReader(fakes = FAKES): RangeReader & { reads: number; indexes: stri
         {
             reader.reads++;
             reader.boxes.push({ url: index.url, name, box });
+            reader.names.push(name);
             const f = byUrl.get(index.url) as Fake;
             const w = box.x1 - box.x0;
             const h = box.y1 - box.y0;
             const out = new Float32Array(w * h);
             if (name === 'ZODI') {
                 return out.fill(0.5);
+            }
+            if (name === 'VARIANCE') {
+                return out.fill(0.01);
             }
             const wcs = makeWcs(wcsFromHeader(headerFromCards(f.cards)));
             const sp = wcs.skyToPix(STAR);
@@ -196,6 +201,12 @@ describe('live source (fake SIA and S3)', () => {
         // Each frame its own WCS, so a context taken from the wrong frame would fail.
         fakes[1]!.cards.CRPIX2 = 1020.5 + 150;
         fakes[2]!.cards.CRPIX2 = 1020.5 + 300;
+        // Any network call (an extra FLAGS read whose error is swallowed, say) is recorded, not only reader calls.
+        const fetched: string[] = [];
+        vi.stubGlobal('fetch', async (input: string | URL | Request) => {
+            fetched.push(String(input instanceof Request ? input.url : input));
+            throw new Error(`no fake for ${String(input)}`);
+        });
         const reader = fakeReader(fakes);
         const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record) });
         const result = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: 1 });
@@ -218,6 +229,62 @@ describe('live source (fake SIA and S3)', () => {
             }
         }
         expect(new Set(result.frames.map(({ frame }) => frame.context!.wcs.params.crpix[1])).size).toBe(3);
+        expect(fetched.filter((url) => fakes.some((f) => url.startsWith(f.record.url.split('?')[0]!)))).toEqual([]);
+    });
+
+    it('reads and attaches variance only when requested, without changing image data', async () => {
+        const reader = fakeReader();
+        const source = createLiveSource({ reader, search: async () => FAKES.map((f) => f.record) });
+        const req = { center: CENTER, fovDeg: 0.05, detector: 1 as const, lambda: lambdaAtCentre(FAKES[1]!) };
+        const plain = await source.load(req);
+        expect(plain.frames).toHaveLength(2);
+        expect(reader.names).not.toContain('VARIANCE');
+        for (const { frame } of plain.frames) {
+            expect(frame).not.toHaveProperty('variance');
+        }
+
+        reader.names.length = 0;
+        const res = await source.load({ ...req, withVariance: true });
+        expect(res.frames).toHaveLength(plain.frames.length);
+        expect(reader.names.filter((name) => name === 'VARIANCE')).toHaveLength(res.frames.length);
+        expect(reader.names).toHaveLength(3 * res.frames.length);
+        for (const { frame } of res.frames) {
+            expect(frame.variance).toBeInstanceOf(Float32Array);
+            expect(frame.variance).toHaveLength(res.grid.width * res.grid.height);
+        }
+        expect(res.frames[0]!.frame.data).toEqual(plain.frames[0]!.frame.data);
+        expect(res.notes.some((note) => note.startsWith('Error maps missing'))).toBe(false);
+
+        reader.names.length = 0;
+        const disabled = await source.load({ ...req, withVariance: false });
+        expect(reader.names).not.toContain('VARIANCE');
+        for (const { frame } of disabled.frames) {
+            expect(frame).not.toHaveProperty('variance');
+        }
+    });
+
+    it.each([2, 1])('keeps live frames when VARIANCE reads fail on %i frames', async (missing) => {
+        const reader = fakeReader();
+        const read = reader.readFloat32;
+        reader.readFloat32 = async (index, name, box, signal) => {
+            if (name === 'VARIANCE' && (missing === 2 || index.url === FAKES[1]!.record.url)) {
+                throw new Error('VARIANCE unavailable');
+            }
+            return read(index, name, box, signal);
+        };
+        const source = createLiveSource({ reader, search: async () => FAKES.map((f) => f.record) });
+        const req = {
+            center: CENTER, fovDeg: 0.05, detector: 1 as const, lambda: lambdaAtCentre(FAKES[1]!), withVariance: true,
+        };
+        for (let load = 0; load < 2; load++) {
+            const res = await source.load(req);
+            expect(res.frames).toHaveLength(2);
+            const without = res.frames.filter(({ frame }) => !('variance' in frame));
+            expect(without).toHaveLength(missing);
+            expect(res.notes.filter((note) => note.startsWith('Error maps missing'))).toEqual([
+                `Error maps missing on ${missing} frame${missing === 1 ? '' : 's'}; noise for those is estimated from the pictures.`,
+            ]);
+        }
     });
 
     it('keeps a visit when only the farther frame contains the chosen wavelength', async () => {
@@ -1107,13 +1174,13 @@ describe('live Gaia catalogue (fake hosts)', () => {
 });
 
 describe('snapshot source (fake site)', () => {
-    function site(fakes = FAKES.slice(0, 2)): typeof fetch
+    function site(fakes = FAKES.slice(0, 2), planes = ['IMAGE', 'ZODI', 'VARIANCE']): typeof fetch
     {
         const box: PixelBox = { x0: 960, y0: 960, x1: 1080, y1: 1080 };
         const frames = fakes.map((f) => ({
             record: f.record,
             box,
-            planes: ['IMAGE', 'ZODI', 'VARIANCE'],
+            planes,
             file: `${f.record.obsId}.f32`,
             imageHeader: f.cards,
             wave: { ...f.wave, pixelOrigin: 0 },
@@ -1121,12 +1188,13 @@ describe('snapshot source (fake site)', () => {
         const files = new Map<string, ArrayBuffer>();
         for (const f of fakes) {
             const n = 120 * 120;
-            const buf = new ArrayBuffer(n * 4 * 3);
+            const buf = new ArrayBuffer(n * 4 * planes.length);
             const view = new DataView(buf);
-            for (let i = 0; i < n; i++) {
-                view.setFloat32(i * 4, 1 + (i % 7), true);
-                view.setFloat32((n + i) * 4, 0.5, true);
-                view.setFloat32((2 * n + i) * 4, 0.01, true);
+            for (const [k, name] of planes.entries()) {
+                for (let i = 0; i < n; i++) {
+                    const value = name === 'IMAGE' ? 1 + (i % 7) : name === 'ZODI' ? 0.5 : 0.01;
+                    view.setFloat32((k * n + i) * 4, value, true);
+                }
             }
             files.set(`/snapshot/rwaur/${f.record.obsId}.f32`, buf);
         }
@@ -1150,6 +1218,48 @@ describe('snapshot source (fake site)', () => {
             return file ? new Response(file) : new Response('missing', { status: 404 });
         }) as typeof fetch;
     }
+
+    it('attaches snapshot variance only when requested, finite wherever the image is finite', async () => {
+        const source = createSnapshotSource({ fetch: site([FAKES[0]!, FAKES[3]!]) });
+        const req = { center: CENTER, fovDeg: 0.05, detector: 1 as const, target: 'rwaur' as const };
+        const plain = await source.load(req);
+        expect(plain.frames).toHaveLength(2);
+        for (const { frame } of plain.frames) {
+            expect(frame).not.toHaveProperty('variance');
+        }
+
+        const res = await source.load({ ...req, withVariance: true });
+        expect(res.frames).toHaveLength(plain.frames.length);
+        for (const { frame } of res.frames) {
+            expect(frame.variance).toBeInstanceOf(Float32Array);
+            expect(frame.variance).toHaveLength(res.grid.width * res.grid.height);
+            let finite = 0;
+            for (const [i, value] of frame.data.entries()) {
+                if (Number.isFinite(value)) {
+                    finite++;
+                    expect(frame.variance![i]).toBeCloseTo(0.01);
+                }
+            }
+            expect(finite).toBeGreaterThan(0);
+        }
+        expect(res.frames[0]!.frame.data).toEqual(plain.frames[0]!.frame.data);
+        expect(res.notes.some((note) => note.startsWith('Error maps missing'))).toBe(false);
+    });
+
+    it('keeps snapshot frames without a VARIANCE plane and notes the count once', async () => {
+        const source = createSnapshotSource({ fetch: site([FAKES[0]!, FAKES[3]!], ['IMAGE', 'ZODI']) });
+        const req = { center: CENTER, fovDeg: 0.05, detector: 1 as const, target: 'rwaur' as const };
+        const res = await source.load({ ...req, withVariance: true });
+        expect(res.frames).toHaveLength(2);
+        for (const { frame } of res.frames) {
+            expect(frame).not.toHaveProperty('variance');
+        }
+        expect(res.notes.filter((note) => note.startsWith('Error maps missing'))).toEqual([
+            'Error maps missing on 2 frames; noise for those is estimated from the pictures.',
+        ]);
+        const plain = await source.load(req);
+        expect(plain.notes.some((note) => note.startsWith('Error maps missing'))).toBe(false);
+    });
 
     it('reads baked frames, decodes little-endian planes and places Gaia stars', async () => {
         const source = createSnapshotSource({ fetch: site() });

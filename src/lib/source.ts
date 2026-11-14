@@ -13,7 +13,7 @@ import { searchFrames, type FrameList } from './sia';
 import { makeWcs, wcsFromHeader } from './wcs';
 import { groupVisits, sampleWave } from './wavelength';
 import { pickByWavelength, predictPixel } from './footprint';
-import { gridForView, gridSkyToPix, regridNorthUp } from './regrid';
+import { gridForView, gridSkyToPix, regridNorthUp, regridVariance } from './regrid';
 import { positionAt, targetById } from './targets';
 import { fetchGaia, type GaiaRow } from './gaia';
 import { flagNames, parseFlagsLayout } from './flags';
@@ -32,6 +32,7 @@ export interface SkyRequest {
     detector: Detector;
     lambda?: number; // µm; unset = the middle of the range every visit can reach
     target?: TargetId; // known target: its moving position is tracked and marked
+    withVariance?: boolean; // default false; true adds RegriddedFrame.variance, a relative noise map (+50% bytes/frame live)
     signal?: AbortSignal;
     onProgress?(p: SkyProgress): void;
 }
@@ -339,12 +340,24 @@ async function assemble(
             bandwidthAtCenter: atCentre?.bandwidth ?? info.bandwidth,
             ...(info.context ? { context: { wcs: info.wcs, box, ...info.context } } : {}),
         };
+        if (req.withVariance) {
+            const variance = regridVariance(cutout, info.wcs, grid);
+            if (variance) {
+                frame.variance = variance;
+            }
+        }
         return { l, info, frame };
     });
 
     const kept = regridded.filter((r): r is NonNullable<typeof r> => r !== undefined);
     if (kept.length < locked.length) {
         notes.push(`${plural(locked.length - kept.length, 'frame')} left out: the view is off the detector.`);
+    }
+    if (req.withVariance) {
+        const missing = kept.filter((r) => !r.frame.variance).length;
+        if (missing > 0) {
+            notes.push(`Error maps missing on ${plural(missing, 'frame')}; noise for those is estimated from the pictures.`);
+        }
     }
     const frames: PlayerFrame[] = kept.map((r) => ({ frame: r.frame, label: frameLabel(r.l.frame, r.l.lambda) }));
     const result: Omit<SkyResult, 'source' | 'stars' | 'credits'> = {
@@ -686,14 +699,19 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
                                 context: { url: record.url, ...(flags ? { flags } : {}) },
                                 async loadCutout(box: PixelBox, signal?: AbortSignal): Promise<Cutout>
                                 {
-                                    const [image, zodi] = await Promise.all([
+                                    const [image, zodi, variance] = await Promise.all([
                                         reader.readFloat32(index, 'IMAGE', box, signal),
                                         reader.readFloat32(index, 'ZODI', box, signal),
+                                        req.withVariance ? reader.readFloat32(index, 'VARIANCE', box, signal).catch(() => undefined) : undefined,
                                     ]);
-                                    return {
+                                    const cutout: Cutout = {
                                         frame: full, box, width: box.x1 - box.x0, height: box.y1 - box.y0,
                                         image, zodi, wcs: wcs.params, wave, header,
                                     };
+                                    if (variance) {
+                                        cutout.variance = variance;
+                                    }
+                                    return cutout;
                                 },
                             };
                             if (target) {
