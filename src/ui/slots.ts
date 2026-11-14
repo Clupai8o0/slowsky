@@ -30,7 +30,7 @@ import { readVariance } from './error-maps';
 
 export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true });
+    Object.freeze({ spectrum: false, flags: true, changes: true, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
@@ -273,8 +273,11 @@ export interface ChangesDeps {
     timeoutMs?: number;
     find?: typeof findChanges;
     variance?: (frame: RegriddedFrame, signal: AbortSignal) => Promise<Float32Array | null>;
+    savedList?: boolean; // tests only: list candidates from a saved view too (the site never does)
 }
 
+// A saved view is not checked against the archive's error maps or flags, so the site lists nothing from it.
+export const SAVED_NOTE = 'Candidate changes need a live read. Go live to compare the first and last visit; a saved copy is not checked against the archive’s error maps and flags.';
 export const MAPS_NOTE = 'Reading the archive’s error maps for the two compared visits; the list shows once that is done.';
 
 export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { render: (box: HTMLElement, marks: HTMLElement, view: SlotView) => boolean }
@@ -282,10 +285,13 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
     const reader = deps.reader ?? createRangeReader({ fetch: deps.fetcher });
     const shown = new WeakMap<HTMLElement, string>();
     let current: SkyResult | null = null;
+    let currentSource: SlotView['source'] | null = null;
     let resultView: ChangesView | null = null;
     let controller = new AbortController();
-    // Finished panels by result, so coming back to a result does not read the archive again.
-    const done = new WeakMap<SkyResult, ChangesView | null>();
+    // Finished panels by result, so coming back to a result does not read the archive again. A saved view has
+    // its own store: a list worked out from a live read must never show on a saved copy of the same result.
+    const doneLive = new WeakMap<SkyResult, ChangesView | null>();
+    const doneSaved = new WeakMap<SkyResult, ChangesView | null>();
     // Results whose full list is open ("Show N more"), and the boxes that already listen for that button.
     const open = new WeakSet<SkyResult>();
     const wired = new WeakSet<HTMLElement>();
@@ -331,11 +337,18 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         controller = new AbortController();
         const reset = controller.signal;
         current = result;
+        currentSource = source;
+        const saved = source === 'snapshot';
+        if (saved && !deps.savedList) {
+            // No finder run and no marks: an unchecked list would be longer than the checked one a live read gives.
+            resultView = { candidates: [], notes: [SAVED_NOTE], ran: false };
+            return;
+        }
+        const done = saved ? doneSaved : doneLive;
         if (done.has(result)) {
             resultView = done.get(result) ?? null;
             return;
         }
-        const saved = source === 'snapshot';
         const first = changesFor(result, deps.find);
         resultView = first;
         if (!first?.ran) {
@@ -421,9 +434,10 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         if (view.source === 'demo') {
             controller.abort();
             current = null;
+            currentSource = null;
             return false;
         }
-        if (current !== view.result) {
+        if (current !== view.result || currentSource !== view.source) {
             start(view.result, view.source);
         }
         const v = resultView;

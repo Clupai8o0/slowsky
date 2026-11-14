@@ -69,14 +69,14 @@ describe('Candidate changes panel', () => {
         expect(changesMarks(changesView(found([], [])), 200, 100)).toBe('');
     });
 
-    it('turns ChangeInputError into a note, hides on any other failure, and stays off by default', () => {
+    it('turns ChangeInputError into a note, hides on any other failure, and is on by default', () => {
         const result = {} as SkyResult;
         const tooFew = changesFor(result, () => { throw new ChangeInputError('Change finding needs two visits; these frames make 1.'); });
         expect(tooFew).toEqual({ candidates: [], notes: ['Change finding needs two visits; these frames make 1.'], ran: false });
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         expect(changesFor(result, () => { throw new RangeError('boom'); })).toBeNull();
         warn.mockRestore();
-        expect(DEFAULT_FEATURES.changes).toBe(false);
+        expect(DEFAULT_FEATURES.changes).toBe(true);
     });
 });
 
