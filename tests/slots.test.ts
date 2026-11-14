@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_FEATURES, FEATURES, FLAGS_TEXT, featuresFrom, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_FEATURES, FEATURES, FLAGS_READ_TIMEOUT_MS, FLAGS_TEXT, featuresFrom, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
 import { DETECTORS } from '../src/ui/copy';
 import { apertureFor } from '../src/ui/measure';
 import { colourAt } from '../src/lib/falsecolour';
@@ -51,13 +51,16 @@ function data(): Int32Array
 
 interface Call { url: string; signal?: AbortSignal; resolve: () => void; reject: (e: unknown) => void }
 
-function harness(extra: Partial<FlagsDeps> = {})
+function harness(extra: Partial<FlagsDeps> = {}, rejectOnAbort = false)
 {
     const calls: Call[] = [];
     const paints: Uint8ClampedArray[] = [];
     const onChange = vi.fn();
     const read = ((url: string, _l: FlagsLayout, _b: PixelBox, opts: { signal?: AbortSignal } = {}) => new Promise((res, rej) => {
         calls.push({ url, signal: opts.signal, resolve: () => res({ data: data(), width: 21, height: 21 }), reject: rej });
+        if (rejectOnAbort) {
+            opts.signal?.addEventListener('abort', () => rej(new Error('aborted')), { once: true });
+        }
     })) as unknown as FlagsDeps['read'];
     const slot = mountFlags({} as HTMLElement, onChange, { enabled: true, read, paint: (_l, rgba) => paints.push(rgba), ...extra });
     return { slot, calls, paints, onChange };
@@ -142,6 +145,73 @@ describe('flags slot', () => {
         expect(slot.update(view(r, 0), true)).toEqual({ key: true, layer: false, note: FLAGS_TEXT.failed });
         expect(slot.update(view(r, 1), true).note).toBe(FLAGS_TEXT.failed);
         expect(calls).toHaveLength(1);
+    });
+
+    describe.each([true, false])('read deadlines with AbortSignal.any=%s', useAny => {
+        beforeEach(() => {
+            vi.useFakeTimers();
+            if (!useAny) {
+                vi.stubGlobal('AbortSignal', { any: undefined });
+            }
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+            vi.unstubAllGlobals();
+        });
+
+        it.each([undefined, 50])('fails a stalled frame at the deadline (%s ms) and starts the next wanted frame', async timeoutMs => {
+            const { slot, calls, onChange } = harness({ timeoutMs }, true);
+            const r = sky([frame('a'), frame('b')]);
+            slot.update(view(r, 0), true);
+            slot.update(view(r, 1), true);
+            expect(calls.map(c => c.url)).toEqual(['a']);
+            await vi.advanceTimersByTimeAsync((timeoutMs ?? FLAGS_READ_TIMEOUT_MS) - 1);
+            expect(calls[0]!.signal?.aborted).toBe(false);
+            expect(onChange).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(1);
+            expect(calls[0]!.signal?.aborted).toBe(true);
+            expect(slot.update(view(r, 0), true)).toEqual({ key: true, layer: false, note: FLAGS_TEXT.failed });
+            expect(onChange).toHaveBeenCalledTimes(1);
+            expect(calls.map(c => c.url)).toEqual(['a', 'b']);
+            expect(slot.update(view(r, 1), true).note).toBe(FLAGS_TEXT.loading);
+            slot.update(null, false);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it('aborts a read on reset before its deadline without changing the new result', async () => {
+            const { slot, calls, onChange } = harness({ timeoutMs: 100 }, true);
+            slot.update(view(sky([frame('a')])), true);
+            await vi.advanceTimersByTimeAsync(50);
+            const r2 = sky([frame('b')]);
+            slot.update(view(r2), true);
+            expect(calls[0]!.signal?.aborted).toBe(true);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(onChange).not.toHaveBeenCalled();
+            expect(slot.update(view(r2), true).note).toBe(FLAGS_TEXT.loading);
+            expect(calls.map(c => c.url)).toEqual(['a', 'b']);
+            calls[1]!.resolve();
+            await vi.advanceTimersByTimeAsync(0);
+            expect(slot.update(view(r2), true).layer).toBe(true);
+            expect(onChange).toHaveBeenCalledTimes(1);
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it('clears the deadline after success so the ready read is never aborted later', async () => {
+            const { slot, calls, onChange } = harness({ timeoutMs: 50 }, true);
+            const r = sky([frame('a')]);
+            slot.update(view(r), true);
+            calls[0]!.resolve();
+            await vi.advanceTimersByTimeAsync(0);
+            expect(slot.update(view(r), true).layer).toBe(true);
+            await vi.advanceTimersByTimeAsync(FLAGS_READ_TIMEOUT_MS);
+            expect(calls[0]!.signal?.aborted).toBe(false);
+            expect(slot.update(view(r), true).layer).toBe(true);
+            expect(onChange).toHaveBeenCalledTimes(1);
+            expect(calls).toHaveLength(1);
+            expect(vi.getTimerCount()).toBe(0);
+        });
     });
 
     it('drops a read when the frames change', async () => {
