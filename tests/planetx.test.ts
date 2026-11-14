@@ -47,9 +47,13 @@ describe('Planet Nine brightness estimate', () => {
         expect(p.WISE0855.w2AB.value).toBeCloseTo(p.WISE0855.w2Vega.value + p.WISE0855.w2Offset.value, 12);
         const long = p.SPHEREX_DEPTH[1];
         const margins = p.wise0855Margin();
-        for (const i of [0, 1] as const) {
-            expect(margins.fourObservations[i]).toBeCloseTo(p.WISE0855.w2AB.value - long.fourObservations.value[i], 12);
-            expect(margins.oneObservation[i]).toBeCloseTo(p.WISE0855.w2AB.value - long.oneObservation.value[i], 12);
+        expect(margins.fourObservations).toEqual([-1.57, -0.57]);
+        expect(margins.oneObservation).toEqual([-0.82, 0.18]);
+        for (const pair of [margins.fourObservations, margins.oneObservation]) {
+            expect(pair[0]).toBeLessThan(pair[1]);
+            for (const value of pair) {
+                expect(Number(value.toFixed(2))).toBe(value);
+            }
         }
         expect(p.SPHEREX_DEPTH[0].oneObservation.value).toEqual([18.75, 19.15]);
         expect(long.oneObservation.value).toEqual([17.05, 18.05]);
@@ -91,18 +95,38 @@ describe('Planet Nine brightness estimate', () => {
         [p.P9, p.SPHEREX_DEPTH, p.SURVEYS, p.EXCLUDED_FRACTION, p.WISE0855, p.REMAINING, p.PS1_HALF_COMPLETE, p.TEXT, p.modelExample(), refs].forEach(walk);
         expect(p.TEXT.stackGain).not.toMatch(/\d/);
         expect(p.TEXT.bandNote).not.toMatch(/best case/i);
+        expect(p.TEXT.bandNote).not.toMatch(/optical R only/i);
+        expect(p.TEXT.bandNote).toMatch(/different bands/i);
+        expect(p.TEXT.bandNote).toContain('papers listed');
+        expect(p.TEXT.bandNote).toContain("this repo's own estimate (reflected sunlight, V band)");
+        expect(p.TEXT.bandNote).toContain('no colour correction');
+        expect(p.TEXT.bandNote).toContain('compare them only roughly');
         expect(p.TEXT.caveat).toContain('estimate');
-        expect(p.TEXT.caveat).toContain('reflected sunlight in the V band');
-        expect(p.TEXT.caveat).toContain('R-band curves without a colour term');
+        expect(p.TEXT.caveat).toContain('seen at opposition, fully lit');
+        expect(p.TEXT.caveat).not.toMatch(/colour/i); // said once, in bandNote
         expect(p.TEXT.wiseNote).toContain('broadband average');
+        expect(refs.filter((ref) => /Brown & Batygin 2021/i.test(ref.text))).toHaveLength(1);
+        expect(refs.find((ref) => ref.key === 'orbit-v2')).toBeUndefined();
+        const orbitUrl = refs.find((ref) => ref.key === 'orbit')?.url;
+        expect(orbitUrl).toBeDefined();
+        expect(p.P9.mass.source).toContain(orbitUrl!);
+        expect(p.P9.percentileCurveExtents.source).toContain(orbitUrl!);
+        expect(p.P9.envelope.source).toContain(orbitUrl!);
         expect(refs.find((ref) => ref.key === 'ztf')?.text).toContain('Brown & Batygin 2022');
         expect(refs.find((ref) => ref.key === 'inverse-fourth')?.text).toMatch(/\(cited only for the distance scaling\)$/);
     });
 
-    it('matches Neptune and the inverse-fourth distance rule', () => {
+    it('matches Neptune, opposition distance geometry and the far-Sun inverse-fourth limit', () => {
         const magnitude = p.absoluteMag(24622, 0.442) + 5 * Math.log10(30.06896348 * (30.06896348 - 1));
         expect(Math.abs(magnitude - 7.7)).toBeLessThan(0.3);
-        expect(p.magChangeWithDistance(500, 1000)).toBeCloseTo(10 * Math.log10(2), 12);
+        expect(Math.abs(p.magChangeWithDistance(380, 550) - 10 * Math.log10(550 / 380))).toBeLessThan(0.005);
+        const distances = [2, 30, 380, 550];
+        for (const from of distances) {
+            for (const to of distances) {
+                const diff = p.apparentMag(6.2, 0.5, to) - p.apparentMag(6.2, 0.5, from);
+                expect(Math.abs(diff - p.magChangeWithDistance(from, to))).toBeLessThan(1e-9);
+            }
+        }
     });
 
     it('rejects invalid values', () => {
@@ -116,6 +140,8 @@ describe('Planet Nine brightness estimate', () => {
         }
         expect(() => p.absoluteMag(100, 1.1)).toThrow(RangeError);
         expect(() => p.apparentMag(6, 0.5, 1)).toThrow(RangeError);
+        expect(() => p.magChangeWithDistance(1, 500)).toThrow(RangeError);
+        expect(() => p.magChangeWithDistance(500, 1)).toThrow(RangeError);
         expect(Number.isFinite(p.absoluteMag(100, 1))).toBe(true);
     });
 });
