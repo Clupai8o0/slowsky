@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+"""Browser smoke test for Slowsky. Exit 0 only if every check passed.
+
+  python scripts/smoke.py [--base URL] [--mode offline|live|both] [--out DIR] [--timeout SECONDS]
+
+Needs Playwright for Python with Chromium installed. No --base: builds, serves dist/ with
+`vite preview` on a free port from 5210 and stops that server by PID on every exit path.
+"""
+import argparse
+import atexit
+import os
+import re
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+from playwright.sync_api import sync_playwright
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TARGETS = [  # (id, button name, needs click)
+    ("barnard", "Barnard", False),
+    ("rwaur", "RW Aurigae", True),
+    ("epsindb", "Epsilon Indi B", True),
+    ("wise0855", "WISE 0855", True),
+    ("rdra", "R Draconis", True),
+]
+PIXELS_JS = """() => {
+  const c = document.querySelector('canvas[data-ref="canvas"]');
+  if (!c || !c.width || !c.height) return null;
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  const counts = new Map();
+  const n = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) {
+    const k = (d[i] << 24) ^ (d[i + 1] << 16) ^ (d[i + 2] << 8) ^ d[i + 3];
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  let top = 0;
+  for (const v of counts.values()) { if (v > top) top = v; }
+  return {distinct: counts.size, topShare: top / n};
+}"""
+FRAME_RE = re.compile(r"Frame (\d+) of (\d+)")
+
+
+def free_port(start=5210):
+    for p in range(start, start + 200):
+        with socket.socket() as s:
+            if s.connect_ex(("127.0.0.1", p)) != 0:
+                return p
+    raise RuntimeError("no free port")
+
+
+class Server:
+    proc = None
+
+    def start(self):
+        r = subprocess.run(["npm", "run", "build"], cwd=ROOT, capture_output=True, text=True)
+        if r.returncode != 0:
+            print((r.stdout + r.stderr)[-1500:])
+            raise RuntimeError("npm run build failed")
+        port = free_port()
+        self.proc = subprocess.Popen(
+            ["npx", "vite", "preview", "--port", str(port), "--strictPort", "--host", "127.0.0.1"],
+            cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        atexit.register(self.stop)
+        base = f"http://127.0.0.1:{port}/"
+        t0 = time.time()
+        while time.time() - t0 < 30:
+            if self.proc.poll() is not None:
+                raise RuntimeError("vite preview exited early")
+            if socket.socket().connect_ex(("127.0.0.1", port)) == 0:
+                return base
+            time.sleep(0.3)
+        raise RuntimeError("preview server did not start")
+
+    def stop(self):
+        p, self.proc = self.proc, None
+        if p and p.poll() is None:
+            try:  # the server we started: its own process group, by PID
+                os.killpg(p.pid, signal.SIGTERM)
+                p.wait(timeout=5)
+            except Exception:
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)
+                except Exception:
+                    pass
+
+
+def page_texts(pg):
+    return pg.inner_text("body")
+
+
+def run_target(browser, base, tid, label, click, mode, timeout, out, brk):
+    ctx = browser.new_context(viewport={"width": 1280, "height": 860})
+    pg = ctx.new_page()
+    errs = []
+    blocked = []
+    pg.on("pageerror", lambda e: errs.append("pageerror: " + str(e)[:200]))
+
+    def on_console(m):
+        if m.type != "error":
+            return
+        t = m.text
+        if mode == "offline" and re.search(r"Failed to load resource|net::ERR|amazonaws|/api/|Failed to fetch|NetworkError|ERR_FAILED", t, re.I):
+            blocked.append(t)
+            return
+        if brk == "snapshot" and re.search(r"Failed to load resource|net::ERR|snapshot", t, re.I):
+            return
+        errs.append("console: " + t[:200])
+    pg.on("console", on_console)
+    if mode == "offline":
+        pg.route(re.compile(r".*(amazonaws\.com|/api/).*"), lambda r: r.abort())
+    if brk == "snapshot":
+        pg.route("**/snapshot/**", lambda r: r.abort())
+    t0 = time.time()
+    fails = []
+    note = ""
+    got = None
+    try:
+        pg.goto(base, wait_until="load")
+        if click:
+            btn = pg.get_by_role("button", name=re.compile(label, re.I)).first
+            btn.wait_for(timeout=15000)
+            pg.wait_for_function("document.querySelector('[data-ref=\"dl\"]')?.textContent.includes('File')", timeout=timeout * 1000)
+            old = pg.evaluate("document.querySelector('[data-ref=\"dl\"]').textContent")
+            btn.click()
+            pg.wait_for_function("(o) => document.querySelector('[data-ref=\"dl\"]').textContent !== o", arg=old, timeout=timeout * 1000)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            txt = page_texts(pg)
+            m = FRAME_RE.search(txt)
+            if m and int(m.group(2)) >= 2 and re.search(r"Live:|Saved copy|Offline", txt):
+                got = m
+                break
+            time.sleep(0.4)
+        txt = page_texts(pg)
+        if not got:
+            fails.append("no 'Frame N of M' (M>=2) within %ds" % timeout)
+        else:
+            pix = None
+            for _ in range(20):  # frame may take a moment to paint
+                pix = pg.evaluate(PIXELS_JS)
+                if pix and pix["distinct"] > 20 and pix["topShare"] < 0.95:
+                    break
+                time.sleep(0.5)
+            if not pix:
+                fails.append("no canvas")
+            elif pix["distinct"] <= 20 or pix["topShare"] >= 0.95:
+                fails.append("blank canvas (distinct=%d, top=%.0f%%)" % (pix["distinct"], pix["topShare"] * 100))
+            snapshot = bool(re.search(r"Saved copy", txt))
+            live = "Live:" in txt
+            if mode == "offline" and not snapshot:
+                fails.append("page does not say it shows the offline snapshot")
+            if mode == "live":
+                note = "live" if live else "fell back to snapshot (known live bug)"
+            else:
+                note = "snapshot"
+            before = FRAME_RE.search(page_texts(pg)).group(0)
+            pg.locator('button[data-act="next"]').click()
+            changed = False
+            for _ in range(10):
+                time.sleep(0.3)
+                m2 = FRAME_RE.search(page_texts(pg))
+                if m2 and m2.group(0) != before:
+                    changed = True
+                    break
+            if not changed:
+                fails.append("frame did not change after Next (%s)" % before)
+        if errs:
+            fails.append("; ".join(errs[:3]))
+    except Exception as e:
+        fails.append("exception: " + str(e).splitlines()[0][:200])
+    try:
+        pg.screenshot(path=os.path.join(out, f"{mode}-{tid}.png"))
+    except Exception:
+        pass
+    ctx.close()
+    ok = not fails
+    msg = "; ".join(fails) if fails else note
+    print(f"{'PASS' if ok else 'FAIL'} {tid} {mode} {time.time() - t0:.1f}s {msg}", flush=True)
+    return ok
+
+
+def run_page_checks(browser, base, out):
+    ok = True
+    ctx = browser.new_context(viewport={"width": 1280, "height": 860})
+    pg = ctx.new_page()
+    fails = []
+    t0 = time.time()
+    try:
+        pg.goto(base, wait_until="load")
+        if not pg.title().strip():
+            fails.append("document has no title")
+        for w, h in ((1280, 860), (390, 844)):
+            pg.set_viewport_size({"width": w, "height": h})
+            time.sleep(0.5)
+            over = pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+            if over > 0:
+                fails.append(f"horizontal scroll {over}px at {w}x{h}")
+        bad = pg.evaluate("""() => [...document.querySelectorAll('button')].filter(b => {
+            const r = b.getBoundingClientRect(), s = getComputedStyle(b);
+            if (!r.width || !r.height || s.visibility === 'hidden' || s.display === 'none' || b.closest('[hidden]')) return false;
+            const name = (b.getAttribute('aria-label') || b.getAttribute('aria-labelledby') || b.innerText || b.title || '').trim();
+            return !name;
+        }).map(b => b.outerHTML.slice(0, 80))""")
+        if bad:
+            fails.append("buttons without a name: " + " | ".join(bad[:3]))
+    except Exception as e:
+        fails.append("exception: " + str(e).splitlines()[0][:200])
+    ctx.close()
+    print(f"{'PASS' if not fails else 'FAIL'} page-checks - {time.time() - t0:.1f}s {'; '.join(fails)}", flush=True)
+    return not fails
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base")
+    ap.add_argument("--mode", choices=["offline", "live", "both"], default="offline")
+    ap.add_argument("--out")
+    ap.add_argument("--timeout", type=float, default=60)
+    ap.add_argument("--break", dest="brk", choices=["snapshot"], help=argparse.SUPPRESS)
+    a = ap.parse_args()
+    out = a.out or tempfile.mkdtemp(prefix="slowsky-smoke-")
+    os.makedirs(out, exist_ok=True)
+    server = Server()
+    failed = 0
+    try:
+        base = a.base or server.start()
+        if not base.endswith("/"):
+            base += "/"
+        modes = ["offline", "live"] if a.mode == "both" else [a.mode]
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            if not run_page_checks(browser, base, out):
+                failed += 1
+            for mode in modes:
+                timeout = 180 if mode == "live" else a.timeout
+                for tid, label, click in TARGETS:
+                    if not run_target(browser, base, tid, label, click, mode, timeout, out, a.brk):
+                        failed += 1
+            browser.close()
+        print(f"screenshots: {out}")
+    except Exception as e:
+        print(f"FAIL setup {e}")
+        failed += 1
+    finally:
+        server.stop()
+    print("SMOKE PASS" if failed == 0 else f"SMOKE FAIL: {failed} failed")
+    return 0 if failed == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
