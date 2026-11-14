@@ -320,8 +320,8 @@ describe('FLAGS layouts and safety', () => {
         expect(calls).toBe(0);
     });
 
-    it('still fetches a tile that decodes to exactly 4096 x 4096 pixels', async () => {
-        const side = MAX_AXIS;
+    it('still fetches a tile that decodes to exactly 2048 x 2048 pixels', async () => {
+        const side = 2048;
         const layout: FlagsLayout = {
             width: side, height: side, tileWidth: side, tileHeight: side, tilesAcross: 1,
             rowSize: 8, rowCount: 1, tableStart: 0, tableBytes: 8, heapStart: 8, heapBytes: 5,
@@ -334,6 +334,63 @@ describe('FLAGS layouts and safety', () => {
         };
         await expect(readFlags('x', layout, { x0: 0, y0: 0, x1: side, y1: side }, { fetcher })).rejects.toThrow(FlagsError);
         expect(calls).toBe(1);
+    });
+
+    it('rejects excessive tile counts before allocating or fetching', async () => {
+        const layout = parseFlagsLayout(header({ ZNAXIS1: 1024, ZNAXIS2: 1024, ZTILE1: 1, ZTILE2: 1,
+            NAXIS1: 8, NAXIS2: 1048576, TFIELDS: 1, TTYPE1: 'COMPRESSED_DATA', TFORM1: '1PB',
+            PCOUNT: 0, THEAP: undefined }), 0);
+        let calls = 0;
+        const fetcher: typeof fetch = async () => { calls++; throw new Error('unexpected fetch'); };
+        const started = performance.now();
+        const result = readFlags('x', layout, { x0: 0, y0: 0, x1: 1024, y1: 1024 }, { fetcher });
+        await expect(result).rejects.toThrow(FlagsError);
+        await expect(result).rejects.toThrow(/tile count/i);
+        expect(performance.now() - started).toBeLessThan(200);
+        expect(calls).toBe(0);
+    });
+
+    it('rejects an oversized tile and mismatched table row counts', () => {
+        const oversized = header({ ZNAXIS1: 4096, ZNAXIS2: 4096, ZTILE1: 4096, ZTILE2: 4096,
+            NAXIS1: 8, NAXIS2: 1, TFIELDS: 1, TTYPE1: 'COMPRESSED_DATA', TFORM1: '1PB',
+            PCOUNT: 327684, THEAP: undefined });
+        expect(() => parseFlagsLayout(oversized, 0)).toThrow(/tile size/i);
+        for (const rows of [3, 5]) {
+            expect(() => parseFlagsLayout(header({ NAXIS2: rows, THEAP: undefined }), 0)).toThrow(/row count/i);
+        }
+    });
+
+    it('bounds cutout pixels while accepting the exact limit and real image dimensions', async () => {
+        const makeLayout = (side: number) => parseFlagsLayout(header({ ZNAXIS1: side, ZNAXIS2: side,
+            ZTILE1: side, ZTILE2: 1, NAXIS1: 8, NAXIS2: side, TFIELDS: 1, TTYPE1: 'COMPRESSED_DATA',
+            TFORM1: '1PB', PCOUNT: 0, THEAP: undefined }), 0);
+        const layout = makeLayout(4096);
+        let calls = 0;
+        const fetcher: typeof fetch = async () => { calls++; return new Response(null, { status: 200 }); };
+        await expect(readFlags('x', layout, { x0: 0, y0: 0, x1: 2049, y1: 2048 }, { fetcher }))
+            .rejects.toThrow(/too many pixels/i);
+        expect(calls).toBe(0);
+        await expect(readFlags('x', layout, { x0: 0, y0: 0, x1: 2048, y1: 2048 }, { fetcher }))
+            .rejects.toThrow(/206/);
+        expect(calls).toBe(1);
+        const real = makeLayout(2040);
+        await expect(readFlags('x', real, { x0: 0, y0: 0, x1: 2040, y1: 2040 }, { fetcher }))
+            .rejects.toThrow(/206/);
+        expect(calls).toBe(2);
+    });
+
+    it('rejects non-integer or non-finite dimensions before reading', async () => {
+        const layout = synthetic().layout;
+        let calls = 0;
+        const fetcher: typeof fetch = async () => { calls++; throw new Error('unexpected fetch'); };
+        for (const value of [NaN, Infinity, -1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+            for (const key of ['width', 'height', 'tileWidth', 'tileHeight'] as const) {
+                await expect(readFlags('x', { ...layout, [key]: value },
+                    { x0: 0, y0: 0, x1: 1, y1: 1 }, { fetcher })).rejects.toThrow(FlagsError);
+            }
+            expect(() => parseFlagsLayout(header({ ZTILE1: value }), 0)).toThrow(FlagsError);
+        }
+        expect(calls).toBe(0);
     });
 
     it('decodes 100 pixels at maxPixels 100 and refuses 101', () => {

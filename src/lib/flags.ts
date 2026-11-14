@@ -6,7 +6,8 @@ export class FlagsError extends Error {}
 // SPHEREx frames are 2040 x 2040. A larger axis is not a FLAGS image we will decode.
 export const MAX_AXIS = 4096;
 const MAX_BLOCKSIZE = 1024;
-const MAX_DECODED_PIXELS = MAX_AXIS * MAX_AXIS;
+export const MAX_DECODED_PIXELS = 2048 * 2048;
+export const MAX_TILES_PER_READ = 4096;
 
 export interface FlagsLayout {
     width: number;
@@ -39,6 +40,16 @@ function roundUp16(count: number): number
     return Math.ceil(count / 16) * 16;
 }
 
+function product(a: number, b: number, label: string): number
+{
+    integer(a, label);
+    integer(b, label);
+    if (b !== 0 && a > Number.MAX_SAFE_INTEGER / b) {
+        throw new FlagsError(`Invalid ${label}`);
+    }
+    return a * b;
+}
+
 function columnBytes(format: unknown): number
 {
     if (typeof format !== 'string') {
@@ -56,7 +67,7 @@ function columnBytes(format: unknown): number
     }
     const sizes: Record<string, number> = { L: 1, X: 0, B: 1, I: 2, J: 4, K: 8, A: 1,
         E: 4, D: 8, C: 8, M: 16, P: 8, Q: 16 };
-    return integer(code === 'X' ? Math.ceil(count / 8) : count * sizes[code]!, 'column size');
+    return code === 'X' ? Math.ceil(count / 8) : product(count, sizes[code]!, 'column size');
 }
 
 export function parseFlagsLayout(header: FitsHeader, hduDataStart: number): FlagsLayout
@@ -80,7 +91,6 @@ export function parseFlagsLayout(header: FitsHeader, hduDataStart: number): Flag
     if (height > MAX_AXIS) {
         throw new FlagsError('Invalid ZNAXIS2');
     }
-    integer(width * height, 'image pixel count', 1);
     const tileWidth = integer(h.get('ZTILE1') ?? width, 'tile width', 1);
     const tileHeight = integer(h.get('ZTILE2') ?? 1, 'tile height', 1);
     if (tileWidth > width) {
@@ -88,6 +98,9 @@ export function parseFlagsLayout(header: FitsHeader, hduDataStart: number): Flag
     }
     if (tileHeight > height) {
         throw new FlagsError('Invalid ZTILE2');
+    }
+    if (tileWidth > MAX_DECODED_PIXELS / tileHeight) {
+        throw new FlagsError('FLAGS tile size exceeds decoded pixel limit');
     }
     const tilesAcross = Math.ceil(width / tileWidth);
     const rowSize = integer(h.get('NAXIS1'), 'table row size', 1);
@@ -143,7 +156,7 @@ export function parseFlagsLayout(header: FitsHeader, hduDataStart: number): Flag
         throw new FlagsError('Invalid BLOCKSIZE');
     }
     const tableStart = integer(hduDataStart, 'HDU data start');
-    const tableBytes = integer(rowSize * rowCount, 'table size');
+    const tableBytes = product(rowSize, rowCount, 'table size');
     const pcount = integer(h.get('PCOUNT'), 'PCOUNT');
     const heapOffset = integer(h.get('THEAP') ?? tableBytes, 'THEAP', tableBytes);
     const dataBytes = integer(tableBytes + pcount, 'HDU data size');
@@ -295,24 +308,42 @@ export async function readFlags(url: string, layout: FlagsLayout, box: PixelBox,
     for (const key of ['x0', 'y0', 'x1', 'y1'] as const) {
         integer(box[key], `box ${key}`);
     }
-    if (box.x1 <= box.x0 || box.y1 <= box.y0 || box.x1 > layout.width || box.y1 > layout.height) {
+    const imageWidth = integer(layout.width, 'image width', 1);
+    const imageHeight = integer(layout.height, 'image height', 1);
+    if (box.x1 <= box.x0 || box.y1 <= box.y0 || box.x1 > imageWidth || box.y1 > imageHeight) {
         throw new FlagsError('Invalid FLAGS pixel box');
+    }
+    const width = box.x1 - box.x0;
+    const height = box.y1 - box.y0;
+    if (width > MAX_DECODED_PIXELS / height) {
+        throw new FlagsError('FLAGS cutout would decode too many pixels');
+    }
+    const tileWidth = integer(layout.tileWidth, 'tile width', 1);
+    const tileHeight = integer(layout.tileHeight, 'tile height', 1);
+    if (tileWidth > MAX_DECODED_PIXELS / tileHeight) {
+        throw new FlagsError('FLAGS cutout would decode too many pixels');
+    }
+    const firstX = Math.floor(box.x0 / tileWidth);
+    const lastX = Math.floor((box.x1 - 1) / tileWidth);
+    const firstY = Math.floor(box.y0 / tileHeight);
+    const lastY = Math.floor((box.y1 - 1) / tileHeight);
+    const tileColumns = lastX - firstX + 1;
+    const tileRows = lastY - firstY + 1;
+    if (tileColumns > MAX_TILES_PER_READ / tileRows) {
+        throw new FlagsError('FLAGS tile count exceeds per-read limit');
     }
     const fetcher = opts.fetcher ?? globalThis.fetch.bind(globalThis);
     const tiles: { index: number; x: number; y: number; width: number; height: number; start: number; length: number }[] = [];
-    // A 1x1 box still decodes every tile it touches. Stop before any fetch when that would pass 4096 x 4096.
-    let decoded = 0;
-    for (let ty = Math.floor(box.y0 / layout.tileHeight); ty <= Math.floor((box.y1 - 1) / layout.tileHeight); ty++) {
-        for (let tx = Math.floor(box.x0 / layout.tileWidth); tx <= Math.floor((box.x1 - 1) / layout.tileWidth); tx++) {
+    for (let ty = firstY; ty <= lastY; ty++) {
+        for (let tx = firstX; tx <= lastX; tx++) {
             const x = tx * layout.tileWidth;
             const y = ty * layout.tileHeight;
             const tileWidth = Math.min(layout.tileWidth, layout.width - x);
             const tileHeight = Math.min(layout.tileHeight, layout.height - y);
             const count = tileWidth * tileHeight;
-            if (!Number.isSafeInteger(count) || count < 1 || decoded > MAX_DECODED_PIXELS - count) {
+            if (!Number.isSafeInteger(count) || count < 1 || count > MAX_DECODED_PIXELS) {
                 throw new FlagsError('FLAGS cutout would decode too many pixels');
             }
-            decoded += count;
             tiles.push({ index: ty * layout.tilesAcross + tx, x, y, width: tileWidth, height: tileHeight,
                 start: 0, length: 0 });
         }
@@ -368,8 +399,6 @@ export async function readFlags(url: string, layout: FlagsLayout, box: PixelBox,
     for (const range of heapRanges) {
         range.bytes = await rangeRead(fetcher, url, range, opts.signal);
     }
-    const width = box.x1 - box.x0;
-    const height = box.y1 - box.y0;
     const data = new Int32Array(width * height);
     for (const tile of tiles) {
         let pixels: Int32Array;
