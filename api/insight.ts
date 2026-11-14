@@ -1,7 +1,7 @@
 // The AI note is written by Anthropic's Claude from numbers this app measured. See README, "AI tools used".
 import Anthropic from '@anthropic-ai/sdk';
-import { checkNote, factSheet, InsightError, validateFacts } from '../src/lib/insight.js';
-import { SYSTEM_PROMPT, userMessage } from '../src/lib/insight-prompt.js';
+import { ASK_ENABLED, checkNote, factSheet, InsightError, validateFacts, validateQuestion } from '../src/lib/insight.js';
+import { ASK_CANNOT, ASK_SYSTEM_PROMPT, askMessage, SYSTEM_PROMPT, userMessage } from '../src/lib/insight-prompt.js';
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -99,6 +99,7 @@ export interface InsightDeps {
     maxPerDay: number;
     maxPerHour: number;
     storeMissing?: boolean;
+    askEnabled?: boolean;
 }
 type Answer = { text: string; model: string; dropped: number };
 const answers = new Map<string, Answer>();
@@ -181,10 +182,25 @@ function networkAddress(ip: string): string
     } catch { return ip; }
 }
 class StoreFailure extends Error {}
+export function pickLines(replyText: string, sheet: string[]): { text: string; lines: number[] }
+{
+    const reply = replyText.trim();
+    const noLines = { text: ASK_CANNOT, lines: [] };
+    if (!/^(?:none|[1-9]\d?(?:\s*,\s*[1-9]\d?){0,2})$/i.test(reply) || /^none$/i.test(reply)) { return noLines; }
+    const lines = reply.split(',').map(Number);
+    if (lines.some((n) => n < 1 || n > sheet.length) || new Set(lines).size !== lines.length) { return noLines; }
+    lines.sort((a, b) => a - b);
+    const text = lines.map((n) => {
+        const line = sheet[n - 1]!;
+        return /[.!?]$/.test(line) ? line : `${line}.`;
+    }).join(' ');
+    return { text, lines };
+}
 export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Response>; POST(r: Request): Promise<Response> }
 {
     const minute = 60000, hour = 3600000, day = 86400000, guessWindow = 900000;
     const enabled = Boolean(!deps.storeMissing && deps.apiKey && (deps.passcode || deps.open));
+    const askEnabled = deps.askEnabled ?? ASK_ENABLED;
     const local = deps.local ?? localStore;
     async function counter(method: 'hit' | 'count', key: string, window: number, now: number): Promise<number> {
         try { return await deps.store[method](key, window, now); } catch { throw new StoreFailure(); }
@@ -241,11 +257,17 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
             } catch { return failure(403, 'forbidden'); }
             if (!/^application\/json(?:\s*;|\s*$)/i.test(request.headers.get('content-type') ?? '')) { return failure(400, 'invalid'); }
             let facts;
+            let question: string | undefined;
             try {
                 const body = await readBody(request);
                 if (body === null) { return failure(413, 'too_large'); }
                 const parsed: unknown = JSON.parse(body);
-                if (!parsed || typeof parsed !== 'object' || !('facts' in parsed)) { return failure(400, 'invalid'); }
+                if (!parsed || typeof parsed !== 'object') { return failure(400, 'invalid'); }
+                if ('question' in parsed) {
+                    if (!askEnabled) { return failure(404, 'off'); }
+                    question = validateQuestion(parsed.question);
+                }
+                if (!('facts' in parsed)) { return failure(400, 'invalid'); }
                 facts = validateFacts(parsed.facts);
             } catch { return failure(400, 'invalid'); }
             const now = deps.now(), id = await visitor(request);
@@ -254,7 +276,7 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
             if (state === 'busy') { return failure(429, 'busy', { 'Retry-After': String(retry(guessWindow, now)) }); }
             if (state === 'locked') { return failure(401, 'locked'); }
             const key = await hash(JSON.stringify(facts));
-            const hit = answers.get(key);
+            const hit = question === undefined ? answers.get(key) : undefined;
             if (hit) { return json({ ...hit, cached: true }, 200, { 'X-Robots-Tag': 'noindex' }); }
             if (!deps.passcode && await brake(id, now)) { return failure(429, 'busy', { 'Retry-After': String(retry(minute, now)) }); }
             const limits = [
@@ -279,7 +301,11 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
                 const timeout = new Promise<never>((_resolve, reject) => {
                     timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); }, 25000);
                 });
-                const completion = await Promise.race([deps.complete(SYSTEM_PROMPT, userMessage(sheet), controller.signal), timeout]);
+                const completion = await Promise.race([deps.complete(question === undefined ? SYSTEM_PROMPT : ASK_SYSTEM_PROMPT, question === undefined ? userMessage(sheet) : askMessage(sheet, question), controller.signal), timeout]);
+                if (question !== undefined) {
+                    const picked = pickLines(completion.refused || completion.stopReason === 'max_tokens' ? '' : completion.text, sheet);
+                    return json({ ...picked, model: completion.model, dropped: 0, cached: false, remaining: Math.max(0, deps.maxPerUserDay - hits[1]!), kind: 'answer' }, 200, { 'X-Robots-Tag': 'noindex' });
+                }
                 if (completion.refused) { return failure(502, 'no_note'); }
                 const endings = completion.stopReason === 'max_tokens' ? [...completion.text.matchAll(/[.!?](?=\s|$)/g)] : [];
                 let text = completion.stopReason === 'max_tokens' ? completion.text.slice(0, (endings.at(-1)?.index ?? -1) + 1).trimEnd() : completion.text;
