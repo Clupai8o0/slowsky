@@ -11,6 +11,7 @@ import { createLiveSource, createSnapshotSource } from '../lib/source';
 import { NotImplemented } from '../lib/notimpl';
 import { drawFrame, frameDelayMs, renderRgba, sharedStretch, stepIndex } from '../lib/player';
 import { decodeView, encodeView } from '../lib/urlstate';
+import { positionAt } from '../lib/targets';
 import { formatDec, formatRa, parseCoords, resolveName } from '../lib/coords';
 import { createDemoSource } from './demo-source';
 import { diffScale, renderDiverging, type DiffScale } from './compose';
@@ -22,7 +23,11 @@ type SourceKind = 'live' | 'snapshot' | 'demo';
 
 const TARGETS = targetsJson as unknown as Target[];
 const FOVS = [0.1, 0.25, 0.5, 1];
+const DEFAULT_FOV = 0.1; // big SPHEREx pixels, and a mover's step is easy to see
 const DEFAULT_TARGET: TargetId = 'barnard';
+// Middle of SPHEREx's looks so far (1 Jan 2026). Fast movers are centred where they are then, not in 2000:
+// Barnard's Star has walked 4′ north since, which is off the edge of a 0.1° field.
+const SKY_EPOCH_MJD = 61041;
 const FPS = 1.5;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ICON = {
@@ -116,45 +121,42 @@ function shell(): string
     const ticks = [0.4, 1, 2, 3, 4, 5].map((t) => `<span style="left:${axisPct(t).toFixed(2)}%">${t}</span>`).join('');
     return `
 <aside class="sk-rail sk-left">
-  <div class="sk-brand"><span class="sk-word">slowsky</span><span class="sk-tag">Watch the sky change. Infrared frames from NASA’s SPHEREx.</span></div>
+  <div class="sk-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span><span class="sk-tag">Watch the sky change.</span><span class="sk-sub2">Infrared frames from NASA’s SPHEREx</span></div>
   <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
-    <h2 class="sk-mh" id="sk-h1"><i>1</i>Pick a target</h2>
+    <h2 class="sk-mh" id="sk-h1"><i>01</i>Choose a target</h2>
     <nav class="sk-tg" aria-label="Targets">${targets}</nav>
-    <form class="sk-search" data-ref="search" role="search"><span class="ic">${ICON.search}</span><input name="q" placeholder="Or any star, or RA, Dec" autocomplete="off" aria-label="Search the sky: a star name, or RA and Dec"></form>
+    <form class="sk-search" data-ref="search" role="search"><span class="ic">${ICON.search}</span><input name="q" placeholder="Any star, or RA, Dec" autocomplete="off" aria-label="Search the sky: a star name, or RA and Dec"></form>
   </section>
   <section class="sk-mod sk-m-about" aria-labelledby="sk-h4">
-    <h2 class="sk-mh plain" id="sk-h4">What to look for</h2>
+    <h2 class="sk-mh" id="sk-h4">What to look for</h2>
     <p class="sk-h" data-bind="headline"></p>
     <p class="sk-coord"><span data-bind="name"></span><span data-bind="coords"></span></p>
     <p class="sk-body" data-bind="show"></p>
-    <h3 class="sk-sub">What this can’t tell you</h3>
-    <p class="sk-body mute" data-bind="not"></p>
+    <p class="sk-body mute"><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
   </section>
 </aside>
 <main class="sk-mid">
   <section class="sk-mod sk-m-watch" aria-labelledby="sk-h2">
     <div class="sk-mhrow">
-      <h2 class="sk-mh" id="sk-h2"><i>2</i>Watch it change</h2>
+      <h2 class="sk-mh" id="sk-h2"><i>02</i>Watch it change</h2>
       <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
     </div>
-    <p class="sk-hint" data-bind="hint"></p>
     <div class="sk-sky" data-ref="sky">
-      <canvas data-ref="canvas" role="img" aria-label="Sky image"></canvas>
+      <canvas class="sk-glow" data-ref="glow" width="24" height="24" aria-hidden="true"></canvas>
+      <canvas class="sk-img" data-ref="canvas" role="img" aria-label="Sky image"></canvas>
       <svg class="sk-ov" data-ref="ov" aria-hidden="true" preserveAspectRatio="none"></svg>
+      <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
       <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
       <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
       <div class="sk-err" data-ref="err" hidden><p data-bind="err"></p><button type="button" class="sk-btn2" data-act="retry">Try again</button></div>
     </div>
     <div class="sk-legrow">
       <div class="sk-leg">
-        <button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Stars in ESA’s Gaia catalogue</button>
+        <button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Gaia catalogue stars</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
-      <div class="sk-scale">
-        <label class="sk-fov">Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
-        <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
-      </div>
+      <label class="sk-fov">Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
     </div>
     <div class="sk-player">
       <div class="sk-tr">
@@ -164,25 +166,25 @@ function shell(): string
       </div>
       <div class="sk-seg" role="group" aria-label="View"><button type="button" data-mode="blink">Blink</button><button type="button" data-mode="stack">Stack</button><button type="button" data-mode="diff">Subtract</button></div>
     </div>
+    <p class="sk-hint" data-bind="hint"></p>
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
   </section>
 </main>
 <aside class="sk-rail sk-right">
-  <div class="sk-status"><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div>
+  <div class="sk-status"><p><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span></p><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div>
   <section class="sk-mod sk-m-colour" aria-labelledby="sk-h3">
-    <h2 class="sk-mh" id="sk-h3"><i>3</i>Try another colour</h2>
+    <h2 class="sk-mh" id="sk-h3"><i>03</i>Change the colour</h2>
     <div class="sk-readout"><p><b data-bind="lam"></b><small>µm</small></p><span data-bind="det"></span></div>
-    <p class="sk-body mute">All of this is infrared. Your eyes stop at 0.70 µm.</p>
     <div class="sk-spec">
       <div class="sk-axis"><i class="vis" style="width:${axisPct(0.7).toFixed(2)}%" title="Visible light"></i>
         <input class="sk-rng" type="range" data-ref="lam" min="${LAM_MIN}" max="${LAM_MAX}" step="0.01" style="left:${axisPct(LAM_MIN).toFixed(2)}%;width:${(100 - axisPct(LAM_MIN)).toFixed(2)}%" aria-label="Wavelength in micrometres"></div>
       <div class="sk-ticks" aria-hidden="true">${ticks}</div>
-      <div class="sk-axl" aria-hidden="true"><span>your eyes</span><span>SPHEREx sees · µm</span></div>
+      <div class="sk-axl" aria-hidden="true"><span>your eyes</span><span>SPHEREx · µm</span></div>
     </div>
-    <p class="sk-note">Drag, then let go to load that colour.</p>
+    <p class="sk-body mute">All of this is infrared: your eyes stop at 0.70 µm. Drag, then let go to load that colour.</p>
   </section>
   <section class="sk-mod sk-m-details" aria-labelledby="sk-h5">
-    <h2 class="sk-mh plain" id="sk-h5">Frame details</h2>
+    <h2 class="sk-mh" id="sk-h5">This frame</h2>
     <dl data-ref="dl"></dl>
     <ul class="sk-notes" data-ref="notes"></ul>
   </section>
@@ -201,6 +203,8 @@ export function mount(root: HTMLElement): void
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    const glow = ref<HTMLCanvasElement>('glow');
+    const glowCtx = glow.getContext('2d') as CanvasRenderingContext2D;
     const ov = ref<SVGSVGElement>('ov');
     const strip = ref<HTMLElement>('strip');
     const lamInput = ref<HTMLInputElement>('lam');
@@ -212,7 +216,7 @@ export function mount(root: HTMLElement): void
     const st: State = {
         center: { ra: 0, dec: 0 },
         label: '',
-        fovDeg: 0.25,
+        fovDeg: DEFAULT_FOV,
         detector: 1,
         mode: 'blink',
         index: 0,
@@ -253,7 +257,7 @@ export function mount(root: HTMLElement): void
             return;
         }
         st.target = id;
-        st.center = { ra: t.astrometry.ra, dec: t.astrometry.dec };
+        st.center = positionAt(t.astrometry, SKY_EPOCH_MJD);
         st.detector = t.detector;
         st.lambda = undefined;
         st.label = COPY[id].display;
@@ -290,6 +294,7 @@ export function mount(root: HTMLElement): void
         strip.innerHTML = '';
         ov.innerHTML = '';
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        paintGlow();
         ref<HTMLElement>('dl').innerHTML = '';
         ref<HTMLElement>('notes').innerHTML = '';
         lamInput.disabled = true;
@@ -349,6 +354,7 @@ export function mount(root: HTMLElement): void
         lamInput.disabled = false;
         if (!res || res.frames.length === 0) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            paintGlow();
             renderText();
             const why = res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${lastErr instanceof Error ? lastErr.message : ''}`;
             bind('err', why);
@@ -446,9 +452,19 @@ export function mount(root: HTMLElement): void
             }
             ctx.putImageData(img, 0, 0);
         }
+        paintGlow();
         overlay();
         renderText();
         renderFrameState();
+    }
+
+    // A tiny copy of the sky, blurred by CSS behind the image: the glow follows what is on screen.
+    function paintGlow(): void
+    {
+        glowCtx.clearRect(0, 0, glow.width, glow.height);
+        if (canvas.width > 0 && canvas.height > 0) {
+            glowCtx.drawImage(canvas, 0, 0, glow.width, glow.height);
+        }
     }
 
     function overlay(): void
@@ -854,7 +870,7 @@ export function mount(root: HTMLElement): void
     const shared = decodeView(location.search);
     if (shared) {
         st.center = shared.center;
-        st.fovDeg = FOVS.includes(shared.fovDeg) ? shared.fovDeg : 0.25;
+        st.fovDeg = FOVS.includes(shared.fovDeg) ? shared.fovDeg : DEFAULT_FOV;
         st.detector = shared.detector;
         st.lambda = shared.lambda;
         st.target = shared.target;
