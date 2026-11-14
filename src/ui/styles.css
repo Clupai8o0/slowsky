@@ -351,6 +351,7 @@ button { cursor: pointer; }
 .sk-rng::-webkit-slider-thumb { -webkit-appearance: none; width: 3px; height: 26px; margin-top: -10px; background: #fff; border: 0; border-radius: 1px; box-shadow: 0 0 0 3px var(--void), 0 0 14px 2px rgba(255, 255, 255, .55); }
 .sk-rng::-moz-range-thumb { width: 3px; height: 26px; background: #fff; border: 0; border-radius: 1px; box-shadow: 0 0 0 3px var(--void), 0 0 14px 2px rgba(255, 255, 255, .55); }
 .sk-rng:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--void), 0 0 0 5px rgba(255, 255, 255, .6); }
+.sk-rng:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--void), 0 0 0 5px rgba(255, 255, 255, .6); }
 .sk-rng:disabled { opacity: .45; cursor: default; }
 .sk-ticks { position: relative; height: 16px; margin-top: 4px; font: 10.5px var(--mono); color: var(--mute); }
 .sk-ticks span { position: absolute; top: 0; transform: translateX(-50%); }
