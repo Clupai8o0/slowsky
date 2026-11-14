@@ -1174,14 +1174,29 @@ describe('note and question coordination', () => {
         expect(doc.el('lock').hidden).toBe(true);
     });
 
-    it('C5 keeps an open-mode count after a reached count-less failure check', async () => {
+    it('C5 hides an open-mode count after a failed note when the check gives no count', async () => {
         let notes = 0;
         const { doc, ai } = pair(async () => { if (notes++ === 0) { return noteReply(4); } throw new InsightError('failed'); }, async () => answer(3), async () => ({ enabled: true, locked: false, unlocked: true }));
         await flush();
         ai.update(noteView());
         await doc.el('go').fire('click');
+        expect(doc.el('left').textContent).toContain('4 ');
         ai.update(noteView(61001));
         await doc.el('go').fire('click');
+        await flush();
+        // The failed note may have been counted and the server gives no count here: 4 could be one too high.
+        expect(doc.el('left').hidden).toBe(true);
+    });
+
+    it('C5 a tab-visible check that gives no count leaves an open-mode count as it is', async () => {
+        const { doc, ai } = pair(async () => noteReply(4), async () => answer(3), async () => ({ enabled: true, locked: false, unlocked: true }));
+        await flush();
+        ai.update(noteView());
+        await doc.el('go').fire('click');
+        await flush();
+        expect(doc.el('left').textContent).toContain('4 ');
+        doc.visibilityState = 'visible';
+        doc.fire('visibilitychange');
         await flush();
         expect(doc.el('left').textContent).toContain('4 ');
         expect(doc.el('left').hidden).toBe(false);
