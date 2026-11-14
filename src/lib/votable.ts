@@ -14,10 +14,20 @@ const NAMED_ENTITIES = new Map<string, string>([
 ]);
 
 // Throws with the server's INFO text when the reply is an error document.
+// Quoted attribute values may contain '>' (e.g. name="flux>limit"), so tag bodies are matched quote-aware.
+const TAG_ATTRS = `((?:"[^"]*"|'[^']*'|[^>"'])*)`;
+const CDATA_MARK = /(\d+)/g;
+
 export function parseVotable(xml: string): VoRow[]
 {
-    const doc = xml.replace(/<!--[\s\S]*?-->/g, '');
-    checkQueryStatus(doc);
+    // CDATA is lifted out first, so comment markers, tag names and entities inside it stay literal.
+    const cdata: string[] = [];
+    const noCdata = xml.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, text: string) => {
+        cdata.push(text);
+        return `${cdata.length - 1}`;
+    });
+    const doc = noCdata.replace(/<!--[\s\S]*?-->/g, '');
+    checkQueryStatus(doc, cdata);
     if (/<BINARY2?(?=[\s/>])/i.test(doc)) {
         throw new Error('unsupported serialisation: VOTable BINARY/BINARY2 (request TABLEDATA)');
     }
@@ -29,7 +39,7 @@ export function parseVotable(xml: string): VoRow[]
     }
     const rows: VoRow[] = [];
     for (const tr of body.matchAll(/<TR\b[^>]*?(?:\/>|>([\s\S]*?)<\/TR\s*>)/gi)) {
-        const cells = cellsOf(tr[1] ?? '');
+        const cells = cellsOf(tr[1] ?? '', cdata);
         const row: VoRow = {};
         fields.forEach((name, i) => {
             row[name] = cells[i] ?? '';
@@ -39,14 +49,14 @@ export function parseVotable(xml: string): VoRow[]
     return rows;
 }
 
-function checkQueryStatus(doc: string): void
+function checkQueryStatus(doc: string, cdata: string[]): void
 {
-    for (const m of doc.matchAll(/<INFO\b([^>]*?)(?:\/>|>([\s\S]*?)<\/INFO\s*>)/gi)) {
+    for (const m of doc.matchAll(new RegExp(`<INFO\\b${TAG_ATTRS}(?:\\/>|>([\\s\\S]*?)<\\/INFO\\s*>)`, 'gi'))) {
         const attrs = attributes(m[1] ?? '');
         const name = (attrs.get('name') ?? '').toUpperCase();
         const value = (attrs.get('value') ?? '').toUpperCase();
         if (name === 'QUERY_STATUS' && value === 'ERROR') {
-            const text = cellText(m[2] ?? '');
+            const text = cellText(m[2] ?? '', cdata);
             throw new Error(text || 'VOTable reply reports QUERY_STATUS ERROR');
         }
     }
@@ -55,31 +65,26 @@ function checkQueryStatus(doc: string): void
 function fieldNames(doc: string): string[]
 {
     const names: string[] = [];
-    for (const m of doc.matchAll(/<FIELD\b([^>]*?)\/?>/gi)) {
+    for (const m of doc.matchAll(new RegExp(`<FIELD\\b${TAG_ATTRS}\\/?>`, 'gi'))) {
         names.push((attributes(m[1] ?? '').get('name') ?? '').toLowerCase());
     }
     return names;
 }
 
-function cellsOf(inner: string): string[]
+function cellsOf(inner: string, cdata: string[]): string[]
 {
     const cells: string[] = [];
     for (const td of inner.matchAll(/<TD\b[^>]*?(?:\/>|>([\s\S]*?)<\/TD\s*>)/gi)) {
-        cells.push(cellText(td[1] ?? ''));
+        cells.push(cellText(td[1] ?? '', cdata));
     }
     return cells;
 }
 
-// Text of one cell: entities decoded outside CDATA, CDATA taken as written, outer whitespace trimmed.
-function cellText(raw: string): string
+// Text of one cell: entities decoded, CDATA sections put back as written, outer whitespace trimmed.
+function cellText(raw: string, cdata: string[]): string
 {
-    const pieces = raw.split(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-    let out = '';
-    for (let i = 0; i < pieces.length; i += 1) {
-        const piece = pieces[i] ?? '';
-        out += i % 2 === 1 ? piece : decodeEntities(piece);
-    }
-    return out.trim();
+    const decoded = decodeEntities(raw);
+    return decoded.replace(CDATA_MARK, (_whole, index: string) => cdata[Number(index)] ?? '').trim();
 }
 
 function attributes(source: string): Map<string, string>

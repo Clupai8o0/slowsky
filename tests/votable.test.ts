@@ -76,4 +76,33 @@ describe('parseVotable', () => {
         expect(parseVotable('<VOTABLE><RESOURCE/></VOTABLE>')).toEqual([]);
         expect(parseVotable('<TABLEDATA/>')).toEqual([]);
     });
+
+    it('keeps CDATA text literal, including comment markers and tag-like text', () => {
+        const xml = `<VOTABLE><RESOURCE><TABLE>
+            <FIELD name="note"/>
+            <DATA><TABLEDATA>
+              <TR><TD><![CDATA[before <!-- keep --> after]]></TD></TR>
+              <TR><TD><![CDATA[literal <BINARY> and </TD> here]]></TD></TR>
+              <TR><TD><![CDATA[a &amp; b]]></TD></TR>
+            </TABLEDATA></DATA>
+        </TABLE></RESOURCE></VOTABLE>`;
+        expect(parseVotable(xml)).toEqual([
+            { note: 'before <!-- keep --> after' },
+            { note: 'literal <BINARY> and </TD> here' },
+            { note: 'a &amp; b' },
+        ]);
+    });
+
+    it('accepts a > inside a quoted FIELD name', () => {
+        const xml = `<VOTABLE><TABLE>
+            <FIELD name="flux>limit"/>
+            <DATA><TABLEDATA><TR><TD>1</TD></TR></TABLEDATA></DATA>
+        </TABLE></VOTABLE>`;
+        expect(parseVotable(xml)).toEqual([{ 'flux>limit': '1' }]);
+    });
+
+    it('reads a QUERY_STATUS ERROR whose value contains a >', () => {
+        const xml = `<VOTABLE><RESOURCE><INFO name="QUERY_STATUS" value="ERROR">bad > query</INFO></RESOURCE></VOTABLE>`;
+        expect(() => parseVotable(xml)).toThrow('bad > query');
+    });
 });
