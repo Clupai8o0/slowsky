@@ -143,7 +143,7 @@ Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md
 | Tool | Maker | Used for |
 |---|---|---|
 | Claude Code (Claude Fable, Opus, Sonnet and Haiku models) | Anthropic | Writing and reviewing code, tests, planning help, page text drafts; checking the facts in this file and on the page against their sources and writing [SOURCES.md](SOURCES.md) |
-| Claude API (Claude Opus 5.5) | Anthropic | Inside the site: the server route `api/insight.ts` writes the optional research note from the page's own measurements. The note is labelled as written by AI and sits behind a passcode; the route stays off until it is set up |
+| Claude API (Claude Opus 5.5) | Anthropic | Inside the site: the server route `api/insight.ts` writes the optional research note from the page's own measurements. The note is labelled as written by AI and sits behind a passcode; the route stays off until it is set up. Before a note is shown, a checker (`checkNote` in `src/lib/insight.ts`) drops any sentence with a number that is neither on the fact sheet built from the page's own measurements nor on a short fixed list of mission figures in the code. It cannot catch a real number moved to the wrong subject |
 | Codex (GPT-6.1 Sol and Terra models) | OpenAI | Writing and reviewing code; checking the source list |
 | Gemini (Argon and Carbon models, through Antigravity) | Google | Writing and reviewing code; reviewing the facts and wording in this file and on the page |
 | Grok 4.7 (through Grok Build) | xAI | Reviewing code; checking the source list |
@@ -218,6 +218,8 @@ These parts are in the code but switched off on the site, so a visitor cannot us
 - For R Draconis, the light in a ring around its too-bright centre, look by look, as a line or a table
   (`src/lib/halo.ts`, `src/ui/halo-view.ts`).
 - A machine-learning sort hint for each candidate change, described below.
+- Code that reads one spot's spectrum from the SPHEREx cube tiles in the public archive (`src/lib/cube.ts`). No
+  part of the page calls it.
 
 **The change sort hint.** A small neural network (`public/models/change-classifier.json`, run by
 `src/lib/classify.ts`). Its card is `public/models/change-classifier.card.json`; its test results are in `models/`.
