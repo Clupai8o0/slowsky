@@ -30,7 +30,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         kind: 'variable',
         headline: 'RW Aurigae, changing its light',
         show: 'A young star. Compare it with its neighbours: the curve measures it against them, look by look.',
-        not: 'Frames are matched closely in colour to keep colour shifts small. The band shows how much the comparison stars wobble, so a change inside it may be noise.',
+        not: 'Frames are matched closely in colour to keep colour shifts small. When a curve is drawn, the band shows how much the comparison stars wobble, so a change inside it may be noise.',
     },
     epsindb: {
         display: 'Epsilon Indi B',
