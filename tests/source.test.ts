@@ -237,6 +237,73 @@ describe('live source (fake SIA and S3)', () => {
         expect(res.notes.join(' ')).toContain('Read 2 of 40 frames');
     });
 
+    // A SPHEREx-like visit: the spot steps 115 rows per exposure, so each frame sees a different wavelength.
+    // Corners come from each frame's own WCS, as SIA's s_region does.
+    function stepped(prefix: string, t0: number, flipped: boolean, n = 12, shift: SkyCoord = { ra: 0, dec: 0 }): Fake[]
+    {
+        return Array.from({ length: n }, (_, k) => {
+            const f = fake(`${prefix}${k}D1`, t0 + k * 0.01, -600 + 115 * k, flipped);
+            const wcs = makeWcs(wcsFromHeader(headerFromCards(f.cards)));
+            f.record.footprint = [[-0.5, -0.5], [2039.5, -0.5], [2039.5, 2039.5], [-0.5, 2039.5]].map(([x, y]) => {
+                const c = wcs.pixToSky({ x: x!, y: y! });
+                return { ra: c.ra + shift.ra, dec: c.dec + shift.dec };
+            });
+            return f;
+        });
+    }
+
+    function counting(fakes: Fake[]): RangeReader & { reads: number; headers: string[] }
+    {
+        const base = fakeReader(fakes);
+        const headers: string[] = [];
+        return Object.assign(base, {
+            headers,
+            index: async (url: string) => {
+                headers.push(url);
+                return fakeReader(fakes).index(url);
+            },
+        });
+    }
+
+    it('spends header reads on the frames whose guessed wavelength is nearest the chosen one', async () => {
+        const fakes = [...stepped('a', 60900, false), ...stepped('b', 61080, true)];
+        const chosen = lambdaAtCentre(fakes[7]!);
+        const reader = counting(fakes);
+        const source = createLiveSource({ reader, search: async () => fakes.map((f) => f.record), maxHeaders: 6 });
+        const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: chosen });
+        expect(res.locked.map((l) => l.frame.obsId)).toEqual(['a7D1', 'b7D1']);
+        expect(Math.max(...res.locked.map((l) => Math.abs(l.dLambda)))).toBeLessThan(0.002);
+        // One probe header plus the two nearest frames of each visit (the probe may be one of them).
+        expect(new Set(reader.headers).size).toBeLessThanOrEqual(5);
+        expect(res.notes.join(' ')).toContain('Read 4 of 24 frames');
+    });
+
+    it('picks the default wavelength from the guesses and counts visits no frame reaches', async () => {
+        // Visit c sees the spot near the top rows only, beyond any wavelength visits a and b reach.
+        const far = [0, 1].map((k) => fake(`c${k}D1`, 61300 + k * 0.01, 1000 + 10 * k, false));
+        const fakes = [...stepped('a', 60900, false), ...stepped('b', 61080, true), ...far.map((f) => {
+            const wcs = makeWcs(wcsFromHeader(headerFromCards(f.cards)));
+            f.record.footprint = [[-0.5, -0.5], [2039.5, -0.5], [2039.5, 2039.5], [-0.5, 2039.5]]
+                .map(([x, y]) => wcs.pixToSky({ x: x!, y: y! }));
+            return f;
+        })];
+        const source = createLiveSource({ reader: counting(fakes), search: async () => fakes.map((f) => f.record), maxHeaders: 6 });
+        const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1 });
+        expect(res.locked).toHaveLength(2);
+        expect(res.locked.every((l) => Math.abs(l.dLambda) <= 0.015)).toBe(true);
+        expect(res.notes.join(' ')).toContain('1 visit left out');
+    });
+
+    it('falls back to thinning in time when the corners do not match the header', async () => {
+        const fakes = [...stepped('a', 60900, false, 12, { ra: 0.5, dec: 0 }), ...stepped('b', 61080, true, 12, { ra: 0.5, dec: 0 })];
+        const reader = counting(fakes);
+        const source = createLiveSource({ reader, search: async () => fakes.map((f) => f.record), maxHeaders: 6 });
+        const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: lambdaAtCentre(fakes[7]!) });
+        expect(res.notes.join(' ')).toContain('Read 6 of 24 frames');
+        // Thinning in time reads frames 2, 6 and 10 of each visit; none is close enough to frame 7's wavelength.
+        expect(res.locked).toHaveLength(0);
+    });
+
     it('reports an empty sky and stops on abort', async () => {
         const empty = createLiveSource({ reader: fakeReader(), search: async () => [] });
         const res = await empty.load({ center: CENTER, fovDeg: 0.05, detector: 2 });

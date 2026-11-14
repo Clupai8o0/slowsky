@@ -67,6 +67,9 @@ export interface FrameRecord {
     lambdaMin: number; // µm, whole detector (SIA em_min is metres)
     lambdaMax: number; // µm, whole detector
     center?: SkyCoord; // s_ra, s_dec
+    // s_region: sky positions of the 4 detector corners, in pixel order (0,0), (nx,0), (nx,ny), (0,ny).
+    // Lets the live loader guess where a star falls, and so its wavelength, before reading the header.
+    footprint?: SkyCoord[];
     estSizeBytes?: number; // approximate: SIA access_estsize is kilobytes, times 1024. FitsIndex has the exact size.
     pipelineVersion?: string; // filled from the FITS header once read
 }
