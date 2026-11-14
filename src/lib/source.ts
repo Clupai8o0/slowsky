@@ -95,8 +95,8 @@ export interface LiveOptions extends SourceOptions {
     search?: (q: FrameQuery, signal?: AbortSignal) => Promise<FrameRecord[]>;
     reader?: RangeReader;
     maxHeaders?: number; // most frames whose headers are read (default 60); every visit is kept
-    requestTimeoutMs?: number; // each archive request, including its body (default 20000)
-    loadTimeoutMs?: number; // one complete live load (default 90000)
+    stallTimeoutMs?: number; // no progress while archive operations are pending (default 20000)
+    loadTimeoutMs?: number; // one complete live load (default 180000)
 }
 
 export interface SnapshotOptions extends SourceOptions {
@@ -411,26 +411,50 @@ const GAIA_MAX_RADIUS_DEG = 0.2; // the widest cone gaia.ts accepts
 const GAIA_GRACE_MS = 1500; // how long a finished picture waits for a slow catalogue
 
 export class ArchiveTimeoutError extends Error {
-    constructor()
+    constructor(readonly reason: 'stall' | 'total')
     {
         super('Network request timed out.');
         this.name = 'ArchiveTimeoutError';
     }
 }
 
-// Keep the deadline until the response stream finishes, not merely until headers arrive.
+// One clock follows progress across all pending archive operations in the load.
 function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: number): typeof fetch
 {
+    let pending = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = (): void => {
+        clearTimeout(timer);
+        timer = pending > 0 && !load.signal.aborted
+            ? setTimeout(() => load.abort(new ArchiveTimeoutError('stall')), timeoutMs) : undefined;
+    };
+    const start = (): ((progress: boolean) => void) => {
+        if (pending++ === 0) {
+            arm();
+        }
+        let finished = false;
+        return (progress) => {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            pending--;
+            if (progress || pending === 0) {
+                arm();
+            }
+        };
+    };
+    load.signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
     return async (input, init) => {
         const request = new AbortController();
         const upstream = init?.signal;
         let bodyReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+        let onRequestAbort: () => void = () => {};
         const abort = (): void => request.abort(upstream?.aborted ? upstream.reason : load.signal.reason);
-        const timer = setTimeout(() => load.abort(new ArchiveTimeoutError()), timeoutMs);
         const cleanup = (): void => {
-            clearTimeout(timer);
             load.signal.removeEventListener('abort', onAbort);
             upstream?.removeEventListener('abort', onAbort);
+            request.signal.removeEventListener('abort', onRequestAbort);
         };
         const onAbort = (): void => {
             abort();
@@ -446,10 +470,13 @@ function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: n
             throw request.signal.reason;
         }
         const cancelled = new Promise<never>((_resolve, reject) => {
-            request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true });
+            onRequestAbort = () => reject(request.signal.reason);
+            request.signal.addEventListener('abort', onRequestAbort, { once: true });
         });
+        const finishHeaders = start();
         try {
             const response = await Promise.race([fetcher(input, { ...init, signal: request.signal }), cancelled]);
+            finishHeaders(true);
             if (request.signal.aborted) {
                 void response.body?.cancel().catch(() => undefined);
                 throw request.signal.reason;
@@ -464,8 +491,10 @@ function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: n
             const stream = new ReadableStream<Uint8Array>({
                 async pull(controller)
                 {
+                    const finishRead = start();
                     try {
                         const chunk = await Promise.race([reader.read(), cancelled]);
+                        finishRead(true);
                         if (chunk.done) {
                             if (!cancelling) {
                                 cleanup();
@@ -475,6 +504,7 @@ function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: n
                             controller.enqueue(chunk.value);
                         }
                     } catch (error) {
+                        finishRead(false);
                         if (!cancelling) {
                             cleanup();
                         }
@@ -490,9 +520,10 @@ function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: n
                         cleanup();
                     }
                 },
-            });
+            }, { highWaterMark: 0 });
             return new Response(stream, { status: response.status, statusText: response.statusText, headers: response.headers });
         } catch (error) {
+            finishHeaders(false);
             cleanup();
             throw error;
         }
@@ -690,8 +721,8 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
             const controller = new AbortController();
             const abort = (): void => controller.abort(callerSignal?.reason);
             callerSignal?.addEventListener('abort', abort, { once: true });
-            const timer = setTimeout(() => controller.abort(new ArchiveTimeoutError()), opts.loadTimeoutMs ?? 90000);
-            const timedFetch = archiveFetch(fetcher, controller, opts.requestTimeoutMs ?? 20000);
+            const timer = setTimeout(() => controller.abort(new ArchiveTimeoutError('total')), opts.loadTimeoutMs ?? 180000);
+            const timedFetch = archiveFetch(fetcher, controller, opts.stallTimeoutMs ?? 20000);
             const reader = opts.reader ?? createRangeReader({ fetch: timedFetch });
             const search = opts.search ?? ((q: FrameQuery, signal?: AbortSignal) => searchFrames(q, signal, timedFetch));
             const loadReq = { ...req, signal: controller.signal };
