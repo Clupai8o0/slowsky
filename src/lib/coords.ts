@@ -44,7 +44,7 @@ function tokensOf(part: string): Token[] | null
 }
 
 // Splits the text into the RA and Dec groups. A comma splits first. Otherwise a signed number starts
-// the Dec group. Without signs, the number count decides (2, 4 or 6 numbers split in half).
+// the Dec group. Without signs, the number count decides; four bare numbers are ambiguous.
 function splitGroups(s: string): Token[][] | null
 {
     const comma = s.indexOf(',');
@@ -73,6 +73,9 @@ function splitGroups(s: string): Token[][] | null
     if (n !== 2 && n !== 4 && n !== 6) {
         return null;
     }
+    if (n === 4 && tokens.every((token) => token.unit === '')) {
+        return null;
+    }
     const half = n / 2;
     return [tokens.slice(0, half), tokens.slice(half)];
 }
@@ -91,6 +94,9 @@ function component(group: Token[], kind: 'ra' | 'dec'): number | null
     }
     const units = group.map((t) => t.unit).join('');
     const degrees = /[d°′″'"]/.test(units);
+    if (kind === 'dec' && units.includes('h')) {
+        return null;
+    }
     if (kind === 'ra' && degrees && units.includes('h')) {
         return null;
     }
@@ -102,7 +108,7 @@ function component(group: Token[], kind: 'ra' | 'dec'): number | null
         const unit = (group[i]?.unit ?? '').replace(/''/g, '"');
         const rank = unit === '' ? i : 'hd°'.includes(unit) ? 0 : "m′'".includes(unit) ? 1 : 's″"'.includes(unit) ? 2 : -1;
         const part = values[i] ?? NaN;
-        if (unit.length > 1 || rank <= previousRank || (rank > 0 && part >= 60)
+        if (unit.length > 1 || rank !== previousRank + 1 || (rank > 0 && part >= 60)
             || (i < group.length - 1 && !Number.isInteger(part))) {
             return null;
         }

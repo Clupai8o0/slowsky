@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-    GaiaError, fetchGaia, parseStsciCsv, parseVizierTsv, ringsAt, shiftReadout, starAt, stsciConeUrl, vizierConeUrl,
+    GaiaError, fetchGaia, parallaxLimitArcsec, parseStsciCsv, parseVizierTsv, ringsAt, shiftReadout, starAt, stsciConeUrl, vizierConeUrl,
 } from '../src/lib/gaia';
 import type { GaiaRow } from '../src/lib/gaia';
 import { separationDeg } from '../src/lib/coords';
@@ -165,11 +165,43 @@ describe('fetchGaia', () => {
         expect(out.rows).toHaveLength(1);
     });
 
+    it('sends the requested strict brightness cut to the VizieR fallback', async () => {
+        const fetcher = vi.fn(async (url: RequestInfo | URL) => {
+            return String(url).includes('stsci') ? reply('down', 503) : vizierGood();
+        }) as unknown as typeof fetch;
+        await fetchGaia(c, 0.05, { fetcher, gMax: 15 });
+        const url = new URL(String(vi.mocked(fetcher).mock.calls[1]?.[0]));
+        expect(url.searchParams.get('Gmag')).toBe('<15');
+    });
+
     it('falls through when STScI has 0 rows', async () => {
         const fetcher = vi.fn(async (url: RequestInfo | URL) => {
             return String(url).includes('stsci') ? reply('source_id,ra,dec,phot_g_mean_mag\n') : vizierGood();
         }) as unknown as typeof fetch;
         expect((await fetchGaia(c, 0.05, { fetcher })).from).toBe('vizier-cfa');
+    });
+
+    it('describes two empty responses without claiming either service failed', async () => {
+        const fetcher = vi.fn(async (url: RequestInfo | URL) => String(url).includes('stsci')
+            ? reply('source_id,ra,dec,phot_g_mean_mag\n') : reply(vizierText([]))) as unknown as typeof fetch;
+        await expect(fetchGaia(c, 0.05, { fetcher })).rejects.toThrow(
+            'No Gaia star was found in this area by either service.');
+    });
+
+    it('distinguishes an empty response from a failed service', async () => {
+        for (const failing of ['stsci', 'vizier']) {
+            const fetcher = vi.fn(async (url: RequestInfo | URL) => {
+                const isStsci = String(url).includes('stsci');
+                if (isStsci === (failing === 'stsci')) {
+                    return reply('down', 503);
+                }
+                return reply(isStsci ? 'source_id,ra,dec,phot_g_mean_mag\n' : vizierText([]));
+            }) as unknown as typeof fetch;
+            const err = await fetchGaia(c, 0.05, { fetcher }).catch((e: unknown) => e) as Error;
+            expect(err.message).toContain('503');
+            expect(err.message).toContain('returned no stars');
+            expect(err.message.match(/failed/g)).toHaveLength(1);
+        }
     });
 
     it('throws a GaiaError naming both failures', async () => {
@@ -261,6 +293,15 @@ describe('starAt', () => {
         const still: GaiaRow = { sourceId: '1', ra: 10, dec: 20, g: 15, epochJyear: 2016 };
         expect(starAt(still, 61000)).toEqual({ ra: 10, dec: 20 });
         expect(starAt({ ...still, pmRa: 5 }, 61000)).toEqual({ ra: 10, dec: 20 });
+    });
+});
+
+describe('parallaxLimitArcsec', () => {
+    it('gives the maximum two-visit parallax displacement', () => {
+        expect(parallaxLimitArcsec(546.98)).toBeCloseTo(1.09396, 8);
+        expect(parallaxLimitArcsec(0)).toBe(0);
+        expect(parallaxLimitArcsec(-1)).toBe(0);
+        expect(parallaxLimitArcsec(Number.NaN)).toBe(0);
     });
 });
 

@@ -57,6 +57,7 @@ export function vizierConeUrl(c: SkyCoord, radiusDeg: number, gMax: number = DEF
     return 'https://vizier.cfa.harvard.edu/viz-bin/asu-tsv?-source=I/355/gaiadr3'
         + `&-c=${e(c.ra.toFixed(6) + ' ' + dec)}&-c.rd=${e(radiusDeg.toFixed(6))}`
         + '&-out=Source,RA_ICRS,DE_ICRS,pmRA,pmDE,Plx,Gmag&-out.max=unlimited'
+        // Match the strict g < gMax cut applied to the STScI response.
         + `&Gmag=${e('<' + String(gMax))}`;
 }
 
@@ -285,37 +286,46 @@ export async function fetchGaia(c: SkyCoord, radiusDeg: number, opts: {
     if (signal?.aborted) {
         throw abortReason(signal);
     }
-    let first: string;
+    let first: string | undefined;
     try {
         const rows = parseStsciCsv(await getText(stsciUrl, fetcher, timeoutMs, signal), gMax);
         if (rows.length > 0) {
             return finish(rows, 'stsci');
         }
-        first = 'it returned no stars';
     } catch (e) {
         if (signal?.aborted) {
             throw abortReason(signal);
         }
         first = describe(e);
     }
-    let second: string;
+    let second: string | undefined;
     try {
         const rows = parseVizierTsv(await getText(vizierUrl, fetcher, timeoutMs * 1.5, signal));
         if (rows.length > 0) {
             return finish(rows, 'vizier-cfa');
         }
-        second = 'it returned no stars';
     } catch (e) {
         if (signal?.aborted) {
             throw abortReason(signal);
         }
         second = describe(e);
     }
-    throw new GaiaError(`No Gaia stars: STScI failed (${first}) and the VizieR mirror at CfA failed (${second}).`);
+    if (first === undefined && second === undefined) {
+        throw new GaiaError('No Gaia star was found in this area by either service.');
+    }
+    const stsciResult = first === undefined ? 'STScI returned no stars' : `STScI failed (${first})`;
+    const vizierResult = second === undefined ? 'the VizieR mirror at CfA returned no stars'
+        : `the VizieR mirror at CfA failed (${second})`;
+    throw new GaiaError(`No Gaia stars: ${stsciResult} and ${vizierResult}.`);
 }
 
-// Yearly parallax wobble is not modelled: under 0.6 arcsec even for Barnard's Star,
-// a tenth of a SPHEREx pixel.
+// Parallax is not modelled: two visits can differ by up to twice the parallax,
+// about 1.09 arcsec for Barnard's Star.
+export function parallaxLimitArcsec(parallaxMas: number): number
+{
+    return Number.isFinite(parallaxMas) && parallaxMas > 0 ? 2 * parallaxMas / 1000 : 0;
+}
+
 export function starAt(row: GaiaRow, mjd: number): SkyCoord
 {
     if (row.pmRa === undefined || row.pmDec === undefined) {
