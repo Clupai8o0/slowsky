@@ -106,7 +106,7 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
 {
     const dropped = new Set<string>();
     let count = 0;
-    const kept: (ScreenedCandidate & { unread: boolean })[] = [];
+    const kept: (ScreenedCandidate & { unread: 'none' | 'some' | 'all' })[] = [];
     for (const c of candidates) {
         const found = (frames: RegriddedFrame[]) => frames.map(f => frameFlags.get(f.frame.obsId)?.names(c.pix) ?? null);
         const early = found(visits.earlier);
@@ -118,31 +118,41 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
             bad.forEach(n => dropped.add(n));
             continue;
         }
-        const e = early.some(n => n?.includes(CORE_FLAG));
-        const l = late.some(n => n?.includes(CORE_FLAG));
+        // A mover's light is in one visit only, so only that visit's frames speak for it.
+        const mover = c.kind === 'mover';
+        const lightIsLater = light === late;
+        const e = (!mover || !lightIsLater) && early.some(n => n?.includes(CORE_FLAG));
+        const l = (!mover || lightIsLater) && late.some(n => n?.includes(CORE_FLAG));
         const said = c.sentence ?? c.reason;
         let line = said;
         if (e || l) {
-            const where = e && l ? 'both visits' : e ? 'the earlier visit' : 'the later visit';
-            const sentence = `The archive flags ${c.gaiaMatch ? 'this star’s core' : 'the core of this spot'} as OVERFLOW in ${where}, so its brightness change cannot be read.`;
-            line = c.kind !== 'mover' && /\b(brighter|fainter|appeared)\b/i.test(said)
-                ? sentence.slice(0, -1) + ' (candidate).' : `${line} ${sentence}`;
+            const where = e && l ? 'at least one frame of each visit'
+                : `at least one frame of the ${e ? 'earlier' : 'later'} visit`;
+            const flagged = `The archive flags the brightest pixel within 12″ as OVERFLOW in ${where}`;
+            line = !mover && /\b(brighter|fainter|appeared)\b/i.test(said)
+                ? `${flagged}, so the difference in light between the visits is not shown (candidate).`
+                : `${line} ${flagged}.`;
         }
-        kept.push({ ...c, line, unread: [...early, ...late].some(n => n === null) });
+        const needed = mover ? light : [...early, ...late];
+        const missing = needed.filter(n => n === null).length;
+        kept.push({ ...c, line, unread: missing === 0 ? 'none' : missing === needed.length ? 'all' : 'some' });
     }
-    const allUnread = kept.length > 0 && kept.every(c => c.unread);
+    const allUnread = kept.length > 0 && kept.every(c => c.unread === 'all');
     const lead: string[] = [];
     if (allUnread) {
-        lead.push('The archive flags could not be read for these spots.');
+        lead.push('The archive flags could not be read for the listed spots.');
     }
     for (const c of kept) {
-        if (c.unread && !allUnread) {
-            c.line += ' The archive flags could not be read for this spot.';
+        if (!allUnread && c.unread === 'all') {
+            c.line += ' The archive flags for this spot could not be read.';
+        } else if (!allUnread && c.unread === 'some') {
+            c.line += ' Some of the archive flags for this spot could not be read.';
         }
     }
     lead.push(...withCaveats(kept));
-    const names = [...new Set([...order, ...dropped])].filter(n => dropped.has(n)).join(', ');
-    const dropNote = count ? count === 1 ? `1 spot sits on a pixel the archive flags (${names}) and is left out.`
-        : `${count} spots sit on pixels the archive flags (${names}) and are left out.` : undefined;
+    const names = [...new Set([...order, ...dropped])].filter(n => dropped.has(n)).join(' or ');
+    const dropNote = count === 0 ? undefined : count === 1
+        ? `1 spot is not listed: in at least one frame, the brightest pixel within 12″ of it carries an archive flag (${names}).`
+        : `${count} spots are not listed: in at least one frame, the brightest pixel within 12″ of each carries an archive flag (${names}).`;
     return { kept, dropNote, allUnread, lead };
 }

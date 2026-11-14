@@ -309,7 +309,7 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
             finish(new Map());
             return;
         }
-        resultView = { ...initial, notes: [...initial.notes, 'Checking the archive flags for these spots…'] };
+        resultView = { ...initial, notes: [...initial.notes, 'Checking the archive flags for these spots; the list may update.'] };
         void (async () => {
             const flags = new Map<string, FrameFlags | null>();
             for (const frame of frames) {
