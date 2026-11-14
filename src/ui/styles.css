@@ -175,6 +175,8 @@ button { cursor: pointer; }
 .sk-sp-link:hover, .sk-sp-link:focus-visible { color: var(--ink); text-decoration-color: currentColor; }
 @media (max-width: 720px) { .sk-sp-actions button { min-height: 44px; } .sk-sp-link::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; margin-top: -22px; } }
 .sk-body.mute { color: var(--mute); }
+/* Tonight's sky (FEATURES.upTonight): the line, then its note on its own row. */
+.sk-up small { display: block; margin-top: 2px; font-size: var(--fs-small); color: var(--mute); }
 
 /* ---------- left: brand, 01 choose, what to look for ---------- */
 .sk-brand { height: var(--head); flex: none; display: flex; flex-direction: column; }

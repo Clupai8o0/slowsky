@@ -23,6 +23,7 @@ import { mountAsk } from './ask-panel';
 import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, type LayerState } from './slots';
 import { mountEpoch } from './epoch-view';
 import { mountSpectrum } from './spectrum-view';
+import { mountUpTonight } from './uptonight-slot';
 import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
 
@@ -258,6 +259,7 @@ function shell(): string
       <figure class="sk-fig"><span data-ref="map"></span><figcaption>Where in the sky</figcaption></figure>
       <figure class="sk-fig" data-ref="pmfig" hidden><span data-ref="pm"></span><figcaption data-bind="pm"></figcaption></figure>
     </div>
+    <p class="sk-body sk-up" data-ref="up" hidden></p>
     <p class="sk-body" data-bind="show"></p>
     <p class="sk-body sk-fact" data-ref="fact" hidden><span class="sk-sub">Measured here.</span> <span data-bind="fact"></span></p>
     <p class="sk-body mute"><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
@@ -407,6 +409,7 @@ export function mount(root: HTMLElement): void
     const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
     const changesSlot = mountChanges(() => renderSlots());
     const spectrumSlot = mountSpectrum(ref<HTMLElement>('spec'), { enabled: FEATURES.spectrum });
+    const upSlot = mountUpTonight(ref<HTMLElement>('up'), { enabled: FEATURES.upTonight });
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderText());
     // Older picture (2MASS): off unless FEATURES.epoch; Play, False colour and Flagged pixels switch it off.
     const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),
@@ -575,6 +578,8 @@ export function mount(root: HTMLElement): void
         play(false);
         // Drop the previous view so nothing (play, strip, details) acts on frames of another spot.
         result = null;
+        // The change list stops reading error maps and flags for that view, so they do not run beside the new load.
+        changesSlot.stop();
         visits = [];
         subBox.hidden = true;
         curve = null;
@@ -1205,6 +1210,7 @@ export function mount(root: HTMLElement): void
             : `https://simbad.cfa.harvard.edu/simbad/sim-coo?Coord=${encodeURIComponent(`${st.center.ra.toFixed(5)} ${st.center.dec >= 0 ? '+' : ''}${st.center.dec.toFixed(5)}`)}&Radius=1&Radius.unit=arcmin`;
         coordsA.title = simbadName ? `Position and motion: SIMBAD, ${simbadName}` : 'Look up this position in SIMBAD';
         ref<HTMLElement>('map').innerHTML = skyMapSvg(st.center.ra, st.center.dec);
+        upSlot.update(st.center);
         // The motion arrow only for stars that visibly walk: over half an arcsecond a year.
         const am = st.target ? targetById(st.target)?.astrometry : undefined;
         const fast = am && Number.isFinite(am.pmRa) && Number.isFinite(am.pmDec) && Math.hypot(am.pmRa, am.pmDec) > 500;

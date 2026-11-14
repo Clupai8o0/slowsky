@@ -31,9 +31,10 @@ import type { RangeReader } from '../lib/types';
 import { readFrameFlags, screen, type FrameFlags } from './flag-screen';
 import { readVariance } from './error-maps';
 
-export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch';
+export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch' | 'upTonight';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: false, flags: true, changes: true, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true });
+    Object.freeze({ spectrum: false, flags: true, changes: true, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true,
+        upTonight: false });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
@@ -284,7 +285,7 @@ export interface ChangesDeps {
 export const SAVED_NOTE = 'Candidate changes need a live read. Go live to compare the first and last visit; a saved copy is not checked against the archive’s error maps and flags.';
 export const MAPS_NOTE = 'Reading the archive’s error maps for the two compared visits; the list shows once that is done.';
 
-export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { render: (box: HTMLElement, marks: HTMLElement, view: SlotView) => boolean }
+export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { render: (box: HTMLElement, marks: HTMLElement, view: SlotView) => boolean; stop: () => void }
 {
     const reader = deps.reader ?? createRangeReader({ fetch: deps.fetcher });
     const shown = new WeakMap<HTMLElement, string>();
@@ -332,7 +333,7 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
     }
 
     // One frame at a time, each with its own deadline; null when a new result takes over. A read that fails or
-    // runs out of time counts as null for that frame.
+    // runs out of time counts as null for that frame, and nothing a frame started outlives its turn.
     async function eachFrame<T>(frames: RegriddedFrame[], reset: AbortSignal, read: (frame: RegriddedFrame, signal: AbortSignal) => Promise<T | null>): Promise<Map<string, T | null> | null>
     {
         const out = new Map<string, T | null>();
@@ -350,6 +351,10 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
             });
             const value = await Promise.race([read(frame, deadline.signal).catch(() => null), timeout]);
             clearTimeout(timer);
+            // The frame's turn is over. A read made of several downloads can end early (one part failed) while the
+            // others are still running: end them here, because once the listener below is gone stop() cannot reach
+            // them. A read that finished has nothing left to end.
+            abort();
             reset.removeEventListener('abort', abort);
             out.set(frame.frame.obsId, value);
         }
@@ -524,7 +529,18 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         }
         return true;
     }
-    return { render };
+    // The page dropped its view (a new one is loading): stop reading error maps and flags for the old view at once,
+    // so those reads do not run beside the new view's own. A list that had finished stays in `done` and comes back
+    // without a read; an unfinished one starts over when its result is drawn again.
+    function stop(): void
+    {
+        controller.abort();
+        current = null;
+        currentSource = null;
+        resultView = null;
+        last = null;
+    }
+    return { render, stop };
 }
 
 // False colour. `layer` is an empty layer over the sky (same box as the picture, under the Gaia rings) for a
