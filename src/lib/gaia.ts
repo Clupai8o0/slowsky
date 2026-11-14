@@ -311,16 +311,17 @@ export async function fetchGaia(c: SkyCoord, radiusDeg: number, opts: {
         second = describe(e);
     }
     if (first === undefined && second === undefined) {
-        throw new GaiaError('No Gaia star was found in this area by either service.');
+        throw new GaiaError(`No Gaia star brighter than G ${gMax} was found in this area by either service.`);
     }
-    const stsciResult = first === undefined ? 'STScI returned no stars' : `STScI failed (${first})`;
+    const stsciResult = first === undefined ? 'STScI returned no stars' : `STScI failed (${first.replace(/\.$/, '')})`;
     const vizierResult = second === undefined ? 'the VizieR mirror at CfA returned no stars'
-        : `the VizieR mirror at CfA failed (${second})`;
+        : `the VizieR mirror at CfA failed (${second.replace(/\.$/, '')})`;
     throw new GaiaError(`No Gaia stars: ${stsciResult} and ${vizierResult}.`);
 }
 
-// Parallax is not modelled: two visits can differ by up to twice the parallax,
-// about 1.09 arcsec for Barnard's Star.
+// The yearly parallax loop is not modelled (positionAt uses parallax only for the slow change of proper
+// motion with distance): two visits can differ by up to twice the parallax, about 1.09 arcsec for
+// Barnard's Star. Returns 0 when the parallax is unknown or not positive: print nothing then.
 export function parallaxLimitArcsec(parallaxMas: number): number
 {
     return Number.isFinite(parallaxMas) && parallaxMas > 0 ? 2 * parallaxMas / 1000 : 0;

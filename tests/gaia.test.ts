@@ -185,7 +185,7 @@ describe('fetchGaia', () => {
         const fetcher = vi.fn(async (url: RequestInfo | URL) => String(url).includes('stsci')
             ? reply('source_id,ra,dec,phot_g_mean_mag\n') : reply(vizierText([]))) as unknown as typeof fetch;
         await expect(fetchGaia(c, 0.05, { fetcher })).rejects.toThrow(
-            'No Gaia star was found in this area by either service.');
+            'No Gaia star brighter than G 19 was found in this area by either service.');
     });
 
     it('distinguishes an empty response from a failed service', async () => {
@@ -198,9 +198,9 @@ describe('fetchGaia', () => {
                 return reply(isStsci ? 'source_id,ra,dec,phot_g_mean_mag\n' : vizierText([]));
             }) as unknown as typeof fetch;
             const err = await fetchGaia(c, 0.05, { fetcher }).catch((e: unknown) => e) as Error;
-            expect(err.message).toContain('503');
-            expect(err.message).toContain('returned no stars');
-            expect(err.message.match(/failed/g)).toHaveLength(1);
+            expect(err.message).toMatch(failing === 'stsci'
+                ? /^No Gaia stars: STScI failed \([^)]*503[^).]*\) and the VizieR mirror at CfA returned no stars\.$/
+                : /^No Gaia stars: STScI returned no stars and the VizieR mirror at CfA failed \([^)]*503[^).]*\)\.$/);
         }
     });
 
