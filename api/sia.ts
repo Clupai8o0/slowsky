@@ -132,7 +132,12 @@ export async function GET(request: Request): Promise<Response>
             body.set(chunk, offset);
             offset += chunk.length;
         }
-        return new Response(body, { headers: { ...cors, 'Content-Type': 'text/xml; charset=utf-8', 'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400' } });
+        const xml = new TextDecoder('utf-8').decode(body);
+        if (!/<([A-Za-z_][\w.-]*:)?VOTABLE\b/.test(xml)) {
+            return error(502, 'Upstream reply was not a VOTable');
+        }
+        const hasError = /<([A-Za-z_][\w.-]*:)?INFO\b(?=[^>]*\sname\s*=\s*["']QUERY_STATUS["'])(?=[^>]*\svalue\s*=\s*["']ERROR["'])/i.test(xml);
+        return new Response(body, { headers: { ...cors, 'Content-Type': 'text/xml; charset=utf-8', 'Cache-Control': hasError ? 'no-store' : 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400' } });
     } catch {
         return error(controller.signal.aborted ? 504 : 502, controller.signal.aborted ? 'Upstream timeout' : 'Upstream failure');
     } finally {

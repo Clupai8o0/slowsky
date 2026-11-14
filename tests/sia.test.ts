@@ -30,6 +30,31 @@ describe('SIA proxy', () => {
         expect(response.headers.get('x-content-type-options')).toBe('nosniff');
         expect(OPTIONS().status).toBe(204);
     });
+    it('rejects an upstream HTML page without caching it', async () => {
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<html><body>Maintenance</body></html>'));
+        const response = await GET(req());
+        expect(response.status).toBe(502);
+        expect(await response.json()).toEqual({ error: 'Upstream reply was not a VOTable' });
+        expect(response.headers.get('cache-control')).toBe('no-store');
+    });
+    it.each(['ERROR', 'error'])('passes through a prefixed VOTable with QUERY_STATUS %s without caching it', async status => {
+        const xml = `<ns0:VOTABLE xmlns:ns0="http://www.ivoa.net/xml/VOTable/v1.3"><ns0:RESOURCE><ns0:INFO value='${status}' name='QUERY_STATUS'>Query failed</ns0:INFO></ns0:RESOURCE></ns0:VOTABLE>`;
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(xml));
+        const response = await GET(req());
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe(xml);
+        expect(response.headers.get('content-type')).toBe('text/xml; charset=utf-8');
+        expect(response.headers.get('cache-control')).toBe('no-store');
+    });
+    it('caches a prefixed VOTable with QUERY_STATUS OK', async () => {
+        const xml = '<ns0:VOTABLE xmlns:ns0="http://www.ivoa.net/xml/VOTable/v1.3"><ns0:RESOURCE><ns0:INFO name="QUERY_STATUS" value="OK"/></ns0:RESOURCE></ns0:VOTABLE>';
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(xml));
+        const response = await GET(req());
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe(xml);
+        expect(response.headers.get('content-type')).toBe('text/xml; charset=utf-8');
+        expect(response.headers.get('cache-control')).toBe('public, max-age=300, s-maxage=3600, stale-while-revalidate=86400');
+    });
     it('handles upstream errors and oversize bodies', async () => {
         const mock = vi.spyOn(globalThis, 'fetch');
         mock.mockResolvedValueOnce(new Response('', { status: 500 })).mockResolvedValueOnce(new Response(new Uint8Array(8 * 1024 * 1024 + 1)));
