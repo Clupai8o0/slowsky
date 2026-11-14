@@ -2,8 +2,8 @@
 import { readFileSync as nodeRead } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
-    CO2_BAND_UM, COMET_BANNED, COMET_TITLE, COMET_URL, CometDataError, cometCaption, cometPoints, cutoutRgba, frameLabel, parseComet,
-    sharedScale,
+    BLANK_RGB, CO2_BAND_UM, COMET_BANNED, COMET_TITLE, COMET_URL, CometDataError, cometCaption, cometPoints, cutoutRgba, frameLabel, parseComet,
+    nearCo2, sharedScale,
 } from '../src/lib/comet';
 import { COMET_FAILED, cometBodyHtml, cometChartSvg, cometTableHtml, mountComet } from '../src/ui/comet-view';
 import { DEFAULT_FEATURES, featuresFrom } from '../src/ui/slots';
@@ -84,7 +84,37 @@ describe('comet: parser', () => {
         expect(() => parseComet(time)).toThrow(/ISO/);
     });
 
-    it('keeps nulls in the cut-out and draws them transparent', () => {
+    it('names carbon dioxide only when the brightest frame is on the reported band', () => {
+        expect(nearCo2(4.2473)).toBe(true);
+        expect(nearCo2(4.2116)).toBe(false);
+        expect(nearCo2(4.3211)).toBe(false);
+        const moved = JSON.parse(JSON.stringify(BAKED)) as { frames: { wavelength: number; coreMean: number }[] };
+        const first = moved.frames.reduce((a, f) => (f.wavelength < a.wavelength ? f : a));
+        first.coreMean = 500; // as if a star sat on the predicted spot at 3.96 µm
+        const lines = cometCaption(parseComet(moved));
+        expect(lines[4]).toMatch(/brightest at 3\.96 µm/);
+        expect(lines[4]).not.toMatch(/carbon dioxide/);
+        expect(cometCaption(parseComet(BAKED))[4]).toMatch(/brightest at 4\.25 µm.*reports carbon dioxide gas glowing at 4\.25 to 4\.27 µm/);
+    });
+
+    it('rounds a visit’s span up, never down', () => {
+        const text = cometCaption(parseComet(BAKED))[1]!;
+        const starts = (BAKED.frames as { start: string; wavelength: number }[]).filter(f => f.wavelength > 4.24).map(f => Date.parse(f.start));
+        const span = (Math.max(...starts) - Math.min(...starts)) / 60000;
+        expect(span).toBeGreaterThan(6);
+        expect(span).toBeLessThan(7);
+        expect(text).toContain('started within 7 minutes');
+    });
+
+    it('refuses a file with a blank pixel in a 3×3 core', () => {
+        const d = tiny();
+        const cut = Array(25).fill(1);
+        cut[2 * 5 + 3] = null; // centre row, one right of centre
+        (d.frames[0] as Record<string, unknown>).cutout = cut;
+        expect(() => parseComet(d)).toThrow(/blank pixel in its 3×3 core/);
+    });
+
+    it('keeps nulls in the cut-out and draws them in their own colour', () => {
         const d = tiny();
         const cut = Array(25).fill(1);
         cut[0] = null; // row 0 (lowest y), column 0 -> bottom-left on screen
@@ -93,7 +123,7 @@ describe('comet: parser', () => {
         const f = doc.frames.find(x => x.obsId === 'X_1D5')!;
         const px = cutoutRgba(f, 5, { lo: 0, hi: 2 });
         const bottomLeft = (4 * 5 + 0) * 4;
-        expect(px[bottomLeft + 3]).toBe(0);
+        expect([...px.slice(bottomLeft, bottomLeft + 4)]).toEqual([...BLANK_RGB, 255]);
         expect(px[3]).toBe(255);
         expect(px[0]).toBe(128);
     });
@@ -124,8 +154,15 @@ describe('comet: labels, chart, caption', () => {
     it('caption says colour not time, 3x3 mean not calibrated, shared scale, and who reported the coma', () => {
         const text = cometCaption(doc).join(' ');
         expect(text).toMatch(/mixes colour and time/);
-        expect(text).toMatch(/4\.25 to 4\.36 µm were taken within 6 minutes/);
-        expect(text).toMatch(/there the change is mostly colour, not time/);
+        expect(text).toMatch(/4\.25 to 4\.36 µm started within 7 minutes/);
+        expect(text).toMatch(/39\.2 MJy\/sr at 4\.25 µm and 1\.03 at 4\.36 µm/);
+        expect(text).toMatch(/there most of the change is colour, not time/);
+        expect(text).toMatch(/border still holds some of the comet’s own glow/);
+        expect(text).toMatch(/drawn dark red/);
+        expect(text).toMatch(/not turned north up/);
+        expect(text).toMatch(/does not separate gas light from dust light/);
+        expect(text).toMatch(/adds nothing new/);
+        expect(COMET_TITLE).toBe('Comet 3I/ATLAS across the CO₂ band');
         expect(text).toMatch(/3×3 pixels/);
         expect(text).toMatch(/not a calibrated measurement/);
         expect(text).toMatch(/one linear brightness scale/);

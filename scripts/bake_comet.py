@@ -166,6 +166,8 @@ def main():
         block = np.frombuffer(rows_bytes, dtype='>f4').reshape(2 * HALF + 1, width)
         cut = block[:, cx - HALF:cx + HALF + 1].astype(np.float64)
         core = cut[HALF - 1:HALF + 2, HALF - 1:HALF + 2]
+        if np.isnan(core).any():
+            raise RuntimeError(f"{row['obs']}: blank pixel in the 3x3 core")
         ring = np.concatenate([cut[:BORDER].ravel(), cut[-BORDER:].ravel(), cut[BORDER:-BORDER, :BORDER].ravel(), cut[BORDER:-BORDER, -BORDER:].ravel()])
         xs, ys, lam = wave_grid(row['key'], hdus['WCS-WAVE'])
         wave = bilinear(xs, ys, lam, x, y)

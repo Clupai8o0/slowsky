@@ -137,7 +137,7 @@ Opened by Claude Opus 5.5 on 15 Nov 2026. The card's numbers come from `scripts/
 |---|---|---|---|
 | 3I/ATLAS is the same object as comet C/2025 N1 (ATLAS) | `src/lib/comet.ts` (title), `README.md` | [MPEC 2025-N12][mpec3i]; [IRSA MOST query][most3i] | The circular's title pairs the two names; MOST answers the name "3I" with "ATLAS (C/2025 N1)" |
 | SPHEREx took twelve detector-5 frames of it on 14 Dec 2025, from 04:26 to 07:46 UTC | `src/lib/comet.ts` (caption, labels), `README.md` | [IRSA MOST query][most3i] | Frame list with start times and DR1 file paths; the bake keeps the visits 0685, 0698 and 0712 |
-| Carbon dioxide gas glows near 4.25 µm | `src/lib/comet.ts` (`CO2_BAND_UM`, caption) | [Lisse et al. 2026 abstract][lisse26] | Lists CO₂ gas emission at 4.25 to 4.27 µm in the December 2025 SPHEREx data |
+| The SPHEREx team reports carbon dioxide gas glowing at 4.25 to 4.27 µm in this comet | `src/lib/comet.ts` (`CO2_BAND_UM`, caption) | [Lisse et al. 2026 abstract][lisse26] | Lists CO₂ gas emission at 4.25 to 4.27 µm in the December 2025 SPHEREx data |
 | The SPHEREx team reported a carbon dioxide coma around 3I/ATLAS | `src/lib/comet.ts` (caption, `COMET_PAPERS`), `README.md` | [Lisse et al. 2025 abstract][lisse25]; [Lisse et al. 2026 abstract][lisse26] | August 2025: a resolved CO₂ gas coma about 3 arcmin in radius; December 2025: the CO₂ coma still reaches about 3 arcmin |
 | Lisse et al. 2025 is RNAAS 9, 242; Lisse et al. 2026 is RNAAS 10, 26 | `src/lib/comet.ts` (`COMET_PAPERS`), `README.md` | [Crossref 10.3847/2515-5172/ae0293][cr25]; [Crossref 10.3847/2515-5172/ae3f95][cr26] | Journal, volume and article number for each DOI |
 

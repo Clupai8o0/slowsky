@@ -35,8 +35,12 @@ export interface CometPoint {
 }
 
 export const COMET_URL = '/comet/3i-atlas.json';
-export const COMET_TITLE = 'Comet 3I/ATLAS in CO₂ light';
+export const COMET_TITLE = 'Comet 3I/ATLAS across the CO₂ band';
 export const CO2_BAND_UM: readonly [number, number] = [4.25, 4.27]; // Lisse et al. 2026 abstract
+// A frame within this many µm of the band counts as on it: about one SPHEREx colour step in this detector.
+export const CO2_NEAR_UM = 0.03;
+// Pixels with no value in the archive are drawn in this colour, so they cannot pass for dark sky.
+export const BLANK_RGB: readonly [number, number, number] = [96, 28, 28];
 
 export const COMET_PAPERS = Object.freeze([
     Object.freeze({ cite: 'Lisse et al. 2025, RNAAS 9, 242', doi: '10.3847/2515-5172/ae0293', arxiv: '2508.15469' }),
@@ -104,6 +108,14 @@ function parseFrame(raw: unknown, size: number, i: number): CometFrame
     for (const v of cut) {
         if (v !== null && (typeof v !== 'number' || !Number.isFinite(v))) {
             fail(`frame ${i} cut-out holds a bad value`);
+        }
+    }
+    const mid = (size - 1) / 2;
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if (cut[(mid + dy) * size + mid + dx] === null) {
+                fail(`frame ${i} has a blank pixel in its 3×3 core`);
+            }
         }
     }
     return {
@@ -177,7 +189,7 @@ export function sharedScale(doc: CometDoc): { lo: number; hi: number }
 }
 
 // RGBA for a canvas, top row first (the cut-out is stored lowest y first, so it is flipped to show pixel row 0 at the bottom, as
-// FITS viewers do; the frame is not turned to north up). Missing pixels are drawn transparent.
+// FITS viewers do; the frame is not turned to north up). Missing pixels are drawn in BLANK_RGB.
 export function cutoutRgba(f: CometFrame, size: number, scale: { lo: number; hi: number }): Uint8ClampedArray
 {
     const out = new Uint8ClampedArray(size * size * 4);
@@ -186,6 +198,10 @@ export function cutoutRgba(f: CometFrame, size: number, scale: { lo: number; hi:
             const v = f.cutout[(size - 1 - row) * size + col];
             const o = (row * size + col) * 4;
             if (v === null || v === undefined) {
+                out[o] = BLANK_RGB[0];
+                out[o + 1] = BLANK_RGB[1];
+                out[o + 2] = BLANK_RGB[2];
+                out[o + 3] = 255;
                 continue;
             }
             const g = Math.round(255 * Math.min(1, Math.max(0, (v - scale.lo) / (scale.hi - scale.lo))));
@@ -203,19 +219,19 @@ function fmt(v: number): string
     return Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
 }
 
-// Within the visit that holds the brightest core, how far the value falls and over how few minutes: the frames
-// there are minutes apart, so a large fall inside it is colour, not time.
+// Within the visit that holds the brightest core: how few minutes its frames started in, and its highest and
+// lowest values with their wavelengths (no direction is claimed). The span is rounded up, never down.
 function groupSentence(doc: CometDoc, top: CometPoint): string
 {
     const group = timeGroups(doc).find(g => g.some(f => f.wavelength === top.wavelength)) ?? [];
     if (group.length < 2) {
         return 'Frames taken minutes apart change wavelength, not much else.';
     }
-    const minutes = Math.round(((group[group.length - 1] as CometFrame).mjdStart - (group[0] as CometFrame).mjdStart) * 1440);
+    const minutes = Math.max(1, Math.ceil(((group[group.length - 1] as CometFrame).mjdStart - (group[0] as CometFrame).mjdStart) * 1440 - 1e-6));
     const ws = group.map(f => f.wavelength);
     const low = group.reduce((a, f) => (f.coreMean - f.borderMedian < a.coreMean - a.borderMedian ? f : a));
-    return `The ${group.length} frames from ${Math.min(...ws).toFixed(2)} to ${Math.max(...ws).toFixed(2)} µm were taken within ${minutes} minutes of each other,`
-        + ` and in them the core falls from ${fmt(top.value)} to ${fmt(low.coreMean - low.borderMedian)} MJy/sr, so there the change is mostly colour, not time.`;
+    return `The ${group.length} frames from ${Math.min(...ws).toFixed(2)} to ${Math.max(...ws).toFixed(2)} µm started within ${minutes} minutes of each other.`
+        + ` Among them the core reads ${fmt(top.value)} MJy/sr at ${top.wavelength.toFixed(2)} µm and ${fmt(low.coreMean - low.borderMedian)} at ${low.wavelength.toFixed(2)} µm, so there most of the change is colour, not time.`;
 }
 
 export function spanText(doc: CometDoc): string
@@ -242,7 +258,12 @@ export function timeGroups(doc: CometDoc): CometFrame[][]
     return out;
 }
 
-// The caption, one sentence per item. Every number comes from the file.
+export function nearCo2(wavelength: number): boolean
+{
+    return wavelength >= CO2_BAND_UM[0] - CO2_NEAR_UM && wavelength <= CO2_BAND_UM[1] + CO2_NEAR_UM;
+}
+
+// The caption, one paragraph per item. Every measured number comes from the file; the band comes from the paper.
 export function cometCaption(doc: CometDoc): string[]
 {
     const f0 = doc.frames[0] as CometFrame;
@@ -254,11 +275,13 @@ export function cometCaption(doc: CometDoc): string[]
         `${doc.frames.length} SPHEREx frames from ${day}, taken over ${spanText(doc)} at wavelengths from ${f0.wavelength.toFixed(2)} to ${fn.wavelength.toFixed(2)} µm.`
             + ' Each frame sees a different wavelength, so the row mixes colour and time.',
         groupSentence(doc, top),
-        'All the pictures share one linear brightness scale, so they can be compared; stars brighter than the top of the scale show white.',
+        'All the pictures share one linear brightness scale, so they can be compared. The faint frames look almost black, and anything brighter than the top of the scale (a star, a hot pixel or a cosmic-ray hit) shows white.'
+            + ' Pixels with no value in the archive are drawn dark red. The pictures keep the detector’s orientation; they are not turned north up.',
         `The numbers are the mean of the 3×3 pixels at the comet’s predicted position (from IRSA’s Moving Object Search Tool), minus the median of each picture’s border.`
-            + ' They are raw pixel values, not a calibrated measurement.',
-        `Here the core is brightest at ${top.wavelength.toFixed(2)} µm (${fmt(top.value)} MJy/sr above its border), where carbon dioxide gas glows.`,
-        'The SPHEREx team reported this comet’s carbon dioxide coma (Lisse et al. 2025 and 2026); this card only shows their public frames.',
+            + ' The border still holds some of the comet’s own glow, so the numbers read low where the comet is bright. They are raw pixel values, not a calibrated measurement.',
+        `Here the core is brightest at ${top.wavelength.toFixed(2)} µm (${fmt(top.value)} MJy/sr above its border).`
+            + (nearCo2(top.wavelength) ? ' The SPHEREx team reports carbon dioxide gas glowing at 4.25 to 4.27 µm in this comet (Lisse et al. 2026). This card does not separate gas light from dust light.' : ''),
+        'The SPHEREx team reported this comet’s wide carbon dioxide coma (Lisse et al. 2025 and 2026). This card redraws public frames with rough numbers of its own and adds nothing new to that work.',
     ];
 }
 

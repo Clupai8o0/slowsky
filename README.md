@@ -266,7 +266,7 @@ behind its switch (`mlHint`) and stays off; the reason is given below.
   whether anything can be seen there. The sums run in the browser (`src/lib/uptonight.ts`), ask the visitor for
   nothing, and are checked against astropy 8.0.2 (`tests/fixtures/uptonight-astropy.json`, made by
   `scripts/uptonight_fixture.py`).
-- A "Comet 3I/ATLAS in CO₂ light" card at the foot of the left panel (`comet`): twelve small pictures of the
+- A "Comet 3I/ATLAS across the CO₂ band" card at the foot of the left panel (`comet`): twelve small pictures of the
   interstellar comet from SPHEREx frames taken on 14 Dec 2025, and a chart of its core's brightness by wavelength.
   It is switched off. While it is off the page adds nothing and does not fetch its file. See "Comet card" below.
 
@@ -310,11 +310,14 @@ linear scale and charts core minus border against wavelength (`src/lib/comet.ts`
 - What the numbers are: raw L2 image values in MJy/sr, with nothing subtracted except that border median.
 - What they are not: a calibrated measurement of the comet. The 3 × 3 box is not an aperture, the border still holds
   coma light, and the frames were taken over about 3.3 hours, each at a different wavelength, so the row mixes
-  colour and time. The fall from 39 to 1 MJy/sr between 4.25 and 4.36 µm happens within one 6-minute visit.
-- At 4.25 µm, where carbon dioxide gas glows, core minus border is 39 MJy/sr; at 3.96 to 4.18 µm it is 0.6 to
-  0.7 MJy/sr, over 50 times less (36 times less before the border is taken off). The
-  SPHEREx team reported the comet's carbon dioxide coma (Lisse et al. 2025, RNAAS 9, 242, arXiv:2508.15469; Lisse
-  et al. 2026, RNAAS 10, 26, arXiv:2601.06759). The card shows their public frames and claims nothing new.
+  colour and time. The fall from 39 to 1 MJy/sr between 4.25 and 4.36 µm happens in four frames that started within 7 minutes of each other.
+- At 4.25 µm core minus border is 39 MJy/sr; at 3.96 to 4.18 µm it is 0.6 to 0.7 MJy/sr, over 50 times less
+  (36 to 47 times less before the border is taken off). The SPHEREx team reports carbon dioxide gas emission at
+  4.25 to 4.27 µm in this comet and a carbon dioxide coma about 3 arcminutes in radius (Lisse et al. 2025, RNAAS 9,
+  242, arXiv:2508.15469; Lisse et al. 2026, RNAAS 10, 26, arXiv:2601.06759). The card does not separate gas light
+  from dust light. It redraws public frames with rough numbers of its own and adds nothing new to that work.
+- Blank pixels (no value in the archive) are drawn dark red; a white speck can be a star, a hot pixel or a
+  cosmic-ray hit. The pictures keep the detector's orientation and are not turned north up.
 
 ## Licence
 
