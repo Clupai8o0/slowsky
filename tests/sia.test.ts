@@ -51,6 +51,12 @@ describe('SIA proxy', () => {
         ['<VOTABLE><![CDATA[a </VOTABLE> b]]><!-- c --></VOTABLE>', true],
         ['<VOTABLE a="x/>"></VOTABLE>', true],
         ['<VOTABLE a="1 > 0"/>', true],
+        ['<VOTABLE><RESOURCE><VOTABLE/>', false],
+        ['<VOTABLE><RESOURCE></VOTABLE>', false],
+        ['<VOTABLE></VOTABLE><VOTABLE/>', false],
+        ['<VOTABLE/>text', false],
+        ['<VOTABLE><TD>1 < 2</TD></VOTABLE>', false],
+        ['<!DOCTYPE VOTABLE [<!ENTITY a "b">]><VOTABLE><TD>1 &lt; 2</TD><BR/></VOTABLE>', true],
         ['', false],
     ])('isVotable(%j) is %s', (xml, expected) => {
         expect(isVotable(xml)).toBe(expected);
@@ -62,6 +68,8 @@ describe('SIA proxy', () => {
         ['<INFO name="QUERY_STATUS" value="OVERFLOW"/>', false],
         ['<INFO name="QUERY_STATUS" content="value=\'ERROR\'" value="OK"/>', false],
         ['<INFO name="other" value="ERROR"/>', false],
+        ['<INFO name="QUERY_STATUS" value="ERR&#79;R"/>', true],
+        ['<INFO name="QUERY_&#x53;TATUS" value="&#x45;RROR"/>', true],
     ])('queryFailed(%j) is %s', (xml, expected) => {
         expect(queryFailed(xml)).toBe(expected);
     });

@@ -76,24 +76,74 @@ export function buildUpstreamUrl(params: SiaParams): URL
     return url;
 }
 
-// IRSA writes the VOTable with an ns0: prefix on every tag.
-const VOTABLE_TAG = '([A-Za-z_][\\w.-]*:)?VOTABLE';
-const VOTABLE_START = new RegExp(`^\\s*(?:<!DOCTYPE[^>]*>\\s*)?<${VOTABLE_TAG}\\b`);
 // Attributes up to the end of a tag; a quoted value may hold '>'.
 const TAG_ATTRS = `(?:[^>"']|"[^"]*"|'[^']*')*`;
-const VOTABLE_END = new RegExp(`(?:</${VOTABLE_TAG}\\s*>|<${VOTABLE_TAG}\\b${TAG_ATTRS}/>)\\s*$`);
+const XML_TAG = new RegExp(`<(/?)([A-Za-z_][\\w:.-]*)(${TAG_ATTRS})>|<!DOCTYPE(?:[^>"'[]|"[^"]*"|'[^']*'|\\[[^\\]]*\\])*>`, 'g');
 const INFO_TAG = new RegExp(`<([A-Za-z_][\\w.-]*:)?INFO\\b${TAG_ATTRS}>`, 'gi');
 
-// True when the document's root element is VOTABLE and it is closed, so an HTML page or a reply cut short is
-// never cached as a frame list. Comments, CDATA and processing instructions are removed first, so a closing tag
-// inside one does not count; one left open means the reply was cut. This checks the root, not full well-formedness.
+// True when the document is one VOTABLE element (IRSA writes an ns0: prefix on every tag) and every element in it
+// closes in order, so an HTML page or a reply cut short is never cached as a frame list. Comments, CDATA and
+// processing instructions are removed first, and one left open means the reply was cut. Entities and attribute
+// syntax are not checked.
 export function isVotable(xml: string): boolean
 {
     const bare = xml.replace(/<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>/g, ' ');
     if (/<!--|<!\[CDATA\[|<\?/.test(bare)) {
         return false;
     }
-    return VOTABLE_START.test(bare) && VOTABLE_END.test(bare);
+    const open: string[] = [];
+    let seenRoot = false;
+    let closed = false;
+    let pos = 0;
+    const textOk = (text: string): boolean => !text.includes('<') && (open.length > 0 || !text.trim());
+    for (const m of bare.matchAll(XML_TAG)) {
+        if (!textOk(bare.slice(pos, m.index))) {
+            return false;
+        }
+        pos = m.index + m[0].length;
+        if (m[2] === undefined) {
+            if (seenRoot) {
+                return false;
+            }
+            continue;
+        }
+        const name = m[2];
+        if (closed) {
+            return false;
+        }
+        if (m[1] === '/') {
+            if (open.pop() !== name) {
+                return false;
+            }
+            closed = open.length === 0;
+            continue;
+        }
+        if (!seenRoot) {
+            if (name.replace(/^[^:]*:/, '') !== 'VOTABLE') {
+                return false;
+            }
+            seenRoot = true;
+        }
+        if (m[3]!.endsWith('/')) {
+            closed = open.length === 0;
+        } else {
+            open.push(name);
+        }
+    }
+    return closed && textOk(bare.slice(pos));
+}
+
+// Character and the five predefined entity references, as an XML parser reads them in attribute values.
+function decodeEntities(value: string): string
+{
+    const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+    return value.replace(/&(#x[0-9a-f]+|#\d+|lt|gt|amp|quot|apos);/gi, (whole, ref: string) => {
+        if (ref[0] === '#') {
+            const code = ref[1] === 'x' || ref[1] === 'X' ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+            return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+        }
+        return named[ref.toLowerCase()] ?? whole;
+    });
 }
 
 // True when an INFO tag says QUERY_STATUS=ERROR. Attributes are read in order, so text inside a quoted value
@@ -103,7 +153,7 @@ export function queryFailed(xml: string): boolean
     for (const [tag] of xml.matchAll(INFO_TAG)) {
         const attrs = new Map<string, string>();
         for (const m of tag.matchAll(/([A-Za-z_][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
-            attrs.set(m[1]!.toLowerCase(), m[2] ?? m[3] ?? '');
+            attrs.set(m[1]!.toLowerCase(), decodeEntities(m[2] ?? m[3] ?? ''));
         }
         if (attrs.get('name')?.toUpperCase() === 'QUERY_STATUS' && attrs.get('value')?.toUpperCase() === 'ERROR') {
             return true;
