@@ -64,12 +64,12 @@ export function upstashStore(url: string, token: string, fetcher: typeof fetch =
             return await Promise.race([response.json(), timeout]);
         } finally { if (timer !== undefined) { clearTimeout(timer); } }
     }
-    function result(value: unknown, nullable: boolean): number {
+    function result(value: unknown, nullable: boolean, signed = false): number {
         if (!value || typeof value !== 'object' || !('result' in value)) { throw new Error('store failure'); }
         const item: unknown = value.result;
         if (nullable && item === null) { return 0; }
-        const n = typeof item === 'number' ? item : typeof item === 'string' && /^\d+$/.test(item) ? Number(item) : NaN;
-        if (!Number.isSafeInteger(n) || n < 0) { throw new Error('store failure'); }
+        const n = typeof item === 'number' ? item : typeof item === 'string' && /^-?\d+$/.test(item) ? Number(item) : NaN;
+        if (!Number.isSafeInteger(n) || (!signed && n < 0)) { throw new Error('store failure'); }
         return n;
     }
     return {
@@ -80,7 +80,10 @@ export function upstashStore(url: string, token: string, fetcher: typeof fetch =
             return result(data[0], false);
         },
         async count(key, windowMs, now) { return result(await call('', ['GET', `${key}:${Math.floor(now / windowMs)}`]), true); },
-        async refund(key, windowMs, now) { result(await call('', ['DECR', `${key}:${Math.floor(now / windowMs)}`]), false); },
+        async refund(key, windowMs, now) {
+            const k = `${key}:${Math.floor(now / windowMs)}`;
+            if (result(await call('', ['DECR', k]), false, true) < 0) { result(await call('', ['DEL', k]), false); }
+        },
     };
 }
 export interface InsightDeps {
@@ -189,13 +192,14 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
         try { await deps.store.refund(key, window, now); } catch { throw new StoreFailure(); }
     }
     async function brake(id: string, now: number): Promise<boolean> {
-        try { return await local.hit(`local:${id}`, minute, now) > 40; } catch { throw new StoreFailure(); }
+        try { return await local.hit(`local:${id}`, minute, now) > 120; } catch { throw new StoreFailure(); }
     }
-    async function access(request: Request, id: string, now: number): Promise<'ok' | 'locked' | 'busy'> {
+    async function access(request: Request, id: string, now: number): Promise<'ok' | 'locked' | 'busy' | 'slow'> {
         if (!deps.passcode) { return 'ok'; }
         const supplied = request.headers.get('x-insight-passcode') ?? '';
         if (!supplied && request.method === 'GET') { return 'locked'; }
-        if (await counter('hit', `try:${id}`, guessWindow, now) > MAX_ATTEMPTS) { return 'busy'; }
+        if (await brake(id, now)) { return 'slow'; }
+        if (await counter('hit', `try:${id}`, guessWindow, now) > MAX_ATTEMPTS) { await refund(`try:${id}`, guessWindow, now); return 'busy'; }
         const [a, b] = await Promise.all([crypto.subtle.digest('SHA-256', new TextEncoder().encode(supplied)), crypto.subtle.digest('SHA-256', new TextEncoder().encode(deps.passcode))]);
         let diff = 0;
         const x = new Uint8Array(a), y = new Uint8Array(b);
@@ -208,8 +212,8 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
             if (!enabled) { return json({ enabled: false, locked: false, unlocked: false, model: deps.model }); }
             if (!request.headers.has('x-insight-passcode')) { return json({ enabled: true, locked: Boolean(deps.passcode), unlocked: !deps.passcode, model: deps.model }); }
             const now = deps.now(), id = await visitor(request);
-            if (await brake(id, now)) { return failure(429, 'busy', { 'Retry-After': String(retry(minute, now)) }); }
             const state = await access(request, id, now);
+            if (state === 'slow') { return failure(429, 'busy', { 'Retry-After': String(retry(minute, now)) }); }
             if (state === 'busy') { return failure(429, 'busy', { 'Retry-After': String(retry(guessWindow, now)) }); }
             const unlocked = state === 'ok';
             return json({ enabled: true, locked: Boolean(deps.passcode), unlocked, model: deps.model, ...(unlocked ? { remaining: Math.max(0, deps.maxPerUserDay - await counter('count', `user-day:${id}`, day, now)) } : {}) });
@@ -231,13 +235,14 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
                 facts = validateFacts(parsed.facts);
             } catch { return failure(400, 'invalid'); }
             const now = deps.now(), id = await visitor(request);
-            if (await brake(id, now)) { return failure(429, 'busy', { 'Retry-After': String(retry(minute, now)) }); }
             const state = await access(request, id, now);
+            if (state === 'slow') { return failure(429, 'busy', { 'Retry-After': String(retry(minute, now)) }); }
             if (state === 'busy') { return failure(429, 'busy', { 'Retry-After': String(retry(guessWindow, now)) }); }
             if (state === 'locked') { return failure(401, 'locked'); }
             const key = await hash(JSON.stringify(facts));
             const hit = answers.get(key);
             if (hit) { return json({ ...hit, cached: true }, 200, { 'X-Robots-Tag': 'noindex' }); }
+            if (!deps.passcode && await brake(id, now)) { return failure(429, 'busy', { 'Retry-After': String(retry(minute, now)) }); }
             const limits = [
                 { key: `user-minute:${id}`, window: minute, max: 6 },
                 { key: `user-day:${id}`, window: day, max: deps.maxPerUserDay },
@@ -309,7 +314,7 @@ function handlers(): ReturnType<typeof createHandlers>
     const apiKey = process.env.ANTHROPIC_API_KEY;
     const model = process.env.INSIGHT_MODEL || 'claude-opus-5-5';
     const passcode = process.env.INSIGHT_PASSCODE?.trim() || undefined;
-    return createHandlers({ apiKey, model, complete: anthropicComplete(apiKey ?? '', model), now: Date.now, store: serverStore, passcode, open: process.env.INSIGHT_OPEN === '1', maxPerUserDay: setting('INSIGHT_MAX_PER_USER_DAY', 20), maxPerDay: setting('INSIGHT_MAX_PER_DAY', 300), maxPerHour: setting('INSIGHT_MAX_PER_HOUR', 120) });
+    return createHandlers({ apiKey, model, complete: anthropicComplete(apiKey ?? '', model), now: Date.now, store: serverStore, passcode, open: process.env.INSIGHT_OPEN === '1', maxPerUserDay: setting('INSIGHT_MAX_PER_USER_DAY', 40), maxPerDay: setting('INSIGHT_MAX_PER_DAY', 300), maxPerHour: setting('INSIGHT_MAX_PER_HOUR', 120) });
 }
 export function GET(request: Request): Promise<Response> { return handlers().GET(request); }
 export function POST(request: Request): Promise<Response> { return handlers().POST(request); }

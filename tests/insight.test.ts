@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHandlers as createServerHandlers, memoryStore, pickStore, upstashStore, type InsightDeps, type LimitStore } from '../api/insight';
+import { GET as serverGET, createHandlers as createServerHandlers, memoryStore, pickStore, upstashStore, type InsightDeps, type LimitStore } from '../api/insight';
 import { checkNote, factSheet, fetchInsight, insightEnabled, insightStatus, validateFacts, type InsightFacts } from '../src/lib/insight';
 import { SYSTEM_PROMPT } from '../src/lib/insight-prompt';
 import { TARGETS } from '../src/lib/targets';
@@ -15,6 +15,121 @@ function request(value: unknown, headers: Record<string, string> = {}): Request
 {
     return new Request('https://example.test/api/insight', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(value) });
 }
+describe('round three regressions', () => {
+    const complete = async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' });
+    const right = { 'x-insight-passcode': 'secret', 'x-real-ip': 'round-three' };
+    it('refunds refused simultaneous requests and all successful guesses', async () => {
+        for (const wrongCount of [29, 0]) {
+            const store = memoryStore();
+            let tryKey = '';
+            const tracked = { ...store, hit: async (key: string, window: number, now: number) => { if (key.startsWith('try:')) { tryKey = key; } return store.hit(key, window, now); } };
+            const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', store: tracked, now: () => 0, complete });
+            const input = { ...facts, ra: wrongCount ? 73 : 74 };
+            for (let i = 0; i < wrongCount; i++) { expect((await handler.POST(request({ facts: input }, { ...right, 'x-insight-passcode': 'bad' }))).status).toBe(401); }
+            await Promise.all(Array.from({ length: wrongCount ? 2 : 40 }, () => handler.POST(request({ facts: input }, right))));
+            for (let i = 0; i < 10; i++) { expect((await handler.POST(request({ facts: input }, right))).status).toBe(200); }
+            expect(await store.count(tryKey, 900000, 0)).toBe(wrongCount);
+        }
+    });
+    it('counts only thirty compared guesses during a parallel flood', async () => {
+        const store = memoryStore();
+        let tryKey = '';
+        const tracked = { ...store, hit: async (key: string, window: number, now: number) => { if (key.startsWith('try:')) { tryKey = key; } return store.hit(key, window, now); } };
+        const local = { ...memoryStore(), hit: async () => 1 };
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', store: tracked, local, now: () => 0, complete });
+        const replies = await Promise.all(Array.from({ length: 200 }, () => handler.POST(request({ facts }, { ...right, 'x-insight-passcode': 'bad' }))));
+        expect(replies.filter((r) => r.status === 401)).toHaveLength(30);
+        expect(replies.filter((r) => r.status === 429)).toHaveLength(170);
+        expect(await store.count(tryKey, 900000, 0)).toBe(30);
+    });
+    it('accommodates a shared venue and does not brake cached open traffic', async () => {
+        const local = memoryStore();
+        const localHit = vi.spyOn(local, 'hit');
+        const locked = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', local, now: () => 0, complete });
+        expect((await locked.POST(request({ facts: { ...facts, ra: 72 } }, right))).status).toBe(200);
+        for (let i = 0; i < 30; i++) {
+            expect((await locked.GET(new Request('https://example.test', { headers: right }))).status).toBe(200);
+            expect((await locked.POST(request({ facts: { ...facts, ra: 72 } }, right))).status).toBe(200);
+        }
+        const openLocal = memoryStore();
+        const openHit = vi.spyOn(openLocal, 'hit');
+        const open = createHandlers({ apiKey: 'key', model: 'fake', local: openLocal, now: () => 0, complete });
+        for (let i = 0; i < 200; i++) { expect((await open.GET(new Request('https://example.test', { headers: right }))).status).toBe(200); }
+        expect(openHit).not.toHaveBeenCalled();
+        for (let i = 0; i < 200; i++) { expect((await open.POST(request({ facts: { ...facts, ra: 72 } }, right))).status).toBe(200); }
+        expect(openHit).not.toHaveBeenCalled();
+        expect(localHit).toHaveBeenCalledTimes(61);
+    });
+    it('deletes a negative refund and checks every store configuration', async () => {
+        const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ result: -1 })).mockResolvedValueOnce(Response.json({ result: 1 }));
+        await upstashStore('https://redis.test', 'token', fetcher).refund('try:id', 1000, 2000);
+        expect(JSON.parse(fetcher.mock.calls[1]![1].body)).toEqual(['DEL', 'try:id:2']);
+        for (const env of [{ UPSTASH_REDIS_REST_TOKEN: 'token' }, { KV_REST_API_URL: 'https://redis.test' }, { KV_REST_API_TOKEN: 'token' }]) {
+            await expect(pickStore(env).hit('x', 1000, 0)).rejects.toThrow();
+        }
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json([{ result: 1 }, { result: 1 }]));
+        try {
+            await pickStore({ KV_REST_API_URL: 'https://kv.test', KV_REST_API_TOKEN: 'token' }).hit('x', 1000, 0);
+            expect(fetchSpy.mock.calls[0]![0]).toBe('https://kv.test/pipeline');
+        } finally { fetchSpy.mockRestore(); }
+    });
+    it('evicts the oldest entry when all entries are protected', async () => {
+        const store = memoryStore();
+        for (let i = 0; i < 20000; i++) { await store.hit(`try:${i}`, 900000, 0); await store.hit(`try:${i}`, 900000, 0); }
+        await store.hit('try:new', 900000, 0);
+        expect(await store.count('try:0', 900000, 0)).toBe(0);
+        expect(store.size()).toBeLessThanOrEqual(20002);
+    });
+    it('defaults to forty notes per visitor per day', async () => {
+        vi.stubEnv('ANTHROPIC_API_KEY', 'round-three-default');
+        vi.stubEnv('INSIGHT_OPEN', '1');
+        vi.stubEnv('INSIGHT_PASSCODE', '');
+        vi.stubEnv('INSIGHT_MAX_PER_USER_DAY', '');
+        try {
+            const response = await serverGET(new Request('https://example.test', { headers: { 'x-insight-passcode': '' } }));
+            expect(await response.json()).toMatchObject({ remaining: 40 });
+        } finally { vi.unstubAllEnvs(); }
+    });
+    it('keeps "a third visit", ties hyphenated units and strips names only as whole words', () => {
+        const sheet = ['Target: WISE 0855−0714.', 'Visits: 3. Frames: 14.', 'Shift in position: 10.4 arcsec over 182.5 days.', 'Difference: 3.4 sigma.'];
+        const pad = 'Safe sentence. Another safe sentence.';
+        const kept = ['A third visit would settle it.', 'Over the 182.5-day span it moved.', 'A 3.4-sigma change shows.', 'WISE 0855-0714 is faint here.', 'WISE 0855–0714 is faint here.'];
+        for (const sentence of kept) { expect(checkNote(`${sentence} ${pad}`, sheet).dropped, sentence).toBe(0); }
+        const dropped = ['It moved over a 10.4-day span.', 'A 182.5-sigma change shows.', 'It fell by a third.', 'It is one-third as bright.', 'It lost a third of its light.', 'It is a fifth fainter.'];
+        for (const sentence of dropped) { expect(checkNote(`${sentence} ${pad}`, sheet).dropped, sentence).toBe(1); }
+        // A short name, or the short first part of one, must not be cut out of the middle of other words.
+        for (const name of ['A-1', 'al', 'hal-1']) {
+            expect(checkNote(`It is half as bright. ${pad}`, [`Target: ${name}.`, 'Visits: 3.']).dropped, name).toBe(1);
+        }
+        expect(checkNote(`Half-1 is steady. ${pad}`, ['Target: Half-1.', 'Visits: 3.']).dropped).toBe(0);
+    });
+    it('checks units and preserves names and catalogue tokens', () => {
+        const sheet = ['Target: WISE 0855−0714.', 'Visits: 3. Frames: 14.', 'Shift in position: 10.4 arcsec over 182.5 days.', 'Difference: 3.4 sigma.'];
+        const bad = ['It moved 182.5 arcsec over 10.4 days.', 'It moved 5.1 arcsec per year.', 'The feature sits at 14 micron.', 'It is 3.4 standard deviations brighter.', 'It is 6 lightyears away.', 'Over a 2-year baseline it moved.', "It has a third of the Sun's mass.", 'It weighs 14 Msun.', 'It weighs 3 Earth masses.', 'There are 4 visits.'];
+        // The sigma example must be unsupported on this sheet.
+        const unsupportedSigma = [...sheet.filter((line) => !line.startsWith('Difference')), 'Measured value: 3.4.'];
+        for (const sentence of bad) { expect(checkNote(`${sentence} Safe sentence. Another safe sentence.`, unsupportedSigma).dropped, sentence).toBe(1); }
+        const good = ['WISE 0855−0714 is faint here.', 'WISE 0855 stays near the noise.', 'Check the Gaia DR3 position.', 'Carbon dioxide (CO2) ice absorbs near 4.27 micron.', 'Compare with 2MASS.', 'Worth double-checking against the second visit.', 'The third visit is the outlier.', 'The shift is 10.4 arcseconds over 182.5 days.', 'A 3.4 standard deviations change.', 'The pixels are 6.2 arcseconds wide.'];
+        for (const sentence of good) { expect(checkNote(`${sentence} Safe sentence. Another safe sentence.`, sheet).dropped, sentence).toBe(0); }
+        for (const fraction of ['one third', 'a fifth', 'one fifth', 'a tenth', 'one tenth', 'thirds', 'fifths', 'tenths']) { expect(checkNote(`It is ${fraction} brighter. Safe sentence. Another safe sentence.`, sheet).dropped, fraction).toBe(1); }
+    });
+    it('pairs unit aliases and lists while rejecting mismatches and unsupported hyphenated units', () => {
+        const sheet = ['Target: Example.', 'Visits: 4. Frames: 8.', 'Wavelengths: 1.2, 1.4 and 1.6 micron.', 'Shift: 10.4 arcsec over 182.5 days.', 'Position: 14 deg.', 'Signal: 3.4 sigma.'];
+        const good = ['At 1.2, 1.4 and 1.6 µm it changes.', 'The shift is 10.4 arcseconds over 182.5 day.', 'Position is 14 degrees.', 'The signal is 3.4 standard deviations.', 'There are 4 visits.', 'There are 3 visits.'];
+        const bad = ['At 1.2 and 8 µm it changes.', 'Position is 8 degrees.', 'There are 8 visits.', 'It is 6-light-year distant.', 'It is 8-km away.', 'It is 8-Mjup.', 'It is 8-Rsun.', 'It is 8-Lsun.', 'It is 8 masses.'];
+        for (const sentence of good) { expect(checkNote(`${sentence} Safe sentence. Another safe sentence.`, sheet).dropped, sentence).toBe(0); }
+        for (const sentence of bad) { expect(checkNote(`${sentence} Safe sentence. Another safe sentence.`, sheet).dropped, sentence).toBe(1); }
+    });
+    it('returns the one-minute retry for the local brake in both handlers', async () => {
+        const local = { ...memoryStore(), hit: async () => 121 };
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', local, now: () => 0, complete });
+        for (const response of [await handler.GET(new Request('https://example.test', { headers: right })), await handler.POST(request({ facts }, right))]) {
+            expect(response.status).toBe(429);
+            expect(response.headers.get('retry-after')).toBe('60');
+            expect(await response.json()).toEqual({ error: 'busy' });
+        }
+    });
+});
 describe('round two regressions', () => {
     it('refunds correct guesses and counts wrong guesses through a single counter', async () => {
         let now = 0;
@@ -36,7 +151,8 @@ describe('round two regressions', () => {
         expect(SYSTEM_PROMPT).toContain('about every 6 months');
         expect(SYSTEM_PROMPT).toContain('fewer than 3 visits');
         expect(SYSTEM_PROMPT).toContain('Write every number in digits');
-        expect(SYSTEM_PROMPT).not.toMatch(/\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|hundred|thousand|million|billion|dozen|half|twice|double|triple|quarter)\b/i);
+        expect(SYSTEM_PROMPT).not.toMatch(/\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|hundred|thousand|million|billion|dozen|half|halve|twice|double|triple|quadruple|quarter|\w+-fold)\b/i);
+        expect(SYSTEM_PROMPT).toContain('exactly 3 short paragraphs');
     });
     it('reports a busy service to the browser', async () => {
         for (const status of [429, 503]) {
@@ -72,10 +188,10 @@ describe('round two regressions', () => {
         const store = memoryStore();
         const hit = vi.spyOn(store, 'hit');
         const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', store, now: () => 0, complete: vi.fn() });
-        const replies = await Promise.all(Array.from({ length: 50 }, () => handler.POST(request({ facts }, { 'x-insight-passcode': 'wrong' }))));
+        const replies = await Promise.all(Array.from({ length: 130 }, () => handler.POST(request({ facts }, { 'x-insight-passcode': 'wrong' }))));
         expect(replies.filter((r) => r.status === 401)).toHaveLength(30);
-        expect(replies.filter((r) => r.status === 429)).toHaveLength(20);
-        expect(hit).toHaveBeenCalledTimes(40);
+        expect(replies.filter((r) => r.status === 429)).toHaveLength(100);
+        expect(hit).toHaveBeenCalledTimes(120);
     });
     it('returns exactly 30 wrong guesses for a serial flood', async () => {
         const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => 0, complete: vi.fn() });
@@ -106,7 +222,7 @@ describe('round two regressions', () => {
         for (let i = 0; i < 25000; i++) { await store.hit(`try:${i}`, 900000, 0); }
         expect(await store.count('try:blocked', 900000, 0)).toBe(31);
         expect(await store.count('global-day', 86400000, 0)).toBe(1);
-        expect(store.size()).toBeLessThanOrEqual(40002);
+        expect(store.size()).toBeLessThanOrEqual(20002);
         await store.hit('try:new', 900000, 900000);
         expect(store.size()).toBeLessThan(10);
     });

@@ -27,7 +27,7 @@ export class InsightError extends Error {
 }
 const CONSTANT_CONTEXT: readonly { value: number; context: RegExp }[] = [
     ...[0.75, 5, 5.0, 1.083, 1.875, 3.05, 3.3, 4.05, 4.27, 4.67].map((value) => ({ value, context: /(?:\bmicrons?\b|µm\b)/i })),
-    { value: 102, context: /\bchannels?\b/i }, { value: 6.2, context: /\barcsec\b/i },
+    { value: 102, context: /\bchannels?\b/i }, { value: 6.2, context: /\barcsec(?:onds?)?\b/i },
     { value: 6, context: /\b(?:detectors?|months?)\b/i }, { value: 3, context: /\bvisits?\b/i },
 ];
 export const CONSTANTS: readonly number[] = CONSTANT_CONTEXT.map(({ value }) => value);
@@ -110,26 +110,43 @@ export function factSheet(f: InsightFacts): string[]
 export function checkNote(text: string, sheet: string[]): { text: string; dropped: number }
 {
     const sheetNumbers = new Set(sheet.flatMap((line) => (line.match(/\d+(?:\.\d+)?/g) ?? []).map(Number)));
-    const unitPattern = /((?:\d+(?:\.\d+)?\s*(?:(?:,\s*(?:and\s+)?|\s+and\s+)\d+(?:\.\d+)?\s*)*))(percent\b|times\b|sigma\b|x\b|%|×|σ)/gi;
+    const unitPattern = /((?:\d+(?:\.\d+)?\s*(?:(?:,\s*(?:and\s+)?|\s+and\s+)\d+(?:\.\d+)?\s*)*))(?:-\s*)?(percent\b|times\b|sigma\b|standard\s+deviations?\b|microns?\b|µm\b|arcsec(?:onds?)?\b|days?\b|deg(?:rees?)?\b|visits?\b|x\b|%|×|σ)/gi;
     function unitKey(value: string, unit: string): string
     {
         const kind = unit.toLowerCase();
-        return `${Number(value)}:${kind === '%' ? 'percent' : kind === 'x' || kind === '×' ? 'times' : kind === 'σ' ? 'sigma' : kind}`;
+        const normalized = kind === '%' ? 'percent' : kind === 'x' || kind === '×' ? 'times' : kind === 'σ' || kind.startsWith('standard ') ? 'sigma' : kind === 'µm' || kind.startsWith('micron') ? 'micron' : kind.startsWith('arcsec') ? 'arcsec' : kind.startsWith('day') ? 'day' : kind.startsWith('deg') ? 'deg' : kind.startsWith('visit') ? 'visit' : kind;
+        return `${Number(value)}:${normalized}`;
     }
     function unitKeys(value: string): string[]
     {
         return Array.from(value.matchAll(unitPattern)).flatMap((match) => (match[1]!.match(/\d+(?:\.\d+)?/g) ?? []).map((n) => unitKey(n, match[2]!)));
     }
-    const units = new Set(sheet.flatMap(unitKeys));
+    const units = new Set(sheet.flatMap(unitKeys).filter((key) => !key.endsWith(':visit')));
+    for (const entry of CONSTANT_CONTEXT) {
+        if (entry.context.test('micron')) { units.add(unitKey(String(entry.value), 'micron')); }
+        if (entry.context.test('arcsec')) { units.add(unitKey(String(entry.value), 'arcsec')); }
+    }
+    units.add(unitKey('3', 'visit'));
+    const visitCount = sheet.join('\n').match(/^Visits:\s*(\d+)\./m)?.[1];
+    if (visitCount) { units.add(unitKey(visitCount, 'visit')); }
+    const target = sheet.join('\n').match(/^Target:\s*(.+)\.$/m)?.[1];
+    const dash = '[-\\u2010-\\u2015\\u2212]';
+    // The part of the name before its first dash counts only when it is long enough not to eat ordinary words.
+    const names = target ? [target, target.split(new RegExp(dash))[0]!.trim()].filter((name, i) => name.length >= (i ? 4 : 1)) : [];
+    const escapedNames = [...new Set(names)].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(new RegExp(dash, 'g'), dash));
+    // Whole names only, with any kind of dash: a name must never be cut out of the middle of another word.
+    const namePattern = escapedNames.length ? new RegExp(`(?<!\\w)(?:${escapedNames.join('|')})(?!\\w)`, 'gi') : undefined;
     function invalid(value: string): boolean
     {
+        if (namePattern) { value = value.replace(namePattern, ''); }
+        value = value.replace(/\b(?:CO2|H2O|H2|2MASS|W[1-4]|DR[13]|QR3)\b/gi, '');
         return /discover/i.test(value)
             || Array.from(value).some((char) => /\p{N}/u.test(char) && !/[0-9]/.test(char))
             || /(?<![0-9])\.\d/.test(value)
             || /\d[eE][\d+-]|\d\s*[/^]\s*\d|\d\s*[-\u2010-\u2015\u2212]\s*\d|\d(?:st|nd|rd|th)\b/i.test(value)
-            || /\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|half|halves|halve|halved|halving|twice|double(?![ -]check\b)|doubled|doubles|doubling|triple|tripled|triples|tripling|quadruple|quadrupled|quadruples|quadrupling|quarters?|\w+fold)\b/i.test(value)
-            || /\d(?:\.\d+)?\s*(?:light[ -]years?|ly|pc|parsecs?|kpc|au|km|kelvin|years?|yrs?|myr|gyr|mag|magnitudes?|jy|mjy|solar|jupiter)\b/i.test(value)
-            || /\d(?:\.\d+)?\s*K\b/.test(value)
+            || /\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|half|halves|halve|halved|halving|twice|double(?![ -]check)|doubled|doubles|doubling|triple|tripled|triples|tripling|quadruple|quadrupled|quadruples|quadrupling|quarters?|\w+-?fold|(?:a|one)[\s-]+(?:third|fifth|tenth)(?=\s+(?:of|as|the|its|their|less|more|fainter|brighter|dimmer|smaller|larger|lower|higher)\b|\s*(?:[.,;:)!?]|$))|thirds|fifths|tenths)\b/i.test(value)
+            || /\d(?:\.\d+)?(?:\s*|\s*-\s*)(?:light[ -]?years?|ly|pc|parsecs?|kpc|au|km|kelvin|years?|yrs?|myr|gyr|mag|magnitudes?|jy|mjy|solar|jupiter|earth|msun|mjup|rsun|lsun|mass(?:es)?)\b/i.test(value)
+            || /\d(?:\.\d+)?(?:\s*|\s*-\s*)K\b/.test(value)
             || (value.match(/\d+(?:\.\d+)?/g) ?? []).some((n) => !sheetNumbers.has(Number(n)) && !CONSTANT_CONTEXT.some((entry) => entry.value === Number(n) && entry.context.test(value)))
             || unitKeys(value).some((key) => !units.has(key));
     }

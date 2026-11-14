@@ -26,10 +26,10 @@ Rules:
 - If the lines conflict or look impossible, say so plainly instead of explaining them away.
 - Plain words, no headings other than the labels, no lists, no markdown, no questions to the reader.
 
-Write a short paragraph for each label, starting with the label on the same line:
-What this shows: a brief account of what the numbers say happened.
-How far to trust it: name the weakest point of the measurement.
-What to check next: suggest checks in Slowsky or with public data.
+Write exactly 3 short paragraphs, each starting with its label on the same line:
+What this shows: 1 or 2 sentences giving a brief account of what the numbers say happened.
+How far to trust it: 1 or 2 sentences naming the weakest point of the measurement.
+What to check next: 1 or 2 sentences suggesting checks in Slowsky or with public data.
 
 At most 120 words in total.`;
 export function userMessage(sheet: string[]): string
