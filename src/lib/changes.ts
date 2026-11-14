@@ -788,13 +788,22 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     const NEIGHBOUR = 0.25;
     // Neighbours add up: two at 0.2 each dilute like one at 0.4 (Codex round 7: 39% quoted for a 50% change).
     // A star listed once per visit (two entries, one id) counts once: its largest share is kept (Codex round 7).
-    // lv gives a star's peak in one image, or its change between the two; for a change, light(s, g) is the most
+    // lv gives a star's peak in one image, or its change between the two; for a change, light(s) is the most
     // light the neighbour had in either visit, which caps how much it can have faded (or this star brightened
     // against it).
+    // Splits two peaks into each star's own light with the 12″ PSF model. level() reads the nearest whole pixel,
+    // so the model is evaluated at those pixels, not the catalogue positions (Codex round 7: a steady 0.3x
+    // neighbour 7″ away still gave "40% brighter" when the pixel offsets were ignored).
     const sigma = PSF_FWHM / 2.35482;
-    const unmix = (other: number, own: number, g: number): number => (other - g * own) / (1 - g * g);
+    const psf = (a: PixelCoord, b: PixelCoord): number => Math.exp(-(distance(a, b, grid) ** 2) / (2 * sigma * sigma));
+    const nearest = (p: PixelCoord): PixelCoord => ({ x: Math.round(p.x), y: Math.round(p.y) });
+    const split = (star: StarPix, s: StarPix, own: number, other: number): [number, number] => {
+        const a11 = psf(nearest(star), star), a12 = psf(nearest(star), s);
+        const a21 = psf(nearest(s), star), a22 = psf(nearest(s), s), det = a11 * a22 - a12 * a21;
+        return [(a22 * own - a12 * other) / det, (a11 * other - a21 * own) / det];
+    };
     const crowdedBy = (star: StarPix, lv: (p: PixelCoord) => number,
-        light?: (s: StarPix, g: number) => number): boolean => {
+        light?: (s: StarPix) => number): boolean => {
         const own = lv(star), change = light !== undefined;
         const byId = new Map<string, number>();
         let share = 0;
@@ -806,15 +815,14 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             if (d < CORE_ARCSEC || d > 2 * PSF_FWHM) {
                 continue;
             }
-            const g = Math.exp(-(d * d) / (2 * sigma * sigma)), other = lv(s);
-            const mine = unmix(own, other, g), theirs = unmix(other, own, g);
+            const [mine, theirs] = split(star, s, own, lv(s));
             let ratio = theirs / mine;
             // A neighbour that changed the other way also skews the percentage, through its wing in this aperture
             // (Codex round 7: one fading 400 -> 10 at 8″ turned 50% into "32% brighter"), but it cannot have
             // changed by more light than it had. The 12″ model over-subtracts real 6-9″ PSFs, leaving a faint close
             // neighbour a false opposite change (RW Aur's 6.8″ one: -59 against +125, with no light of its own).
             if (change && ratio < 0) {
-                ratio = Math.min(Math.abs(theirs), Math.max(0, light(s, g))) / Math.abs(mine);
+                ratio = Math.min(Math.abs(theirs), Math.max(0, light(s))) / Math.abs(mine);
             }
             if (!Number.isFinite(ratio) || !(change ? mine !== 0 : mine > 0)) {
                 return true;
@@ -835,7 +843,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     const peakA = (p: PixelCoord): number => level(p, earlier.data), peakB = (p: PixelCoord): number => level(p, later.data);
     const crowded = (star: StarPix): boolean => crowdedBy(star, peakA) || crowdedBy(star, peakB)
         || crowdedBy(star, (p) => peakB(p) - peakA(p),
-            (s, g) => Math.max(unmix(peakA(s), peakA(star), g), unmix(peakB(s), peakB(star), g)));
+            (s) => Math.max(split(star, s, peakA(star), peakA(s))[1], split(star, s, peakB(star), peakB(s))[1]));
     kept.forEach((k) => {
         if (!k) {
             return;

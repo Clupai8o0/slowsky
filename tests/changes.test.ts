@@ -1332,6 +1332,22 @@ describe('change finder, round 7: no number where a neighbour or an edge is in t
         expect(wrong).toEqual([]);
     });
 
+    it('splits a steady neighbour from the star at the pixels it reads, not the catalogue positions (Codex round 7)', () => {
+        // A steady 0.3x star 7″ away gave "40% brighter" for a 50% change: the peaks are read at whole pixels.
+        const wrong: string[] = [];
+        for (const [x1, d, angle] of [[60, 7, 0], [60.4, 7, 0], [60.3, 8, 90], [60, 7, 45], [59.6, 9, 200]]) {
+            const a = noise(grid), b = noise(grid);
+            const x2 = x1! + (d! / P) * Math.cos(angle! * Math.PI / 180), y2 = 60 + (d! / P) * Math.sin(angle! * Math.PI / 180);
+            point(a, grid, x1!, 60, 2000); point(b, grid, x1!, 60, 3000);
+            point(a, grid, x2, y2, 600); point(b, grid, x2, y2, 600);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1!, y: 60, id: 'a' }, { x: x2, y: y2, id: 'b' }]);
+            expect(r.candidates.length, `${x1} ${d}″ ${angle}°`).toBeGreaterThan(0);
+            wrong.push(...r.candidates.filter((c) => c.fracChange !== undefined && Math.abs(c.fracChange - 0.5) > 0.075)
+                .map((c) => `${x1} ${d}″ ${angle}°: ${c.reason}`));
+        }
+        expect(wrong).toEqual([]);
+    });
+
     it('still quotes the percentage for an isolated star that brightens 50%', () => {
         const a = noise(grid), b = noise(grid);
         point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);
