@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fixture from './fixtures/sia/rwaur_dr1.xml?raw';
 import { buildUpstreamUrl, GET, OPTIONS, parseParams } from '../api/sia';
-import { rowToFrame } from '../src/lib/sia';
+import { parseSiaXml, rowToFrame, searchFrames } from '../src/lib/sia';
 
 const valid = 'POS=CIRCLE+76.956+30.401+0.01';
 const req = (query = valid) => new Request(`https://example.test/api/sia?${query}`);
@@ -56,10 +56,44 @@ describe('SIA rows', () => {
         const row = Object.fromEntries(names.map((name, index) => [name, cells[index] ?? '']));
         const frame = rowToFrame(row);
         expect(frame).toMatchObject({ collection: 'spherex_dr1', release: 'dr1', detector: 1, lambdaMin: 0.7455, tMin: 60919.419647 });
-        expect(frame?.url).toContain('irsa.ipac.caltech.edu');
+        expect(frame?.url).toMatch(/^https:\/\/nasa-irsa-spherex\.s3\.us-east-1\.amazonaws\.com\/.+\.fits$/);
+        expect(frame?.obsId).toBe(`${row.obs_id}D1`);
+        expect(frame?.irsaUrl).toBe(row.access_url);
+        expect(frame?.estSizeBytes).toBe(Number(row.access_estsize) * 1024);
         expect(rowToFrame({ ...row, obs_collection: 'spherex_qr2' })).toBeNull();
-        expect(rowToFrame({ ...row, access_url: 'https://evil.test/file' })).toBeNull();
-        expect(rowToFrame({ ...row, access_url: 'http://irsa.ipac.caltech.edu/file' })).toBeNull();
+        const aws = (bucket: string, key: string, region = 'us-east-1') => JSON.stringify({ aws: { bucket_name: bucket, key, region } });
+        expect(rowToFrame({ ...row, cloud_access: aws('evil', 'a.fits') })).toBeNull();
+        expect(rowToFrame({ ...row, cloud_access: aws('nasa-irsa-spherex', 'a.txt') })).toBeNull();
+        expect(rowToFrame({ ...row, cloud_access: aws('nasa-irsa-spherex', 'a/../b.fits') })).toBeNull();
+        expect(rowToFrame({ ...row, cloud_access: aws('nasa-irsa-spherex', 'a.fits', 'eu-west-1') })).toBeNull();
+        expect(rowToFrame({ ...row, cloud_access: '' })).toBeNull();
+        expect(rowToFrame({ ...row, cloud_access: 'not json' })).toBeNull();
     });
-    it.todo('searches and parses, filters, deduplicates and sorts frames');
+    const mockFetch = () => vi.fn(async () => new Response(fixture)) as unknown as typeof fetch;
+    const q = { center: { ra: 76.956, dec: 30.401 }, radiusDeg: 0.01 };
+    it('searches, keeps all detectors, filters, de-duplicates and sorts', async () => {
+        const rows = parseSiaXml(fixture).map(rowToFrame).filter((f) => f !== null);
+        const fetcher = mockFetch();
+        const frames = await searchFrames(q, undefined, fetcher);
+        expect(fetch).not.toBe(fetcher);
+        expect(frames.length).toBe(new Set(rows.map((f) => f.obsId)).size);
+        expect(new Set(frames.map((f) => f.obsId)).size).toBe(frames.length);
+        expect(frames.map((f) => f.tMin)).toEqual([...frames.map((f) => f.tMin)].sort((a, b) => a - b));
+        expect(vi.mocked(fetcher).mock.calls[0]![0]).toMatch(/^\/api\/sia\?POS=CIRCLE/);
+        const d = frames[0]!.detector;
+        const only = await searchFrames({ ...q, detector: d }, undefined, mockFetch());
+        expect(only.length).toBeGreaterThan(0);
+        expect(only.every((f) => f.detector === d)).toBe(true);
+        const dup = `${fixture}`;
+        expect((await searchFrames(q, undefined, vi.fn(async () => new Response(dup)) as unknown as typeof fetch)).length).toBe(frames.length);
+    });
+    it('keeps rows sharing an obs_id but differing in detector', () => {
+        const row = parseSiaXml(fixture)[0]!;
+        const a = rowToFrame({ ...row, energy_bandpassname: 'SPHEREx-D1' });
+        const b = rowToFrame({ ...row, energy_bandpassname: 'SPHEREx-D2' });
+        expect(a?.obsId).not.toBe(b?.obsId);
+    });
+    it('throws on a failed search', async () => {
+        await expect(searchFrames(q, undefined, vi.fn(async () => new Response('', { status: 500 })) as unknown as typeof fetch)).rejects.toThrow();
+    });
 });
