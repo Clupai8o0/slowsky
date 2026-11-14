@@ -50,10 +50,16 @@ class Reader:
         hosts = ('nasa-irsa-spherex.s3.us-east-1.amazonaws.com', 'nasa-irsa-spherex.s3.amazonaws.com')
         for attempt in range(8):
             try:
-                response = requests.get(f'https://{hosts[(self.number + attempt) % 2]}/{self.key}', headers={'Range': f'bytes={start}-{start + length - 1}'}, timeout=(15, 60))
-                if response.status_code != 206 or len(response.content) != length:
-                    raise RuntimeError(f'bad range response: {response.status_code}, {len(response.content)} expected {length}')
-                return response.content
+                response = requests.get(f'https://{hosts[(self.number + attempt) % 2]}/{self.key}', headers={'Range': f'bytes={start}-{start + length - 1}'}, timeout=(15, 60), stream=True)
+                try:
+                    if response.status_code != 206:
+                        raise RuntimeError(f'bad range response: {response.status_code}')
+                    content = response.raw.read(length + 1, decode_content=False)
+                finally:
+                    response.close()
+                if len(content) != length:
+                    raise RuntimeError(f'bad range response: {len(content)} bytes, expected {length}')
+                return content
             except Exception:
                 if attempt == 7:
                     raise
@@ -208,7 +214,7 @@ def bake_frame(target, row, key, collection, directory):
         xs = np.asarray(entry['X'], dtype=int) - 1
         ys = np.asarray(entry['Y'], dtype=int) - 1
         values = np.asarray(entry['VALUES']).reshape(len(ys), len(xs), 2)
-    record = {'obsId': obsid, 'collection': collection, 'release': 'qr3' if 'qr3' in collection else 'dr1', 'detector': target['detector'], 'url': 'https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/' + key, 'tMin': float(row['t_min']), 'tMax': float(row['t_max']), 'lambdaMin': float(row['em_min']) * 1e6, 'lambdaMax': float(row['em_max']) * 1e6, 'center': {'ra': float(row['s_ra']), 'dec': float(row['s_dec'])}, 'sizeBytes': int(float(row['access_estsize']) * 1024)}
+    record = {'obsId': obsid, 'collection': collection, 'release': 'qr3' if 'qr3' in collection else 'dr1', 'detector': target['detector'], 'url': 'https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/' + key, 'tMin': float(row['t_min']), 'tMax': float(row['t_max']), 'lambdaMin': float(row['em_min']) * 1e6, 'lambdaMax': float(row['em_max']) * 1e6, 'center': {'ra': float(row['s_ra']), 'dec': float(row['s_dec'])}, 'estSizeBytes': int(float(row['access_estsize']) * 1024)}
     keep = re.compile(r'^(CTYPE[12]|CRPIX[12]|CRVAL[12]|CUNIT[12]|CDELT[12]|PC\d_\d|CD\d+_\d+|LONPOLE|LATPOLE|RADESYS|WCSAXES|DATE|DATE-AVG|DATE-END|MJD-AVG|MJD-END|OBSID|DETECTOR|(?:A|B|AP|BP)_(?:\d+_\d+|ORDER)|NAXIS[12]|DATE-OBS|MJD-OBS|BUNIT|.*VERS.*)$')
     cards = {k: v for k, v in header.items() if keep.match(k) and isinstance(v, (str, int, float, bool))}
     return {'record': record, 'box': dict(zip(('x0', 'y0', 'x1', 'y1'), box)), 'planes': ['IMAGE', 'ZODI', 'VARIANCE'], 'file': filename, 'imageHeader': cards, 'wave': {'xs': xs.tolist(), 'ys': ys.tolist(), 'lambda': values[:, :, 0].tolist(), 'bandwidth': values[:, :, 1].tolist(), 'pixelOrigin': 0}}
@@ -229,7 +235,7 @@ def main():
             rows = query(target)
             visits = {}
             for row in rows:
-                visit = str(row[0]['obs_id']).split('_')[0]
+                visit = '_'.join(str(row[0]['obs_id']).split('_')[:3])
                 visits.setdefault(visit, []).append(row)
             if len(visits) > 24:
                 # Too many visits: keep 24 spread evenly across time, then take frames from those.

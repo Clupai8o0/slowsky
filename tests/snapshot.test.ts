@@ -19,11 +19,15 @@ describe('offline snapshots', () => {
             expect(index.target.id).toBe(target.id);
             expect(index.frames.length).toBeGreaterThan(0);
             expect(gaia.credit).toBe('ESA/Gaia/DPAC, CC BY-NC 3.0 IGO');
+            const visits = new Set(index.frames.map((f: { record: { obsId: string } }) => f.record.obsId.split('_').slice(0, 3).join('_')));
+            expect(visits.size).toBeGreaterThan(Math.min(index.frames.length, 24) / 2);
             let previous = -Infinity;
             for (const frame of index.frames) {
                 expect(['spherex_dr1', 'spherex_dr1_deep', 'spherex_qr3', 'spherex_qr3_deep']).toContain(frame.record.collection);
                 expect(frame.record.tMin).toBeGreaterThanOrEqual(previous);
                 previous = frame.record.tMin;
+                expect(frame.record.estSizeBytes).toBeGreaterThan(0);
+                expect(frame.record.sizeBytes).toBeUndefined();
                 const size = statSync(join(dir, frame.file)).size;
                 expect(size).toBe(3 * 112 * 112 * 4);
                 total += size;
