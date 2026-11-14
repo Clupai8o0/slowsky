@@ -1396,6 +1396,9 @@ describe('reliable colour readings', () => {
         const result = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25), sourceFrame(1.25)]), sky([sourceFrame(4.6), sourceFrame(4.6)]), radii);
         expect(result.parts.warning).toContain('With only two frames at 4.60 µm');
         expect(result.parts.note).toContain('With 3 or more frames at 1.25 µm, the middle value of the frames is used at each pixel');
+        // Only one wavelength takes a middle value here, so the sentence does not speak for the whole picture.
+        expect(result.parts.note).toContain('is missing from that colour, and something present in most of them looks steady.');
+        expect(result.parts.note).not.toContain('is missing from this picture');
         expect(result.parts.note).toContain("Each frame's middle value is taken off as sky");
         expect(result.parts.method).toContain('Frames taken less than 10 days apart count as one visit.');
     });

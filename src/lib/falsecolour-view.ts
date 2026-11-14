@@ -4,7 +4,7 @@ import { aperture, resampleNoiseScale } from './photometry';
 import { starAt } from './gaia';
 import { gridSkyToPix } from './regrid';
 import { mjdToDate, type SkyResult } from './source';
-import type { RegriddedFrame } from './types';
+import type { FrameRecord, RegriddedFrame } from './types';
 
 export class ColourGridError extends Error {}
 
@@ -149,6 +149,14 @@ export interface ColourParts {
     method: string;
 }
 
+export interface ColourPictureBand {
+    lambda: number;
+    used: number;
+    leftOut: number;
+    times: [number, number][];
+    records: FrameRecord[];
+}
+
 export function pictureOnlyParts(parts: ColourParts): ColourParts
 {
     return { ...parts, reading: '', method: COLOUR_DISCLAIMER };
@@ -209,7 +217,7 @@ export function colourSentence(lambdaShort: number, lambdaLong: number, reading:
 
 // `maxReadingPixelArcsec` is lifted only by tests of the sentence rules, whose made-up sources sit exactly on pixels.
 export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: number; annulusIn: number; annulusOut: number },
-    maxReadingPixelArcsec = MAX_READING_PIXEL_ARCSEC): { rgba: Uint8ClampedArray; width: number; height: number; sentence: string; parts: ColourParts }
+    maxReadingPixelArcsec = MAX_READING_PIXEL_ARCSEC): { rgba: Uint8ClampedArray; width: number; height: number; sentence: string; parts: ColourParts; picture: ColourPictureBand[]; combine: string }
 {
     const grid = a.grid;
     const grids = [b.grid, ...a.frames.map(item => item.frame.grid), ...b.frames.map(item => item.frame.grid)];
@@ -523,6 +531,8 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
         parts.reading = `No reading is given at the centre of this view: each pixel of the picture is ${grid.pixelArcsec.toFixed(2)}″ wide, too coarse to tell light at the centre from light beside it. Choose a narrower view for a reading.`;
         parts.method = COLOUR_DISCLAIMER;
     }
+    // The sentence in `parts.note` on how 3 or more frames are combined ('' when no wavelength has 3), so the page can keep it in view.
+    let combine = '';
     const label = (name: string, band: typeof short) => {
         const suffix = band.leftOut ? `; ${band.leftOut} more left out (${band.leftOut === 1 ? 'it does' : 'they do'} not share enough of this view with the frames used)` : '';
         return `${name}, ${band.times.length} ${band.times.length === 1 ? 'frame' : 'frames'}, ${dates(band.times)}${suffix}.`;
@@ -546,7 +556,12 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     }
     if (bandList.some(band => band.frames.length >= 3)) {
         const wavelengths = bandList.filter(band => band.frames.length >= 3).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
-        parts.note += ` With 3 or more frames at ${wavelengths}, the middle value of the frames is used at each pixel, so something present in fewer than half of the frames is missing from this picture, and something present in most of them looks steady.`;
+        // With fewer frames at the other wavelength the middle value is taken for one colour only, so say so.
+        const where = bandList.every(band => band.frames.length >= 3) ? 'this picture' : 'that colour';
+        combine = `With 3 or more frames at ${wavelengths}, the middle value of the frames is used at each pixel, so something present in fewer than half of the frames is missing from ${where}, and something present in most of them looks steady.`;
+        parts.note += ` ${combine}`;
     }
-    return { rgba, width: grid.width, height: grid.height, parts, sentence: Object.values(parts).filter(Boolean).join(' ') };
+    const picture = bands.map(band => ({ lambda: band.lambda, used: band.frames.length, leftOut: band.leftOut,
+        times: band.times, records: band.frames.map(frame => frame.frame) }));
+    return { rgba, width: grid.width, height: grid.height, parts, picture, combine, sentence: Object.values(parts).filter(Boolean).join(' ') };
 }

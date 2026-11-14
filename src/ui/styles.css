@@ -345,6 +345,10 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-flagnote { margin: 4px 0 6px; font-size: var(--fs-small); line-height: 1.5; color: var(--ink2); }
 .sk-more { display: inline; }
 .sk-more summary { display: none; }
+[data-ref="fcNote"] .sk-more { display: block; margin-top: 4px; color: var(--mute); }
+[data-ref="fcNote"] .sk-more summary { display: flex; align-items: center; min-height: 44px; width: max-content; color: var(--ink2); cursor: pointer;
+    text-decoration: underline dotted; text-underline-offset: 3px; }
+[data-ref="fcNote"] .sk-more summary:focus-visible { outline: 2px solid rgba(255, 255, 255, .6); outline-offset: 2px; border-radius: 2px; }
 @media (max-width: 1080px) {
     .sk-more { display: block; margin-top: 4px; color: var(--mute); }
     .sk-more summary { display: flex; align-items: center; min-height: 44px; width: max-content; color: var(--ink2); cursor: pointer;
@@ -485,6 +489,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-m-details dl:empty::before { content: "Appears when the frames load."; grid-column: 1 / -1; font-family: "Geist", system-ui, sans-serif; font-size: var(--fs-small); color: var(--mute); }
 .sk-m-details dt { color: var(--mute); overflow-wrap: break-word; }
 .sk-m-details dd { margin: 0; text-align: right; color: var(--ink); overflow-wrap: break-word; }
+.sk-m-details dd .sk-only { display: block; color: var(--mute); }
 .sk-m-details a { color: var(--ink); text-decoration-color: rgba(255, 255, 255, .35); text-underline-offset: 3px; }
 .sk-m-details a:hover { text-decoration-color: #fff; }
 /* A source sits on the fact it backs: a quiet underlined link with the full citation in its title. */
