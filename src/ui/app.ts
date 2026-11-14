@@ -17,7 +17,7 @@ import { createDemoSource } from './demo-source';
 import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
-import { curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, type Curve } from './measure';
+import { coreBlank, curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -221,6 +221,7 @@ function shell(): string
 <button type="button" class="sk-mini sk-mini-l" data-act="fold-left" aria-controls="sk-left" aria-label="Show the targets panel" title="Show the targets panel"><span class="ic">${ICON.panelL}</span><span class="t">Target</span><span class="v" data-bind="name"></span></button>
 <button type="button" class="sk-mini sk-mini-r" data-act="fold-right" aria-controls="sk-right" aria-label="Show the colour panel" title="Show the colour panel"><span class="t">Colour</span><span class="v"><span data-bind="lam"></span> µm</span><span class="ic">${ICON.panelR}</span></button>
 <aside class="sk-rail sk-left" id="sk-left">
+  <a class="sk-skip" href="#sk-h2">Skip to the sky</a>
   <div class="sk-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span><span class="sk-tag">Watch the sky change.</span><span class="sk-sub2">Infrared frames from NASA’s SPHEREx</span></div>
   <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
     <h2 class="sk-mh" id="sk-h1"><i>01</i>Choose a target</h2>
@@ -236,6 +237,7 @@ function shell(): string
       <figure class="sk-fig" data-ref="pmfig" hidden><span data-ref="pm"></span><figcaption data-bind="pm"></figcaption></figure>
     </div>
     <p class="sk-body" data-bind="show"></p>
+    <p class="sk-body sk-fact" data-ref="fact" hidden><span class="sk-sub">Measured here.</span> <span data-bind="fact"></span></p>
     <p class="sk-body mute"><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
   </section>
 </aside>
@@ -246,7 +248,7 @@ function shell(): string
 <main class="sk-mid">
   <section class="sk-mod sk-m-watch" aria-labelledby="sk-h2">
     <div class="sk-mhrow">
-      <h2 class="sk-mh" id="sk-h2"><i>02</i><span class="w">Watch it change</span></h2>
+      <h2 class="sk-mh" id="sk-h2" tabindex="-1"><i>02</i><span class="w">Watch it change</span></h2>
       <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
       <button type="button" class="sk-focus" data-act="focus" aria-pressed="false" title="Fold both panels (F)"><span class="ic">${ICON.focus}</span><span>Focus</span></button>
     </div>
@@ -257,7 +259,7 @@ function shell(): string
       <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
       <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
       <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
-      <div class="sk-err" data-ref="err" hidden><p data-bind="err"></p><button type="button" class="sk-btn2" data-act="retry"><span class="ic">${ICON.retry}</span>Try again</button></div>
+      <div class="sk-err" data-ref="err" hidden><p data-bind="err" role="alert"></p><button type="button" class="sk-btn2" data-act="retry"><span class="ic">${ICON.retry}</span>Try again</button></div>
     </div>
     <div class="sk-ctrl">
     <div class="sk-legrow">
@@ -286,7 +288,7 @@ function shell(): string
   <button type="button" class="sk-fold" data-act="fold-right" aria-controls="sk-right" aria-expanded="true" aria-label="Fold the colour panel" title="Fold or open the colour panel"><span class="ic">${ICON.next}</span></button>
 </div>
 <aside class="sk-rail sk-right" id="sk-right">
-  <div class="sk-status"><p><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span></p><div class="sk-acts"><button type="button" class="sk-btn2 sk-golive" data-act="live" data-ref="golive" hidden><i aria-hidden="true"></i>Go live</button><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div></div>
+  <div class="sk-status"><p><span class="dot" aria-hidden="true"></span><span data-bind="statusShort" aria-live="polite">Connecting to the archive</span></p><div class="sk-acts"><button type="button" class="sk-btn2 sk-golive" data-act="live" data-ref="golive" hidden><i aria-hidden="true"></i>Go live</button><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div></div>
   <section class="sk-mod sk-m-colour" aria-labelledby="sk-h3">
     <h2 class="sk-mh" id="sk-h3"><i>03</i>Change the colour</h2>
     <div class="sk-readout"><p><b data-bind="lam"></b><small>µm</small></p><span data-bind="det"></span></div>
@@ -305,7 +307,7 @@ function shell(): string
     <p class="sk-body mute" data-bind="lcNote"></p>
   </section>
   <section class="sk-mod sk-m-details" aria-labelledby="sk-h5">
-    <h2 class="sk-mh" id="sk-h5"><span class="ic">${ICON.info}</span>This frame</h2>
+    <h2 class="sk-mh" id="sk-h5"><span class="ic">${ICON.info}</span><span data-bind="dlh">This frame</span></h2>
     <dl data-ref="dl"></dl>
     <ul class="sk-notes" data-ref="notes"></ul>
   </section>
@@ -352,6 +354,7 @@ export function mount(root: HTMLElement): void
     let reading: SourceKind | null = null; // the source being read right now, for the status line
     let curve: Curve | null = null; // brightness against nearby comparison stars, for targets that change
     let shift: ReturnType<typeof shiftFor> | undefined; // motion from the first look to the last, worked out once per result
+    let core: ReturnType<typeof coreBlank> = null; // frames with a saturated (blank) centre, once per result
     let stretch: ReturnType<typeof sharedStretch> | null = null;
     let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
     let timer = 0;
@@ -362,7 +365,9 @@ export function mount(root: HTMLElement): void
     function bind(key: string, text: string): void
     {
         for (const el of qa<HTMLElement>(`[data-bind="${key}"]`)) {
-            el.textContent = text;
+            if (el.textContent !== text) {
+                el.textContent = text;
+            }
         }
     }
 
@@ -422,6 +427,7 @@ export function mount(root: HTMLElement): void
         result = null;
         curve = null;
         shift = undefined;
+        core = null;
         renderCurve();
         stretch = null;
         composed = {};
@@ -522,6 +528,7 @@ export function mount(root: HTMLElement): void
             return;
         }
         result = res;
+        core = coreBlank(res);
         sourceKind = got;
         liveFailed = failedLive;
         if (got === 'snapshot' && st.fovDeg > SAVED_FOV + 1e-9) {
@@ -544,7 +551,7 @@ export function mount(root: HTMLElement): void
             compose();
         }
         const kindNow = st.target ? COPY[st.target].kind : 'field';
-        curve = kindNow === 'variable' || kindNow === 'spectrum' || kindNow === 'cold' ? curveFor(res, st.target ? targetById(st.target)?.astrometry : undefined) : null;
+        curve = kindNow === 'variable' || kindNow === 'cold' ? curveFor(res, st.target ? targetById(st.target)?.astrometry : undefined) : null;
         renderCurve();
         canvas.width = res.grid.width;
         canvas.height = res.grid.height;
@@ -665,7 +672,7 @@ export function mount(root: HTMLElement): void
         const name = st.target ? COPY[st.target].display : 'the target';
         // A catalogued star inside the measuring circle mixes its light in. A cold brown dwarf is fainter than that
         // star below 4.4 µm, so its chart stays hidden there; for other targets the note just says so.
-        const blendAt = c.blend ? `A Gaia star (G ${c.blend.g.toFixed(1)}) sits ${(c.blend.px * result.grid.pixelArcsec).toFixed(0)}″ from ${name}` : '';
+        const blendAt = c.blend ? `A Gaia star (G ${c.blend.g.toFixed(1)}) sits ${(c.blend.px * result.grid.pixelArcsec).toFixed(1)}″ from ${name}` : '';
         const cold = st.target ? COPY[st.target].kind === 'cold' : false;
         const hideChart = c.blend !== null && cold && c.lc.lambda < 4.4;
         ref<HTMLElement>('lcwrap').hidden = hideChart;
@@ -709,7 +716,7 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('lcx').innerHTML = `<span>${monthYear(t0)}</span><span class="b"><i></i>band: ${c.refs} comparison stars</span><span>${monthYear(t1)}</span>`;
         const min = Math.min(...ys);
         const max = Math.max(...ys);
-        ref<SVGSVGElement>('lc').setAttribute('aria-label', `Brightness over ${pts.length} looks, from ${pct(min)} to ${pct(max)} of the median. Comparison stars nearby vary by about ${(noise * 100).toFixed(1)}%.`);
+        ref<SVGSVGElement>('lc').setAttribute('aria-label', `Brightness over ${pts.length} looks, from ${pct(min)} to ${pct(max)} of the median. Estimated comparison noise about ${(noise * 100).toFixed(1)}%.`);
         const off = c.lc.dropped > 0 ? ` ${c.lc.dropped} ${c.lc.dropped === 1 ? 'frame was' : 'frames were'} too far off this colour.` : '';
         const bad = c.lc.points.length - pts.length;
         const left = off + (bad > 0 ? ` ${bad} ${bad === 1 ? 'look' : 'looks'} could not be measured.` : '');
@@ -870,8 +877,11 @@ export function mount(root: HTMLElement): void
             bind('pm', m.text);
         }
         bind('headline', copy ? copy.headline : CUSTOM_COPY.headline);
-        bind('show', copy ? copy.show : CUSTOM_COPY.show);
-        bind('not', copy ? copy.not : CUSTOM_COPY.not);
+        const card = cardFacts();
+        bind('show', card.show ?? (copy ? copy.show : CUSTOM_COPY.show));
+        bind('not', card.not ?? (copy ? copy.not : CUSTOM_COPY.not));
+        bind('fact', card.fact ?? '');
+        ref<HTMLElement>('fact').hidden = !card.fact;
         bind('hint', MODE_HINT[st.mode]);
         bind('trackLeg', copy && (copy.kind === 'mover' || copy.kind === 'spectrum') ? `Where ${copy.display} should be on this date` : '');
         root.dataset.trackleg = copy && (copy.kind === 'mover' || copy.kind === 'spectrum') ? 'true' : 'false';
@@ -921,31 +931,51 @@ export function mount(root: HTMLElement): void
             bind('frame', `Frame ${st.index + 1} of ${n}`);
             bind('when', niceDate(f.frame.frame.tMin));
         } else if (st.mode === 'stack' && first && last) {
-            bind('frame', `All ${n} frames, averaged`);
-            bind('when', `${monthYear(first.tMin)} to ${monthYear(last.tMin)}`);
+            bind('frame', `Average of ${n}`);
+            bind('when', `${monthYear(first.tMin)} – ${monthYear(last.tMin)}`);
         } else if (first && last) {
-            bind('frame', 'Last look minus first');
-            bind('when', `${monthYear(last.tMin)} minus ${monthYear(first.tMin)}`);
+            bind('frame', 'Last − first');
+            bind('when', `${monthYear(last.tMin)} − ${monthYear(first.tMin)}`);
         }
         sizeBar();
+        bind('dlh', st.mode === 'blink' || n < 2 ? 'This frame' : 'These frames');
 
         const extraNotes: string[] = [];
         if (cored) {
             extraNotes.push('The white core is a star too bright for the camera there: SPHEREx records no value for those pixels.');
         }
         if (f && lf) {
-            const rec = f.frame.frame;
-            const rows: [string, string][] = [
-                ['Taken', `${mjdToDate(rec.tMin).toISOString().slice(0, 16).replace('T', ' ')} UTC`],
-                ['Frame', `${st.index + 1} of ${n}`],
-                ['Colour here', `${lf.lambda.toFixed(3)} µm (${lf.dLambda >= 0 ? '+' : '−'}${Math.abs(lf.dLambda).toFixed(3)})`],
+            // Blink describes the frame on screen; Stack and Subtract describe the frames they combine.
+            const many = st.mode !== 'blink' && n > 1;
+            const shown = !many ? [st.index] : st.mode === 'stack' ? result.frames.map((_, i) => i) : [0, n - 1];
+            const rec = many ? result.frames[shown[0]!]!.frame.frame : f.frame.frame;
+            const utc = (mjd: number): string => `${mjdToDate(mjd).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+            const lams = shown.map((i) => result!.locked[i]?.lambda).filter((v): v is number => v !== undefined && Number.isFinite(v));
+            const rows: [string, string][] = many
+                ? [
+                    ['Shows', st.mode === 'stack' ? `Average of all ${n} frames` : `Frame ${n} minus frame 1`],
+                    ['Taken', st.mode === 'stack' ? `${niceDate(first!.tMin)} to ${niceDate(last!.tMin)}` : `${utc(last!.tMin)} − ${utc(first!.tMin)}`],
+                    ['Colour', lams.length ? `${Math.min(...lams).toFixed(3)} to ${Math.max(...lams).toFixed(3)} µm` : '—'],
+                ]
+                : [
+                    ['Taken', utc(rec.tMin)],
+                    ['Frame', `${st.index + 1} of ${n}`],
+                    ['Colour here', `${lf.lambda.toFixed(3)} µm (${lf.dLambda >= 0 ? '+' : '−'}${Math.abs(lf.dLambda).toFixed(3)})`],
+                ];
+            rows.push(
                 ['Detector', `D${rec.detector}`],
                 ['Release', rec.collection],
                 ['Field', `${Number(result.grid.fovDeg.toFixed(3))}° · ${result.grid.width} × ${result.grid.height} px`],
                 ['Scale', `${result.grid.pixelArcsec.toFixed(2)}″ per pixel`],
-                ['File', rec.obsId],
-            ];
-            if (rec.pipelineVersion) {
+            );
+            if (!many) {
+                rows.push(['File', rec.obsId]);
+            } else if (st.mode === 'diff') {
+                rows.push(['Files', `${last!.obsId} − ${first!.obsId}`]);
+            } else {
+                rows.push(['Files', `${n}, ${first!.obsId} to ${last!.obsId}`]);
+            }
+            if (rec.pipelineVersion && !many) {
                 rows.push(['Pipeline', rec.pipelineVersion]);
             }
             const t = st.target ? targetById(st.target) : undefined;
@@ -974,10 +1004,16 @@ export function mount(root: HTMLElement): void
                 return `<dt>${k}</dt><dd>${val}</dd>`;
             }).join('');
             const links: string[] = [];
-            if (rec.url) {
+            if (many) {
+                for (const [r, label] of [[first!, 'first'], [last!, 'last']] as const) {
+                    if (r.url) {
+                        links.push(`<a href="${esc(r.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS, ${label}</a>`);
+                    }
+                }
+            } else if (rec.url && !many) {
                 links.push(`<a href="${esc(rec.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS file</a>`);
             }
-            if (rec.irsaUrl) {
+            if (rec.irsaUrl && !many) {
                 links.push(`<a href="${esc(rec.irsaUrl)}" rel="noopener" target="_blank"><span class="ic">${ICON.out}</span>IRSA</a>`);
             }
             if (links.length) {
@@ -986,15 +1022,19 @@ export function mount(root: HTMLElement): void
             ref<HTMLElement>('dl').innerHTML = html;
         }
         bind('statusShort', sourceKind === 'live' ? 'Live from NASA’s SPHEREx archive'
-            : sourceKind === 'snapshot' ? 'Saved copy' : 'Simulated sky · not real data');
+            : sourceKind === 'snapshot' ? (liveFailed ? 'Saved copy · archive did not answer' : 'Saved copy') : 'Simulated sky · not real data');
         const status = sourceKind === 'live' ? 'Live: read straight from NASA’s SPHEREx archive on Amazon S3.'
-            : sourceKind === 'snapshot' ? (liveFailed ? 'Saved copy of NASA SPHEREx frames (the live archive did not answer).'
-                : 'Saved copy of real NASA SPHEREx frames, so it opens at once. Go live reads them from the archive (about 30 s).')
+            : sourceKind === 'snapshot' ? (liveFailed ? 'NASA’s live archive did not answer, so this is the saved copy: real SPHEREx frames stored with this page. Go live tries the archive again.'
+                : 'Saved copy: real NASA SPHEREx frames stored with this page, so it opens at once. Go live reads them fresh from the archive (about 30 s).')
                 : 'Simulated sky for building the page. Not real data.';
         bind('status', status);
         ref<HTMLElement>('notes').innerHTML = [...extraNotes, ...result.notes].map((t) => `<li>${esc(t)}</li>`).join('');
-        ref<HTMLElement>('live').textContent = `${q<HTMLElement>('[data-bind="frame"]').textContent}, ${q<HTMLElement>('[data-bind="when"]').textContent}`;
-        canvas.setAttribute('aria-label', `Sky image. ${ref<HTMLElement>('live').textContent}, ${lam.toFixed(2)} µm`);
+        const nowShowing = `${q<HTMLElement>('[data-bind="frame"]').textContent}, ${q<HTMLElement>('[data-bind="when"]').textContent}`;
+        // While it plays, a frame changes every 0.7 s: announcing each would drown a screen reader. Say it when it stops.
+        if (!st.playing) {
+            ref<HTMLElement>('live').textContent = nowShowing;
+        }
+        canvas.setAttribute('aria-label', `Sky image. ${nowShowing}, ${lam.toFixed(2)} µm`);
     }
 
     // ---------- playback ----------
@@ -1007,6 +1047,62 @@ export function mount(root: HTMLElement): void
         st.index = stepIndex(st.index, result.frames.length, 1);
         draw();
         timer = window.setTimeout(tick, frameDelayMs(FPS));
+    }
+
+    // The card's measured lines. Every number comes from the frames on screen, never from notes.
+    function cardFacts(): { fact?: string; not?: string; show?: string }
+    {
+        const kind = st.target ? COPY[st.target].kind : 'field';
+        if (!result || !st.target) {
+            return {};
+        }
+        const n = result.frames.length;
+        const blankText = core && core.blank > 0
+            ? `${core.blank === core.of ? `all ${core.of}` : `${core.blank} of ${core.of}`} frame${core.of === 1 ? '' : 's'} here`
+            : '';
+        if (kind === 'mover') {
+            return blankText
+                ? { not: `Its centre has no value in ${blankText}, inside a bright glow, the way a star too bright for the camera shows. So its position is rough, to about one pixel.` }
+                : {};
+        }
+        if (kind === 'saturated') {
+            return blankText
+                ? { not: `Its centre has no value in ${blankText}, inside a bright glow, the way a star too bright for the camera shows. So the centre cannot be measured; the glow around it can.` }
+                : { not: 'Its centre may be too bright for the camera, so treat any change at the centre with care.' };
+        }
+        if (kind === 'variable' && curve) {
+            const valid = curve.lc.points.filter((p) => p.valid && Number.isFinite(p.relative));
+            const rel = valid.map((p) => p.relative);
+            // Ratios only mean something when the star itself is clearly seen (3 sigma over the sky noise in its
+            // aperture, scaled for regridded pixels sharing a detector pixel's noise) in every look.
+            const spread = Math.max(1, NATIVE_ARCSEC / result.grid.pixelArcsec);
+            const seen = (p: (typeof valid)[number]): boolean => p.target.sum > 3 * p.target.backgroundSigma * Math.sqrt(p.target.nPix) * spread;
+            if (rel.length >= 2 && (Math.min(...rel) <= 0 || !valid.every(seen))) {
+                return { fact: `Across ${rel.length} looks it is not clearly seen above the sky in at least one, so no change is given.` };
+            }
+            if (rel.length >= 2) {
+                const change = (Math.max(...rel) / Math.min(...rel) - 1) * 100;
+                const wobble = Number.isFinite(curve.noise) ? curve.noise * 100 : NaN;
+                const inside = Number.isFinite(wobble) && change < 2 * wobble;
+                return {
+                    fact: `Across ${rel.length} looks its brightest is ${change.toFixed(change < 10 ? 1 : 0)}% above its faintest, against ${curve.refs} comparison stars${Number.isFinite(wobble) ? ` (estimated comparison noise ±${wobble.toFixed(1)}%)` : ''}.${inside ? ' That change is inside the noise.' : ''}`,
+                };
+            }
+            return {};
+        }
+        if (kind === 'cold') {
+            const visits = visitsOf(result).map((v) => `${v.n} in ${monthYear(v.mjd)}`);
+            // Expected from its spectrum, not measured here, so it sits in the description, not under "Measured here".
+            const colour = st.detector <= 4
+                ? `At this colour (detector ${st.detector} of 6) expect the light at its spot to be a background star.`
+                : st.detector === 5 ? 'At this colour expect the background star and WISE 0855 both to add light.'
+                    : 'At this colour (detector 6 of 6) WISE 0855 should outshine the background star.';
+            return {
+                show: `${COPY[st.target].show} ${colour}`,
+                fact: `This view has ${n} look${n === 1 ? '' : 's'}${visits.length > 1 ? `: ${visits.join(', ')}` : ''}.`,
+            };
+        }
+        return {};
     }
 
     function plainError(e: unknown): string
@@ -1031,6 +1127,7 @@ export function mount(root: HTMLElement): void
                 draw();
             }
             timer = window.setTimeout(tick, frameDelayMs(FPS));
+            ref<HTMLElement>('live').textContent = `Playing ${result!.frames.length} frames. Space pauses.`;
         }
         renderText();
         if (!on) {
@@ -1238,7 +1335,8 @@ export function mount(root: HTMLElement): void
     }
     if (shared) {
         st.center = shared.center;
-        st.fovDeg = FOVS.includes(shared.fovDeg) ? shared.fovDeg : DEFAULT_FOV;
+        // No fov= in the link (?t=barnard): the app's 0.1°, not the URL module's default, so a target opens from the saved copy.
+        st.fovDeg = params.has('fov') && FOVS.includes(shared.fovDeg) ? shared.fovDeg : DEFAULT_FOV;
         st.detector = shared.detector;
         st.lambda = shared.lambda;
         st.target = shared.target;

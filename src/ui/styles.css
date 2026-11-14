@@ -48,6 +48,9 @@ button { cursor: pointer; }
 }
 .sk ::selection { background: var(--ink); color: var(--void); }
 .sk :focus-visible { outline: 1.5px solid #fff; outline-offset: 3px; }
+.sk-skip { position: absolute; z-index: 30; left: 12px; top: -60px; padding: 10px 14px; border-radius: 3px; background: #fff; color: #000; font-size: 14px; text-decoration: none; transition: top 160ms var(--ease); }
+.sk-skip:focus { top: 12px; }
+.sk-mh:focus { outline: none; }
 .sk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---------- columns ---------- */
@@ -200,7 +203,9 @@ button { cursor: pointer; }
     .sk-mhrow .sk-mh .w { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .sk-focus > span:last-child { display: none; }
 }
-.sk-read { min-width: 0; margin: 0 0 0 auto; font: 11px/16px var(--mono); letter-spacing: .04em; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Wraps (right-aligned) rather than cut: the dates are never hidden behind an ellipsis. */
+.sk-read { min-width: 0; margin: 0 0 0 auto; font: 11px/16px var(--mono); letter-spacing: .04em; color: var(--mute); text-align: right; }
+.sk-read b, .sk-read span { white-space: nowrap; }
 .sk-read b { font-weight: 400; color: var(--ink); }
 .sk-read b:not(:empty) + span::before { content: "  ·  "; white-space: pre; color: var(--faint); }
 .sk-focus { flex: none; align-self: center; display: inline-flex; align-items: center; gap: 7px; height: 26px; margin: -5px 0; padding: 0 9px; border: 1px solid var(--hair2); border-radius: 3px;

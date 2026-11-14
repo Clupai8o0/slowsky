@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apertureFor, centreNear, curveFor, frameMjd, middleMjd, ringsOn, shiftFor, sumNoise } from '../src/ui/measure';
+import { apertureFor, centreNear, coreBlank, curveFor, frameMjd, middleMjd, ringsOn, shiftFor, sumNoise, visitsOf } from '../src/ui/measure';
 import { aperture } from '../src/lib/photometry';
 import { gridPixToSky } from '../src/lib/regrid';
 import { separationDeg } from '../src/lib/coords';
@@ -143,6 +143,15 @@ describe('curveFor', () => {
         expect(curveFor(r, fast)?.blend?.sourceId).toBe('self');
     });
 
+    it('takes the nearest co-moving star as the target, so a brighter companion is the blend (RW Aur A and B)', () => {
+        const r = result([100, 100, 100]);
+        r.stars.push(star('A', { x: 80, y: 80 }, 13.0), star('B', { x: 82, y: 80 }, 12.2));
+        const me: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 0 };
+        const c = curveFor(r, me);
+        expect(c!.blend?.sourceId).toBe('B');
+        expect(c!.blend?.px).toBeCloseTo(2, 6);
+    });
+
     it('solves each comparison star\'s own scatter before adding them', () => {
         // Two equal stars, each seen with scatter s against the other: the sum scatters by s / 2.
         expect(sumNoise([100, 100], [0.02, 0.02])).toBeCloseTo(0.02 / 2, 4);
@@ -282,5 +291,43 @@ describe('shiftFor', () => {
             { mjd: frameMjd(r.frames[0]!.frame), pix: TARGET },
             { mjd: frameMjd(r.frames[1]!.frame), pix: TARGET })).toThrow(GaiaError);
         expect(shiftFor(r, a)).toEqual({ from: 0, to: 1, predictedArcsec: 0, errArcsec: 0.65 * 6.15, significant: false, measured: null });
+    });
+});
+
+describe('coreBlank', () => {
+    it('counts frames with no value at a bright target centre', () => {
+        const r = result([5000, 5000, 5000]);
+        r.frames[0]!.frame.data[TARGET.y * N + TARGET.x] = NaN;
+        r.frames[2]!.frame.data[TARGET.y * N + TARGET.x + 1] = Infinity;
+        expect(coreBlank(r)).toEqual({ blank: 2, of: 3 });
+    });
+
+    it('ignores blank pixels away from the centre', () => {
+        const r = result([5000, 5000]);
+        r.frames[0]!.frame.data[(TARGET.y + 10) * N + TARGET.x] = NaN;
+        expect(coreBlank(r)).toEqual({ blank: 0, of: 2 });
+    });
+
+    it('does not call a blank centre in dark sky saturated', () => {
+        const r = result([0, 0]);
+        r.frames[0]!.frame.data[TARGET.y * N + TARGET.x] = NaN;
+        expect(coreBlank(r)).toEqual({ blank: 0, of: 2 });
+    });
+
+    it('needs a track', () => {
+        expect(coreBlank(result([100, 100], false))).toBeNull();
+    });
+});
+
+describe('visitsOf', () => {
+    it('groups looks less than 10 days apart', () => {
+        const r = result([100, 100, 100, 100]);
+        const at = [MJD0, MJD0 + 1, MJD0 + 200, MJD0 + 201.5];
+        r.frames.forEach((f, i) => {
+            f.frame.frame.tMin = at[i]!;
+            f.frame.frame.tMax = at[i]!;
+        });
+        expect(visitsOf(r).map((v) => v.n)).toEqual([2, 2]);
+        expect(visitsOf(r)[1]!.mjd).toBe(MJD0 + 200);
     });
 });

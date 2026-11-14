@@ -227,10 +227,11 @@ export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
         const nearby = ringsAt(result.stars, result.grid, mjd).map((r) => ({
             sourceId: r.sourceId, g: r.g, px: Math.hypot(r.pix.x - target.x, r.pix.y - target.y),
         }));
-        // The target itself, when Gaia sees it: the brightest star within a native pixel that moves like it. A
-        // neighbour over 2.5 mag fainter adds under 10% light; when Gaia does not see the target (WISE 0855),
+        // The target itself, when Gaia sees it: the nearest star within a native pixel that moves like it. Not
+        // the brightest: a wide binary moves together, and RW Aur B (1.5 arcsec off) is brighter in Gaia than A.
+        // A neighbour over 2.5 mag fainter adds under 10% light; when Gaia does not see the target (WISE 0855),
         // any neighbour in the aperture counts.
-        const me = nearby.filter((r) => r.px <= native && pmOk(r.sourceId)).sort((a, b) => a.g - b.g)[0];
+        const me = nearby.filter((r) => r.px <= native && pmOk(r.sourceId)).sort((a, b) => a.px - b.px || a.g - b.g)[0];
         for (const r of nearby) {
             if (r === me || r.px > reach || (me && r.g > me.g + 2.5)) {
                 continue;
@@ -332,4 +333,75 @@ export function shiftFor(result: SkyResult, a: Astrometry): Shift | null
         }
     }
     return shift;
+}
+
+// How many frames show a saturated centre: no value within half a detector pixel (or, on coarse grids, the
+// nearest output pixel) of the target's track position, with a bright ring around it (its median above the frame's 99th percentile). Blank pixels in dark
+// sky (no coverage, an edge) do not count. R Dra and Barnard's Star saturate.
+export function coreBlank(result: SkyResult): { blank: number; of: number } | null
+{
+    if (!result.track || result.track.length === 0 || result.frames.length === 0) {
+        return null;
+    }
+    const { width, height } = result.grid;
+    const native = NATIVE_ARCSEC / result.grid.pixelArcsec;
+    const reach = Math.max(Math.SQRT1_2, native / 2); // at least the nearest pixel
+    const ringOut = Math.max(3, native * 1.5);
+    let blank = 0;
+    for (const { frame: f } of result.frames) {
+        const at = trackNear(result.track, frameMjd(f))!.pix;
+        let hole = false;
+        const ring: number[] = [];
+        const r = Math.ceil(ringOut);
+        for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+                const x = Math.round(at.x) + dx;
+                const y = Math.round(at.y) + dy;
+                const d = Math.hypot(x - at.x, y - at.y);
+                if (d > ringOut || x < 0 || y < 0 || x >= width || y >= height) {
+                    continue;
+                }
+                const v = f.data[y * width + x] as number;
+                if (!Number.isFinite(v)) {
+                    hole ||= d <= reach;
+                } else if (d > reach) {
+                    ring.push(v);
+                }
+            }
+        }
+        if (!hole || ring.length === 0) {
+            continue;
+        }
+        const sample: number[] = [];
+        for (let i = 0; i < f.data.length; i += 7) {
+            const v = f.data[i] as number;
+            if (Number.isFinite(v)) {
+                sample.push(v);
+            }
+        }
+        sample.sort((a, b) => a - b);
+        const p99 = sample[Math.floor(sample.length * 0.99)];
+        if (p99 !== undefined && median(ring) > p99) {
+            blank++;
+        }
+    }
+    return { blank, of: result.frames.length };
+}
+
+// Looks grouped into visits: frames less than `gapDays` apart belong to one visit. In date order.
+export function visitsOf(result: SkyResult, gapDays = 10): { mjd: number; n: number }[]
+{
+    const days = result.frames.map((f) => frameMjd(f.frame)).filter(Number.isFinite).sort((a, b) => a - b);
+    const out: { mjd: number; n: number }[] = [];
+    let prev = -Infinity;
+    for (const d of days) {
+        const last = out[out.length - 1];
+        if (last && d - prev < gapDays) {
+            last.n++;
+        } else {
+            out.push({ mjd: d, n: 1 });
+        }
+        prev = d;
+    }
+    return out;
 }
