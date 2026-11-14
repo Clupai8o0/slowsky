@@ -121,26 +121,28 @@ export function withCaveats(candidates: { caveat?: string; line: string }[]): st
 }
 
 // The panel body. Text flows in plain blocks, so a reworded sentence or an extra note needs no layout change.
-// `all` shows every candidate; otherwise the first LIST_CAP and a text button for the rest.
+// `all` shows every candidate; the closed plain list stops at the first near-star spot or LIST_CAP.
 export function changesHtml(v: ChangesView, all = false): string
 {
     const plain = isPlain(v.candidates);
     const clause = `; ${PLAIN_CAUSES} (`;
     const shared = plain && v.candidates.every(c => c.line.split(clause).length === 2);
-    const lead = [...(v.lead ?? []), ...(shared ? [`For every spot listed: ${PLAIN_CAUSES}.`] : [])].map(s => `<p class="sk-chg-lead">${esc(s)}</p>`).join('');
+    const lead = [...(v.lead ?? []), ...(shared && listed(v, all).length ? [`For every spot listed: ${PLAIN_CAUSES}.`] : [])].map(s => `<p class="sk-chg-lead">${esc(s)}</p>`).join('');
     const closed = listed(v, false);
     const hidden = v.candidates.slice(closed.length);
     const match = v.plainListInfo?.matchArcsec;
     const fold = plain && typeof match === 'number' && Number.isFinite(match);
     if (fold) {
         const starCount = hidden.filter(c => c.nearCatalogue === true).length;
-        const hiddenText = hidden.length === starCount
-            ? `${hidden.length}${closed.length ? ' more' : ''} ${hidden.length === 1 ? 'spot lies' : 'spots lie'} within ${match}″ of a catalogue star.`
-            : `${hidden.length} more not shown${starCount ? `; ${starCount} of them ${starCount === 1 ? 'lies' : 'lie'} within ${match}″ of a catalogue star` : ''}.`;
-        const more = hidden.length ? `<p class="sk-chg-more-row">${all ? '' : esc(hiddenText) + ' '}<button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? 'Show fewer' : `Show all ${v.candidates.length}`}</button></p>` : '';
+        const spots = `${hidden.length}${closed.length ? ' more' : ''} ${hidden.length === 1 ? 'spot' : 'spots'}`;
+        const hiddenText = !closed.length && hidden.length === starCount
+            ? `No spot is shown: ${hidden.length === 1 ? 'the 1 candidate lies' : hidden.length === 2 ? 'both candidates lie' : `all ${hidden.length} candidates lie`} within ${match}″ of a catalogue star.`
+            : `Not shown: ${spots}${hidden.length === starCount ? ` within ${match}″ of a catalogue star` : starCount ? `; ${starCount} of them ${starCount === 1 ? 'lies' : 'lie'} within ${match}″ of a catalogue star` : ''}.`;
+        const button = closed.length ? `Show ${hidden.length} more` : hidden.length === 1 ? 'Show it' : 'Show them';
+        const more = hidden.length ? `<p class="sk-chg-more-row">${all ? '' : esc(hiddenText) + ' '}<button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? 'Show fewer' : button}</button></p>` : '';
         const items = listed(v, all);
         const list = items.length ? `<ol class="sk-chg">${items.map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(shared ? c.line.replace(clause, ' (') : c.line)}</li>`).join('')}</ol>`
-            : v.candidates.every(c => c.nearCatalogue === true) ? `<p class="sk-chg-lead">Every spot found lies within ${match}″ of a catalogue star.</p>` : '';
+            : '';
         const notes = v.notes.length ? `<ul class="sk-chg-notes">${v.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
         return lead + list + more + notes;
     }
@@ -299,7 +301,14 @@ export function plainMarks(v: ChangesView, width: number, height: number, all = 
         if (!chosen) { chosen = candidates[0]!; tier = 5; }
         if (counts) { counts[(['preferred', 'soft', 'hard', 'apart', 'grid', 'last'] as const)[tier]!]++; }
         boxes.push(box(chosen));
+        // A label left nearer another candidate's ring than its own gets a short line to its own ring.
+        const at = box(chosen);
+        const gap = (e: { x: number; y: number; radius: number }) => Math.hypot(Math.max(at.left - e.x, 0, e.x - at.right), Math.max(at.top - e.y, 0, e.y - at.bottom)) - e.radius;
+        const near = members.reduce((a, b) => gap(ends[a]!) <= gap(ends[b]!) ? a : b);
+        const lead = ends.some((e, i) => !members.some(j => ends[j]!.i === e.i) && Math.max(0, gap(e)) < Math.max(0, gap(ends[near]!)));
+        const e0 = ends[near]!, bx = Math.max(at.left, Math.min(at.right, e0.x)), by = Math.max(at.top, Math.min(at.bottom, e0.y)), d = Math.hypot(bx - e0.x, by - e0.y);
         marks.push(...members.map(i => { const e = ends[i]!; return `<circle cx="${e.x.toFixed(1)}" cy="${e.y.toFixed(1)}" r="${e.radius.toFixed(1)}"/>`; }),
+            ...(lead ? [`<line x1="${bx.toFixed(1)}" y1="${by.toFixed(1)}" x2="${(e0.x + (bx - e0.x) * e0.radius / d).toFixed(1)}" y2="${(e0.y + (by - e0.y) * e0.radius / d).toFixed(1)}"/>`] : []),
             `<text x="${chosen.x.toFixed(1)}" y="${chosen.y.toFixed(1)}" font-size="${size.toFixed(1)}">${label}</text>`);
     }
     return `<svg class="sk-chg-marks" viewBox="0 0 ${width} ${height}" aria-hidden="true">${marks.join('')}</svg>`;

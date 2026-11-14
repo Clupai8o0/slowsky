@@ -198,9 +198,10 @@ describe('change slot', () => {
             if (all) {
                 expect(box.innerHTML.includes('Listed with spots')).toBe(false);
                 expect(box.innerHTML.includes('S/N is left out')).toBe(false);
+                expect(box.innerHTML.includes("error maps have no value at")).toBe(false);
                 expect(box.innerHTML.includes('Every spot listed')).toBe(false);
             } else {
-                expect(box.innerHTML).toMatch(/S\/N is left out for (?:the 1 candidate|1 of the \d+ candidates) where the frames' error maps have no value, because the noise there comes from the difference image alone\./);
+                expect(box.innerHTML).toContain("The frames' error maps have no value at the 1 candidate, so its S/N is left out; the noise there comes from the difference image alone.");
             }
         }
     });
@@ -458,15 +459,15 @@ describe('plain list (compareVisits plain: true)', () => {
     it('keeps mapped ordering explained when overflow hides every S/N', () => {
         const flags = new Map([['early', at(1, ['OVERFLOW'])], ['late', at(1, [])]]);
         const kept = screen([plain], { earlier: [earlier], later: [later] }, flags, []).kept;
-        expect(plainListNotes(kept, true, 6)).toEqual(['Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.', 'S/N is left out for the 1 candidate marked by an archive overflow flag, because the S/N figure there can be unreliable.']);
-        expect(plainListNotes([...kept, ...kept], true, 6)).toEqual(['Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.', 'S/N is left out for all 2 candidates marked by an archive overflow flag, because the S/N figure there can be unreliable.']);
+        expect(plainListNotes(kept, true, 6)).toEqual(['Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.', 'The 1 candidate is marked by an archive overflow flag, so its S/N is left out; the S/N figure there can be unreliable.']);
+        expect(plainListNotes([...kept, ...kept], true, 6)).toEqual(['Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.', 'Both candidates are marked by an archive overflow flag, so their S/N is left out; the S/N figure there can be unreliable.']);
         expect(plainListNotes([], true, 6)).toEqual([]);
         const noFigure = { ...plain, sentence: plain.sentence.replace('(S/N 9.0; candidate)', '(candidate)'), snrMapMissing: true };
         const mixed = screen([plain, noFigure], { earlier: [earlier], later: [later] }, flags, []).kept;
         expect(plainListNotes(mixed, true, 6)).toEqual([
             'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.',
-            'S/N is left out for 1 of the 2 candidates marked by an archive overflow flag, because the S/N figure there can be unreliable.',
-            "S/N is left out for 1 of the 2 candidates where the frames' error maps have no value, because the noise there comes from the difference image alone.",
+            '1 of the 2 candidates is marked by an archive overflow flag, so its S/N is left out; the S/N figure there can be unreliable.',
+            "The frames' error maps have no value at 1 of the 2 candidates, so its S/N is left out; the noise there comes from the difference image alone.",
         ]);
     });
 

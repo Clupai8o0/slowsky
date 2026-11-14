@@ -83,7 +83,7 @@ function livePair(): SkyResult
     return { ...sky(frames), source: 'live' };
 }
 
-async function screenedPage(result: SkyResult, flagged: (x: number, y: number) => number): Promise<string>
+async function screenedPage(result: SkyResult, flagged: (x: number, y: number) => number, find?: typeof findChanges): Promise<string>
 {
     const frames = new Map(result.frames.map(f => [f.frame.frame.obsId, f.frame]));
     const reader = { index: async (url: string) => ({ url }),
@@ -99,7 +99,7 @@ async function screenedPage(result: SkyResult, flagged: (x: number, y: number) =
         return { data, width: grid.width, height: grid.height };
     });
     const onChange = vi.fn(), box = {} as HTMLElement, marks = {} as HTMLElement;
-    const slot = mountChanges(onChange, { reader, read, variance: async f => f.variance ?? null });
+    const slot = mountChanges(onChange, { reader, read, find, variance: async f => f.variance ?? null });
     const view = { source: 'live' as const, result, index: 0, mode: 'blink' as const };
     slot.render(box, marks, view);
     await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
@@ -150,7 +150,7 @@ describe('page change list is the plain list', () => {
             "Noise estimated using the frames' pixel uncertainty maps.",
             'No source above 5 times the noise at the centre of the view in either visit.',
             'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise; within each group, spots with no S/N figure come after those with one.',
-            'S/N is left out for 1 of the 2 candidates marked by an archive overflow flag, because the S/N figure there can be unreliable.',
+            '1 of the 2 candidates is marked by an archive overflow flag, so its S/N is left out; the S/N figure there can be unreliable.',
             'No catalogue stars for this view: every spot is listed without a catalogue match.',
         ]);
     });
@@ -162,7 +162,7 @@ describe('page change list is the plain list', () => {
             "Noise estimated using the frames' pixel uncertainty maps.",
             'No source above 5 times the noise at the centre of the view in either visit.',
             'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.',
-            'S/N is left out for all 2 candidates marked by an archive overflow flag, because the S/N figure there can be unreliable.',
+            'Both candidates are marked by an archive overflow flag, so their S/N is left out; the S/N figure there can be unreliable.',
             'No catalogue stars for this view: every spot is listed without a catalogue match.',
         ]);
     });
@@ -178,6 +178,21 @@ describe('page change list is the plain list', () => {
             'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.',
             'No catalogue stars for this view: every spot is listed without a catalogue match.',
             '1 candidate is not listed: in at least one frame of a checked visit, that frame’s brightest pixel within 12″ of its spot carries the archive flag TRANSIENT.',
+        ]);
+    });
+
+    it('replaces a finder note for two of three after screening the third candidate', async () => {
+        const find: typeof findChanges = (...args) => {
+            const result = findChanges(...args);
+            const dropped = result.candidates.find(c => c.pix.x < 60)!;
+            const kept = result.candidates.find(c => c.pix.x > 60)!;
+            result.candidates = [dropped, { ...kept, snrMapMissing: true }, { ...kept, id: 'other', snrMapMissing: true }];
+            result.notes.push("The frames' error maps have no value at 2 of the 3 candidates, so their S/N is left out; the noise there comes from the difference image alone.");
+            return result;
+        };
+        const notes = pageNotes(await screenedPage(livePair(), x => x < 60 ? 1 : 0, find));
+        expect(notes.filter(n => n.includes("frames' error maps have no value"))).toEqual([
+            "The frames' error maps have no value at both candidates, so their S/N is left out; the noise there comes from the difference image alone.",
         ]);
     });
 

@@ -641,9 +641,15 @@ export function plainListNotes(candidates: { line?: string; sentence?: string; r
     const order = !shown && hiddenMapped ? `${base}.` : !shown ? `${base} estimated from the difference image; that figure is used only for this order.`
         : `${base}${shown < candidates.length ? '; within each group, spots with no S/N figure come after those with one' : ''}.`;
     const flagged = candidates.filter(c => c.snrFlagRemoved).length;
-    const count = (n: number) => candidates.length === 1 ? 'the 1 candidate' : n === candidates.length ? `all ${n} candidates` : `${n} of the ${candidates.length} candidates`;
-    return [order, ...(flagged ? [`S/N is left out for ${count(flagged)} marked by an archive overflow flag, because the S/N figure there can be unreliable.`] : []),
-        ...(unmapped ? [`S/N is left out for ${count(unmapped)} where the frames' error maps have no value, because the noise there comes from the difference image alone.`] : [])];
+    const count = (n: number) => candidates.length === 1 ? 'the 1 candidate' : n === candidates.length ? (n === 2 ? 'both candidates' : `all ${n} candidates`) : `${n} of the ${candidates.length} candidates`;
+    const subject = (n: number) => count(n).replace(/^./, c => c.toUpperCase());
+    return [order, ...(flagged ? [`${subject(flagged)} ${flagged === 1 ? 'is' : 'are'} marked by an archive overflow flag, so ${flagged === 1 ? 'its' : 'their'} S/N is left out; the S/N figure there can be unreliable.`] : []),
+        ...(unmapped ? [`The frames' error maps have no value at ${count(unmapped)}, so ${unmapped === 1 ? 'its' : 'their'} S/N is left out; the noise there comes from the difference image alone.`] : [])];
+}
+export function isSnrNote(note: string): boolean
+{
+    return note.startsWith('S/N is left out for ') || (note.endsWith(' S/N is left out; the S/N figure there can be unreliable.') && note.includes(' marked by an archive overflow flag, so '))
+        || (note.startsWith("The frames' error maps have no value at ") && note.endsWith(' S/N is left out; the noise there comes from the difference image alone.'));
 }
 export function hasSnrFigure(text: string): boolean
 {

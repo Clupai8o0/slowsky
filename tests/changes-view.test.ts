@@ -307,11 +307,69 @@ describe('round 11: groups from the review', () => {
 });
 
 describe('plain list (compareVisits plain: true)', () => {
+    it('does not count an unmarked hidden spot as near a star (m01)', () => {
+        const flags = [...Array(8).fill(false), true, undefined];
+        const cs = flags.map((nearCatalogue, i) => ({ ...cand(String(i), 10 + i, 30, 'spot'), reading: 'unclear' as const, nearCatalogue }));
+        const html = changesHtml(changesView({ ...found(cs, []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } }));
+        expect(html).toContain('Not shown: 2 more spots; 1 of them lies within 6″ of a catalogue star.');
+    });
+    it('reserves the no-spot near-star claim for an entirely near-star hidden set (m09)', () => {
+        const cs = [true, false].map((nearCatalogue, i) => ({ ...cand(String(i), 10 + i, 30, 'spot'), reading: 'unclear' as const, nearCatalogue }));
+        const html = changesHtml(changesView({ ...found(cs, []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } }));
+        expect(html).toContain('Not shown: 2 spots; 1 of them lies within 6″ of a catalogue star.');
+        expect(html).not.toContain('No spot is shown:');
+    });
+    it('sets aria-expanded from the folded state (m14)', () => {
+        const c = { ...cand('a', 20, 20, 'spot'), reading: 'unclear' as const, nearCatalogue: true };
+        const v = changesView({ ...found([c], []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
+        expect(changesHtml(v)).toContain('aria-expanded="false">Show it');
+        expect(changesHtml(v, true)).toContain('aria-expanded="true">Show fewer');
+    });
+    it('keeps nearby ends of the same candidate as separate labels (m15)', () => {
+        const pair = { ...cand('pair', 50, 50, 'spot'), reading: 'unclear' as const, ends: [50, 54].map(x => ({ visit: 'later' as const, x, y: 50, radiusPix: 7.8 })) };
+        const svg = plainMarks(changesView(found([pair], [])), 235, 235);
+        expect(svg.match(/<text [^>]*>1<\/text>/g)).toHaveLength(2);
+    });
+    it('prefers a placement nearer its own ring (m19)', () => {
+        const points = [[103.457, 105.590], [124.330, 119.152], [114.304, 122.286], [121.586, 108.318], [112.019, 102.215], [131.583, 115.433], [101.922, 107.906]];
+        const cs = points.map(([x, y], i) => ({ ...cand(String(i), x!, y!, 'spot'), reading: 'unclear' as const, ends: [{ visit: 'later' as const, x: x!, y: y!, radiusPix: 7.8 }] }));
+        expect(plainMarks(changesView(found(cs, [])), 235, 235)).toContain('<text x="124.3" y="140.5" font-size="9.4">2</text>');
+    });
+    it('searches the whole picture before leaving a label on its ring (m20)', () => {
+        const points = [[6.736, 232.562], [4.162, 218.282], [0, 227.381], [15.241, 234]];
+        const cs = points.map(([x, y], i) => ({ ...cand(String(i), x!, y!, 'spot'), reading: 'unclear' as const, ends: [{ visit: 'later' as const, x: x!, y: y!, radiusPix: 7.8 }] }));
+        expect(plainMarks(changesView(found(cs, [])), 235, 235)).toContain('<text x="14.4" y="210.5" font-size="9.4">3</text>');
+    });
+    it('describes the exact hidden set and button in every folded case', () => {
+        const view = (flags: (boolean | undefined)[]) => changesView({ ...found(flags.map((nearCatalogue, i) => ({ ...cand(String(i), i * 10, 30, 'spot (candidate).'), reading: 'unclear' as const, nearCatalogue })), []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
+        const rows: [(boolean | undefined)[], string, string][] = [
+            [[true], 'No spot is shown: the 1 candidate lies within 6″ of a catalogue star.', 'Show it'],
+            [[true, true], 'No spot is shown: both candidates lie within 6″ of a catalogue star.', 'Show them'],
+            [[true, true, true], 'No spot is shown: all 3 candidates lie within 6″ of a catalogue star.', 'Show them'],
+            [Array(16).fill(true), 'No spot is shown: all 16 candidates lie within 6″ of a catalogue star.', 'Show them'],
+            [[false, true], 'Not shown: 1 more spot within 6″ of a catalogue star.', 'Show 1 more'],
+            [[false, true, true], 'Not shown: 2 more spots within 6″ of a catalogue star.', 'Show 2 more'],
+            [[false, true, true, true], 'Not shown: 3 more spots within 6″ of a catalogue star.', 'Show 3 more'],
+            [[false, ...Array(16).fill(true)], 'Not shown: 16 more spots within 6″ of a catalogue star.', 'Show 16 more'],
+            [[...Array(9).fill(false)], 'Not shown: 1 more spot.', 'Show 1 more'],
+            [[...Array(9).fill(false), true, true], 'Not shown: 3 more spots; 2 of them lie within 6″ of a catalogue star.', 'Show 3 more'],
+            [[...Array(9).fill(false), true], 'Not shown: 2 more spots; 1 of them lies within 6″ of a catalogue star.', 'Show 2 more'],
+            [[true, undefined], 'Not shown: 2 spots; 1 of them lies within 6″ of a catalogue star.', 'Show them'],
+        ];
+        for (const [flags, row, button] of rows) {
+            const v = view(flags), html = changesHtml(v), open = changesHtml(v, true);
+            expect(html).toContain(`${row} <button type="button" class="sk-chg-more" data-chg-more aria-expanded="false">${button}</button>`);
+            expect(open).toContain('aria-expanded="true">Show fewer</button>');
+            expect(open).not.toContain(row);
+            expect(html + open).not.toContain('Every spot found');
+            expect(html + open).not.toContain('Show all');
+        }
+    });
     it('folds the near-star suffix and keeps prefix numbers and rings', () => {
         const list = [false, false, true].map((nearCatalogue, i) => ({ ...cand(String(i), 20 + i * 30, 30, `spot ${i} (candidate).`), reading: 'unclear' as const, nearCatalogue }));
         const v = changesView({ ...found(list, []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
-        expect(changesHtml(v)).toContain('1 more spot lies within 6″ of a catalogue star.');
-        expect(changesHtml(v)).toContain('Show all 3');
+        expect(changesHtml(v)).toContain('Not shown: 1 more spot within 6″ of a catalogue star.');
+        expect(changesHtml(v)).toContain('Show 1 more');
         expect(changesHtml(v)).not.toContain('Candidate 3');
         expect(changesHtml(v, true)).toContain('Candidate 3');
         expect(changesMarks(v, 235, 235).match(/<circle/g)).toHaveLength(2);
@@ -323,6 +381,12 @@ describe('plain list (compareVisits plain: true)', () => {
         expect(svg.match(/<text/g)).toHaveLength(1);
         expect(svg).toContain('>1, 2, 3</text>');
     });
+    it('draws a short line from a label left nearer another ring to its own ring', () => {
+        const list = [[3.1, 220], [0.4, 234]].map(([x, y], i) => ({ ...cand(String(i), x!, y!, 'spot'), reading: 'unclear' as const, ends: [{ visit: 'later' as const, x: x!, y: y!, radiusPix: 7.8 }] }));
+        const svg = changesMarks(changesView(found(list, [])), 235, 235);
+        expect(svg).toContain('<circle cx="0.4" cy="234.0" r="7.8"/><line x1="11.3" y1="234.0" x2="8.2" y2="234.0"/><text x="15.6" y="233.9" font-size="9.4">2</text>');
+        expect(svg.match(/<line/g)).toHaveLength(1);
+    });
     it('shares identical plain causes while retaining candidate details', () => {
         const causes = "a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
         const line = `The light differs; ${causes} (S/N 9.0; candidate).`;
@@ -330,7 +394,8 @@ describe('plain list (compareVisits plain: true)', () => {
         expect(changesHtml(v)).toContain(`For every spot listed: ${causes}.`);
         expect(changesHtml(v)).toContain('The light differs (S/N 9.0; candidate).');
         const hidden = changesView({ ...found([{ ...cand('a', 20, 20, line), reading: 'unclear', nearCatalogue: true }], []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
-        expect(changesHtml(hidden)).toContain(`For every spot listed: ${causes}.`);
+        expect(changesHtml(hidden)).not.toContain(`For every spot listed: ${causes}.`);
+        expect(changesHtml(hidden, true)).toContain(`For every spot listed: ${causes}.`);
         expect(changesHtml(hidden)).not.toContain('<ol');
     });
     it('keeps every line whole when any cause clause is absent or repeated', () => {
@@ -344,16 +409,16 @@ describe('plain list (compareVisits plain: true)', () => {
     });
     it('describes several hidden stars, a capped mixed suffix, and all stars', () => {
         const view = (flags: boolean[]) => changesView({ ...found(flags.map((nearCatalogue, i) => ({ ...cand(String(i), 10 + i * 10, 30, `spot ${i}`), reading: 'unclear' as const, nearCatalogue })), []), plainListInfo: { usedErrorMap: true, matchArcsec: 6 } });
-        expect(changesHtml(view([false, true, true]))).toContain('2 more spots lie within 6″ of a catalogue star.');
+        expect(changesHtml(view([false, true, true]))).toContain('Not shown: 2 more spots within 6″ of a catalogue star.');
         const capped = view([...Array(9).fill(false), true, true]);
-        expect(changesHtml(capped)).toContain('3 more not shown; 2 of them lie within 6″ of a catalogue star.');
+        expect(changesHtml(capped)).toContain('Not shown: 3 more spots; 2 of them lie within 6″ of a catalogue star.');
         expect(changesHtml(capped)).toContain('Candidate 8');
         expect(changesHtml(capped)).not.toContain('Candidate 9');
         expect(changesHtml(capped, true)).toContain('Candidate 9');
-        expect(changesHtml(view(Array(10).fill(false)))).toContain('2 more not shown.');
+        expect(changesHtml(view(Array(10).fill(false)))).toContain('Not shown: 2 more spots.');
         const stars = changesHtml(view([true, true]));
-        expect(stars).toContain('Every spot found lies within 6″ of a catalogue star.');
-        expect(stars).toContain('2 spots lie within 6″ of a catalogue star.');
+        expect(stars).not.toContain('Every spot found');
+        expect(stars).toContain('No spot is shown: both candidates lie within 6″ of a catalogue star.');
         expect(stars).not.toContain('<ol');
     });
     it('joins all three observed separations with width for the joint label', () => {
