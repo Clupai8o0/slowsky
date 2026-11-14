@@ -6,9 +6,242 @@ import { positionAt } from '../src/lib/targets';
 import type { FrameRecord, OutputGrid, RangeReader, RegriddedFrame, Wcs } from '../src/lib/types';
 // The page's change list goes through changesFor (src/ui/slots.ts), which must ask for the plain list only.
 import { changesFor, mountChanges, PAGE_CHANGE_OPTIONS } from '../src/ui/slots';
+import { HELPER_LABEL } from '../src/lib/classify';
+import weights from '../public/models/change-classifier.json';
 // Fixtures as in tests/change-input.test.ts.
 
 const grid: OutputGrid = { center: { ra: 20, dec: 30 }, fovDeg: 0.1, pixelArcsec: 1.5375, width: 121, height: 121 };
+
+describe('optional change hints', () => {
+    function result(): SkyResult
+    {
+        const a = noise(grid), b = noise(grid);
+        point(b, 60, 60, 100);
+        return { ...sky([frame('a', 60000, 2, a), frame('b', 60030, 2, b)]), source: 'live' };
+    }
+
+    it('does not fetch or change HTML when switched off, or on a saved view', () => {
+        const data = result(), fetcher = vi.fn(), box = {} as HTMLElement, marks = {} as HTMLElement;
+        const view = { source: 'live' as const, result: data, index: 0, mode: 'blink' as const };
+        const off = mountChanges(() => {}, { fetcher: fetcher as unknown as typeof fetch });
+        off.render(box, marks, view);
+        const before = box.innerHTML;
+        mountChanges(() => {}, { hint: false, fetcher: fetcher as unknown as typeof fetch }).render(box, marks, view);
+        expect(box.innerHTML).toBe(before);
+        mountChanges(() => {}, { hint: true, savedList: true, fetcher: fetcher as unknown as typeof fetch })
+            .render(box, marks, { ...view, source: 'snapshot' });
+        expect(box.innerHTML).not.toContain('sk-hintml');
+        expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    it('adds hints only after the final list and reuses the fetched model', async () => {
+        const data = result(), box = {} as HTMLElement, marks = {} as HTMLElement, onChange = vi.fn();
+        let resolve!: (response: Response) => void;
+        const fetcher = vi.fn(() => new Promise<Response>(r => { resolve = r; }));
+        const slot = mountChanges(onChange, { hint: true, fetcher: fetcher as unknown as typeof fetch });
+        const view = { source: 'live' as const, result: data, index: 0, mode: 'blink' as const };
+        slot.render(box, marks, view);
+        expect(box.innerHTML).not.toContain('sk-hintml');
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        resolve({ ok: true, json: async () => weights } as Response);
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalled());
+        slot.render(box, marks, view);
+        expect(box.innerHTML).toContain(HELPER_LABEL);
+        expect(box.innerHTML).toMatch(/<li><b>Candidate 1<\/b>.*?<p class="sk-hintml">/);
+        const hint = /<p class="sk-hintml">.*?<\/p>/.exec(box.innerHTML)?.[0] ?? '';
+        expect(hint).not.toMatch(/\b(?:mover|brightness|artifact|nothing)\b|\d+%/i);
+        slot.render(box, marks, view);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        const next = result();
+        slot.render(box, marks, { ...view, result: next });
+        slot.render(box, marks, { ...view, result: next });
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        expect(box.innerHTML).toContain(HELPER_LABEL);
+    });
+
+    it.each(['failed', 'broken'])('silently ignores a %s model', async (kind) => {
+        const data = result(), box = {} as HTMLElement, marks = {} as HTMLElement;
+        const fetcher = vi.fn(async () => kind === 'failed' ? { ok: false } : { ok: true, json: async () => ({}) });
+        const slot = mountChanges(() => {}, { hint: true, fetcher: fetcher as unknown as typeof fetch });
+        const view = { source: 'live' as const, result: data, index: 0, mode: 'blink' as const };
+        slot.render(box, marks, view);
+        await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        slot.render(box, marks, view);
+        expect(box.innerHTML).not.toContain('sk-hintml');
+    });
+
+    it('aborts a pending model load on a new result and ignores its late response', async () => {
+        const first = result(), second = result(), box = {} as HTMLElement, marks = {} as HTMLElement, onChange = vi.fn();
+        const pending: { signal: AbortSignal; resolve: (response: Response) => void }[] = [];
+        const fetcher = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => new Promise<Response>(resolve => {
+            pending.push({ signal: init!.signal as AbortSignal, resolve });
+        }));
+        const slot = mountChanges(onChange, { hint: true, fetcher: fetcher as typeof fetch });
+        const view = { source: 'live' as const, result: first, index: 0, mode: 'blink' as const };
+        slot.render(box, marks, view);
+        slot.render(box, marks, { ...view, result: second });
+        expect(pending).toHaveLength(2);
+        expect(pending[0]!.signal.aborted).toBe(true);
+        pending[0]!.resolve({ ok: true, json: async () => weights } as Response);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(onChange).not.toHaveBeenCalled();
+        pending[1]!.resolve({ ok: true, json: async () => weights } as Response);
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+        slot.render(box, marks, { ...view, result: second });
+        expect(box.innerHTML).toContain(HELPER_LABEL);
+    });
+
+    it('waits for flag screening before fetching and labels only kept candidates', async () => {
+        const data = livePair(), box = {} as HTMLElement, marks = {} as HTMLElement, onChange = vi.fn();
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const frames = new Map(data.frames.map(f => [f.frame.frame.obsId, f.frame]));
+        const reader = { index: async (url: string) => ({ url }),
+            readFloat32: async (index: { url: string }) => frames.get(index.url)!.data } as unknown as RangeReader;
+        const read = vi.fn(async (url: string) => {
+            await gate;
+            const values = new Int32Array(grid.width * grid.height);
+            if (url === 'b') {
+                values.fill(1);
+            }
+            return { data: values, width: grid.width, height: grid.height };
+        });
+        const fetcher = vi.fn(async () => ({ ok: true, json: async () => weights } as Response));
+        const slot = mountChanges(onChange, { hint: true, reader, read, fetcher: fetcher as unknown as typeof fetch,
+            variance: async f => f.variance ?? null });
+        const view = { source: 'live' as const, result: data, index: 0, mode: 'blink' as const };
+        slot.render(box, marks, view);
+        await vi.waitFor(() => expect(read).toHaveBeenCalled());
+        expect(fetcher).not.toHaveBeenCalled();
+        release();
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
+        slot.render(box, marks, view);
+        expect(box.innerHTML).not.toContain('sk-hintml');
+        expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    it('adds only hint paragraphs without changing the list or marks', async () => {
+        const data = livePair(), box = {} as HTMLElement, marks = {} as HTMLElement, onChange = vi.fn();
+        point(data.frames[1]!.frame.data, 30, 90, 500);
+        for (const f of data.frames) { delete f.frame.context; }
+        let resolve!: (response: Response) => void;
+        const fetcher = vi.fn(() => new Promise<Response>(r => { resolve = r; }));
+        const slot = mountChanges(onChange, { hint: true, fetcher: fetcher as unknown as typeof fetch });
+        const view = { source: 'live' as const, result: data, index: 0, mode: 'blink' as const };
+        slot.render(box, marks, view);
+        const html = box.innerHTML, svg = marks.innerHTML;
+        const count = [...html.matchAll(/<li><b>Candidate \d+<\/b>/g)].length;
+        expect(count).toBe(3);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        resolve({ ok: true, json: async () => weights } as Response);
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+        slot.render(box, marks, view);
+        expect(marks.innerHTML).toBe(svg);
+        expect(box.innerHTML.replace(/<p class="sk-hintml">.*?<\/p>/g, '')).toBe(html);
+        expect([...box.innerHTML.matchAll(/<p class="sk-hintml">.*?<\/p>/g)]).toHaveLength(count);
+    });
+
+    it('never fetches with hints off when a finished list is drawn again, also after stop()', async () => {
+        const data = livePair(), box = {} as HTMLElement, marks = {} as HTMLElement, onChange = vi.fn();
+        const fetcher = vi.fn();
+        const frames = new Map(data.frames.map(f => [f.frame.frame.obsId, f.frame]));
+        const reader = { index: async (url: string) => ({ url }),
+            readFloat32: async (index: { url: string }) => frames.get(index.url)!.data } as unknown as RangeReader;
+        const read = vi.fn(async () => ({ data: new Int32Array(grid.width * grid.height), width: grid.width, height: grid.height }));
+        const slot = mountChanges(onChange, { hint: false, reader, read, fetcher: fetcher as unknown as typeof fetch,
+            variance: async f => f.variance ?? null });
+        const view = { source: 'live' as const, result: data, index: 0, mode: 'blink' as const };
+        slot.render(box, marks, view);
+        expect(fetcher).toHaveBeenCalledTimes(0);
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
+        slot.render(box, marks, view);
+        expect([...box.innerHTML.matchAll(/<li><b>Candidate \d+<\/b>/g)]).toHaveLength(2);
+        slot.render(box, marks, view);
+        expect(fetcher).toHaveBeenCalledTimes(0);
+        // The page drops its view and draws the same result again: the finished list comes back from the slot's
+        // own store, with the same HTML, no new read, no new draw request and still no model fetch.
+        const finished = box.innerHTML, finishedMarks = marks.innerHTML;
+        const reads = read.mock.calls.length, draws = onChange.mock.calls.length;
+        slot.stop();
+        const again = {} as HTMLElement, againMarks = {} as HTMLElement;
+        expect(slot.render(again, againMarks, view)).toBe(true);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        slot.render(again, againMarks, view);
+        expect(again.innerHTML).toBe(finished);
+        expect(againMarks.innerHTML).toBe(finishedMarks);
+        expect(read.mock.calls.length).toBe(reads);
+        expect(onChange.mock.calls.length).toBe(draws);
+        expect(fetcher).toHaveBeenCalledTimes(0);
+    });
+
+    it('fetches after error-map screening but before the final list is drawn', async () => {
+        const data = livePair(), box = {} as HTMLElement, marks = {} as HTMLElement, onChange = vi.fn();
+        const frames = new Map(data.frames.map(f => [f.frame.frame.obsId, f.frame]));
+        const reader = { index: async (url: string) => ({ url }),
+            readFloat32: async (index: { url: string }) => frames.get(index.url)!.data } as unknown as RangeReader;
+        let release!: () => void, resolveModel!: (response: Response) => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const read = vi.fn(async (url: string) => {
+            await gate;
+            const values = new Int32Array(grid.width * grid.height);
+            if (url === 'b') {
+                for (let y = 0; y < grid.height; y++) {
+                    for (let x = 0; x < 60; x++) { values[y * grid.width + x] = 1; }
+                }
+            }
+            return { data: values, width: grid.width, height: grid.height };
+        });
+        const find = vi.fn((...args: Parameters<typeof findChanges>) => findChanges(...args));
+        const fetcher = vi.fn(() => new Promise<Response>(resolve => { resolveModel = resolve; }));
+        const slot = mountChanges(onChange, { hint: true, reader, read, find,
+            variance: async f => f.variance ?? null, fetcher: fetcher as unknown as typeof fetch });
+        const view = { source: 'live' as const, result: data, index: 0, mode: 'blink' as const };
+        slot.render(box, marks, view);
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+        slot.render(box, marks, view);
+        expect(find).toHaveBeenCalledTimes(2);
+        expect([...box.innerHTML.matchAll(/<li><b>Candidate \d+<\/b>/g)]).toHaveLength(2);
+        expect(fetcher).toHaveBeenCalledTimes(0);
+        release();
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        expect([...box.innerHTML.matchAll(/<li><b>Candidate \d+<\/b>/g)]).toHaveLength(2);
+        slot.render(box, marks, view);
+        expect([...box.innerHTML.matchAll(/<li><b>Candidate \d+<\/b>/g)]).toHaveLength(1);
+        resolveModel({ ok: true, json: async () => weights } as Response);
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(3));
+        slot.render(box, marks, view);
+        expect([...box.innerHTML.matchAll(/<p class="sk-hintml">.*?<\/p>/g)]).toHaveLength(1);
+    });
+
+    it.each(['HTTP 500', 'rejection'])('keeps hints off after a model load %s', async (kind) => {
+        const data = result(), box = {} as HTMLElement, marks = {} as HTMLElement;
+        const offBox = {} as HTMLElement, offMarks = {} as HTMLElement;
+        const fetcher = vi.fn(async () => {
+            if (kind === 'rejection') { throw new Error('model unavailable'); }
+            return { ok: false, status: 500 } as Response;
+        });
+        const slot = mountChanges(() => {}, { hint: true, fetcher: fetcher as unknown as typeof fetch });
+        const off = mountChanges(() => {}, { hint: false, fetcher: fetcher as unknown as typeof fetch });
+        const view = { source: 'live' as const, result: data, index: 0, mode: 'blink' as const };
+        off.render(offBox, offMarks, view);
+        const expected = offBox.innerHTML;
+        slot.render(box, marks, view);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        slot.render(box, marks, view);
+        expect(box.innerHTML).toBe(expected);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        const next = { ...view, result: result() };
+        off.render(offBox, offMarks, next);
+        const nextExpected = offBox.innerHTML;
+        slot.render(box, marks, next);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        slot.render(box, marks, next);
+        expect(box.innerHTML).toBe(nextExpected);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+    });
+});
 
 let seed = 918273;
 function random(): number

@@ -249,8 +249,8 @@ in it.
 
 These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
 `src/ui/slots.ts`; Flagged pixels, False colour, Older picture and Candidate changes are on). A preview build can
-switch the first two on with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to the page, so its switch
-shows nothing.
+switch the first two on with `VITE_PREVIEW_FEATURES`. The sort hint is connected to the Candidate changes list
+behind its switch (`mlHint`) and stays off; the reason is given below.
 
 - A sentence that reads the colour at one spot of the False colour picture (`fcReading`). It stays off: the page
   shows the picture and does not measure a colour.
@@ -284,10 +284,18 @@ shows nothing.
   picture's values are too large to check; when its three inputs do not agree; when the difference is only an
   even offset or an even slope across the square; when its top two answers score about the same; or when a much
   stronger change sits away from the centre of the square.
-- Nothing on the site loads the model or shows its answer. `src/ui/ml-hint.ts` holds the words it would show, and
-  is written to show the model's own label beside each one (`HELPER_LABEL` in `src/lib/classify.ts`):
-  "Experimental sort hint, trained only on fake changes added to single frames. Never tested on real two-date
-  changes. Not a verdict."
+- Where it stands: it is connected to the Candidate changes list behind a switch (`mlHint`), and that switch is
+  off. With it off, the site does not load the model and shows nothing from it. With it on, the page would load the
+  model once, for a view read live from the archive, and put one line under each candidate
+  (`src/lib/change-hints.ts`, `mountChanges` in `src/ui/slots.ts`), in the words of `src/ui/ml-hint.ts`, beside the
+  model's own label (`HELPER_LABEL` in `src/lib/classify.ts`): "Experimental sort hint, trained only on fake changes
+  added to single frames. Never tested on real two-date changes. Not a verdict."
+- Why it stays off: the squares the page would hand it are not the kind it learned from. In training, each square
+  came from one frame and was scaled by the noise measured in a 45 × 45 pixel cut-out of that frame around the spot
+  (`robust_sigma` in `scripts/ml_stamps.py`). On the page, each visit is an average of its frames, moved onto a
+  common grid, and every square is scaled by one noise figure for the whole view (`found.sigma` in
+  `src/lib/change-hints.ts`). Two AI reviews of this code (Gemini and Claude Opus) said its lines could mislead on
+  such squares and that it should not be switched on, so it was not.
 
 ## Licence
 

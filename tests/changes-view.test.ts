@@ -4,6 +4,7 @@ import { hasSnrFigure, stripSnr, type ChangeCandidate, type ChangeResult } from 
 import type { SkyResult } from '../src/lib/source';
 import { changesHtml, changesMarks, changesView, plainMarks, EMPTY_LEAD } from '../src/ui/changes-view';
 import { changesFor, DEFAULT_FEATURES } from '../src/ui/slots';
+import { HELPER_LABEL } from '../src/lib/classify';
 
 function cand(id: string, x: number, y: number, reason: string): ChangeCandidate
 {
@@ -18,6 +19,19 @@ function found(candidates: ChangeCandidate[], notes: string[]): ChangeResult
 const NOTES = ['Wavelengths: 1.10 µm and 1.11 µm.', 'Noise from the frames\' own error maps.'];
 
 describe('Candidate changes panel', () => {
+    it.each([false, true])('places hint inside each candidate in both list shapes (folded: %s)', (folded) => {
+        const candidate = { ...cand('a', 10, 20, 'A candidate.'),
+            ...(folded ? { reading: 'moreLater' as const, nearCatalogue: false } : {}) };
+        const v = changesView({ ...found([candidate], []), ...(folded ? { plainListInfo: { usedErrorMap: false, matchArcsec: 6 } } : {}) });
+        const before = changesHtml(v);
+        v.candidates[0]!.hint = { kind: 'declined', reason: 'private' };
+        const after = changesHtml(v);
+        expect(after).toContain(`<p class="sk-hintml">`);
+        expect(after).toContain(HELPER_LABEL);
+        expect(after).toContain('</p></li>');
+        expect(after.replace(/<p class="sk-hintml">.*?<\/p>/, '')).toBe(before);
+        expect(after).not.toContain('private');
+    });
     it('prints each sentence as the module wrote it, labelled Candidate N, then the notes', () => {
         const v = changesView(found([cand('c1', 10, 20, 'A source <here> (S/N 7.0; candidate).'), cand('c2', 5, 5, 'Second (S/N 6.1; candidate).')], NOTES));
         const html = changesHtml(v);
