@@ -207,8 +207,8 @@ describe('round 11 public readings', () => {
         const r = compareVisits(image(a, 'a'), image(b, 'b', 60200), grid, stars, { plain: true });
         const at = (x: number, y: number) => r.candidates.find((c) => Math.hypot(c.pix.x - x, c.pix.y - y) < 3);
         expect(at(30, 30)).toMatchObject({ reading: 'moreLater', nearCatalogue: true });
-        expect(at(30, 30)!.catalogueArcsec).toBeLessThan(2);
-        expect(at(30, 30)!.sentence).toMatch(/\(candidate\)\. A catalogue star lies \d+\.\d″ away\.$/);
+        expect(at(30, 30)!.catalogueArcsec).toBeLessThan(1);
+        expect(at(30, 30)!.sentence).toMatch(/\(candidate\)\. A catalogue star lies less than 1″ away\.$/);
         expect(at(90, 90)).toMatchObject({ reading: 'moreLater', nearCatalogue: false });
         // The only entry near (30, 90) is the later-visit position; the light there is in the earlier visit.
         expect(at(30, 90)).toMatchObject({ reading: 'lessLater', nearCatalogue: false });

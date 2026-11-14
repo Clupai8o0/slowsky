@@ -1239,7 +1239,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                     if (!Number.isFinite(earlier.data[i]!) || !Number.isFinite(later.data[i]!)) { nearMissing = true; break; }
                 }
             }
-            const facts = (catalogueArcsec !== undefined ? ` A catalogue star lies ${catalogueArcsec.toFixed(1)}″ away.` : '')
+            const facts = (catalogueArcsec !== undefined ? ` A catalogue star lies ${catalogueArcsec < 1 ? 'less than 1″' : `${catalogueArcsec.toFixed(1)}″`} away.` : '')
                 + (nearEdge ? ' It is near the edge of the picture.' : '')
                 + (nearMissing ? ' Pixels near it are missing in at least one visit.' : '');
             out.push({ id: '', kind: 'unknown', pix, sky: gridPixToSky(grid, pix), snr, sign,
