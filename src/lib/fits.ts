@@ -1,6 +1,7 @@
 import type { CardValue, FitsHeader, FitsIndex, HduInfo, RangeReader } from './types';
 
 const BLOCK = 2880;
+const FIRST_READ = 11 * BLOCK;
 const decoder = new TextDecoder('ascii');
 
 function quoted(text: string): string
@@ -150,7 +151,7 @@ export function createRangeReader(opts: RangeReaderOptions = {}): RangeReader
         }
     }
 
-    async function range(url: string, start: number, length: number, signal?: AbortSignal)
+    async function range(url: string, start: number, length: number, signal?: AbortSignal, allowShort = false)
     {
         signal?.throwIfAborted();
         budget(length);
@@ -160,7 +161,7 @@ export function createRangeReader(opts: RangeReaderOptions = {}): RangeReader
         }
         const data = new Uint8Array(await response.arrayBuffer());
         signal?.throwIfAborted();
-        if (data.length !== length) {
+        if (data.length !== length && !(allowShort && data.length < length)) {
             throw new Error(`Wrong range body length: expected ${length}, received ${data.length}`);
         }
         return { data, response };
@@ -174,7 +175,7 @@ export function createRangeReader(opts: RangeReaderOptions = {}): RangeReader
             if (cached) {
                 return cached;
             }
-            const probe = await range(url, 0, 1, signal);
+            const probe = await range(url, 0, FIRST_READ, signal, true);
             const total = probe.response.headers.get('Content-Range')?.match(/\/(\d+)$/)?.[1];
             let size = total === undefined ? undefined : Number(total);
             if (size === undefined) {
@@ -196,30 +197,45 @@ export function createRangeReader(opts: RangeReaderOptions = {}): RangeReader
                 throw new Error('File size unavailable; supply sizeBytes');
             }
             integer(size, 'file size', BLOCK);
+            if (probe.data.length !== Math.min(FIRST_READ, size)) {
+                throw new Error(`Wrong range body length: expected ${Math.min(FIRST_READ, size)}, received ${probe.data.length}`);
+            }
             const hdus: HduInfo[] = [];
             let start = 0;
-            let used = 1;
+            let used = probe.data.length;
+            budget(used);
+            let window = probe.data;
+            let windowStart = 0;
             while (start < size) {
-                const blocks: Uint8Array[] = [];
-                let endFound = false;
-                do {
-                    used += BLOCK;
-                    budget(used);
-                    const blockStart = start + blocks.length * BLOCK;
-                    if (blockStart + BLOCK > size) {
-                        throw new Error('Truncated FITS header');
-                    }
-                    const { data } = await range(url, blockStart, BLOCK, signal);
-                    blocks.push(data);
-                    for (let i = 0; i < BLOCK; i += 80) {
-                        if (decoder.decode(data.subarray(i, i + 8)).trim() === 'END') {
-                            endFound = true;
+                let have = start >= windowStart && start < windowStart + window.length ? window.subarray(start - windowStart) : new Uint8Array(0);
+                let scanned = 0;
+                let headerBytes = 0;
+                while (headerBytes === 0) {
+                    for (; scanned + 80 <= have.length; scanned += 80) {
+                        if (decoder.decode(have.subarray(scanned, scanned + 8)).trim() === 'END') {
+                            headerBytes = padded(scanned + 80);
                             break;
                         }
                     }
-                } while (!endFound);
-                const bytes = new Uint8Array(blocks.length * BLOCK);
-                blocks.forEach((block, i) => bytes.set(block, i * BLOCK));
+                    if (headerBytes > 0) {
+                        break;
+                    }
+                    const next = start + have.length;
+                    const length = Math.min(Math.max(FIRST_READ, have.length), size - next);
+                    if (length <= 0) {
+                        throw new Error('Truncated FITS header');
+                    }
+                    used += length;
+                    budget(used);
+                    const { data } = await range(url, next, length, signal);
+                    const joined = new Uint8Array(have.length + data.length);
+                    joined.set(have);
+                    joined.set(data, have.length);
+                    have = joined;
+                    window = joined;
+                    windowStart = start;
+                }
+                const bytes = have.subarray(0, headerBytes);
                 const header = parseHeader(bytes);
                 const axes = integer(header.num('NAXIS'), 'NAXIS');
                 const bitpix = header.num('BITPIX');

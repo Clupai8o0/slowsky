@@ -80,6 +80,7 @@ describe('FITS range reader', () => {
         const reader = createRangeReader({ fetch: fetcher, maxParallel: 3 });
         const index = await reader.index(url);
         expect(index.hdus.map(hdu => [hdu.headerStart, hdu.dataStart, hdu.dataBytes])).toEqual([[0, 2880, 0], [2880, 5760, 48], [8640, 11520, 48], [14400, 17280, 720]]);
+        expect(calls).toHaveLength(1);
         const count = calls.length;
         expect(await reader.index(url)).toBe(index);
         expect(calls).toHaveLength(count);
@@ -159,5 +160,46 @@ describe('FITS range reader', () => {
         const controller = new AbortController();
         controller.abort();
         await expect(createRangeReader({ fetch: fetcher }).index(url, controller.signal)).rejects.toThrow();
+    });
+
+    it('indexes a many-block header with few requests', async () => {
+        const cards = Array.from({ length: 1500 }, (_, i) => `KEY${i}`.padEnd(8) + '= 1');
+        const primary = header(['SIMPLE  = T', 'BITPIX  = 8', 'NAXIS   = 0', ...cards]);
+        const data = new Uint8Array(primary.length + 5760);
+        data.set(primary);
+        data.set(image('IMAGE'), primary.length);
+        const { fetcher, calls } = server(data);
+        await createRangeReader({ fetch: fetcher }).index(url);
+        expect(calls.length).toBeLessThanOrEqual(3);
+    });
+
+    it('cancels chunks when the caller aborts or one chunk fails', async () => {
+        const data = synthetic();
+        const index = await createRangeReader({ fetch: server(data).fetcher }).index(url);
+        const make = (fail: boolean) => {
+            const signals: AbortSignal[] = [];
+            const fetcher: typeof fetch = (_input, init) => new Promise((resolve, reject) => {
+                const signal = init!.signal!;
+                signals.push(signal);
+                signal.addEventListener('abort', () => reject(signal.reason));
+                if (fail && signals.length === 1) {
+                    resolve(new Response(new Uint8Array(16), { status: 200 }));
+                }
+            });
+            return { fetcher, signals };
+        };
+        const box = { x0: 0, x1: 4, y0: 0, y1: 3 };
+        const caller = new AbortController();
+        const a = make(false);
+        const pending = createRangeReader({ fetch: a.fetcher, maxParallel: 3 }).readFloat32(index, 'IMAGE', box, caller.signal);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(a.signals).toHaveLength(3);
+        caller.abort(new Error('stop'));
+        await expect(pending).rejects.toThrow('stop');
+        expect(a.signals.every(signal => signal.aborted)).toBe(true);
+        const b = make(true);
+        await expect(createRangeReader({ fetch: b.fetcher, maxParallel: 3 }).readFloat32(index, 'IMAGE', box)).rejects.toThrow(/206/);
+        expect(b.signals).toHaveLength(3);
+        expect(b.signals.every(signal => signal.aborted)).toBe(true);
     });
 });
