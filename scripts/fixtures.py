@@ -4,6 +4,7 @@ import io
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 import requests
 import numpy as np
 import astropy
@@ -64,14 +65,24 @@ def main():
         if not rows:
             raise RuntimeError(f'No D1 frames in {collection}')
         row = rows[0]
-        url = str(row['access_url'])
+        irsa_url = str(row['access_url'])
+        cloud = json.loads(str(row['cloud_access']))['aws']
+        if cloud['bucket_name'] != 'nasa-irsa-spherex' or cloud['region'] != 'us-east-1':
+            raise ValueError(f'Unexpected cloud location: {cloud}')
+        key = cloud['key']
+        url = f"https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/{quote(key, safe='/')}"
+        filename = Path(key).name
+        prefix = f"level2_{row['obs_id']}"
+        if not filename.startswith(prefix + 'D1_spx_'):
+            raise ValueError(f'Unexpected D1 filename: {filename}')
+        obs_id = filename[len('level2_'):].split('_spx_', 1)[0]
         hdus, size = index(url)
         lookup = {info['name']: (info, header, raw) for info, header, raw in hdus}
         info, header, raw = lookup['IMAGE']
         (OUT/f'frame{number}.image-header.bin').write_bytes(raw)
         cards = [str(card) for card in header.cards]
         header_values = {key: value for key, value in header.items() if key not in ('', 'COMMENT', 'HISTORY') and isinstance(value, (str, int, float, bool))}
-        dump(f'frame{number}.json', {'url': url, 'obsId': str(row['obs_id']), 'collection': collection, 'sizeBytes': size, 'hdus': [x[0] for x in hdus], 'imageHeader': header_values, 'imageHeaderCards': cards, 'madeBy': 'scripts/fixtures.py', 'madeAt': datetime.now(timezone.utc).isoformat()})
+        dump(f'frame{number}.json', {'url': url, 'irsaUrl': irsa_url, 'obsId': obs_id, 'collection': collection, 'sizeBytes': size, 'hdus': [x[0] for x in hdus], 'imageHeader': header_values, 'imageHeaderCards': cards, 'madeBy': 'scripts/fixtures.py', 'madeAt': datetime.now(timezone.utc).isoformat()})
         wcs = WCS(header).celestial
         sky = wcs.all_pix2world(POINTS, 0)
         shifted = sky + [20/3600, -15/3600]
