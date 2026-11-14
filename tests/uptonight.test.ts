@@ -58,8 +58,8 @@ describe('sentences', () => {
     const cases: [string, Partial<UpTonight>, string, string][] = [
         ['never rises', { maxAltDeg: -2 }, 'This spot never rises above the horizon from Melbourne.', ''],
         ['below', { bestAltDeg: -2 }, 'Tonight from Melbourne: below the horizon while it is dark.', note],
-        ['horizon', { bestAltDeg: -0.4 }, 'Tonight from Melbourne: gets no higher than the horizon, at 21:14, facing north.', note],
-        ['horizon sinking', { bestAltDeg: 0, inside: true, sinking: true }, 'For the rest of the night from Melbourne: at the horizon now, and lower after that, facing north.', note],
+        ['horizon', { bestAltDeg: -0.4 }, 'Tonight from Melbourne: highest in the dark at 21:14, near the horizon, facing north.', note],
+        ['horizon sinking', { bestAltDeg: 0, inside: true, sinking: true }, 'For the rest of the night from Melbourne: near the horizon now, and lower after that, facing north.', note],
         ['low', { bestAltDeg: 5 }, 'Tonight from Melbourne: very low, at most about 5° above the horizon, at 21:14, facing north.', note],
         ['low sinking', { bestAltDeg: 5, inside: true, sinking: true }, 'For the rest of the night from Melbourne: very low, about 5° above the horizon now, and lower after that, facing north.', note],
         ['high', {}, 'Tonight from Melbourne: highest in the dark at 21:14, about 15° above the horizon, facing north.', note],
@@ -75,7 +75,7 @@ describe('sentences', () => {
     });
     it('handles null, horizon tolerance and rounded branch boundaries', () => {
         expect(upTonightText(null)).toBeNull();
-        expect(upTonightText({ ...base, maxAltDeg: -0.5, bestAltDeg: -0.4 })!.line).toBe('Tonight from Melbourne: gets no higher than the horizon, at 21:14, facing north.');
+        expect(upTonightText({ ...base, maxAltDeg: -0.5, bestAltDeg: -0.4 })!.line).toBe('Tonight from Melbourne: highest in the dark at 21:14, near the horizon, facing north.');
         expect(upTonightText({ ...base, bestAltDeg: 79.6 })!.line).toBe('Tonight from Melbourne: highest in the dark at 21:14, about 80° above the horizon, almost overhead.');
         expect(upTonightText({ ...base, bestAltDeg: 9.6 })!.line).toBe('Tonight from Melbourne: highest in the dark at 21:14, about 10° above the horizon, facing north.');
         expect(upTonightText({ ...base, bestAltDeg: -0.4 })!.line).not.toContain('-0');
@@ -94,9 +94,9 @@ describe('sentences', () => {
         expect(text.line).toContain('now, and lower after that');
         expect(text.line).not.toContain('21:14');
     });
-    it('says "now" for a spot going down in the last seconds of the dark, never "highest"', () => {
+    it('says "now" for a spot going down in the last minutes of the dark, never "highest"', () => {
         const first = upTonight(331.04414658852124, -56.782844195116105, new Date('2026-11-15T16:00:00Z'))!;
-        for (const left of [5000, 30000, 90000, 9 * 60000]) {
+        for (const left of [61000, 90000, 9 * 60000]) {
             const r = upTonight(331.04414658852124, -56.782844195116105, new Date(+first.darkEnd - left))!;
             expect(r.inside, String(left)).toBe(true);
             expect(r.sinking, String(left)).toBe(true);
@@ -104,6 +104,55 @@ describe('sentences', () => {
             expect(line, String(left)).toContain('now, and lower after that');
             expect(line, String(left)).not.toContain('highest');
         }
+    });
+    it('speaks about the next dark when under a minute of this one is left', () => {
+        const first = upTonight(331.04414658852124, -56.782844195116105, new Date('2026-11-15T16:00:00Z'))!;
+        const next = upTonight(331.04414658852124, -56.782844195116105, new Date(+first.darkEnd + 60000))!;
+        for (const left of [5000, 30000, 59000]) {
+            const r = upTonight(331.04414658852124, -56.782844195116105, new Date(+first.darkEnd - left))!;
+            expect(r.inside, String(left)).toBe(false);
+            expect(r.sinking, String(left)).toBe(false);
+            expect(Math.abs(+r.darkStart - +next.darkStart), String(left)).toBeLessThan(1000);
+            expect(+r.darkStart, String(left)).toBeGreaterThan(+first.darkEnd);
+            expect(upTonightText(r)!.line, String(left)).toMatch(/^Tonight from Melbourne: /);
+        }
+    });
+    it('never prints a clock minute outside what is left of the dark', () => {
+        const night = upTonight(0, -70, new Date('2026-11-15T16:00:00Z'))!;
+        for (let ra = 0; ra < 360; ra += 15) {
+            for (const dec of [-89.9, -70, -40, -10, 20]) {
+                for (const left of [61000, 75000, 119000, 5 * 60000]) {
+                    const now = +night.darkEnd - left;
+                    const r = upTonight(ra, dec, new Date(now))!;
+                    expect(r.inside).toBe(true);
+                    expect(Math.ceil(+r.from / 60000) * 60000, `${ra} ${dec} ${left}`).toBeLessThanOrEqual(Math.floor(+r.darkEnd / 60000) * 60000);
+                    const at = upTonightText(r)!.line.match(/ at (\d\d):(\d\d)/);
+                    if (at) {
+                        const printed = new Intl.DateTimeFormat('en-GB', { timeZone: 'Australia/Melbourne', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+                        const minutes = [];
+                        for (let m = Math.ceil(now / 60000) * 60000; m <= +r.darkEnd; m += 60000) { minutes.push(printed.format(new Date(m))); }
+                        expect(minutes, `${ra} ${dec} ${left}`).toContain(`${at[1]}:${at[2]}`);
+                    }
+                }
+            }
+        }
+    });
+    it('calls a spot sinking when it goes down through the last minutes towards its lowest point', () => {
+        const night = upTonight(0, -70, new Date('2026-11-15T16:00:00Z'))!;
+        let found = 0;
+        for (let ra = 0; ra < 360; ra += 0.25) {
+            const now = +night.darkEnd - 90000;
+            const here = altAz(ra, -70, new Date(now)).altDeg;
+            const end = altAz(ra, -70, night.darkEnd).altDeg;
+            const after = altAz(ra, -70, new Date(+night.darkEnd + 240000)).altDeg;
+            if (end < here - 1e-6 && after > end) {
+                found++;
+                const r = upTonight(ra, -70, new Date(now))!;
+                expect(r.sinking, String(ra)).toBe(true);
+                expect(upTonightText(r)!.line, String(ra)).toContain('now, and lower after that');
+            }
+        }
+        expect(found).toBeGreaterThan(0);
     });
     it('"now, and lower after that" holds for every later minute, also for a spot that dips and comes part of the way back', () => {
         const night = upTonight(0, -70, new Date('2026-11-15T16:00:00Z'))!;
@@ -146,7 +195,7 @@ describe('sentences', () => {
             expect(upTonightText({ ...base, bestAzDeg: 22.4 + i * 45 })!.line).toContain(`facing ${dirs[i]}.`);
             expect(upTonightText({ ...base, bestAzDeg: 22.6 + i * 45 })!.line).toContain(`facing ${dirs[i + 1]}.`);
         }
-        expect(upTonightText({ ...base, bestAltDeg: -0 })!.line).toContain('no higher than the horizon');
+        expect(upTonightText({ ...base, bestAltDeg: -0 })!.line).toContain('near the horizon');
         expect(upTonightText({ ...base, bestAltDeg: 15 })!.line).not.toContain('very low');
     });
 });

@@ -29,8 +29,8 @@ export function upTonightText(r: UpTonight | null, observer: Observer = MELBOURN
     const direction = directions[Math.floor((((r.bestAzDeg % 360) + 360) % 360 + 22.5) / 45) % 8];
     if (r.bestAltDeg < 1) {
         return { line: r.sinking
-            ? `${prefix}: at the horizon now, and lower after that, facing ${direction}.`
-            : `${prefix}: gets no higher than the horizon, at ${time}, facing ${direction}.`, note };
+            ? `${prefix}: near the horizon now, and lower after that, facing ${direction}.`
+            : `${prefix}: highest in the dark at ${time}, near the horizon, facing ${direction}.`, note };
     }
     if (altitude < 10) {
         return { line: r.sinking

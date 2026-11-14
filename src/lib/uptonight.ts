@@ -128,6 +128,11 @@ export function upTonight(raDeg: number, decDeg: number, now: Date, observer: Ob
     if (end === null) {
         return null;
     }
+    // Under a minute of dark left: no whole clock minute lies in what remains, so the answer is about the next dark.
+    // One second past the end the Sun is above the limit, so this cannot repeat.
+    if (time > start && end - time < 60000) {
+        return upTonight(raDeg, decDeg, new Date(end + 1000), observer);
+    }
     const altitude = (at: number) => altAz(raDeg, decDeg, new Date(at), observer).altDeg;
     const from = Math.max(time, start);
     const inside = time > start && time < end;
@@ -162,9 +167,9 @@ export function upTonight(raDeg: number, decDeg: number, now: Date, observer: Ob
     const position = altAz(raDeg, decDeg, bestDate, observer);
     const dateDec = precess(raDeg, decDeg, +bestDate).decDeg;
     const maxAltDeg = 90 - Math.abs(observer.latDeg - dateDec);
-    // Highest right now for what is left of the dark, and lower a minute on. The slope is read one minute ahead whatever
-    // is left of the window, so the last minutes before dawn are judged like any others.
-    const sinking = inside && best - from <= 1000 && altitude(from + 60000) < altitude(from) - 1e-9;
+    // Highest right now for what is left of the dark, and lower at its end: every later moment of the window is then
+    // no higher than now. A spot that holds its height (the pole) is not called sinking.
+    const sinking = inside && best - from <= 1000 && altitude(end) < altitude(from) - 1e-9;
     if (![start, end, +bestDate, position.altDeg, position.azDeg, maxAltDeg].every(Number.isFinite)) {
         return null;
     }
