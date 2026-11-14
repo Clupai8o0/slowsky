@@ -29,6 +29,8 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   and Epsilon Indi B, corner marks for the others).
 - See rings that mark stars from ESA's Gaia DR3 catalogue (live within 0.2° of the centre, or from the offline
   copy), and turn them off or on.
+- On a live view in Blink, switch on **Flags** to paint the pixels that the frame's own quality layer marks
+  (cosmic-ray hits, for example), and read how many there are of each kind.
 - Read each frame's details: when it was taken, its wavelength at the centre, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode.
@@ -161,8 +163,10 @@ in it.
 - The offline copy has only the five preset targets, one detector each, and a field of at most 0.1°.
 - Each view uses one detector. A star found by name is placed at its catalogue position, and its marker moves only
   for the presets. Gaia rings move in every view.
-- Bad-pixel flags in the files are not read, so hot pixels and cosmic-ray hits show as they are, and one can
-  upset a point on the brightness curve.
+- Bad-pixel flags are only shown, and only when you switch them on, on live frames in Blink. No measurement uses
+  them, so hot pixels and cosmic-ray hits show as they are, and one can upset a point on the brightness curve.
+  The Flags layer leaves out three kinds: SOURCE (set on every pixel mapped to a known source, so it would cover
+  the stars themselves), FULLSAMPLE (for information only) and GHOST_FPA (not in use at present).
 - The picture's brightness scale is for viewing. The brightness curve is relative to nearby stars, not in physical
   units. The centre of R Draconis is too bright for the camera in every saved frame, and Barnard's Star's in most
   of them, so neither gets a curve.
