@@ -17,6 +17,8 @@ import { apertureFor } from './measure';
 import type { RegriddedFrame, TargetId } from '../lib/types';
 import { COPY } from './copy';
 import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
+import { ChangeInputError, findChanges } from '../lib/change-input';
+import { changesHtml, changesMarks, changesView, type ChangesView } from './changes-view';
 
 export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo' | 'mlHint';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
@@ -226,12 +228,48 @@ export function mountFlags(layer: HTMLElement, onChange: () => void, deps: Flags
 // the picture, pointer-events off) for rings or labels at each candidate. Called on every render: cache by
 // `view.result` and return quickly. Fill both with textContent or trusted SVG only. Return true when there is
 // something to show; false hides the panel and the layer.
+const changesCache = new WeakMap<SkyResult, ChangesView | null>();
+const changesShown = new WeakMap<HTMLElement, string>();
+
+// The finder's answer for a result, first visit against last, worked out once. Its own error message (too few
+// visits, say) becomes the panel's note; any other failure hides the panel.
+export function changesFor(result: SkyResult, find: typeof findChanges = findChanges): ChangesView | null
+{
+    try {
+        return changesView(find(result));
+    } catch (e) {
+        if (e instanceof ChangeInputError) {
+            return changesView({ error: e.message });
+        }
+        console.warn('[slowsky] change finder failed', e);
+        return null;
+    }
+}
+
 export function renderChanges(box: HTMLElement, marks: HTMLElement, view: SlotView): boolean
 {
-    void box;
-    void marks;
-    void view;
-    return false;
+    if (view.source === 'demo') {
+        return false;
+    }
+    let v = changesCache.get(view.result);
+    if (v === undefined) {
+        v = changesFor(view.result);
+        changesCache.set(view.result, v);
+    }
+    if (!v) {
+        return false;
+    }
+    const html = changesHtml(v);
+    if (changesShown.get(box) !== html) {
+        box.innerHTML = html;
+        changesShown.set(box, html);
+    }
+    const svg = changesMarks(v, view.result.grid.width, view.result.grid.height);
+    if (changesShown.get(marks) !== svg) {
+        marks.innerHTML = svg;
+        changesShown.set(marks, svg);
+    }
+    return true;
 }
 
 // False colour. `layer` is an empty layer over the sky (same box as the picture, under the Gaia rings) for a
@@ -391,8 +429,14 @@ export function renderHalo(box: HTMLElement, view: SlotView, deps: HaloDeps = {}
     }
     const html = haloHtml(h, card.display, view.mode === 'blink' ? view.index : -1);
     if (haloShown.get(box) !== html) {
+        // Rewriting the panel drops the focused date button; put focus back on the same date.
+        const active = box.ownerDocument?.activeElement as HTMLElement | null | undefined;
+        const k = active && box.contains(active) ? active.dataset?.k : undefined;
         box.innerHTML = html;
         haloShown.set(box, html);
+        if (k !== undefined && /^\d+$/.test(k)) {
+            box.querySelector<HTMLElement>(`[data-k="${k}"]`)?.focus();
+        }
     }
     return true;
 }
