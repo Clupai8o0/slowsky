@@ -15,9 +15,12 @@ export function upTonightText(r: UpTonight | null, observer: Observer = MELBOURN
     const darkFrom = clock.format(new Date(Math.ceil(+r.darkStart / 60000) * 60000));
     const darkTo = clock.format(new Date(Math.floor(+r.darkEnd / 60000) * 60000));
     const note = `Times are ${observer.name} time. Dark means the Sun is more than ${Math.abs(DARK_SUN_ALT_DEG)}° below the horizon, here from ${darkFrom} to ${darkTo}. This says where the spot is in the sky, not whether anything can be seen there.`;
-    const prefix = r.inside ? `For the rest of the night from ${observer.name}` : `Tonight from ${observer.name}`;
+    // Inside the dark the line speaks only about what is left of it, and says so: the note below prints the whole
+    // dark, and the spot may have stood higher earlier in it.
+    const prefix = r.inside ? `From ${observer.name}, until the dark ends` : `Tonight from ${observer.name}`;
+    const highest = r.inside ? 'highest' : 'highest in the dark';
     if (r.bestAltDeg < -1) {
-        return { line: `${prefix}: below the horizon while it is dark.`, note };
+        return { line: r.inside ? `${prefix}: below the horizon.` : `${prefix}: below the horizon while it is dark.`, note };
     }
     const earliest = Math.ceil(+r.from / 60000) * 60000;
     const latest = Math.floor(+r.darkEnd / 60000) * 60000;
@@ -30,7 +33,7 @@ export function upTonightText(r: UpTonight | null, observer: Observer = MELBOURN
     if (r.bestAltDeg < 1) {
         return { line: r.sinking
             ? `${prefix}: near the horizon now, and lower after that, facing ${direction}.`
-            : `${prefix}: highest in the dark at ${time}, near the horizon, facing ${direction}.`, note };
+            : `${prefix}: ${highest} at ${time}, near the horizon, facing ${direction}.`, note };
     }
     if (altitude < 10) {
         return { line: r.sinking
@@ -40,9 +43,9 @@ export function upTonightText(r: UpTonight | null, observer: Observer = MELBOURN
     if (altitude < 80) {
         return { line: r.sinking
             ? `${prefix}: about ${altitude}° above the horizon now, and lower after that, facing ${direction}.`
-            : `${prefix}: highest in the dark at ${time}, about ${altitude}° above the horizon, facing ${direction}.`, note };
+            : `${prefix}: ${highest} at ${time}, about ${altitude}° above the horizon, facing ${direction}.`, note };
     }
     return { line: r.sinking
         ? `${prefix}: about ${altitude}° above the horizon now, almost overhead, and lower after that.`
-        : `${prefix}: highest in the dark at ${time}, about ${altitude}° above the horizon, almost overhead.`, note };
+        : `${prefix}: ${highest} at ${time}, about ${altitude}° above the horizon, almost overhead.`, note };
 }

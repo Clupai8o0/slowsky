@@ -59,13 +59,13 @@ describe('sentences', () => {
         ['never rises', { maxAltDeg: -2 }, 'This spot never rises above the horizon from Melbourne.', ''],
         ['below', { bestAltDeg: -2 }, 'Tonight from Melbourne: below the horizon while it is dark.', note],
         ['horizon', { bestAltDeg: -0.4 }, 'Tonight from Melbourne: highest in the dark at 21:14, near the horizon, facing north.', note],
-        ['horizon sinking', { bestAltDeg: 0, inside: true, sinking: true }, 'For the rest of the night from Melbourne: near the horizon now, and lower after that, facing north.', note],
+        ['horizon sinking', { bestAltDeg: 0, inside: true, sinking: true }, 'From Melbourne, until the dark ends: near the horizon now, and lower after that, facing north.', note],
         ['low', { bestAltDeg: 5 }, 'Tonight from Melbourne: very low, at most about 5° above the horizon, at 21:14, facing north.', note],
-        ['low sinking', { bestAltDeg: 5, inside: true, sinking: true }, 'For the rest of the night from Melbourne: very low, about 5° above the horizon now, and lower after that, facing north.', note],
+        ['low sinking', { bestAltDeg: 5, inside: true, sinking: true }, 'From Melbourne, until the dark ends: very low, about 5° above the horizon now, and lower after that, facing north.', note],
         ['high', {}, 'Tonight from Melbourne: highest in the dark at 21:14, about 15° above the horizon, facing north.', note],
-        ['high sinking', { inside: true, sinking: true }, 'For the rest of the night from Melbourne: about 15° above the horizon now, and lower after that, facing north.', note],
+        ['high sinking', { inside: true, sinking: true }, 'From Melbourne, until the dark ends: about 15° above the horizon now, and lower after that, facing north.', note],
         ['overhead', { bestAltDeg: 85 }, 'Tonight from Melbourne: highest in the dark at 21:14, about 85° above the horizon, almost overhead.', note],
-        ['overhead sinking', { bestAltDeg: 85, inside: true, sinking: true }, 'For the rest of the night from Melbourne: about 85° above the horizon now, almost overhead, and lower after that.', note],
+        ['overhead sinking', { bestAltDeg: 85, inside: true, sinking: true }, 'From Melbourne, until the dark ends: about 85° above the horizon now, almost overhead, and lower after that.', note],
     ];
     it.each(cases)('prints %s exactly', (_name, changes, line, expectedNote) => {
         const text = upTonightText({ ...base, ...changes })!;
@@ -79,7 +79,7 @@ describe('sentences', () => {
         expect(upTonightText({ ...base, bestAltDeg: 79.6 })!.line).toBe('Tonight from Melbourne: highest in the dark at 21:14, about 80° above the horizon, almost overhead.');
         expect(upTonightText({ ...base, bestAltDeg: 9.6 })!.line).toBe('Tonight from Melbourne: highest in the dark at 21:14, about 10° above the horizon, facing north.');
         expect(upTonightText({ ...base, bestAltDeg: -0.4 })!.line).not.toContain('-0');
-        expect(upTonightText({ ...base, bestAltDeg: -2, inside: true })!.line).toBe('For the rest of the night from Melbourne: below the horizon while it is dark.');
+        expect(upTonightText({ ...base, bestAltDeg: -2, inside: true })!.line).toBe('From Melbourne, until the dark ends: below the horizon.');
     });
     it('clamps rounded times within the remaining window', () => {
         const end = new Date('2026-11-14T18:12:59.400Z');
@@ -171,13 +171,27 @@ describe('sentences', () => {
                     if (line.includes('lower after that')) {
                         said++;
                         expect(later, `${ra} ${dec} ${left}`).toBeLessThan(here);
-                    } else if (line.includes('highest in the dark')) {
+                    } else if (line.includes('highest')) {
                         expect(later, `${ra} ${dec} ${left}`).toBeGreaterThan(here - 1e-6);
                     }
                 }
             }
         }
         expect(said).toBeGreaterThan(100);
+    });
+    it('inside the dark, speaks only about what is left of it', () => {
+        const inside = { ...base, inside: true };
+        expect(upTonightText(inside)!.line).toBe('From Melbourne, until the dark ends: highest at 21:14, about 15° above the horizon, facing north.');
+        expect(upTonightText({ ...inside, bestAltDeg: 0.4 })!.line).toBe('From Melbourne, until the dark ends: highest at 21:14, near the horizon, facing north.');
+        expect(upTonightText({ ...inside, bestAltDeg: 85 })!.line).toBe('From Melbourne, until the dark ends: highest at 21:14, about 85° above the horizon, almost overhead.');
+        expect(upTonightText({ ...inside, bestAltDeg: 5 })!.line).toBe('From Melbourne, until the dark ends: very low, at most about 5° above the horizon, at 21:14, facing north.');
+        // Barnard's Star at Melbourne midnight: it was up at the start of the dark and has set.
+        const set = upTonight(269.4520769586187, 4.693364966576667, new Date('2026-11-15T13:00:00Z'))!;
+        expect(set.inside).toBe(true);
+        expect(upTonightText(set)!.line).toBe('From Melbourne, until the dark ends: below the horizon.');
+        for (const r of [inside, { ...inside, sinking: true }, { ...inside, bestAltDeg: -2 }, set]) {
+            expect(upTonightText(r)!.line).not.toMatch(/in the dark|while it is dark|Tonight|rest of the night/);
+        }
     });
     it('prints the dark hours in the note, start rounded up and end rounded down', () => {
         const text = upTonightText({ ...base, darkStart: new Date('2026-11-14T09:00:20Z'), darkEnd: new Date('2026-11-14T18:29:59Z') })!;
