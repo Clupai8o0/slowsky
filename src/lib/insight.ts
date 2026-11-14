@@ -275,7 +275,8 @@ function sheetFacts(sheet: string[]): NumberFact[]
     return result;
 }
 // Context matching cannot detect a real number moved to the wrong subject with the same words.
-export function checkNote(text: string, sheet: string[]): { text: string; dropped: number }
+// The server always uses labelled: true; the default preserves the older second-layer checks.
+export function checkNote(text: string, sheet: string[], opts: { labelled?: boolean } = {}): { text: string; dropped: number }
 {
     if (text.length > 8000) {
         const prefix = text.slice(0, 8000);
@@ -316,6 +317,21 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     const referenceLine = sheet.find((line) => /^Reference stars:/i.test(line));
     const noReferences = !referenceLine || /^Reference stars:\s*(?:0\b|none\b)/i.test(referenceLine);
     const noScatter = Boolean(referenceLine && /^Reference stars:\s*scatter unavailable\b/i.test(referenceLine));
+    const hasChange = sheet.some((line) => /^(?:Brightness relative to the reference stars, in time order|Difference image at the target):/i.test(line));
+    const hasTwoVisits = /^Visits:\s*(?:at least\s+)?(\d+)\./im.exec(sheet.join('\n'));
+    function nextForm(value: string): boolean
+    {
+        const sentence = value.toLowerCase();
+        if (sentence === 'wait for another visit to see whether the change repeats.' || sentence === 'change the colour to see whether the change shows at another wavelength.') { return hasChange; }
+        if (sentence === 'compare the target with the reference stars in the same frames.') { return !noReferences; }
+        if (sentence === 'look at subtract to see what is left at the target.') { return Boolean(hasTwoVisits && Number(hasTwoVisits[1]) >= 2); }
+        return [
+            'switch on flagged pixels to see whether one sits on the target.',
+            'step through the frames in blink to see whether one frame stands out.',
+            'switch on brightest gaia stars to see whether a catalogue star lies at the target.',
+            'change the colour to look at another wavelength.',
+        ].includes(sentence);
+    }
     function readingForm(value: string, values: string[]): boolean
     {
         const escape = (part: string) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -524,6 +540,7 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     }
     let dropped = 0;
     let count = 0;
+    let measuredCount = 0;
     let activeLabel = '';
     const paragraphs: string[] = [];
     for (const raw of text.split(/\r?\n/)) {
@@ -549,18 +566,17 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             const unbalanced = pairs.some(([left, right]) => sentence.split(left!).length !== sentence.split(right!).length) || (sentence.match(/"/g)?.length ?? 0) % 2 !== 0;
             const closed = /^(?:What this shows|How far to trust it):$/i.test(activeLabel);
             const next = /^What to check next:$/i.test(activeLabel);
-            const questionOnly = sentence.replace(/^\w+\s+/, '').replace(/\b(?:whether|if)\s+(?:the\s+)?(?:candidate\s+)?(?:change|star|target|brightness|signal-to-noise)\s+(?:(?:is|was|looks|appears)\s+[\w-]+|repeats)(?=[.!?]$)/i, 'question');
-            const assertion = /[;:]|\b(?:is|are|was|were|has|have|had|looks?|appears?|outweighs?|changed|moved|shifted|brightened|faded|rose|fell)\b|\b(?:the|a|an)\s+[a-z-]+\s+(?!in\b|at\b|on\b|to\b|with\b|from\b|near\b|across\b|between\b|again\b|and\b|or\b|for\b|against\b|using\b|position\b|frames?\b|images?\b|brightness\b|readings?\b|data\b|measurements?\b)[a-z]+\b|\b(?!(?:the|a|an|these|those|some)\b)[a-z-]+\s+[a-z-]+(?:s|ed)[.!?]$|\b[a-z-]+s\s+(?!(?:to|for|in|on|at|with|and|or|from|over|across|between|that|which|when|if|whether)\b)[a-z-]+\s+[a-z-]+\b/i.test(questionOnly);
-            if (!/[.!?]$/.test(sentence) || unbalanced || (closed && !closedForm(sentence)) || (next && (!/^(?:Check|Look|Compare|See|Wait|Watch|Try|Open|Switch|Slide|Step|Use|Read|Repeat|Go)\b/i.test(sentence) || assertion)) || invalid(sentence) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
+            if (!/[.!?]$/.test(sentence) || unbalanced || (opts.labelled && !activeLabel) || (closed && !closedForm(sentence)) || (next && !nextForm(sentence)) || invalid(sentence) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
                 dropped++;
                 return false;
             }
             count++;
+            if (closed) { measuredCount++; }
             return true;
         });
         if (kept.length) { paragraphs.push([label, ...kept].filter(Boolean).join(' ')); }
     }
-    if (count < 2) { throw new InsightError('unverified'); }
+    if (count < 2 || (opts.labelled && measuredCount === 0)) { throw new InsightError('unverified'); }
     return { text: paragraphs.join('\n'), dropped };
 }
 const cache = new Map<string, InsightNote>();

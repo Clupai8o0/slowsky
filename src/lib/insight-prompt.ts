@@ -43,7 +43,15 @@ Write every number in digits and copy its printed unit and bound.
 - "The lowest signal-to-noise is small, so the change counts for little." Use only if it is below 1 or under 3.
 - "There is nothing measured to interpret yet." Use only if there is no brightness, difference or shift line.
 - "This is a candidate only." This is always allowed.
-In the third paragraph, start every sentence with Check, Look, Compare, See, Wait, Watch, Try, Open, Switch, Slide, Step, Use, Read, Repeat or Go. Suggest checks, without stating a result. You may ask whether a candidate change repeats. Use only sheet numbers, copied exactly, and do not assert a discovery, confirmed result or cause.
+In the third paragraph use 1 or 2 of these sentences, exactly as written. Any other sentence there will be removed.
+- "Wait for another visit to see whether the change repeats." Only when the sheet has a brightness or difference line.
+- "Compare the target with the reference stars in the same frames." Only when reference stars are present, not absent, 0 or none.
+- "Look at Subtract to see what is left at the target." Only when there are at least 2 visits.
+- "Switch on Flagged pixels to see whether one sits on the target." Always allowed.
+- "Step through the frames in Blink to see whether one frame stands out." Always allowed.
+- "Switch on Brightest Gaia stars to see whether a catalogue star lies at the target." Always allowed.
+- "Change the colour to see whether the change shows at another wavelength." Only when the sheet has a brightness or difference line.
+- "Change the colour to look at another wavelength." Always allowed.
 Use plain words, no extra headings, lists or markdown.
 
 Write exactly 3 short paragraphs, each starting with its label on the same line:

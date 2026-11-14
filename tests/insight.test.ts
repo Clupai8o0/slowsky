@@ -7,9 +7,107 @@ import { TARGETS } from '../src/lib/targets';
 const facts: InsightFacts = { targetId: 'custom', ra: 12.34567, dec: -38, lambdaUm: 4.27, visits: [{ mjd: 61000, frames: 3 }, { mjd: 61010, frames: 4 }], lightCurve: { points: [{ mjd: 61000, relative: 1, snr: 20 }, { mjd: 61010, relative: 0.8, snr: 10 }], refScatter: [0.02, 0.03], dropped: 2 }, difference: { peakSigma: -3.4 }, motion: { arcsec: 2.3, days: 10 }, snapshot: true };
 const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3457 deg, Dec -38.0000 deg.', 'Wavelength: 4.270 micron.', 'Visits: 2. Frames in each visit: 3, 4. Time from first to last visit: 10.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.80.', 'Lowest signal-to-noise among the points: 10. This counts sky noise only, so the real uncertainty is larger.', 'Reference stars: 2 with available scatter. Scatter of each: 2.0, 3.0 percent.', 'Frames left out because their wavelength did not match: 2.', 'Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit.', 'Shift in position: 2.3 arcsec over 10.0 days.', 'Frames came from: a saved copy.'];
 
+describe('round 14 labelled notes and next checks', () => {
+    const base = 'What this shows: This is a candidate only.\nHow far to trust it: This is a candidate only.';
+    const options = { labelled: true };
+    const sheet = ['Visits: 2.', 'Brightness relative to the reference stars, in time order: 1.00, 1.30.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.'];
+    const checks = [
+        'Wait for another visit to see whether the change repeats.',
+        'Compare the target with the reference stars in the same frames.',
+        'Look at Subtract to see what is left at the target.',
+        'Switch on Flagged pixels to see whether one sits on the target.',
+        'Step through the frames in Blink to see whether one frame stands out.',
+        'Switch on Brightest Gaia stars to see whether a catalogue star lies at the target.',
+        'Change the colour to see whether the change shows at another wavelength.',
+        'Change the colour to look at another wavelength.',
+    ];
+    it('drops unlabelled sentences and requires a measurement paragraph', () => {
+        expect(() => checkNote('First sentence. Second sentence.', sheet, options)).toThrowError(expect.objectContaining({ code: 'unverified' }));
+        expect(checkNote(`Preamble sentence.\n${base}`, sheet, options)).toEqual({ text: base, dropped: 1 });
+        expect(checkNote(base, sheet, options)).toEqual(checkNote(base, sheet));
+        expect(() => checkNote('What this shows This is a candidate only.\nWhat to check next: Switch on Flagged pixels to see whether one sits on the target. Step through the frames in Blink to see whether one frame stands out.', sheet, options)).toThrowError(expect.objectContaining({ code: 'unverified' }));
+        expect(() => checkNote(`What to check next: ${checks[3]} ${checks[4]}`, sheet, options)).toThrowError(expect.objectContaining({ code: 'unverified' }));
+    });
+    it('keeps the eight exact checks and rejects a one-word change', () => {
+        for (const sentence of checks) {
+            const note = `${base}\nWhat to check next: ${sentence}`;
+            expect(checkNote(note, sheet, options).text, sentence).toContain(sentence);
+            expect(checkNote(`${base}\nWhat to check next: ${sentence.toUpperCase()}`, sheet, options).text, sentence).toContain(sentence.toUpperCase());
+            expect(checkNote(`${base}\nWhat to check next: ${sentence.replace(/\bthe\b/i, 'this')}`, sheet, options).dropped, sentence).toBe(1);
+        }
+    });
+    it('requires a change line, reference stars, and two visits where specified', () => {
+        const empty = ['Visits: 1.'];
+        for (const i of [0, 1, 2, 6]) {
+            expect(checkNote(`${base}\nWhat to check next: ${checks[i]}`, empty, options).dropped, checks[i]).toBe(1);
+        }
+        for (const line of ['Reference stars: 0 with available scatter.', 'Reference stars: none.']) {
+            expect(checkNote(`${base}\nWhat to check next: ${checks[1]}`, [line], options).dropped).toBe(1);
+        }
+        expect(checkNote(`${base}\nWhat to check next: ${checks[1]}`, ['Reference stars: scatter unavailable.'], options).dropped).toBe(0);
+        expect(checkNote(`${base}\nWhat to check next: ${checks[2]}`, [], options).dropped).toBe(1);
+        expect(checkNote(`${base}\nWhat to check next: ${checks[2]}`, ['Visits: at least 12.'], options).dropped).toBe(0);
+        for (const i of [3, 4, 5, 7]) {
+            expect(checkNote(`${base}\nWhat to check next: ${checks[i]}`, [], options).dropped, checks[i]).toBe(0);
+        }
+        expect(checkNote(`${base}\nWhat to check next: ${checks[0]} ${checks[6]}`, ['Difference image at the target: no change above the noise.'], options).dropped).toBe(0);
+    });
+    it('keeps every quoted sentence form offered by the prompt', () => {
+        const full = ['Target: a position typed in by the visitor.', 'Position: RA 12.3457 deg, Dec -38.0000 deg.', 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 3, 4, 5. Time from first to last visit: 20.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 1.00, 1.30.', 'Largest change from the median brightness: 30 percent above it.', 'Lowest signal-to-noise among the points: below 1.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.', 'Frames left out because their wavelength did not match: 2.', 'Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit.', 'Shift in position: 2.3 arcsec over 10.0 days.', 'Frames came from: a saved copy.'];
+        const fixtures: Record<string, [string, string[]]> = {
+            'In time order, the brightness was LIST.': ['In time order, the brightness was 1.00, 1.00, 1.30.', full],
+            'The brightness went from FIRST to LAST.': ['The brightness went from 1.00 to 1.30.', full],
+            'The first reading was VALUE.': ['The first reading was 1.00.', full],
+            'The first and last readings are both VALUE.': ['The first and last readings are both 1.00.', full.map((line) => line.replace('1.00, 1.00, 1.30', '1.00, 1.30, 1.00'))],
+            'The largest change from the median brightness is N percent above the median.': ['The largest change from the median brightness is 30 percent above the median.', full],
+            'The N reference stars scatter by LIST percent.': ['The 2 reference stars scatter by 1.2 and 2.0 percent.', full],
+            'The 1 reference star scatters by VALUE percent.': ['The 1 reference star scatters by 1.2 percent.', full.map((line) => line.replace('2 with available scatter. Scatter of each: 1.2, 2.0', '1 with available scatter. Scatter of each: 1.2'))],
+            'The change is several times larger than that scatter.': ['The change is several times larger than that scatter.', full],
+            'The change is larger than that scatter.': ['The change is larger than that scatter.', full],
+            'The change is no larger than that scatter, so it may be noise.': ['The change is no larger than that scatter, so it may be noise.', full.map((line) => line.replace('30 percent above it', 'less than 1 percent'))],
+            'There are no reference stars to compare the change with.': ['There are no reference stars to compare the change with.', full.filter((line) => !line.startsWith('Reference stars:'))],
+            "The reference stars' scatter is unavailable, so there is nothing to compare the change with.": ["The reference stars' scatter is unavailable, so there is nothing to compare the change with.", full.map((line) => line.startsWith('Reference stars:') ? 'Reference stars: scatter unavailable.' : line)],
+            'The lowest signal-to-noise among the points is VALUE.': ['The lowest signal-to-noise among the points is below 1.', full],
+            'There were N visits.': ['There were 3 visits.', full],
+            'The frames in each visit were LIST.': ['The frames in each visit were 3, 4, 5.', full],
+            'The time from first to last visit was VALUE days.': ['The time from first to last visit was 20.0 days.', full],
+            'The wavelength is VALUE micron.': ['The wavelength is 4.270 micron.', full],
+            'Frames left out because their wavelength did not match: N.': ['Frames left out because their wavelength did not match: 2.', full],
+            'The shift in position was VALUE.': ['The shift in position was 2.3 arcsec over 10.0 days.', full],
+            'Difference image at the target: VALUE.': ['Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit.', full],
+            'The position is VALUE.': ['The position is RA 12.3457 deg, Dec -38.0000 deg.', full],
+            'The target is VALUE.': ['The target is a position typed in by the visitor.', full],
+            'The frames came from VALUE.': ['The frames came from a saved copy.', full],
+            'There are fewer than 3 visits, so the change counts for little.': ['There are fewer than 3 visits, so the change counts for little.', ['Visits: 2.']],
+            'The lowest signal-to-noise is small, so the change counts for little.': ['The lowest signal-to-noise is small, so the change counts for little.', full],
+            'There is nothing measured to interpret yet.': ['There is nothing measured to interpret yet.', ['Visits: 2.']],
+            'This is a candidate only.': ['This is a candidate only.', full],
+        };
+        const [first, third] = SYSTEM_PROMPT.split('In the third paragraph use 1 or 2 of these sentences, exactly as written.');
+        const quoted = (text: string) => [...text.matchAll(/"([A-Za-z][^"]*[.!?])"/g)].map((match) => match[1]!);
+        const offered = quoted(first!);
+        expect(offered.sort()).toEqual(Object.keys(fixtures).sort());
+        for (const form of offered) {
+            const [sentence, source] = fixtures[form]!;
+            for (const label of ['What this shows', 'How far to trust it']) {
+                expect(checkNote(`${label}: ${sentence} This is a candidate only.`, source, options).text, form).toContain(sentence);
+            }
+        }
+        for (const form of ['There are no reference stars to compare the change with.', "The reference stars' scatter is unavailable, so there is nothing to compare the change with."]) {
+            const [sentence, source] = fixtures[form]!;
+            const variant = sentence.slice(0, -1) + ', so the change counts for little.';
+            expect(checkNote(`How far to trust it: ${variant} This is a candidate only.`, source, options).text).toContain(variant);
+        }
+        expect(quoted(third!).sort()).toEqual([...checks].sort());
+        for (const sentence of quoted(third!)) {
+            expect(checkNote(`${base}\nWhat to check next: ${sentence}`, full, options).text, sentence).toContain(sentence);
+        }
+    });
+});
+
 describe('round 13 closed paragraphs', () => {
     const sheet = ['Visits: 3. Frames in each visit: 7, 9, 8. Time from first to last visit: 400.0 days.', 'Brightness relative to the reference stars, in time order: 1.30, 1.00, 1.00.', 'Largest change from the median brightness: 30 percent above it.', 'Lowest signal-to-noise among the points: below 1.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.', 'Shift in position: 10.4 arcsec over 400.0 days.', 'Wavelength: 1.083 micron.'];
-    const has = (sentence: string, label = 'What this shows', source = sheet) => checkNote(`${label}: ${sentence}\nWhat to check next: Check the frames. Look at the visits.`, source).text.includes(sentence);
+    const has = (sentence: string, label = 'What this shows', source = sheet) => checkNote(`${label}: ${sentence}\nHow far to trust it: This is a candidate only. This is a candidate only.`, source).text.includes(sentence);
     it.each(['Over 3 visits, the brightness rose.', 'The second visit was the brightest.', 'The last second-brightest reading was 1.00.', 'The brightness fell by 3 of the observations.', 'The wavelength is 1.083 microns or so.', 'The target shifted 10.4 arcseconds at most.', 'There are 2MASS observations of the target.', 'The signal-to-noise is high.', 'That is negligible.', "The swing is swamped by the reference stars' scatter.", 'This is a genuine change.'])('rejects reviewer claim %s', (sentence) => {
         expect(has(sentence)).toBe(false);
         expect(has(sentence, 'How far to trust it')).toBe(false);
@@ -22,7 +120,7 @@ describe('round 13 closed paragraphs', () => {
         expect(has('The signal-to-noise is high.', 'What to check next')).toBe(false);
         expect(has('Check whether the confirmed flare repeats.', 'What to check next')).toBe(false);
         expect(has('Maybe check the frames.', 'What to check next')).toBe(false);
-        expect(has('Check the frames.', 'What to check next')).toBe(true);
+        expect(has('Check the frames.', 'What to check next')).toBe(false);
     });
     it('distinguishes missing reference stars and unavailable scatter', () => {
         const noScatter = sheet.map((line) => line.startsWith('Reference stars:') ? 'Reference stars: scatter unavailable.' : line);
@@ -59,10 +157,10 @@ describe('round 13 closed paragraphs', () => {
     it('drops unsupported suggestions that assert a result', () => {
         const claims = ['Check whether the confirmed flare repeats.', 'Look at the real flare.', 'Compare the genuine change.', 'See the intrinsic variation.', 'Watch the astrophysical burst.', 'Try the detected transit.', 'Open the confirmed planet.', 'Switch to the significant outburst.', 'Slide to the proven binary.', 'Step through the certain flare.', 'Use the confirmed companion.', 'Read the evidence of activity.', 'Repeat the detected pulsation.', 'Go to the variable star.', 'Check the target moved over 400.0 days.', 'Look at the star that brightened.', 'Compare the genuine flare.', 'See the confirmed discovery.', 'Watch the detected eclipse.', 'Try the real supernova.'];
         for (const claim of claims) { expect(has(claim, 'What to check next'), claim).toBe(false); }
-        for (const claim of ['Check the signal-to-noise is high.', 'Look at the swing that outweighs the reference scatter.', 'Compare the frames because nothing changed.', 'See the star looks faint.', 'Check the star appears brighter.', 'Check the target glows.', 'Watch the object pulses.', 'Look at the source flickers.', 'Check the galaxy flickers.', 'Check galaxy flickers.']) {
+        for (const claim of ['Check the flare in the second visit.', 'Look at how the star brightened.', 'Compare the real change with the noise.', 'See that the target moved.', 'Watch the star vary.', 'Check the star appears brighter.', 'Check the target glows.', 'Watch the object pulses.', 'Look at the source flickers.', 'Check the galaxy flickers.']) {
             expect(has(claim, 'What to check next'), claim).toBe(false);
         }
-        expect(has('Check the frames to see whether the candidate change repeats.', 'What to check next')).toBe(true);
+        expect(has('Check the frames to see whether the candidate change repeats.', 'What to check next')).toBe(false);
         expect(has('Check galaxies flicker softly.', 'What to check next')).toBe(false);
         expect(has('Check galaxies flicker in daylight.', 'What to check next')).toBe(false);
         expect(has('Check galaxies flicker after dusk.', 'What to check next')).toBe(false);
@@ -81,8 +179,8 @@ describe('round 13 closed paragraphs', () => {
         for (const [name, values, change, trust] of scenarios) {
             const reference = name === 'no reference stars' ? [] : [name === 'scatter unavailable' ? 'Reference stars: scatter unavailable.' : 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.'];
             const source = [`Visits: ${values.length}.`, `Brightness relative to the reference stars, in time order: ${values.join(', ')}.`, ...(change ? [`Largest change from the median brightness: ${change}.`] : []), ...reference];
-            const text = `What this shows: In time order, the brightness was ${values.join(', ')}. This is a candidate only.\nHow far to trust it: ${trust}\nWhat to check next: Check the frames.`;
-            const result = checkNote(text, source);
+            const text = `What this shows: In time order, the brightness was ${values.join(', ')}. This is a candidate only.\nHow far to trust it: ${trust}\nWhat to check next: Change the colour to look at another wavelength.`;
+            const result = checkNote(text, source, { labelled: true });
             expect(result.text.split('\n').map((part) => (part.match(/[.!?](?=\s|$)/g) ?? []).length), name).toEqual([2, 1, 1]);
             expect(result.dropped, name).toBe(0);
         }
@@ -90,8 +188,8 @@ describe('round 13 closed paragraphs', () => {
             ['shift only', ['Shift in position: 10.4 arcsec over 400.0 days.'], 'The shift in position was 10.4 arcsec over 400.0 days.', 'This is a candidate only.'],
             ['nothing measured', ['Visits: 2.'], 'There is nothing measured to interpret yet.', 'There are fewer than 3 visits, so the change counts for little.'],
         ] as const) {
-            const result = checkNote(`What this shows: ${show}\nHow far to trust it: ${trust}\nWhat to check next: Check the frames.`, [...source]);
-            expect(result.text.split('\n').length, name).toBe(3);
+            const result = checkNote(`What this shows: ${show}\nHow far to trust it: ${trust}\nWhat to check next: Change the colour to look at another wavelength.`, [...source], { labelled: true });
+            expect(result.text.split('\n').map((part) => (part.match(/[.!?](?=\s|$)/g) ?? []).length), name).toEqual([1, 1, 1]);
             expect(result.dropped, name).toBe(0);
         }
     });
@@ -121,7 +219,7 @@ describe('round 13 closed paragraphs', () => {
         expect(checkNote('Over 3 visits the brightness rose.' + pad, sheet).dropped).toBe(1);
     });
     it('applies the paragraph gate to continuation lines', () => {
-        const result = checkNote('What this shows: This is a candidate only.\nThe second visit was the brightest.\nHow far to trust it: This is a candidate only.\nThe signal-to-noise is high.\nWhat to check next: Check the frames.\nThe flare is real.', sheet);
+        const result = checkNote('What this shows: This is a candidate only.\nThe second visit was the brightest.\nHow far to trust it: This is a candidate only.\nThe signal-to-noise is high.\nWhat to check next: Change the colour to look at another wavelength.\nThe flare is real.', sheet);
         expect(result.dropped).toBe(3);
         expect(result.text).not.toContain('brightest');
         expect(result.text).not.toContain('signal-to-noise');
@@ -235,7 +333,7 @@ describe('round 12 regressions', () => {
             [sheet('1.00, 1.00, 1.00', 'less than 1 percent'), 'In time order the brightness was 1.00, 1.00 and 1.00.', 'The change is no larger than that scatter, so it may be noise.'],
         ] as const;
         for (const [facts, summary, trust] of cases) {
-            const note = `What this shows: ${summary}\nHow far to trust it: ${trust}\nWhat to check next: Check the frames.`;
+            const note = `What this shows: ${summary}\nHow far to trust it: ${trust}\nWhat to check next: Change the colour to look at another wavelength.`;
             expect(checkNote(note, facts).text.split('\n'), note).toHaveLength(3);
         }
     });
@@ -452,7 +550,7 @@ describe('round 10 conservative number checks', () => {
             const scatterSentence = refs.length === 2 ? 'The 2 reference stars scatter by 1.2 and 2.0 percent. ' : refs.length === 1 ? 'The 1 reference star scatters by 1.2 percent. ' : '';
             const safeSummary = `In time order, the brightness was ${values.map((n) => n.toFixed(2)).join(', ')}.`;
             const safeComparison = refs.length === 0 ? "The reference stars' scatter is unavailable, so there is nothing to compare the change with." : values.length === 2 ? 'There are fewer than 3 visits, so the change counts for little.' : comparison;
-            const note = `What this shows: ${safeSummary}\nHow far to trust it: ${scatterSentence}${safeComparison}\nWhat to check next: Compare another visit when available.`;
+            const note = `What this shows: ${safeSummary}\nHow far to trust it: ${scatterSentence}${safeComparison}\nWhat to check next: Change the colour to look at another wavelength.`;
             void summary;
             const result = checkNote(note, sheet);
             expect(result.text.split('\n'), note).toHaveLength(3);
@@ -490,7 +588,7 @@ describe('round four corpus', () => {
 });
 describe('round four access', () => {
     it('never lets wrong guesses lock out the correct code', async () => {
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => 0, complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }) });
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => 0, complete: async () => ({ text: note, refused: false, model: 'fake' }) });
         const headers = { 'x-real-ip': 'r4', 'x-insight-passcode': 'wrong' };
         for (let i = 0; i < 30; i++) { expect((await handler.POST(request({ facts }, headers))).status).toBe(401); }
         const blocked = await handler.POST(request({ facts }, headers));
@@ -541,7 +639,7 @@ describe('round four access', () => {
     });
 });
 describe('round three regressions', () => {
-    const complete = async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' });
+    const complete = async () => ({ text: note, refused: false, model: 'fake' });
     const right = { 'x-insight-passcode': 'secret', 'x-real-ip': 'round-three' };
     it('accommodates a shared venue and does not brake cached open traffic', async () => {
         const local = memoryStore();
@@ -737,10 +835,10 @@ describe('round two regressions', () => {
         expect(JSON.parse(fetcher.mock.calls[1]![1].body)).toEqual(['DECR', 'key:0']);
     });
     it('drops a sentence cut after a possible decimal point', async () => {
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: 'First sentence. Second sentence. Brightness is 4.', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
-        expect(await (await handler.POST(request({ facts: { ...facts, ra: 72.123 } }))).json()).toMatchObject({ text: 'First sentence. Second sentence.' });
-        const fragment = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: 'First sentence. Second sentence. Brightness is 4. unfinished', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
-        expect(await (await fragment.POST(request({ facts: { ...facts, ra: 72.124 } }))).json()).toMatchObject({ text: 'First sentence. Second sentence.' });
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: note + ' Brightness is 4.', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
+        expect(await (await handler.POST(request({ facts: { ...facts, ra: 72.123 } }))).json()).toMatchObject({ text: note });
+        const fragment = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: note + ' Brightness is 4. unfinished', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
+        expect(await (await fragment.POST(request({ facts: { ...facts, ra: 72.124 } }))).json()).toMatchObject({ text: note });
     });
     it.each(['halve', 'halved', 'halves', 'halving', 'doubled', 'doubles', 'doubling', 'tripled', 'triples', 'tripling', 'quadruple', 'quadrupled', 'quadruples', 'quadrupling', 'twofold', 'hundreds', 'thousands', 'millions', 'billions', 'dozens', 'quarter', 'quarters', 'zero'])('drops number word %s', (word) => {
         expect(checkNote(`It is ${word}. Safe sentence. Another safe sentence.`, []).dropped).toBe(1);
@@ -781,7 +879,7 @@ describe('insight access and allowances', () => {
         expect((await serial.POST(request({ facts }, { 'x-insight-passcode': 'bad' }))).status).toBe(429);
     });
     it('charges shared counters only after visitor counters pass under concurrency', async () => {
-        const complete = vi.fn(async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }));
+        const complete = vi.fn(async () => ({ text: note, refused: false, model: 'fake' }));
         const inner = memoryStore();
         const store: LimitStore = { hit: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.hit(...args); }, count: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.count(...args); }, refund: async (...args) => inner.refund(...args) };
         const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => 18000000, passcode: 'secret', maxPerHour: 21, maxPerDay: 21, store });
@@ -820,7 +918,7 @@ describe('insight access and allowances', () => {
         expect(complete).not.toHaveBeenCalled();
     });
     it('keeps note counters usable after 25000 distinct guessers', async () => {
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => 0, passcode: 'secret' });
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: note, refused: false, model: 'fake' }), now: () => 0, passcode: 'secret' });
         for (let i = 0; i < 25000; i++) {
             const response = await handler.POST(request({ facts }, { 'x-real-ip': `visitor-${i}`, 'x-insight-passcode': 'bad' }));
             expect(response.status).toBe(401);
@@ -834,7 +932,7 @@ describe('insight access and allowances', () => {
         expect(networkAddress('2001:db8:1:1300::1')).not.toBe(networkAddress('2001:db8:1:1201::1'));
         expect(networkAddress('::ffff:1.2.3.4')).toBe('1.2.3.4');
         expect(networkAddress('not::an::address')).toBe('not::an::address');
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => 0, maxPerUserDay: 1 });
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: note, refused: false, model: 'fake' }), now: () => 0, maxPerUserDay: 1 });
         const send = (ip: string, ra: number) => handler.POST(request({ facts: { ...facts, ra } }, { 'x-real-ip': ip }));
         expect((await send('2001:db8:1:1201:aaaa::1', 83)).status).toBe(200);
         expect((await send('2001:db8:1:12ff:bbbb::9', 84)).status).toBe(429);
@@ -849,7 +947,7 @@ describe('insight access and allowances', () => {
     });
     it('fails closed, locks guesses, and unlocks after the window', async () => {
         let now = 0;
-        const complete = vi.fn(async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }));
+        const complete = vi.fn(async () => ({ text: note, refused: false, model: 'fake' }));
         const base = { apiKey: 'key', model: 'fake', complete, now: () => now };
         expect(await (await createHandlers({ ...base, open: false }).GET(new Request('https://example.test'))).json()).toEqual({ enabled: false, locked: false, unlocked: false, model: 'fake' });
         expect((await (await createHandlers(base).GET(new Request('https://example.test'))).json()).enabled).toBe(true);
@@ -872,7 +970,7 @@ describe('insight access and allowances', () => {
         const keys: string[] = [];
         const inner = memoryStore();
         const store = { hit: async (k: string, w: number, n: number) => { keys.push(k); return inner.hit(k, w, n); }, count: async (k: string, w: number, n: number) => { keys.push(k); return inner.count(k, w, n); }, refund: inner.refund };
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => now, passcode: 'secret', store, maxPerUserDay: 3 });
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: note, refused: false, model: 'fake' }), now: () => now, passcode: 'secret', store, maxPerUserDay: 3 });
         const headers = { 'x-real-ip': '192.0.2.42', 'x-insight-passcode': 'secret' };
         for (let i = 0; i < 3; i++) {
             expect(await (await handler.POST(request({ facts: { ...facts, ra: 310 + i } }, headers))).json()).toMatchObject({ remaining: 2 - i, cached: false });
@@ -899,13 +997,13 @@ describe('insight access and allowances', () => {
         const store = memoryStore();
         expect(await store.hit('a', 1000, 999)).toBe(1);
         expect(await store.count('a', 1000, 1000)).toBe(0);
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => 400000000, store, maxPerUserDay: 1 });
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: note, refused: false, model: 'fake' }), now: () => 400000000, store, maxPerUserDay: 1 });
         const headers = { 'x-real-ip': 'real', 'x-forwarded-for': 'forwarded-a, proxy' };
         expect((await handler.POST(request({ facts: { ...facts, ra: 340 } }, headers))).status).toBe(200);
         expect((await handler.POST(request({ facts: { ...facts, ra: 341 } }, { ...headers, 'x-forwarded-for': 'forwarded-b' }))).status).toBe(429);
     });
     it('enforces the global daily cap', async () => {
-        const base = { apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => 180000000, maxPerDay: 2 };
+        const base = { apiKey: 'key', model: 'fake', complete: async () => ({ text: note, refused: false, model: 'fake' }), now: () => 180000000, maxPerDay: 2 };
         const handler = createHandlers(base);
         for (let i = 0; i < 3; i++) {
             expect((await handler.POST(request({ facts: { ...facts, ra: 320 + i } }, { 'x-real-ip': `test-${i}` }))).status).toBe(i < 2 ? 200 : 429);
@@ -963,9 +1061,19 @@ describe('insight facts and guard', () => {
     });
 });
 describe('insight handler', () => {
+    it('rejects unlabelled model output and drops only a preamble', async () => {
+        const unlabelled = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }) });
+        const response = await unlabelled.POST(request({ facts: { ...facts, ra: 88.1 } }));
+        expect(response.status).toBe(422);
+        expect(await response.json()).toMatchObject({ error: 'unverified' });
+        const preamble = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: `Preamble sentence.\n${note}`, refused: false, model: 'fake' }) });
+        const kept = await preamble.POST(request({ facts: { ...facts, ra: 88.2 } }));
+        expect(kept.status).toBe(200);
+        expect(await kept.json()).toMatchObject({ text: note, dropped: 1 });
+    });
     it('drops a truncated final fragment', async () => {
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: 'First sentence. Second sentence. Unfinished value 1.083', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
-        expect(await (await handler.POST(request({ facts: { ...facts, ra: 88 } }))).json()).toMatchObject({ text: 'First sentence. Second sentence.' });
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: note + ' Unfinished value 1.083', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
+        expect(await (await handler.POST(request({ facts: { ...facts, ra: 88 } }))).json()).toMatchObject({ text: note });
         const empty = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: 'Unfinished value 1.083', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
         expect((await empty.POST(request({ facts: { ...facts, ra: 91 } }))).status).toBe(422);
     });
@@ -990,7 +1098,7 @@ describe('insight handler', () => {
     });
     it('enforces per-client limits and recovers after a minute', async () => {
         let now = 100000;
-        const complete = vi.fn(async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }));
+        const complete = vi.fn(async () => ({ text: note, refused: false, model: 'fake' }));
         const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => now, maxPerUserDay: 40 });
         for (let i = 0; i < 20; i++) { expect((await handler.POST(request({ facts: { ...facts, ra: 100 + i } }, { 'x-forwarded-for': 'limit-test' }))).status).toBe(200); }
         const limited = await handler.POST(request({ facts: { ...facts, ra: 120 } }, { 'x-forwarded-for': 'limit-test' }));
@@ -1012,7 +1120,7 @@ describe('insight handler', () => {
     it('enforces the hourly cap and lets cached answers through', async () => {
         vi.stubEnv('INSIGHT_MAX_PER_HOUR', '1');
         try {
-            const handler = createHandlers({ apiKey: 'key', model: 'fake', maxPerHour: 1, now: () => 5000000, complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }) });
+            const handler = createHandlers({ apiKey: 'key', model: 'fake', maxPerHour: 1, now: () => 5000000, complete: async () => ({ text: note, refused: false, model: 'fake' }) });
             const first = { ...facts, ra: 250 };
             expect((await handler.POST(request({ facts: first }, { 'x-forwarded-for': 'hourly-a' }))).status).toBe(200);
             expect((await handler.POST(request({ facts: first }, { 'x-forwarded-for': 'hourly-b' }))).status).toBe(200);
@@ -1154,7 +1262,7 @@ describe('checkNote: round five', () => {
     });
     it('limits uncached correct requests per minute', async () => {
         let now = 120000;
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => now, maxPerUserDay: 40, complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }) });
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => now, maxPerUserDay: 40, complete: async () => ({ text: note, refused: false, model: 'fake' }) });
         const send = (ra: number) => handler.POST(request({ facts: { ...facts, ra } }, { 'x-real-ip': 'round-five-minute', 'x-insight-passcode': 'secret' }));
         for (let i = 0; i < 20; i++) { expect((await send(200 + i)).status).toBe(200); }
         const limited = await send(220);
@@ -1558,8 +1666,8 @@ describe('round 11 measurement safeguards', () => {
     });
     it('T keeps three paragraphs in the additional over and bounded-SNR notes', () => {
         const notes = [
-            `What this shows: Over 3 visits the brightness went from 1.30 to 1.00.\nHow far to trust it: The 2 reference stars scatter by 1.2 and 2.0 percent.\nWhat to check next: Check the frames.`,
-            `What this shows: The brightness went from 1.30 to 1.00.\nHow far to trust it: The lowest signal-to-noise among the points is below 1.\nWhat to check next: Check the frames.`,
+            `What this shows: Over 3 visits the brightness went from 1.30 to 1.00.\nHow far to trust it: The 2 reference stars scatter by 1.2 and 2.0 percent.\nWhat to check next: Change the colour to look at another wavelength.`,
+            `What this shows: The brightness went from 1.30 to 1.00.\nHow far to trust it: The lowest signal-to-noise among the points is below 1.\nWhat to check next: Change the colour to look at another wavelength.`,
         ];
         for (const note of notes) { const result = checkNote(note, sheet); expect(result.text.split('\n')).toHaveLength(3); expect(result.dropped).toBe(0); }
     });

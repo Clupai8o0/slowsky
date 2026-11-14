@@ -4,7 +4,7 @@ import { ASK_ENABLED, askInsight, askRows, CHANGE_LINE_STARTS, factSheet, fetchI
 import { ASK_CANNOT, ASK_SYSTEM_PROMPT, askMessage, SYSTEM_PROMPT, userMessage } from '../src/lib/insight-prompt';
 import * as insight from '../src/lib/insight';
 
-const noteAnswer = 'The wavelength is 4.270 micron. The frames came from a saved copy.';
+const noteAnswer = 'What this shows: The wavelength is 4.270 micron.\nHow far to trust it: The frames came from a saved copy.';
 const answer = 'Wavelength: 4.270 micron. Frames came from: a saved copy.';
 const cannot = 'The AI did not match this question to any measured line on this page.';
 const question = 'What wavelength is this view?';
@@ -164,7 +164,7 @@ describe('ask messages', () => {
     it('describes the closed note forms and fenced suggestions', () => {
         expect(SYSTEM_PROMPT).toContain('Any other sentence there will be removed');
         expect(SYSTEM_PROMPT).toContain('The reference stars\' scatter is unavailable');
-        expect(SYSTEM_PROMPT).toContain('start every sentence with Check, Look, Compare');
+        expect(SYSTEM_PROMPT).toContain('In the third paragraph use 1 or 2 of these sentences, exactly as written. Any other sentence there will be removed.');
         expect(SYSTEM_PROMPT).not.toContain('You may say in words what is widely known');
         expect(SYSTEM_PROMPT).toContain('At most 120 words');
     });
