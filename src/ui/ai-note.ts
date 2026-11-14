@@ -244,7 +244,12 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 if (r.status >= 500 && r.status <= 504) {
                     reached = false;
                 }
-                return r;
+                if (r.status === 204 || r.status === 304) {
+                    return r;
+                }
+                // Read the body here, so a connection that drops mid-reply also counts as unreachable.
+                const body = await r.text();
+                return new Response(body, { status: r.status, statusText: r.statusText, headers: r.headers });
             } catch (e) {
                 reached = false;
                 throw e;

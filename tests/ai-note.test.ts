@@ -531,6 +531,39 @@ describe('mountAiNote', () => {
         expect(c.doc.panel.hidden).toBe(true);
     });
 
+    it('counts a reply that drops mid-body as unreachable', async () => {
+        const doc = new FakeDoc();
+        let drop = false;
+        const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+            status: async (o) => {
+                try {
+                    const r = await o!.fetcher!('/api/insight');
+                    return (await r.json()) as InsightStatus;
+                } catch {
+                    return { enabled: false, locked: false, unlocked: false };
+                }
+            },
+            fetcher: async () => {
+                if (!drop) {
+                    return new Response(JSON.stringify(LOCKED), { status: 200 });
+                }
+                const stream = new ReadableStream({ pull(c) {
+                    c.error(new TypeError('connection reset'));
+                } });
+                return new Response(stream, { status: 200 });
+            },
+            storage: new MemStore(),
+            doc: doc as never,
+        });
+        await flush();
+        ai.update(noteView());
+        drop = true;
+        doc.el('pass').value = 'moon';
+        await doc.el('lock').fire('submit');
+        expect(doc.panel.hidden).toBe(false);
+        expect(doc.el('msg').textContent).toBe('Couldn’t reach the server. Try again.');
+    });
+
     it('says a failed note can be retried', async () => {
         const { doc, ai } = setup({ fetch: async () => {
             throw new InsightError('failed');
