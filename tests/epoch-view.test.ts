@@ -106,14 +106,14 @@ async function ready(r: Rig, result: SkyResult, over: Partial<EpochSlotView> = {
 
 const NOTE = `${TWO_MASS_K.epochLabel}. ${EPOCH_NOTE} It comes from a different telescope at a different wavelength (2.16 µm; this SPHEREx frame is at 1.50 µm), so a star can look brighter or fainter between the two without having changed. Rings mark where the catalogue puts each star on the SPHEREx frame’s date; a star that sits away from its ring in the older picture may have moved: a candidate to check, not a measurement. ${epochCredit(TWO_MASS_K)}`;
 
-describe('older picture: switched off', () => {
+describe('older picture: the switch', () => {
     afterEach(() => {
         vi.restoreAllMocks();
     });
 
-    it('is off by default and makes no request while off', () => {
-        expect(DEFAULT_FEATURES.epoch).toBe(false);
-        expect(FEATURES.epoch).toBe(false);
+    it('is on by default, and makes no request in a build that switches it off', () => {
+        expect(DEFAULT_FEATURES.epoch).toBe(true);
+        expect(FEATURES.epoch).toBe(true);
         const fetchSpy = vi.spyOn(globalThis, 'fetch');
         const r = rig({ enabled: false });
         r.slot.update(view(sky()));

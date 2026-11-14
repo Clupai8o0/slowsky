@@ -48,6 +48,12 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   two wavelengths were not taken at the same times, areas where not every frame has usable pixels are hatched
   instead of coloured, and the page lists these limits under the picture (`src/lib/falsecolour.ts`,
   `src/lib/falsecolour-view.ts`).
+- In Blink on the 0.1° or 0.25° field, switch on **Older picture** to flip the sky between the 2MASS K survey
+  picture (taken between June 1997 and February 2001) and the SPHEREx frame on screen. A fast star such as
+  Barnard's Star sits away from its ring in the older picture, and a bracket marks where its catalogue motion puts
+  it in those years. It is a picture for looking, not a measurement: it comes from a different telescope at a
+  different wavelength (2.16 µm), its brightness cannot be compared with SPHEREx, and the night it was taken on is
+  not known (`src/lib/epoch.ts`, `src/ui/epoch-view.ts`).
 - Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode, and in Subtract the two
@@ -141,7 +147,10 @@ format.
 
 The frames are from NASA's SPHEREx mission (DR1 and QR3), served by the NASA/IPAC Infrared Science Archive.
 Star rings use ESA's Gaia DR3 (credit: ESA, Gaia DPAC), read through STScI's Gaia cone service with the CfA
-VizieR mirror as a fallback. Names and target positions come from the SIMBAD database through the CfA mirror. The full list, with licences and credit lines: [DATA-LICENSES.md](DATA-LICENSES.md).
+VizieR mirror as a fallback. Names and target positions come from the SIMBAD database through the CfA mirror.
+The older picture is from the Two Micron All Sky Survey (2MASS; University of Massachusetts and IPAC/Caltech,
+funded by NASA and the National Science Foundation), as image tiles made by CDS (CNRS/Unistra) and served by IRSA.
+The full list, with licences and credit lines: [DATA-LICENSES.md](DATA-LICENSES.md).
 Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md).
 
 ## AI tools used
@@ -215,8 +224,8 @@ in it.
 ## In the repository but not switched on
 
 These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
-`src/ui/slots.ts`; only Flagged pixels and False colour are on). A preview build can switch the first two and the
-older picture on with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to the page, so its switch shows nothing.
+`src/ui/slots.ts`; Flagged pixels, False colour and Older picture are on). A preview build can switch the first
+three on with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to the page, so its switch shows nothing.
 
 - A list of candidate changes between the first and the last visit, with numbered marks on the sky
   (`src/lib/changes.ts`).
@@ -224,9 +233,6 @@ older picture on with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to
   shows the picture and does not measure a colour.
 - For R Draconis, the light in a ring around its too-bright centre, look by look, as a line or a table
   (`src/lib/halo.ts`, `src/ui/halo-view.ts`).
-- Older picture (switched off in this build): in Blink on the 0.1° or 0.25° field, flips the sky between the 2MASS K
-  survey picture (June 1997 to February 2001) and the SPHEREx frame, so a fast star sits away from its ring in the
-  older one (`src/lib/epoch.ts`, `src/ui/epoch-view.ts`; a preview build switches it on with `epoch`).
 - A machine-learning sort hint for each candidate change, described below.
 - Code that reads one spot's spectrum from the SPHEREx cube tiles in the public archive (`src/lib/cube.ts`). No
   part of the page calls it.
