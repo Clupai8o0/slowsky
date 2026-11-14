@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FEATURES, FLAGS_TEXT, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
 import { DETECTORS } from '../src/ui/copy';
+import { apertureFor } from '../src/ui/measure';
+import { colourAt } from '../src/lib/falsecolour';
+import * as colour from '../src/lib/falsecolour';
 import { makeWcs } from '../src/lib/wcs';
 import type { FlagsLayout } from '../src/lib/flags';
 import type { SkyRequest, SkyResult } from '../src/lib/source';
@@ -183,6 +186,128 @@ function colourHarness(enabled = true)
 }
 
 describe('false colour slot', () => {
+    it('does not request a partner when the current view has no frames', () => {
+        const h = colourHarness();
+        const state = h.slot.update(view(sky([]), 0, { mode: 'stack' }), true);
+        expect(state.note).toBe('No frames were found in this view.');
+        expect(h.calls).toHaveLength(0);
+    });
+
+    it('reports the actual stacked frame counts and UTC dates and warns about different times', async () => {
+        const h = colourHarness();
+        const a = frame('a');
+        const b = frame('b');
+        const c = frame('c');
+        a.frame = { tMin: 60857, tMax: 60857 } as RegriddedFrame['frame'];
+        b.frame = { tMin: 61284, tMax: 61284 } as RegriddedFrame['frame'];
+        c.frame = { tMin: 61000, tMax: 61000 } as RegriddedFrame['frame'];
+        a.lambdaAtCenter = b.lambdaAtCenter = 1.23;
+        c.lambdaAtCenter = 4.57;
+        const v = view(sky([a, b]), 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([c]));
+        await flush();
+        const note = h.slot.update(v, true).note;
+        expect(note).toContain('Blue: 1.23 µm (the shorter wavelength), 2 frames, 2025-07-01 to 2026-09-01.');
+        expect(note).toContain('Orange: 4.57 µm (the longer wavelength), 1 frame, 2025-11-21.');
+        expect(note).toContain('The two colours were not taken at the same times, so anything that moved or changed in between shows a false tint.');
+    });
+
+    it('omits the time warning for the same frame times', async () => {
+        const h = colourHarness();
+        const a = frame('a');
+        const b = frame('b');
+        a.frame = { tMin: 60857, tMax: 60857 } as RegriddedFrame['frame'];
+        b.frame = { tMin: 60857 + 0.5 / 86400, tMax: 60857 + 0.5 / 86400 } as RegriddedFrame['frame'];
+        a.lambdaAtCenter = 1.23;
+        b.lambdaAtCenter = 4.57;
+        const v = view(sky([a]), 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([b]));
+        await flush();
+        expect(h.slot.update(v, true).note).not.toContain('The two colours were not taken at the same times');
+        expect(h.slot.update(v, true).note).toContain('1 frame, 2025-07-01');
+    });
+
+    it('does not claim different times when frame dates are unavailable', async () => {
+        const h = colourHarness();
+        const a = frame('a');
+        const b = frame('b');
+        b.lambdaAtCenter = 4.5;
+        const v = view(sky([a]), 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([b]));
+        await flush();
+        const note = h.slot.update(v, true).note;
+        expect(note).toContain('The frame dates are unavailable, so the two colours may have been taken at different times.');
+        expect(note).not.toContain('were not taken at the same times');
+    });
+
+    it('warns when frame times differ by more than the one-second tolerance', async () => {
+        const h = colourHarness();
+        const a = frame('a');
+        const b = frame('b');
+        a.frame = { tMin: 60857, tMax: 60857 } as RegriddedFrame['frame'];
+        b.frame = { tMin: 60857 + 1.5 / 86400, tMax: 60857 + 1.5 / 86400 } as RegriddedFrame['frame'];
+        b.lambdaAtCenter = 4.5;
+        const v = view(sky([a]), 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([b]));
+        await flush();
+        expect(h.slot.update(v, true).note).toContain('The two colours were not taken at the same times');
+    });
+
+    it('uses wavelengths of centre-covered frames, falling back when all centres are blank', async () => {
+        const h = colourHarness();
+        const a = frame('a');
+        const b = frame('b');
+        const c = frame('c');
+        const d = frame('d');
+        a.lambdaAtCenter = 1.1;
+        b.lambdaAtCenter = 1.3;
+        c.lambdaAtCenter = 4.5;
+        d.lambdaAtCenter = 4.7;
+        b.data[48 * 97 + 48] = NaN;
+        c.data[48 * 97 + 48] = NaN;
+        d.data[48 * 97 + 48] = NaN;
+        const v = view(sky([a, b]), 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([c, d]));
+        await flush();
+        const note = h.slot.update(v, true).note;
+        expect(note).toContain('Blue: 1.10 µm');
+        expect(note).toContain('Orange: 4.60 µm');
+    });
+
+    it('measures a native-width star with the page aperture on the fine grid', async () => {
+        const h = colourHarness();
+        const measure = vi.spyOn(colour, 'colourAt');
+        const a = frame('a');
+        const b = frame('b');
+        a.lambdaAtCenter = 1.25;
+        b.lambdaAtCenter = 4.6;
+        for (let y = 0; y < 97; y++) {
+            for (let x = 0; x < 97; x++) {
+                const d2 = (x - 48) ** 2 + (y - 48) ** 2;
+                const value = 15 * Math.exp(-d2 / (2 * 4 ** 2)) + ((x * 13 + y * 7) % 11 - 5);
+                a.data[y * 97 + x] = value;
+                b.data[y * 97 + x] = value;
+            }
+        }
+        const v = view(sky([a]), 0, { mode: 'stack' });
+        const centre = { x: 48, y: 48 };
+        const radii = apertureFor(grid);
+        expect(radii).toEqual({ radius: 8, annulusIn: 12, annulusOut: 24 });
+        expect(colourAt(a.data, b.data, 97, 97, centre, { pixelArcsec: grid.pixelArcsec, ...radii }).seen).toBe('both');
+        expect(colourAt(a.data, b.data, 97, 97, centre, { pixelArcsec: grid.pixelArcsec }).seen).not.toBe('both');
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([b]));
+        await flush();
+        expect(h.slot.update(v, true).note).toContain('At the centre: seen at both wavelengths');
+        expect(measure).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 97, 97, centre,
+            { pixelArcsec: grid.pixelArcsec, ...radii, minSnr: 3 });
+        measure.mockRestore();
+    });
     it('hides demo and disabled views, and explains snapshot and Blink', () => {
         const h = colourHarness();
         const r = sky([frame('a')]);

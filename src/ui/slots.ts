@@ -13,6 +13,7 @@ import { readFlags } from '../lib/flags';
 import { flagsRgba, regridFlags, summariseFlags } from '../lib/flags-view';
 import { createLiveSource, type SkyResult, type SkySource } from '../lib/source';
 import { ColourGridError, falseColourView } from '../lib/falsecolour-view';
+import { apertureFor } from './measure';
 import type { RegriddedFrame, TargetId } from '../lib/types';
 
 export const FEATURES = Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
@@ -237,6 +238,7 @@ export const FALSE_COLOUR_TEXT = Object.freeze({
     failed: 'The second colour could not be read.',
     grid: 'The two colours are on different grids.',
     picture: 'False colour could not be drawn for this view.',
+    empty: 'No frames were found in this view.',
 });
 
 export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps: FalseColourDeps = {}): FalseColourSlot
@@ -278,7 +280,7 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                     entry = { status: 'failed', note: `No frames were found at ${partner.toFixed(2)} µm.` };
                 } else {
                     try {
-                        entry = { status: 'ready', picture: falseColourView(current, other) };
+                        entry = { status: 'ready', picture: falseColourView(current, other, apertureFor(current.grid)) };
                     } catch (error) {
                         entry = { status: 'failed', note: error instanceof ColourGridError ? FALSE_COLOUR_TEXT.grid : FALSE_COLOUR_TEXT.picture };
                     }
@@ -316,6 +318,9 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                 const note = !on ? '' : view.source === 'snapshot' ? FALSE_COLOUR_TEXT.snapshot
                     : view.mode !== 'stack' ? FALSE_COLOUR_TEXT.stack : '';
                 return { key: true, layer: false, note };
+            }
+            if (!view.result.frames.length) {
+                return { key: true, layer: false, note: FALSE_COLOUR_TEXT.empty };
             }
             if (!entry) {
                 start(view);
