@@ -9,6 +9,8 @@ export interface AskPanelDeps {
     enabled?: boolean; // defaults to ASK_ENABLED; tests pass true
     ask?: typeof askInsight;
     doc?: Doc; // the same fake-document type ai-note.ts uses
+    onRemaining?: (n: number) => void;
+    onLocked?: () => void;
 }
 
 export interface AskPanel {
@@ -34,7 +36,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
     }
     const ask = deps.ask ?? askInsight;
     const doc: Doc = deps.doc ?? document;
-    const anchor = panel.querySelector('[data-ai="out"]');
+    const anchor = panel.querySelector('[data-ai="left"]') ?? panel.querySelector('[data-ai="out"]');
     if (!anchor) {
         return {
             sync(): void
@@ -67,7 +69,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
     input.setAttribute('autocomplete', 'off');
     input.enterKeyHint = 'send';
     input.setAttribute('enterkeyhint', 'send');
-    input.placeholder = 'For example: did it get brighter?';
+    input.placeholder = 'For example: how much did the brightness vary?';
 
     const btn = doc.createElement('button');
     btn.type = 'submit';
@@ -80,6 +82,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
 
     const out = doc.createElement('div');
     out.setAttribute('data-ask', 'out');
+    out.setAttribute('aria-live', 'polite');
 
     row.append(input, btn);
     form.append(label, row, hint, out);
@@ -104,9 +107,16 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
     {
         ctrl?.abort();
         ctrl = null;
-        btn.disabled = false;
+        btn.removeAttribute('aria-disabled');
         out.innerHTML = '';
     }
+
+    btn.addEventListener('click', (e) => {
+        // Enter in the input triggers an implicit, zero-detail click on the submit button.
+        if (ctrl && !(e.detail === 0 && doc.activeElement === input)) {
+            e.preventDefault();
+        }
+    });
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -115,7 +125,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
         }
         ctrl?.abort();
         ctrl = null;
-        btn.disabled = false;
+        btn.removeAttribute('aria-disabled');
 
         let question: string;
         try {
@@ -131,10 +141,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
         const sentPass = passcode;
         const c = new AbortController();
         ctrl = c;
-        if (doc.activeElement === btn) {
-            input.focus();
-        }
-        btn.disabled = true;
+        btn.setAttribute('aria-disabled', 'true');
         render({ kind: 'loading' });
 
         try {
@@ -148,8 +155,11 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
                 }
                 return;
             }
+            if ((answer.kind === 'answer' || answer.kind === 'none') && typeof answer.remaining === 'number' && Number.isFinite(answer.remaining)) {
+                deps.onRemaining?.(answer.remaining);
+            }
             if (answer.kind === 'answer') {
-                render({ kind: 'answer', sheet: factSheet(sentFacts), lines: answer.lines, trust: answer.trust });
+                render({ kind: 'answer', sheet: factSheet(sentFacts), lines: [...answer.lines].sort((a, b) => a - b), trust: [...answer.trust].sort((a, b) => a - b) });
             } else if (answer.kind === 'none') {
                 render({ kind: 'none' });
             } else {
@@ -169,7 +179,8 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
             }
             if (err instanceof InsightError) {
                 if (err.code === 'locked') {
-                    render({ kind: 'locked' });
+                    out.innerHTML = '';
+                    deps.onLocked?.();
                 } else if (err.code === 'invalid') {
                     render({ kind: 'invalid' });
                 } else if (err.code === 'busy') {
@@ -187,7 +198,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
         } finally {
             if (ctrl === c) {
                 ctrl = null;
-                btn.disabled = false;
+                btn.removeAttribute('aria-disabled');
             }
         }
     });

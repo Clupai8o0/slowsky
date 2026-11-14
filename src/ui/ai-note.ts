@@ -1,7 +1,7 @@
 // The AI note panel: a button-started, plain-text reading of the view, written by a language model from the
 // numbers the page measured. It is never a measurement, so it lives in its own framed panel with a fixed
 // disclaimer, and it hides itself when the server route is off.
-import { factSheet, fetchInsight, InsightError, insightStatus, type InsightFacts, type InsightStatus } from '../lib/insight';
+import { ASK_ENABLED, factSheet, fetchInsight, InsightError, insightStatus, type InsightFacts, type InsightStatus } from '../lib/insight';
 import { buildFacts, type FactsInput } from '../lib/insight-facts';
 import { subtract } from '../lib/stack';
 import type { SkyResult } from '../lib/source';
@@ -162,9 +162,12 @@ export interface AiNote {
     // Call on every render. A new view (frames, target, centre, curve or shift) drops the old note, which
     // described other numbers, and the panel shows only when the route is on and the view has facts to send.
     update(view: NoteView | null): void;
+    setRemaining(n: number): void;
+    relock(): void;
 }
 
 export interface AiNoteDeps {
+    askOn?: boolean;
     status?: typeof insightStatus;
     fetch?: typeof fetchInsight;
     fetcher?: typeof fetch; // the network under insightStatus, wrapped to tell "off" from "unreachable"
@@ -278,7 +281,9 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function setLeft(n: number | undefined): void
     {
-        left.textContent = n === undefined ? '' : leftText(n);
+        left.textContent = n === undefined ? '' : (deps.askOn ?? ASK_ENABLED)
+            ? n === 1 ? '1 AI note or question left today' : `${n} AI notes or questions left today`
+            : leftText(n);
         left.hidden = n === undefined;
     }
 
@@ -336,6 +341,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         if (hadFocus) {
             pass.focus();
         }
+        deps.onState?.({ ready: false, facts: null, passcode: passcode() });
     }
 
     function clearNote(): void
@@ -378,6 +384,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         }
         if (!s.unlocked) {
             savePass(undefined);
+            st = { ...s, locked: true, unlocked: false };
             showLock(MSG.wrong);
             pass.select();
             return;
@@ -521,6 +528,20 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     firstCheck();
 
     return {
+        setRemaining(n: number): void
+        {
+            setLeft(n);
+        },
+        relock(): void
+        {
+            const hadPass = passcode() !== undefined;
+            ++tries;
+            if (st) {
+                st = { ...st, locked: true, unlocked: false };
+            }
+            savePass(undefined);
+            showLock(hadPass ? MSG.wrong : MSG.enter);
+        },
         update(v: NoteView | null): void
         {
             const next = v ? [v.result, v.targetId, v.center.ra, v.center.dec, v.curve, v.shift] : [];

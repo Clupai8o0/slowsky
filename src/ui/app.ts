@@ -379,8 +379,10 @@ export function mount(root: HTMLElement): void
     const q = <T extends Element>(sel: string) => root.querySelector(sel) as T;
     const qa = <T extends Element>(sel: string) => [...root.querySelectorAll(sel)] as T[];
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
-    const ask = mountAsk(ref<HTMLElement>('ai'));
+    let aiNoteRef: ReturnType<typeof mountAiNote> | undefined;
+    const ask = mountAsk(ref<HTMLElement>('ai'), { onRemaining: (n) => aiNoteRef?.setRemaining(n), onLocked: () => aiNoteRef?.relock() });
     const aiNote = mountAiNote(ref<HTMLElement>('ai'), { onState: (s) => ask.sync(s) });
+    aiNoteRef = aiNote;
     const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
     const changesSlot = mountChanges(() => renderSlots());
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderSlots());

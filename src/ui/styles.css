@@ -556,7 +556,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-ask-form input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--hair2); border-radius: 3px; background: none; color: var(--ink); font-size: var(--fs-body); }
 .sk-ask-form input::placeholder { color: var(--mute); }
 .sk .sk-ask-form input:focus-visible { border-color: rgba(255, 255, 255, .5); outline: 2px solid rgba(255, 255, 255, .85); outline-offset: 2px; }
-.sk-ask-form button:disabled { cursor: progress; color: var(--mute); }
+.sk-ask-form button[aria-disabled="true"] { cursor: progress; color: var(--mute); }
 .sk-ask-hint { margin: 0; font-size: var(--fs-small); line-height: 1.5; color: var(--mute); }
 .sk-ask-form [data-ask=out]:empty { display: none; }
 .sk-ask { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: var(--fs-body); line-height: 1.55; color: var(--ink2); overflow-wrap: anywhere; }

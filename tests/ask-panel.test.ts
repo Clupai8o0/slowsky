@@ -7,7 +7,7 @@ class FakeEl {
     parent: FakeEl | null = null;
     children: FakeEl[] = [];
     attrs = new Map<string, string>();
-    listeners = new Map<string, (e: { preventDefault(): void }) => unknown>();
+    listeners = new Map<string, (e: { preventDefault(): void; detail: number }) => unknown>();
     hidden = false;
     disabled = false;
     className = '';
@@ -61,6 +61,11 @@ class FakeEl {
         return this.attrs.get(k) ?? null;
     }
 
+    removeAttribute(k: string): void
+    {
+        this.attrs.delete(k);
+    }
+
     append(...nodes: FakeEl[]): void
     {
         for (const n of nodes) {
@@ -85,16 +90,17 @@ class FakeEl {
         siblings.splice(idx + 1, 0, ...nodes);
     }
 
-    addEventListener(type: string, fn: (e: { preventDefault(): void }) => unknown): void
+    addEventListener(type: string, fn: (e: { preventDefault(): void; detail: number }) => unknown): void
     {
         this.doc.listenerCount++;
         this.listeners.set(type, fn);
     }
 
-    async fire(type: string): Promise<boolean>
+    async fire(type: string, detail = 1): Promise<boolean>
     {
         let prevented = false;
         await this.listeners.get(type)?.({
+            detail,
             preventDefault(): void
             {
                 prevented = true;
@@ -143,6 +149,7 @@ class FakeDoc {
     panel: FakeEl;
     aiOut: FakeEl;
     aiGiven: FakeEl;
+    aiLeft: FakeEl;
 
     constructor()
     {
@@ -151,7 +158,9 @@ class FakeDoc {
         this.aiOut.setAttribute('data-ai', 'out');
         this.aiGiven = new FakeEl('details', this);
         this.aiGiven.setAttribute('data-ai', 'given');
-        this.panel.append(this.aiOut, this.aiGiven);
+        this.aiLeft = new FakeEl('p', this);
+        this.aiLeft.setAttribute('data-ai', 'left');
+        this.panel.append(this.aiOut, this.aiGiven, this.aiLeft);
     }
 
     createElement(tag: string): FakeEl
@@ -250,7 +259,7 @@ function must<T>(value: T | null | undefined, name: string): T
     return value;
 }
 
-function setup(askImpl?: AskFn)
+function setup(askImpl?: AskFn, extra: Partial<AskPanelDeps> = {})
 {
     const doc = new FakeDoc();
     const calls: { facts: InsightFacts; question: string; passcode?: string; signal?: AbortSignal }[] = [];
@@ -270,6 +279,7 @@ function setup(askImpl?: AskFn)
         enabled: true,
         ask,
         doc: doc as never,
+        ...extra,
     });
     const form = must(doc.panel.querySelector('[data-ask="form"]'), 'form');
     const q = must(doc.panel.querySelector('[data-ask="q"]'), 'q');
@@ -281,6 +291,105 @@ function setup(askImpl?: AskFn)
 }
 
 describe('mountAsk', () => {
+    it('sorts copies of returned rows before showing the sent sheet', async () => {
+        const lines = [3, 1];
+        const trust = [5, 4];
+        const { askPanel, form, q, out } = setup(async () => answerReply(lines, trust));
+        askPanel.sync({ ready: true, facts: FACTS_B });
+        q.value = 'What changed?';
+        await form.fire('submit');
+        expect(out.innerHTML).toBe(askViewHtml({ kind: 'answer', sheet: factSheet(FACTS_B), lines: [1, 3], trust: [4, 5] }));
+        expect(lines).toEqual([3, 1]);
+        expect(trust).toEqual([5, 4]);
+    });
+
+    it('reports finite allowances for answers and none and relays a lock without printing its own message', async () => {
+        const remaining: number[] = [];
+        let locks = 0;
+        let reply: InsightAnswer = { ...answerReply([1], []), remaining: 4 };
+        let locked = false;
+        const { askPanel, form, q, out } = setup(async () => {
+            if (locked) { throw new InsightError('locked'); }
+            return reply;
+        }, { onRemaining: (n) => remaining.push(n), onLocked: () => { locks++; } });
+        askPanel.sync({ ready: true, facts: FACTS_A });
+        q.value = 'What changed?';
+        await form.fire('submit');
+        reply = { ...noneReply(), remaining: 3 };
+        await form.fire('submit');
+        reply = { ...noneReply(), remaining: NaN };
+        await form.fire('submit');
+        expect(remaining).toEqual([4, 3]);
+        locked = true;
+        await form.fire('submit');
+        expect(locks).toBe(1);
+        expect(out.innerHTML).toBe('');
+    });
+
+    it('retains button focus, ignores repeated clicks, and allows a new submit while loading', async () => {
+        const first = deferred<InsightAnswer>();
+        const second = deferred<InsightAnswer>();
+        let n = 0;
+        const { doc, askPanel, calls, form, q, btn } = setup(() => (n++ === 0 ? first.promise : second.promise));
+        askPanel.sync({ ready: true, facts: FACTS_A });
+        q.value = 'What changed?';
+        btn.focus();
+        const pending = form.fire('submit');
+        expect(doc.activeElement).toBe(btn);
+        expect(btn.disabled).toBe(false);
+        expect(btn.getAttribute('aria-disabled')).toBe('true');
+        expect(await btn.fire('click')).toBe(true);
+        expect(calls).toHaveLength(1);
+        q.focus();
+        // A browser's implicit Enter submission clicks the default button with detail 0.
+        expect(await btn.fire('click', 0)).toBe(false);
+        const next = form.fire('submit');
+        expect(calls).toHaveLength(2);
+        expect(calls[0]?.signal?.aborted).toBe(true);
+        first.resolve(noneReply());
+        await pending;
+        expect(btn.getAttribute('aria-disabled')).toBe('true');
+        second.resolve(noneReply());
+        await next;
+        expect(btn.getAttribute('aria-disabled')).toBeNull();
+    });
+
+    it('falls back to the note output when the allowance is missing', () => {
+        const doc = new FakeDoc();
+        doc.panel.children.pop();
+        mountAsk(doc.panel as unknown as HTMLElement, { enabled: true, doc: doc as never });
+        expect(doc.panel.children[1]?.getAttribute('data-ask')).toBe('form');
+    });
+
+    it('hides and clears the form on lock and returns empty on unlock', async () => {
+        let syncLock = () => {};
+        const { askPanel, form, q, out } = setup(async () => { throw new InsightError('locked'); }, {
+            onLocked: () => syncLock(),
+        });
+        syncLock = () => askPanel.sync({ ready: false, facts: null });
+        askPanel.sync({ ready: true, facts: FACTS_A });
+        q.value = 'What changed?';
+        await form.fire('submit');
+        expect(form.hidden).toBe(true);
+        expect(out.innerHTML).toBe('');
+        askPanel.sync({ ready: true, facts: FACTS_A });
+        expect(form.hidden).toBe(false);
+        expect(out.innerHTML).toBe('');
+    });
+
+    it('prints the sent sheet when facts are edited in place during a request', async () => {
+        const facts = structuredClone(FACTS_A);
+        const sheet = factSheet(facts);
+        const gate = deferred<InsightAnswer>();
+        const { askPanel, form, q, out } = setup(() => gate.promise);
+        askPanel.sync({ ready: true, facts });
+        q.value = 'What is the wavelength?';
+        const pending = form.fire('submit');
+        facts.lambdaUm = 4.8;
+        gate.resolve(answerReply([3], []));
+        await pending;
+        expect(out.innerHTML).toBe(askViewHtml({ kind: 'answer', sheet, lines: [3], trust: [] }));
+    });
     it('has ASK_ENABLED false by default and adds no element, listener, or request when off', () => {
         expect(ASK_ENABLED).toBe(false);
         expect(validateFacts(FACTS_A)).toEqual(FACTS_A);
@@ -297,7 +406,7 @@ describe('mountAsk', () => {
         });
         expect(doc.createdCount).toBe(0);
         expect(doc.listenerCount).toBe(0);
-        expect(doc.panel.children).toEqual([doc.aiOut, doc.aiGiven]);
+        expect(doc.panel.children).toEqual([doc.aiOut, doc.aiGiven, doc.aiLeft]);
 
         askPanel.sync({ ready: true, facts: FACTS_A, passcode: 'moon' });
         askPanel.sync({ ready: false, facts: null });
@@ -307,19 +416,20 @@ describe('mountAsk', () => {
         expect(called).toBe(false);
     });
 
-    it('builds the form once right after [data-ai="out"] and stays hidden until ready with facts', () => {
+    it('builds the form after the allowance and stays hidden until ready with facts', () => {
         const { doc, askPanel, form, q, out, btn, label, hint } = setup();
-        expect(doc.panel.children).toEqual([doc.aiOut, form, doc.aiGiven]);
+        expect(doc.panel.children).toEqual([doc.aiOut, doc.aiGiven, doc.aiLeft, form]);
         expect(form.className).toBe('sk-ask-form');
         expect(label.textContent).toBe('Ask about this view');
         expect(q.getAttribute('maxlength')).toBe('200');
         expect(q.getAttribute('autocomplete')).toBe('off');
         expect(q.getAttribute('enterkeyhint')).toBe('send');
-        expect(q.placeholder).toBe('For example: did it get brighter?');
+        expect(q.placeholder).toBe('For example: how much did the brightness vary?');
         expect(btn.className).toBe('sk-btn2');
         expect(btn.textContent).toBe('Ask');
         expect(hint.textContent).toBe("The AI only picks lines from this page's measurements. It does not write an answer of its own.");
         expect(out.innerHTML).toBe('');
+        expect(out.getAttribute('aria-live')).toBe('polite');
         expect(form.hidden).toBe(true);
 
         const createdAfterMount = doc.createdCount;
@@ -355,7 +465,8 @@ describe('mountAsk', () => {
 
         q.value = '   Did   it get brighter?  ';
         const pending = form.fire('submit');
-        expect(btn.disabled).toBe(true);
+        expect(btn.disabled).toBe(false);
+        expect(btn.getAttribute('aria-disabled')).toBe('true');
         expect(out.innerHTML).toBe(askViewHtml({ kind: 'loading' }));
         expect(calls).toHaveLength(1);
         expect(calls[0]?.facts).toBe(FACTS_A);
@@ -390,7 +501,7 @@ describe('mountAsk', () => {
             throw new InsightError('locked');
         };
         await form.fire('submit');
-        expect(out.innerHTML).toBe(askViewHtml({ kind: 'locked' }));
+        expect(out.innerHTML).toBe('');
         expect(btn.disabled).toBe(false);
 
         nextOutcome = async () => {
@@ -479,7 +590,7 @@ describe('mountAsk', () => {
         gate = deferred<InsightAnswer>();
         askPanel.sync({ ready: true, facts: FACTS_A });
         const second = form.fire('submit');
-        expect(btn.disabled).toBe(true);
+        expect(btn.getAttribute('aria-disabled')).toBe('true');
         askPanel.sync({ ready: false, facts: null });
         expect(calls[1]?.signal?.aborted).toBe(true);
         expect(btn.disabled).toBe(false);
@@ -499,7 +610,7 @@ describe('mountAsk', () => {
         q.value = 'First question?';
         const first = form.fire('submit');
         expect(calls).toHaveLength(1);
-        expect(btn.disabled).toBe(true);
+        expect(btn.getAttribute('aria-disabled')).toBe('true');
 
         q.value = 'Second question?';
         const second = form.fire('submit');
@@ -513,14 +624,15 @@ describe('mountAsk', () => {
         await first;
         await flush();
 
-        // Second request is still running: loading remains and button stays disabled.
-        expect(btn.disabled).toBe(true);
+        // Second request is still running: loading remains and the button remains marked busy.
+        expect(btn.getAttribute('aria-disabled')).toBe('true');
         expect(out.innerHTML).toBe(askViewHtml({ kind: 'loading' }));
 
         gate2.resolve(answerReply([3], []));
         await second;
         expect(out.innerHTML).toBe(askViewHtml({ kind: 'answer', sheet: factSheet(FACTS_A), lines: [3], trust: [] }));
         expect(btn.disabled).toBe(false);
+        expect(btn.getAttribute('aria-disabled')).toBeNull();
 
         // A single request that rejects with AbortError shows nothing and re-enables the button.
         const abortOnly = setup(async () => {

@@ -779,6 +779,55 @@ describe('mountAiNote, review round 2', () => {
 });
 
 describe('mountAiNote onState', () => {
+    it('updates the shared allowance with question wording only when enabled', async () => {
+        for (const askOn of [false, true]) {
+            const doc = new FakeDoc();
+            const ai = mountAiNote(doc.panel as unknown as HTMLElement, { status: async () => OPEN, storage: new MemStore(), doc: doc as never, askOn });
+            await flush();
+            ai.update(noteView());
+            ai.setRemaining(1);
+            expect(doc.el('left').textContent).toBe(askOn ? '1 AI note or question left today' : '1 AI note left today');
+            ai.setRemaining(3);
+            expect(doc.el('left').textContent).toBe(askOn ? '3 AI notes or questions left today' : '3 AI notes left today');
+        }
+    });
+
+    it('relocks with the right message, clears a saved passcode and announces the unlock', async () => {
+        for (const saved of [false, true]) {
+            const states: Parameters<NonNullable<AiNoteDeps['onState']>>[0][] = [];
+            const store = new MemStore();
+            if (saved) { store.setItem(PASS_KEY, 'moon'); }
+            const doc = new FakeDoc();
+            const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                status: async (o) => o?.passcode === 'moon' ? { enabled: true, locked: true, unlocked: true } : OPEN,
+                storage: store, doc: doc as never, onState: (s) => states.push(s),
+            });
+            await flush();
+            ai.update(noteView());
+            ai.relock();
+            expect(store.getItem(PASS_KEY)).toBeNull();
+            expect(doc.el('lock').hidden).toBe(false);
+            expect(doc.el('msg').textContent).toBe(saved ? MSG.wrong : MSG.enter);
+            expect(states.at(-1)?.ready).toBe(false);
+            doc.el('pass').value = 'moon';
+            await doc.el('lock').fire('submit');
+            expect(states.at(-1)?.ready).toBe(true);
+        }
+    });
+
+    it('announces lock state after a note request is rejected', async () => {
+        const states: boolean[] = [];
+        const doc = new FakeDoc();
+        const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+            status: async () => OPEN, fetch: async () => { throw new InsightError('locked'); },
+            storage: new MemStore(), doc: doc as never, onState: (s) => states.push(s.ready),
+        });
+        await flush();
+        ai.update(noteView());
+        expect(states.at(-1)).toBe(true);
+        await doc.el('go').fire('click');
+        expect(states.at(-1)).toBe(false);
+    });
     it('fires with ready: false while locked and ready: true with facts after unlock', async () => {
         const states: Parameters<NonNullable<AiNoteDeps['onState']>>[0][] = [];
         const doc = new FakeDoc();
