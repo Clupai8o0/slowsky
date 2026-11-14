@@ -17,7 +17,10 @@ Product repo, started 14 Nov 2026 at kick-off. Plan and research live in
 ## Data facts
 
 - Frames: SPHEREx DR1 + QR3 only ("R7"). QR2 is refused everywhere (different calibration).
-- File URLs come from SIA/TAP `access_url`, never built by hand. SIA has no CORS, so the browser goes through `/api/sia`.
+- File URLs come from the SIA row's `cloud_access` JSON (bucket `nasa-irsa-spherex`, key, region), never guessed
+  from an obs_id. SIA's `access_url` is IRSA's own server (no CORS): a link only. SIA's `obs_id` has no detector
+  (all 6 share it); `FrameRecord.obsId` adds `D<n>`. `access_estsize` is kilobytes. SIA has no CORS, so the
+  browser goes through `/api/sia`.
 - S3 `nasa-irsa-spherex`: CORS `*`, Range reads. JS cannot see Content-Range, so check status 206 and body length.
 - L2 file HDUs: PRIMARY, IMAGE (float32 MJy/sr), FLAGS (RICE_1 tile-compressed BINTABLE), VARIANCE, ZODI, EPSF,
   WCS-WAVE (9x9 lambda/bandwidth grid). Display uses IMAGE - ZODI.
@@ -38,6 +41,9 @@ Product repo, started 14 Nov 2026 at kick-off. Plan and research live in
 | `tests/` | Vitest; each lane commits its gate test | each lane |
 
 Conventions in `src/lib/types.ts`: ICRS degrees, 0-based pixels (astropy origin=0), MJD, wavelengths in µm.
+Code in `src/lib` must run in the page and in Web Workers: no DOM globals (document, window, DOMParser).
+Worker entry files go in `src/workers/` (excluded from the main tsconfig); the first one adds a
+`tsconfig.worker.json` with lib WebWorker and a typecheck step for it.
 
 ## Gates (each exits 0 or 1)
 
