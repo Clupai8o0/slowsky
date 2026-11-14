@@ -29,13 +29,29 @@ const MAD_TO_SIGMA = 1.4826;
 const MAX_CLIP_ROUNDS = 3;
 const CENTRE_TOL_DEG = 1e-9;
 
+function raDiffDeg(a: number, b: number): number
+{
+    const d = Math.abs(a - b) % 360;
+    return d > 180 ? 360 - d : d;
+}
+
 function sameGrid(a: OutputGrid, b: OutputGrid): boolean
 {
     return a.width === b.width
         && a.height === b.height
         && a.pixelArcsec === b.pixelArcsec
-        && Math.abs(a.center.ra - b.center.ra) <= CENTRE_TOL_DEG
+        && raDiffDeg(a.center.ra, b.center.ra) <= CENTRE_TOL_DEG
         && Math.abs(a.center.dec - b.center.dec) <= CENTRE_TOL_DEG;
+}
+
+function checkGrid(grid: OutputGrid): void
+{
+    if (!Number.isFinite(grid.pixelArcsec) || grid.pixelArcsec <= 0) {
+        throw new StackError(`stackVisit: grid pixelArcsec must be finite and positive (got ${grid.pixelArcsec})`);
+    }
+    if (!Number.isFinite(grid.center.ra) || !Number.isFinite(grid.center.dec)) {
+        throw new StackError('stackVisit: grid centre must be finite');
+    }
 }
 
 // Sort the first m entries of buf ascending (insertion sort, no allocation).
@@ -100,12 +116,14 @@ function frameBackground(data: Float32Array): number
         return med;
     }
     const lim = 3 * sigma;
+    const loLim = Math.fround(med - lim);
+    const hiLim = Math.fround(med + lim);
     let lo = 0;
     let hi = count;
-    while (lo < hi && med - vals[lo]! > lim) {
+    while (lo < hi && vals[lo]! < loLim) {
         lo++;
     }
-    while (hi > lo && vals[hi - 1]! - med > lim) {
+    while (hi > lo && vals[hi - 1]! > hiLim) {
         hi--;
     }
     if (hi <= lo) {
@@ -116,6 +134,15 @@ function frameBackground(data: Float32Array): number
     return (m & 1) ? vals[mid]! : 0.5 * (vals[mid - 1]! + vals[mid]!);
 }
 
+// Combine regridded frames of one visit into a mean image after per-frame sky
+// subtraction and per-pixel sigma clipping.
+//
+// Neither stackVisit nor subtract checks wavelength: the caller must pass frames
+// already matched in wavelength at the target.
+//
+// The variance returned here treats pixels as independent. After resampling onto
+// the output grid, neighbouring pixels share noise, so adding these variances
+// over an area understates the noise (see regridVariance in regrid.ts).
 export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): StackResult
 {
     const clipSigma = opts.clipSigma ?? 4;
@@ -125,6 +152,7 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
         throw new StackError('stackVisit: no frames');
     }
     const first = frames[0]!;
+    checkGrid(first.grid);
     let version: string | undefined = first.frame.pipelineVersion;
     for (let f = 1; f < frames.length; f++) {
         const fr = frames[f]!;
@@ -204,13 +232,16 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
                     break;
                 }
                 const lim = clipSigma * sigma;
+                const loLim = Math.fround(med - lim);
+                const hiLim = Math.fround(med + lim);
                 let w = 0;
                 for (let i = 0; i < m; i++) {
-                    if (Math.abs(vals[i]! - med) <= lim) {
+                    const v = vals[i]!;
+                    if (v >= loLim && v <= hiLim) {
                         if (indices) {
                             indices[w] = indices[i]!;
                         }
-                        vals[w++] = vals[i]!;
+                        vals[w++] = v;
                     }
                 }
                 if (w === m) {
@@ -265,29 +296,38 @@ function validVariance(value: number): boolean
     return Number.isFinite(value) && value >= 0;
 }
 
-export function subtract(a: StackResult | Float32Array, b: StackResult | Float32Array): StackResult
+// Difference between two visits or images: returns later minus earlier, so a
+// positive value means brighter in the later one.
+//
+// Neither subtract nor stackVisit checks wavelength: the caller must pass inputs
+// already matched in wavelength at the target.
+//
+// The variance returned here treats pixels as independent. After resampling onto
+// the output grid, neighbouring pixels share noise, so adding these variances
+// over an area understates the noise (see regridVariance in regrid.ts).
+export function subtract(later: StackResult | Float32Array, earlier: StackResult | Float32Array): StackResult
 {
-    const ra = asResult(a);
-    const rb = asResult(b);
-    if (ra.data.length !== rb.data.length) {
-        throw new StackError(`subtract: lengths differ (${ra.data.length} vs ${rb.data.length})`);
+    const rLater = asResult(later);
+    const rEarlier = asResult(earlier);
+    if (rLater.data.length !== rEarlier.data.length) {
+        throw new StackError(`subtract: lengths differ (${rLater.data.length} vs ${rEarlier.data.length})`);
     }
-    checkVarianceLength(ra, 'subtract');
-    checkVarianceLength(rb, 'subtract');
-    const len = ra.data.length;
+    checkVarianceLength(rLater, 'subtract');
+    checkVarianceLength(rEarlier, 'subtract');
+    const len = rLater.data.length;
     const data = new Float32Array(len);
     const n = new Uint16Array(len);
-    const variance = ra.variance && rb.variance ? new Float32Array(len) : undefined;
+    const variance = rLater.variance && rEarlier.variance ? new Float32Array(len) : undefined;
     for (let i = 0; i < len; i++) {
-        const va = ra.data[i]!;
-        const vb = rb.data[i]!;
-        if (Number.isFinite(va) && Number.isFinite(vb)) {
-            data[i] = va - vb;
-            n[i] = Math.min(ra.n[i]!, rb.n[i]!);
+        const vLater = rLater.data[i]!;
+        const vEarlier = rEarlier.data[i]!;
+        if (Number.isFinite(vLater) && Number.isFinite(vEarlier)) {
+            data[i] = vLater - vEarlier;
+            n[i] = Math.min(rLater.n[i]!, rEarlier.n[i]!);
             if (variance) {
-                const va = ra.variance![i]!;
-                const vb = rb.variance![i]!;
-                variance[i] = validVariance(va) && validVariance(vb) ? va + vb : NaN;
+                const varLater = rLater.variance![i]!;
+                const varEarlier = rEarlier.variance![i]!;
+                variance[i] = validVariance(varLater) && validVariance(varEarlier) ? varLater + varEarlier : NaN;
             }
         } else {
             data[i] = NaN;
