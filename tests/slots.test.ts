@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FEATURES, FLAGS_TEXT, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
+import { DEFAULT_FEATURES, FEATURES, FLAGS_TEXT, featuresFrom, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
 import { DETECTORS } from '../src/ui/copy';
 import { apertureFor } from '../src/ui/measure';
 import { colourAt } from '../src/lib/falsecolour';
@@ -485,5 +485,19 @@ describe('false colour slot', () => {
             expect(req.lambda).toBeGreaterThanOrEqual(low);
             expect(req.lambda).toBeLessThanOrEqual(high);
         }
+    });
+});
+
+describe('preview switch', () => {
+    it('keeps the defaults when unset or empty, and flips only known names', () => {
+        expect(featuresFrom(undefined)).toEqual(DEFAULT_FEATURES);
+        expect(featuresFrom('')).toEqual(DEFAULT_FEATURES);
+        expect(featuresFrom(' halo , falseColour,-flags,nonsense,constructor,__proto__')).toEqual({ ...DEFAULT_FEATURES, halo: true, falseColour: true, flags: false });
+        expect(featuresFrom('halo,-halo')).toEqual(DEFAULT_FEATURES);
+    });
+
+    it('ships with the build defaults when the variable is not set', () => {
+        expect(import.meta.env.VITE_PREVIEW_FEATURES).toBeUndefined();
+        expect(FEATURES).toEqual(DEFAULT_FEATURES);
     });
 });

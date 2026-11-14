@@ -37,7 +37,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         short: 'Dim at some colours',
         kind: 'spectrum',
         headline: 'Epsilon Indi B, missing colours',
-        show: 'Two brown dwarfs: heavier than planets, too light to shine like stars. Change the colour: they are dim where methane and water soak up light.',
+        show: 'Two brown dwarfs: heavier than planets, too light to shine like stars. Change the colour: they are dim where methane and water soak up light. The saved copy holds frames from detector 3 only (1.63 to 2.41 µm); colours outside that band load from NASA’s archive, which takes about 30 s.',
         not: 'No brightness curve is drawn for it here. Blinking shows how it moves; it does not test whether its brightness changes.',
     },
     wise0855: {

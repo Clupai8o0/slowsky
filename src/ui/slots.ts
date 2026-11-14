@@ -15,8 +15,30 @@ import { createLiveSource, type SkyResult, type SkySource } from '../lib/source'
 import { ColourGridError, falseColourView } from '../lib/falsecolour-view';
 import { apertureFor } from './measure';
 import type { RegriddedFrame, TargetId } from '../lib/types';
+import { COPY } from './copy';
+import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
 
-export const FEATURES = Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
+export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo';
+export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
+    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
+
+// Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
+// Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
+export function featuresFrom(list: string | undefined, defaults: Readonly<Record<Feature, boolean>> = DEFAULT_FEATURES): Readonly<Record<Feature, boolean>>
+{
+    const out = { ...defaults };
+    for (const raw of (list ?? '').split(',')) {
+        const item = raw.trim();
+        const off = item.startsWith('-');
+        const name = (off ? item.slice(1) : item).trim();
+        if (Object.prototype.hasOwnProperty.call(out, name)) {
+            out[name as Feature] = !off;
+        }
+    }
+    return Object.freeze(out);
+}
+
+export const FEATURES = featuresFrom(import.meta.env.VITE_PREVIEW_FEATURES as string | undefined);
 
 export interface SlotView {
     result: SkyResult;
@@ -344,9 +366,28 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
 }
 
 // R Draconis halo curve. `box` is the panel body under "Brightness over time". Same rules as renderSpectrum.
-export function renderHalo(box: HTMLElement, view: SlotView): boolean
+// Measured once per result (src/ui/halo-view.ts); the simulated sky never gets a curve.
+const haloCache = new WeakMap<SkyResult, HaloView | null>();
+const haloShown = new WeakMap<HTMLElement, string>();
+
+export function renderHalo(box: HTMLElement, view: SlotView, deps: HaloDeps = {}): boolean
 {
-    void box;
-    void view;
-    return false;
+    const card = view.targetId && view.targetId in COPY ? COPY[view.targetId as TargetId] : undefined;
+    if (view.source === 'demo' || card?.kind !== 'saturated') {
+        return false;
+    }
+    let h = haloCache.get(view.result);
+    if (h === undefined) {
+        h = haloFor(view.result, deps);
+        haloCache.set(view.result, h);
+    }
+    if (!h) {
+        return false;
+    }
+    const html = haloHtml(h, card.display, view.mode === 'blink' ? view.index : -1);
+    if (haloShown.get(box) !== html) {
+        box.innerHTML = html;
+        haloShown.set(box, html);
+    }
+    return true;
 }
