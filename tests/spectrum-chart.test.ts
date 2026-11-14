@@ -422,6 +422,16 @@ describe('spectrum chart regression cases', () => {
         }
     });
 
+    it.each([[1.0000000001, 1.0000000002], [1e16, 1e16 + 2], [5, 5.000000001]].map(range => [range]))
+    ('never prints the same X label twice for %j', range => {
+        for (const width of [320, 720]) {
+            const svg = spectrumChartSvg(smallSpectrum(range), { width });
+            assertCleanSvg(svg);
+            const labels = [...svg.matchAll(/<text data-x-tick-label="true"[^>]*>([^<]+)<\/text>/g)].map(m => m[1]);
+            expect(new Set(labels).size).toBe(labels.length);
+        }
+    });
+
     it.each([[-5, -5], [3, 3, 3], [0, 0], [-2], [1e-12, 2e-12], [1e9, 2e9], [-5, 2]].map(values => [values]))
     ('keeps dots, lines and noise bands in bounds for %j', values => {
         for (const factor of [0, 0.1]) {

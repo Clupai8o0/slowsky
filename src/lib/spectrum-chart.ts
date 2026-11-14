@@ -154,7 +154,8 @@ function xTicks(min: number, max: number, width: number): number[]
                 const tick = Number(((first + i) * step).toPrecision(15));
                 const previous = ticks[ticks.length - 1];
                 if (previous !== undefined) {
-                    if (tick <= previous) {
+                    // Two ticks that print the same label would mislead; such a range gets no ticks at all.
+                    if (tick <= previous || formatTickLabel(tick) === formatTickLabel(previous)) {
                         fits = false;
                         break;
                     }
