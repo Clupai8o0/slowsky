@@ -11,7 +11,12 @@ declare const process: { cwd(): string };
 // function fails on its first call ("Cannot find module"), which no other test here would notice.
 
 const ROOT: string = process.cwd();
-const STATEMENT = /(?:^|\n)[ \t]*(import|export)\b([^;'"]*?)(?:from\s*)?'(\.{1,2}\/[^']+)'([^;\n]*)/g;
+// This repo's TypeScript has no parser to call from a test, so the check reads the source text: comments are
+// taken out first, then static imports, re-exports and import('...') calls with a literal path are matched.
+const COMMENT = /\/\*[\s\S]*?\*\/|^[ \t]*\/\/.*$/gm;
+const STATEMENT = /(?:^|[\n;])[ \t]*(?:import|export)\b([^;'"]*?)(?:from\s*)?(['"])(\.{1,2}\/[^'"]+)\2([^;\n]*)/g;
+const DYNAMIC = /\bimport\s*\(\s*(['"])(\.{1,2}\/[^'"]+)\1([^)]*)\)/g;
+const JSON_ATTRIBUTE = /\bwith\s*:?\s*\{\s*type:\s*(['"])json\1\s*\}/;
 
 interface Problem {
     file: string;
@@ -22,14 +27,16 @@ interface Problem {
 function valueImports(source: string): { specifier: string; tail: string }[]
 {
     const found: { specifier: string; tail: string }[] = [];
-    for (const match of source.matchAll(STATEMENT)) {
-        const clause = match[2] ?? '';
-        const specifier = match[3] ?? '';
-        const tail = match[4] ?? '';
+    const code = source.replace(COMMENT, '');
+    for (const match of code.matchAll(STATEMENT)) {
+        const clause = match[1] ?? '';
         if (/^\s*type\b/.test(clause)) {
             continue; // type-only imports are erased before the code runs
         }
-        found.push({ specifier, tail });
+        found.push({ specifier: match[3] ?? '', tail: match[4] ?? '' });
+    }
+    for (const match of code.matchAll(DYNAMIC)) {
+        found.push({ specifier: match[2] ?? '', tail: match[3] ?? '' });
     }
     return found;
 }
@@ -48,7 +55,7 @@ function check(entry: string): { problems: Problem[]; seen: string[] }
         const shown: string = relative(ROOT, file);
         for (const { specifier, tail } of valueImports(readFileSync(file, 'utf8') as string)) {
             if (specifier.endsWith('.json')) {
-                if (!/with\s*\{\s*type:\s*'json'\s*\}/.test(tail)) {
+                if (!JSON_ATTRIBUTE.test(tail)) {
                     problems.push({ file: shown, specifier, why: 'JSON import with no type attribute' });
                 }
                 continue;
@@ -100,6 +107,13 @@ describe('server functions load as native ES modules', () => {
             "import data from './data.json' with { type: 'json' };",
             "import './side.js';",
             "import pkg from 'some-package';",
+            'import g from "./g";',
+            'import other from "./other.json" with { type: "json" };',
+            "const h = await import('./h');",
+            "const i = await import('./i.json', { with: { type: 'json' } });",
+            "/* import j from './j'; */",
+            "// import k from './k';",
+            "const text = 'see https://example.org // not a comment';",
         ].join('\n');
         expect(valueImports(source)).toEqual([
             { specifier: './a', tail: '' },
@@ -107,6 +121,10 @@ describe('server functions load as native ES modules', () => {
             { specifier: './e.js', tail: '' },
             { specifier: './data.json', tail: " with { type: 'json' }" },
             { specifier: './side.js', tail: '' },
+            { specifier: './g', tail: '' },
+            { specifier: './other.json', tail: ' with { type: "json" }' },
+            { specifier: './h', tail: '' },
+            { specifier: './i.json', tail: ", { with: { type: 'json' } }" },
         ]);
     });
 });
