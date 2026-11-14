@@ -22,7 +22,7 @@ export function parseCoords(text: string): SkyCoord | null
     // "83,63 22" reads as 83.63 and 22 with a decimal comma, or as 83 and 63 22 with the comma as the
     // separator: two different places, so it is refused. So is any comma tight between two digits when
     // the text also has numbers split by a space. "56.75,24.12", "10:30,20" and "10 30, 20 15" are fine.
-    if (/\d,\d/.test(s) && /\d\s+[+-]?\d/.test(s)) {
+    if (/\d,\d/.test(s) && /\d\s+[+-]?\.?\d/.test(s)) {
         return null;
     }
     return read(s);

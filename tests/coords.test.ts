@@ -110,7 +110,7 @@ describe('parseCoords', () => {
         // 83.63 and 22, or 83 and 63 22: two different places.
         // "03 47 24,24 07 00" has the same problem: 03 47 24.24 and 07 00, or 03 47 24 and 24 07 00.
         for (const bad of ['83,63 22', '12,5 45', '83,63 +22', '56,75 -24,12', '10 30,20 15',
-            '03 47 24,24 07 00', '12,0 0']) {
+            '03 47 24,24 07 00', '12,0 0', '83,63 .5', '83,63 -.5']) {
             expect(parseCoords(bad), bad).toBeNull();
         }
         expect(parseCoords('56.75,24.12')).toEqual({ ra: 56.75, dec: 24.12 });
