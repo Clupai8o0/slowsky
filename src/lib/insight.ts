@@ -172,7 +172,10 @@ export function factSheet(f: InsightFacts): string[]
     return lines;
 }
 type Bound = 'min' | 'max' | undefined;
-type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound; medianDirection?: 'above' | 'below' | 'either' | 'less' };
+type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound; medianDirection?: 'above' | 'below' | 'either' | 'less'; scatter?: boolean };
+const CHANGE_VERBS = /\b(?:got|became|grew|rose|ris|climb|increas|brighten|gain|fell|fall|drop|fad|dimm|decreas|declin|lost|went|jump|spik|surg|soar|shot|shoot|grow|becom|dims?\b|dip|sank|sink|slip|slid|plung|plummet|reach|stay|remain|swing|swung|shift|leap)/i;
+const MEDIAN_TIME_WORDS = /\b(?:first|last\b|latest|final|earl|later\b|now\b|end|finish|start|recent|visit|second\b|third|fourth|fifth)/i;
+const OTHER_SUBJECT = /\b(?:reference|comparison|scatter|spread|nois|signal|snr|s\/n|difference|frame|shift)/i;
 // The direction of a bound written just before a number: "more than 100" is a floor, "below 1" a ceiling.
 function boundBefore(text: string, ai: boolean): Bound
 {
@@ -240,7 +243,7 @@ function sheetFacts(sheet: string[]): NumberFact[]
             const medianDirection = (direction?.[1] ?? direction?.[2] ?? direction?.[3])?.toLowerCase() as NumberFact['medianDirection'];
             for (const list of lists(segment[2]!)) {
                 const bound = boundBefore(segment[2]!.slice(0, list.start), false);
-                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined, medianDirection }); });
+                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined, medianDirection, scatter: /^Scatter of each$/i.test(label) }); });
             }
         }
     }
@@ -296,10 +299,11 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
                 if (!facts.some((fact) => {
                     if (fact.bound && fact.bound !== bound) { return false; }
                     if (fact.value !== val || (integer && !fact.integer) || !fact.words.test(fact.required && noun ? value : context)) { return false; }
+                    if (fact.scatter && CHANGE_VERBS.test(context)) { return false; }
                     if (fact.medianDirection) {
-                        if (!/\bmedian\b/i.test(value) || /\b(?:got|became|grew|rose|rise|rising|risen|climb|increas|brighten|gain|fell|fall|drop|fade|fading|dimm|decreas|declin|lost|went)/i.test(value)) { return false; }
-                        const down = /\b(?:below|under|beneath|dimmer|fainter|lower)\b/i.test(value);
-                        const up = /\b(?:above|over|brighter|higher)\b/i.test(value);
+                        if (!/\bmedian\b/i.test(value) || CHANGE_VERBS.test(value) || MEDIAN_TIME_WORDS.test(value) || OTHER_SUBJECT.test(context)) { return false; }
+                        const down = /\b(?:below|beneath|dimmer|fainter|lower)\b|\bunder\s+(?:(?:the|its)\s+median|it)\b/i.test(value);
+                        const up = /\b(?:above|brighter|higher)\b|\bover\s+(?:(?:the|its)\s+median|it)\b/i.test(value);
                         if ((fact.medianDirection === 'above' && down) || (fact.medianDirection === 'below' && up)
                             || (fact.medianDirection === 'either' && (up || down) && !/\beither side\b/i.test(value))
                             || (fact.medianDirection === 'less' && (up || down) && !/\bless than\b/i.test(value))) { return false; }
