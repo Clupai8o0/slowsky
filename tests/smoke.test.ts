@@ -7,9 +7,9 @@ describe('scaffold', () => {
         expect(new NotImplemented('x').message).toBe('x is not built yet');
     });
 
-    it('sia stub answers 501 with CORS', async () => {
-        const r = GET(new Request('https://example.test/api/sia'));
-        expect(r.status).toBe(501);
+    it('sia GET rejects a bad query with 400 and CORS', async () => {
+        const r = await GET(new Request('https://example.test/api/sia'));
+        expect(r.status).toBe(400);
         expect(r.headers.get('access-control-allow-origin')).toBe('*');
     });
 });
