@@ -96,24 +96,19 @@ export function validateQuestion(value: unknown): string
 }
 export const CHANGE_LINE_STARTS = ['Brightness relative to the reference stars', 'Largest change from the median brightness', 'Difference image at the target', 'Shift in position'] as const;
 export const TRUST_LINE_STARTS = ['Lowest signal-to-noise among the points', 'Reference stars:', 'Visits:'] as const;
-// Pair brightness with signal, references and visits, and difference or motion with visits;
-// if that leaves no answer rows, keep the picked trust rows as answers instead.
+// Pair brightness with signal, references and visits, and difference or motion with visits.
 export function askRows(sheet: string[], picked: number[]): { lines: number[]; trust: number[] }
 {
     const selected = new Set(picked);
-    if (picked.some((n) => sheet[n - 1]?.startsWith(CHANGE_LINE_STARTS[1]))) {
+    if (picked.some((n) => [CHANGE_LINE_STARTS[1], CHANGE_LINE_STARTS[2]].some((start) => sheet[n - 1]?.startsWith(start)))) {
         const time = sheet.findIndex((line) => line.startsWith(CHANGE_LINE_STARTS[0]));
         if (time >= 0) { selected.add(time + 1); }
     }
     const matches = (n: number, starts: readonly string[]) => starts.some((start) => sheet[n - 1]?.startsWith(start));
-    const brightness = [...selected].some((n) => matches(n, [CHANGE_LINE_STARTS[0], CHANGE_LINE_STARTS[1], TRUST_LINE_STARTS[0], TRUST_LINE_STARTS[1]]));
+    const brightness = [...selected].some((n) => matches(n, [CHANGE_LINE_STARTS[0], CHANGE_LINE_STARTS[1]]));
     const other = [...selected].some((n) => matches(n, [CHANGE_LINE_STARTS[2], CHANGE_LINE_STARTS[3]]));
     const trustSet = new Set(sheet.flatMap((line, i) => (brightness ? TRUST_LINE_STARTS : other ? [TRUST_LINE_STARTS[2]] : []).some((start) => line.startsWith(start)) ? [i + 1] : []));
-    let lines = sheet.flatMap((_, i) => selected.has(i + 1) && !trustSet.has(i + 1) ? [i + 1] : []);
-    if (!lines.length) {
-        lines = sheet.flatMap((_, i) => picked.includes(i + 1) ? [i + 1] : []);
-        for (const n of lines) { trustSet.delete(n); }
-    }
+    const lines = sheet.flatMap((_, i) => selected.has(i + 1) && (!(brightness || other) || !matches(i + 1, TRUST_LINE_STARTS)) ? [i + 1] : []);
     const trust = sheet.flatMap((_, i) => trustSet.has(i + 1) ? [i + 1] : []);
     return { lines, trust };
 }
@@ -142,7 +137,7 @@ export function factSheet(f: InsightFacts): string[]
             const mid = Math.floor(sorted.length / 2);
             const median = sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
             lines.push(`Brightness relative to the reference stars, in time order: ${values.map((n) => n.toFixed(2)).join(', ')}.${kept.length < lc.points.length ? ' Points too faint to measure are left out.' : ''}`);
-            if (median !== 0) {
+            if (values.length >= 3 && median !== 0) {
                 const below = median - sorted[0]!;
                 const above = sorted[sorted.length - 1]! - median;
                 // Compare the printed percents: 0.81, 1.00, 1.19 is a tie, not "19 percent brighter".

@@ -6,7 +6,7 @@ import * as insight from '../src/lib/insight';
 
 const noteAnswer = 'The wavelength is 4.270 micron. The frames came from a saved copy.';
 const answer = 'Wavelength: 4.270 micron. Frames came from: a saved copy.';
-const cannot = 'The measured lines on this page do not answer that question directly.';
+const cannot = 'The AI did not match this question to any measured line on this page.';
 const question = 'What wavelength is this view?';
 let nextPosition = 90;
 
@@ -213,6 +213,8 @@ At most 120 words in total.`);
 
     it('defines the exact fallback and the fact-sheet-only contract', () => {
         expect(ASK_CANNOT).toBe(cannot);
+        expect(ASK_SYSTEM_PROMPT).not.toContain(cannot);
+        expect(askMessage(['Visits: 3.'], question)).not.toContain(cannot);
         expect(ASK_SYSTEM_PROMPT).toBe(`You are given lettered fact lines measured by this page and a visitor's question inside <question> tags.
 Reply with ONLY the LETTERS of the lines that measure the thing the question asks about, at most 3, separated by
 commas, in sheet order. If no line measures it, reply with only the word none. Also reply none if the question asks
@@ -339,15 +341,35 @@ describe('ask reply checks', () => {
             expect(hit.mock.calls.some(([key]) => key.startsWith('user-fail-day:'))).toBe(true);
         } finally { warn.mockRestore(); }
     });
-    it('pairs trust by measurement, including trust-only picks', () => {
-        const sheet = ['Target:', 'Visits:', 'Brightness relative to the reference stars', 'Largest change from the median brightness', 'Lowest signal-to-noise among the points', 'Reference stars:', 'Difference image at the target', 'Shift in position'];
-        expect(askRows(sheet, [5])).toEqual({ lines: [5], trust: [2, 6] });
-        expect(askRows(sheet, [3, 5])).toEqual({ lines: [3], trust: [2, 5, 6] });
-        expect(askRows(sheet, [8])).toEqual({ lines: [8], trust: [2] });
-        expect(askRows(sheet, [2, 8])).toEqual({ lines: [8], trust: [2] });
-        expect(askRows(sheet, [2])).toEqual({ lines: [2], trust: [] });
-        expect(askRows(sheet, [1])).toEqual({ lines: [1], trust: [] });
-        expect(askRows(sheet, [1, 4, 7])).toEqual({ lines: [1, 3, 4, 7], trust: [2, 5, 6] });
+    it('pairs trust only with the relevant measurements', () => {
+        const sheet = ['Target:', 'Brightness relative to the reference stars', 'Largest change from the median brightness', 'Difference image at the target', 'Shift in position', 'Lowest signal-to-noise among the points', 'Reference stars:', 'Visits:', 'Position:'];
+        const withoutTime = sheet.filter((_, i) => i !== 1);
+        const cases: [string[], number[], number[], number[]][] = [
+            [sheet, [2], [2], [6, 7, 8]], [sheet, [3], [2, 3], [6, 7, 8]],
+            [sheet, [4], [2, 4], [6, 7, 8]], [withoutTime, [3], [3], [7]],
+            [sheet, [5], [5], [8]], [sheet, [5, 6], [5], [8]],
+            [withoutTime, [3, 6], [3], [7]], [withoutTime, [2], [2], [5, 6, 7]],
+            [sheet, [6], [6], []], [sheet, [7], [7], []], [sheet, [8], [8], []],
+            [sheet, [2, 8], [2], [6, 7, 8]], [sheet, [1, 6], [1, 6], []], [sheet, [1, 7], [1, 7], []],
+        ];
+        for (const [input, picked, lines, trust] of cases) {
+            expect(askRows(input, picked)).toEqual({ lines, trust });
+        }
+    });
+    it('preserves the row invariants for every one-to-three-line selection', () => {
+        const full = ['Target:', 'Brightness relative to the reference stars', 'Largest change from the median brightness', 'Difference image at the target', 'Shift in position', 'Lowest signal-to-noise among the points', 'Reference stars:', 'Visits:', 'Position:'];
+        for (const sheet of [full, full.filter((_, i) => i !== 1)]) {
+            for (let mask = 1; mask < 1 << sheet.length; mask++) {
+                const picked = sheet.flatMap((_, i) => mask & (1 << i) ? [i + 1] : []);
+                if (picked.length > 3) { continue; }
+                const { lines, trust } = askRows(sheet, picked);
+                const has = (rows: number[], starts: readonly string[]) => rows.some((n) => starts.some((start) => sheet[n - 1]!.startsWith(start)));
+                expect(lines.length).toBeGreaterThan(0);
+                expect(lines.some((n) => trust.includes(n))).toBe(false);
+                if (trust.length) { expect(has(lines, CHANGE_LINE_STARTS)).toBe(true); }
+                if (has(trust, TRUST_LINE_STARTS.slice(0, 2))) { expect(has(lines, CHANGE_LINE_STARTS.slice(0, 2))).toBe(true); }
+            }
+        }
     });
     it('rejects four letters and punctuation after none with a large enough sheet', () => {
         expect(pickLines('A, B, C, D', ['a', 'b', 'c', 'd'])).toBeNull();
@@ -374,8 +396,16 @@ describe('ask reply checks', () => {
         h.facts.lightCurve = { points: [{ mjd: 61000, relative: 1.3, snr: 20 }, { mjd: 61010, relative: 1, snr: 10 }, { mjd: 61020, relative: 1, snr: 10 }], refScatter: [0.02], dropped: 0 };
         const sheet = factSheet(h.facts);
         const response = await h.POST(h.request({ facts: h.facts, question: 'Did it get brighter?' }));
-        expect(await response.json()).toMatchObject({ kind: 'answer', lines: [5, 6], trust: [4, 7, 8], text: joinRows(sheet, [5, 6]) });
+        expect(await response.json()).toMatchObject({ kind: 'answer', picked: [6], lines: [5, 6], trust: [4, 7, 8], text: joinRows(sheet, [5, 6]) });
         expect(askRows(sheet, [4, 6])).toEqual({ lines: [5, 6], trust: [4, 7, 8] });
+    });
+    it('shows a fading time order when the model picks a brighter difference pixel', async () => {
+        const h = setup({}, { text: 'J' });
+        h.facts.lightCurve = { points: [{ mjd: 61000, relative: 1.3, snr: 20 }, { mjd: 61010, relative: 1, snr: 10 }, { mjd: 61020, relative: 1, snr: 10 }], refScatter: [0.02], dropped: 0 };
+        h.facts.difference = { peakSigma: 6.2 };
+        const sheet = factSheet(h.facts);
+        const response = await h.POST(h.request({ facts: h.facts, question: 'Did it get brighter?' }));
+        expect(await response.json()).toMatchObject({ picked: [10], lines: [5, 10], trust: [4, 7, 8], text: joinRows(sheet, [5, 10]) });
     });
     it('keeps fact-sheet line starts unique across full and partial sheets', () => {
         const h = setup();
@@ -383,7 +413,7 @@ describe('ask reply checks', () => {
         for (const facts of [h.facts, full, { ...full, lightCurve: { ...full.lightCurve, points: [full.lightCurve.points[0]!] } }]) {
             const sheet = factSheet(facts);
             for (const [index, start] of [...CHANGE_LINE_STARTS, ...TRUST_LINE_STARTS].entries()) {
-                const present = index === 6 || (index < 2 && facts.lightCurve && facts.lightCurve.points.length >= 2) || (index === 2 && facts.difference) || (index === 3 && facts.motion) || ((index === 4 || index === 5) && facts.lightCurve);
+                const present = index === 6 || (index === 0 && facts.lightCurve && facts.lightCurve.points.length >= 2) || (index === 1 && facts.lightCurve && facts.lightCurve.points.length >= 3) || (index === 2 && facts.difference) || (index === 3 && facts.motion) || ((index === 4 || index === 5) && facts.lightCurve);
                 expect(sheet.filter((line) => line.startsWith(start))).toHaveLength(present ? 1 : 0);
             }
         }
@@ -394,11 +424,11 @@ describe('ask reply checks', () => {
 
     it('selects two-digit line numbers through the handler', async () => {
         const h = setup({}, { text: 'L,J' });
-        h.facts.lightCurve = { points: [{ mjd: 61000, relative: 1, snr: 20 }, { mjd: 61010, relative: 0.8, snr: 10 }], refScatter: [0.02], dropped: 0 };
+        h.facts.lightCurve = { points: [{ mjd: 61000, relative: 1, snr: 20 }, { mjd: 61010, relative: 0.8, snr: 10 }, { mjd: 61020, relative: 1, snr: 10 }], refScatter: [0.02], dropped: 0 };
         h.facts.difference = { peakSigma: -3.4 };
         h.facts.motion = { arcsec: 2.3, days: 10 };
         const response = await h.POST(h.request({ facts: h.facts, question }));
-        expect(await response.json()).toMatchObject({ text: 'Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit. Frames came from: a saved copy.', picked: [10, 12], lines: [10, 12], trust: [4] });
+        expect(await response.json()).toMatchObject({ text: joinRows(factSheet(h.facts), [5, 10, 12]), picked: [10, 12], lines: [5, 10, 12], trust: [4, 7, 8] });
     });
 
     it.each([
@@ -529,6 +559,14 @@ describe('ask reply checks', () => {
 });
 
 describe('ask browser client', () => {
+    it('rejects four picks even when every computed row and the text match', async () => {
+        const h = setup();
+        const sheet = factSheet(h.facts);
+        const picked = [1, 2, 3, 5];
+        const rows = askRows(sheet, picked);
+        const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ text: joinRows(sheet, rows.lines), picked, ...rows, model: 'fixture-model', dropped: 0, cached: false, kind: 'answer' }));
+        await expect(askInsight(h.facts, question, { fetcher })).rejects.toMatchObject({ code: 'failed' });
+    });
     it('checks kind, rows, text, ordering and trust against the local sheet', async () => {
         const h = setup();
         h.facts.lightCurve = { points: [{ mjd: 61000, relative: 1.3, snr: 20 }, { mjd: 61010, relative: 1, snr: 10 }, { mjd: 61020, relative: 1, snr: 10 }], refScatter: [0.02], dropped: 0 };
