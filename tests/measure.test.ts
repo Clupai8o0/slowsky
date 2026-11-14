@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { centreNear, curveFor, frameMjd, middleMjd, ringsOn, shiftFor } from '../src/ui/measure';
+import { apertureFor, centreNear, curveFor, frameMjd, middleMjd, ringsOn, shiftFor, sumNoise } from '../src/ui/measure';
+import { aperture } from '../src/lib/photometry';
 import { gridPixToSky } from '../src/lib/regrid';
 import { separationDeg } from '../src/lib/coords';
 import { GaiaError, shiftReadout } from '../src/lib/gaia';
@@ -32,9 +33,9 @@ function frame(k: number, stars: { at: PixelCoord; flux: number }[], nanAt?: Pix
     return { frame: rec, grid, data, lambdaAtCenter: 0.9, bandwidthAtCenter: 0.01 };
 }
 
-function star(id: string, at: PixelCoord, g: number): GaiaStar
+function star(id: string, at: PixelCoord, g: number, outputGrid = grid): GaiaStar
 {
-    const c = gridPixToSky(grid, at);
+    const c = gridPixToSky(outputGrid, at);
     return { sourceId: id, ra: c.ra, dec: c.dec, g, epochJyear: 2016, pmRa: 0, pmDec: 0, pix: at };
 }
 
@@ -52,6 +53,20 @@ function result(targetFlux: number[], withTrack = true): SkyResult
         ...(withTrack ? { track } : {}),
     };
 }
+
+describe('apertureFor', () => {
+    it('scales native apertures to the output grid and keeps minimum gaps', () => {
+        const fine = apertureFor(grid);
+        expect(fine.radius).toBeCloseTo(12.3 / 1.5, 10);
+        expect(fine.annulusIn).toBeCloseTo(18.45 / 1.5, 10);
+        expect(fine.annulusOut).toBeCloseTo(36.9 / 1.5, 10);
+        const coarse = apertureFor({ ...grid, pixelArcsec: 6.1 });
+        expect(coarse.radius).toBeCloseTo(12.3 / 6.1, 10);
+        expect(coarse.annulusIn).toBeCloseTo(18.45 / 6.1, 10);
+        expect(coarse.annulusOut).toBeCloseTo(36.9 / 6.1, 10);
+        expect(apertureFor({ ...grid, pixelArcsec: 20 })).toEqual({ radius: 1.5, annulusIn: 2.5, annulusOut: 4.5 });
+    });
+});
 
 describe('centreNear', () => {
     it('finds a star whose core pixel is masked', () => {
@@ -88,10 +103,83 @@ describe('curveFor', () => {
         expect(c).not.toBeNull();
         expect(c!.refs).toBe(4);
         expect(c!.frameOf).toEqual([0, 1, 2]);
+        expect(c!.blend).toBeNull();
+        const f = r.frames[0]!.frame;
+        expect(c!.lc.points[0]!.target.sum).toBeCloseTo(aperture(f.data, N, N, TARGET, apertureFor(grid)).sum, 5);
         const rel = c!.lc.points.map((p) => p.relative);
         expect(rel[1]! / rel[0]!).toBeCloseTo(2, 1);
         expect(rel[2]! / rel[0]!).toBeCloseTo(1, 2);
         expect(middleMjd(r)).toBeCloseTo(MJD0 + 100, 1);
+    });
+
+    it('keeps references with room for the scaled annulus on a coarse grid', () => {
+        const r = result([100, 100]);
+        r.grid = { ...grid, pixelArcsec: 6.1, fovDeg: N * 6.1 / 3600 };
+        const refs = [{ x: 10, y: 10 }, { x: 22, y: 10 }, { x: 80, y: 94 }, { x: 100, y: 80 }];
+        r.stars = refs.map((at, i) => star(`r${i}`, at, 11 + i, r.grid));
+        r.frames = [0, 1].map((k) => ({
+            frame: { ...frame(k, [{ at: TARGET, flux: 100 }, ...refs.map((at) => ({ at, flux: 200 }))]), grid: r.grid },
+            label: '',
+        }));
+        expect(curveFor(r)?.refs).toBe(4);
+    });
+
+    it('reports the brightest blend at 3 px and ignores the nearest self star at 0.5 px', () => {
+        const r = result([100, 100, 100]);
+        r.stars.push(star('self', { x: 80.5, y: 80 }, 15), star('blend', { x: 83, y: 80 }, 16.3), star('fainter', { x: 82, y: 80 }, 17));
+        const me: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 0 };
+        const c = curveFor(r, me);
+        expect(c).not.toBeNull();
+        expect(c!.blend?.sourceId).toBe('blend');
+        expect(c!.blend?.g).toBe(16.3);
+        expect(c!.blend?.px).toBeCloseTo(3, 6);
+        r.stars = r.stars.filter((s) => s.sourceId !== 'blend' && s.sourceId !== 'fainter');
+        expect(curveFor(r, me)?.blend).toBeNull();
+        // Over 2.5 mag fainter than the target: under 10% of its light, not a blend.
+        r.stars.push(star('faint', { x: 83, y: 80 }, 17.6));
+        expect(curveFor(r, me)?.blend).toBeNull();
+        // A star that does not move like the target is never taken for it, however close (WISE 0855 is not in Gaia).
+        const fast: Astrometry = { ...me, pmRa: -8000, pmDec: -700 };
+        expect(curveFor(r, fast)?.blend?.sourceId).toBe('self');
+    });
+
+    it('solves each comparison star\'s own scatter before adding them', () => {
+        // Two equal stars, each seen with scatter s against the other: the sum scatters by s / 2.
+        expect(sumNoise([100, 100], [0.02, 0.02])).toBeCloseTo(0.02 / 2, 4);
+        // A bright steady star dominates the sum; faint noisy ones barely move it.
+        expect(sumNoise([1000, 10, 20, 30], [0.001, 0.3, 0.3, 0.3])).toBeLessThan(0.02);
+        // Two stars can't say which one is noisy: their own sky noise decides. Faint and noisy barely moves the sum.
+        expect(sumNoise([1000, 10], [0.1, 0.1], [0.0001, 0.1])).toBeLessThan(0.002);
+        expect(sumNoise([1000, 10], [0.1, 0.1], [0.1, 0.0001])).toBeGreaterThan(0.09);
+        // Non-positive fluxes are skipped and never give a negative noise.
+        expect(sumNoise([400, -450], [0.05, 0.05])).toBeGreaterThanOrEqual(0);
+        expect(sumNoise([], [])).toBe(0);
+    });
+
+    it('checks blends at each frame date and target track position', () => {
+        const r = result([100, 100, 100]);
+        r.track![0]!.pix = { x: 70, y: 80 };
+        r.track![1]!.pix = { x: 75, y: 80 };
+        const mover = { ...star('mover', { x: 100, y: 80 }, 16.3), epochJyear: 2000 + (MJD0 + 0.005 - 51544.5) / 365.25, pmRa: 17 * 1.5 * 1000 * 365.25 / 200 };
+        r.stars.push(mover);
+        const c = curveFor(r);
+        expect(c!.blend?.sourceId).toBe('mover');
+        expect(c!.blend?.px).toBeCloseTo(3, 2);
+    });
+
+    it('weights comparison noise by median reference flux over valid frames', () => {
+        const r = result([100, 100, 100, 100, 100, 100]);
+        r.frames = [800, 1200, 1000, 900, 1100, 100000].map((flux, k) => ({
+            frame: frame(k, [{ at: TARGET, flux: 100 }, ...REFS.map((at, i) => ({ at, flux: i === 0 ? flux : 20 }))], k === 5 ? TARGET : undefined),
+            label: '',
+        }));
+        const c = curveFor(r);
+        expect(c?.refs).toBe(4);
+        expect(c!.lc.points.filter((p) => p.valid)).toHaveLength(5);
+        const fluxes = [1000, 20, 20, 20];
+        // Aperture sums are proportional to the injected fluxes, and sumNoise depends only on their ratios.
+        expect(c!.noise).toBeCloseTo(sumNoise(fluxes, c!.lc.refScatter), 3);
+        expect(c!.noise).toBeGreaterThan(0.1);
     });
 
     it('needs a track and steady stars', () => {
@@ -138,14 +226,30 @@ describe('curveFor', () => {
 });
 
 describe('shiftFor', () => {
-    it('is null for one frame and measures from frame 1 otherwise', () => {
+    it('is null for one frame and measures from the first to the last otherwise', () => {
         const a: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 0 };
-        expect(shiftFor(result([100]), a, 0)).toBeNull();
-        const s = shiftFor(result([100, 100, 100]), a, 0);
+        expect(shiftFor(result([100]), a)).toBeNull();
+        const s = shiftFor(result([100, 100, 100]), a);
         expect(s?.from).toBe(0);
         expect(s?.to).toBe(2);
         expect(s?.predictedArcsec).toBe(0);
+        expect(s?.significant).toBe(false);
+        expect(s?.errArcsec).toBeCloseTo(0.65 * 6.15, 10);
         expect(s?.measured?.measuredArcsec).toBeLessThan(0.2);
+    });
+
+    it.each([
+        { pmDec: 10000, significant: false },
+        { pmDec: 20000, significant: true },
+    ])('tests first-to-last motion significance for $pmDec mas/year', ({ pmDec, significant }) => {
+        const r = result([100, 100, 100]);
+        const a: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec };
+        const s = shiftFor(r, a);
+        const expected = separationDeg(positionAt(a, frameMjd(r.frames[0]!.frame)), positionAt(a, frameMjd(r.frames[2]!.frame))) * 3600;
+        expect(s?.to).toBe(2);
+        expect(s?.predictedArcsec).toBeCloseTo(expected, 8);
+        expect(s?.errArcsec).toBeCloseTo(3.9975, 10);
+        expect(s?.significant).toBe(significant);
     });
 
     it.each([0, 2])('rejects a distant centre in frame %i and preserves the catalogue prediction', (index) => {
@@ -156,7 +260,7 @@ describe('shiftFor', () => {
         const c = centreNear(r.frames[index]!.frame, p.pix);
         expect(c).toBeDefined();
         expect(Math.hypot(c!.x - p.pix.x, c!.y - p.pix.y)).toBeGreaterThan(1.5 * 6.15 / grid.pixelArcsec);
-        const s = shiftFor(r, a, 0);
+        const s = shiftFor(r, a);
         expect(s?.measured).toBeNull();
         const predicted = separationDeg(positionAt(a, frameMjd(r.frames[0]!.frame)), positionAt(a, frameMjd(r.frames[2]!.frame))) * 3600;
         expect(predicted).toBeGreaterThan(5);
@@ -167,8 +271,8 @@ describe('shiftFor', () => {
         const r = result([100, 100]);
         r.frames[1]!.frame.data.fill(1);
         const a: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 0 };
-        expect(shiftFor(r, a, 1)).toEqual({ from: 0, to: 1, predictedArcsec: 0, measured: null });
-        expect(shiftFor(result([100, 100], false), a, 1)).toBeNull();
+        expect(shiftFor(r, a)).toEqual({ from: 0, to: 1, predictedArcsec: 0, errArcsec: 0.65 * 6.15, significant: false, measured: null });
+        expect(shiftFor(result([100, 100], false), a)).toBeNull();
     });
 
     it('returns no measurement when Gaia cannot compare a stale target with the grid', () => {
@@ -177,6 +281,6 @@ describe('shiftFor', () => {
         expect(() => shiftReadout(a, grid,
             { mjd: frameMjd(r.frames[0]!.frame), pix: TARGET },
             { mjd: frameMjd(r.frames[1]!.frame), pix: TARGET })).toThrow(GaiaError);
-        expect(shiftFor(r, a, 1)).toEqual({ from: 0, to: 1, predictedArcsec: 0, measured: null });
+        expect(shiftFor(r, a)).toEqual({ from: 0, to: 1, predictedArcsec: 0, errArcsec: 0.65 * 6.15, significant: false, measured: null });
     });
 });

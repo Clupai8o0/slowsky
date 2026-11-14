@@ -2,19 +2,36 @@
 // against steady Gaia stars, and how far a fast mover really moved compared with its catalogue motion.
 import { GaiaError, ringsAt, shiftReadout, type Ring, type ShiftReadout } from '../lib/gaia';
 import { separationDeg } from '../lib/coords';
-import { lightCurve, PhotometryError, type LightCurve } from '../lib/photometry';
+import { aperture, lightCurve, PhotometryError, type LightCurve } from '../lib/photometry';
 import { positionAt } from '../lib/targets';
 import type { SkyResult, TrackPoint } from '../lib/source';
-import type { Astrometry, PixelCoord, RegriddedFrame } from '../lib/types';
+import type { Astrometry, OutputGrid, PixelCoord, RegriddedFrame } from '../lib/types';
 
-// Aperture sizes in output pixels (photometry.ts defaults): star inside R, sky between IN and OUT.
-const R = 10;
-const OUT = 24;
+export const NATIVE_ARCSEC = 6.15; // SPHEREx detector pixel
 // SPHEREx saturates on stars brighter than about G 9, and stars fainter than G 15 are lost in the noise
 // of one frame at 0.1°. References come from between.
 const REF_G_MIN = 9;
 const REF_G_MAX = 15;
 const MAX_REFS = 4;
+
+export function apertureFor(grid: OutputGrid): { radius: number; annulusIn: number; annulusOut: number }
+{
+    const native = NATIVE_ARCSEC / grid.pixelArcsec;
+    const radius = Math.max(1.5, 2 * native);
+    const annulusIn = Math.max(radius + 1, 3 * native);
+    const annulusOut = Math.max(annulusIn + 2, 6 * native);
+    return { radius, annulusIn, annulusOut };
+}
+
+function median(values: number[]): number
+{
+    if (values.length === 0) {
+        return NaN;
+    }
+    values.sort((a, b) => a - b);
+    const mid = Math.floor(values.length / 2);
+    return values.length % 2 === 0 ? (values[mid - 1]! + values[mid]!) / 2 : values[mid]!;
+}
 
 export function frameMjd(f: RegriddedFrame): number
 {
@@ -106,23 +123,28 @@ export interface Curve {
     lc: LightCurve;
     refs: number; // how many steady stars it is measured against
     frameOf: number[]; // for each point, its index in result.frames
+    blend: { sourceId: string; g: number; px: number } | null;
+    noise: number;
 }
 
 // The target's brightness in each frame divided by the summed brightness of a few steady Gaia stars, so
 // changes in the instrument cancel. Null when there is no track, too few frames or too few usable stars.
-export function curveFor(result: SkyResult): Curve | null
+// `self` is the target's catalogue motion: a Gaia star moving like it is the target itself, not a blend.
+export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
 {
     const frames = result.frames.map((p) => p.frame);
     if (!result.track?.length || frames.length < 2 || result.stars.length === 0) {
         return null;
     }
     const { width, height } = result.grid;
+    const options = apertureFor(result.grid);
+    const { radius, annulusOut } = options;
     const mid = middleMjd(result);
     const target = trackNear(result.track, mid);
     if (!target) {
         return null;
     }
-    const inside = (p: PixelCoord) => p.x >= OUT && p.y >= OUT && p.x <= width - 1 - OUT && p.y <= height - 1 - OUT;
+    const inside = (p: PixelCoord) => p.x >= annulusOut && p.y >= annulusOut && p.x <= width - 1 - annulusOut && p.y <= height - 1 - annulusOut;
     const all = ringsAt(result.stars, result.grid, mid);
     const stars = new Map(result.stars.map((s) => [s.sourceId, s]));
     // A reference must be clear of the target and of any other catalogued star that would leak into its aperture.
@@ -132,8 +154,8 @@ export function curveFor(result: SkyResult): Curve | null
             const s = stars.get(r.sourceId);
             return s?.pmRa !== undefined && s.pmDec !== undefined && Math.hypot(s.pmRa, s.pmDec) < 50;
         })
-        .filter((r) => Math.hypot(r.pix.x - target.pix.x, r.pix.y - target.pix.y) > OUT + R)
-        .filter((r) => !all.some((o) => o !== r && o.g < r.g + 2.5 && Math.hypot(o.pix.x - r.pix.x, o.pix.y - r.pix.y) < OUT))
+        .filter((r) => Math.hypot(r.pix.x - target.pix.x, r.pix.y - target.pix.y) > annulusOut + radius)
+        .filter((r) => !all.some((o) => o !== r && o.g < r.g + 2.5 && Math.hypot(o.pix.x - r.pix.x, o.pix.y - r.pix.y) < annulusOut))
         .sort((a, b) => a.g - b.g)
         .slice(0, MAX_REFS);
     if (refs.length < 2) {
@@ -146,18 +168,23 @@ export function curveFor(result: SkyResult): Curve | null
         return c && Math.hypot(c.x - p.x, c.y - p.y) < 3 ? c : p;
     };
     let lc: LightCurve;
+    let order: number[] = []; // lightCurve asks for the target once per kept frame, in point order
     try {
-        const measure = () => lightCurve(frames, (f) => where(f), refs.map((r) => r.pix), { lambda: result.lambda, maxDeltaUm: 0.05 });
+        const measure = () => {
+            order = [];
+            return lightCurve(frames, (f, i) => {
+                order.push(i);
+                return where(f);
+            }, refs.map((r) => r.pix), { ...options, lambda: result.lambda, maxDeltaUm: 0.05 });
+        };
         lc = measure();
         while (refs.length > 2) {
             const worst = lc.refScatter.reduce((best, scatter, i) => scatter > (lc.refScatter[best] ?? -Infinity) ? i : best, -1);
             if (worst < 0) {
                 break;
             }
-            const others = lc.refScatter.filter((_, i) => i !== worst).sort((a, b) => a - b);
-            const mid = Math.floor(others.length / 2);
-            const median = others.length % 2 === 0 ? (others[mid - 1]! + others[mid]!) / 2 : others[mid]!;
-            if (!(lc.refScatter[worst]! > 3 * median)) {
+            const others = lc.refScatter.filter((_, i) => i !== worst);
+            if (!(lc.refScatter[worst]! > 3 * median(others))) {
                 break;
             }
             refs.splice(worst, 1);
@@ -172,22 +199,106 @@ export function curveFor(result: SkyResult): Curve | null
     if (lc.points.filter((p) => p.valid).length < 2) {
         return null;
     }
-    const frameOf = lc.points.map((p) => frames.findIndex((f) => frameMjd(f) === p.mjd));
-    return { lc, refs: refs.length, frameOf };
+    const frameOf = order.slice();
+    const validFrames = frameOf.filter((_, i) => lc.points[i]!.valid).map((i) => frames[i]!);
+    const native = NATIVE_ARCSEC / result.grid.pixelArcsec;
+    // Per star: its median flux, and its sky noise over the aperture (scaled up because regridded pixels share
+    // a detector pixel's noise) as a fraction of that flux.
+    const perStar = refs.map((r) => {
+        const ap = validFrames.map((f) => aperture(f.data, width, height, r.pix, options));
+        const flux = median(ap.map((a) => a.sum));
+        const sky = median(ap.map((a) => a.backgroundSigma * Math.sqrt(a.nPix) * Math.max(1, native)));
+        return { flux, phot: flux > 0 ? sky / flux : NaN };
+    });
+    const noise = sumNoise(perStar.map((p) => p.flux), lc.refScatter, perStar.map((p) => p.phot));
+    const reach = radius + 0.33 * native;
+    const pmOk = (id: string): boolean => {
+        const s = stars.get(id);
+        if (!self || s?.pmRa === undefined || s.pmDec === undefined) {
+            return false;
+        }
+        const want = Math.hypot(self.pmRa, self.pmDec);
+        return Math.hypot(s.pmRa - self.pmRa, s.pmDec - self.pmDec) <= Math.max(20, 0.1 * want);
+    };
+    let blend: Curve['blend'] = null;
+    for (const index of frameOf) {
+        const mjd = frameMjd(frames[index]!);
+        const target = trackNear(result.track, mjd)!.pix;
+        const nearby = ringsAt(result.stars, result.grid, mjd).map((r) => ({
+            sourceId: r.sourceId, g: r.g, px: Math.hypot(r.pix.x - target.x, r.pix.y - target.y),
+        }));
+        // The target itself, when Gaia sees it: the brightest star within a native pixel that moves like it. A
+        // neighbour over 2.5 mag fainter adds under 10% light; when Gaia does not see the target (WISE 0855),
+        // any neighbour in the aperture counts.
+        const me = nearby.filter((r) => r.px <= native && pmOk(r.sourceId)).sort((a, b) => a.g - b.g)[0];
+        for (const r of nearby) {
+            if (r === me || r.px > reach || (me && r.g > me.g + 2.5)) {
+                continue;
+            }
+            if (!blend || r.g < blend.g || (r.sourceId === blend.sourceId && r.px < blend.px)) {
+                blend = r;
+            }
+        }
+    }
+    return { lc, refs: refs.length, frameOf, blend, noise };
+}
+
+// Fractional scatter of the summed comparison flux. Each refScatter[i] is star i against the sum of the others, so
+// it carries their noise too: solve for each star's own scatter first, then add them weighted by flux.
+// With two stars both ratios scatter alike and can't say which star is noisy, so their shared scatter is split
+// in proportion to each one's own sky noise (`phot`, fractional), or evenly when that is unknown.
+export function sumNoise(flux: number[], scatter: number[], phot: number[] = []): number
+{
+    const ok = flux.map((f, i) => Number.isFinite(f) && f > 0 && Number.isFinite(scatter[i]));
+    const F = flux.map((f, i) => (ok[i] ? f : 0));
+    const s2 = scatter.map((v, i) => (ok[i] ? v * v : 0));
+    const total = F.reduce((a, b) => a + b, 0);
+    if (!(total > 0)) {
+        return 0;
+    }
+    const used = ok.map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
+    if (used.length === 2) {
+        const [a, b] = used as [number, number];
+        const shared = (s2[a]! + s2[b]!) / 2;
+        const pa = phot[a]! ** 2;
+        const pb = phot[b]! ** 2;
+        const wa = Number.isFinite(pa) && Number.isFinite(pb) && pa + pb > 0 ? pa / (pa + pb) : 0.5;
+        return Math.sqrt(F[a]! ** 2 * shared * wa + F[b]! ** 2 * shared * (1 - wa)) / total;
+    }
+    let own = s2.slice();
+    for (let pass = 0; pass < 40; pass++) {
+        own = own.map((v, i) => {
+            if (!ok[i]) {
+                return 0;
+            }
+            let rest = 0;
+            let restVar = 0;
+            for (let j = 0; j < F.length; j++) {
+                if (j !== i && ok[j]) {
+                    rest += F[j]!;
+                    restVar += F[j]! ** 2 * own[j]!;
+                }
+            }
+            const next = Math.max(0, s2[i]! - (rest > 0 ? restVar / rest ** 2 : 0));
+            return 0.5 * v + 0.5 * next; // damped, so equal stars settle instead of see-sawing
+        });
+    }
+    return Math.sqrt(F.reduce((sum, f, i) => sum + f ** 2 * own[i]!, 0)) / total;
 }
 
 export interface Shift {
     from: number;
     to: number;
     predictedArcsec: number;
+    errArcsec: number;
+    significant: boolean;
     measured: ShiftReadout | null;
 }
 
-// Catalogue motion from the first frame to frame k (or the last when k is first), with a measured shift when reliable.
-export function shiftFor(result: SkyResult, a: Astrometry, k: number): Shift | null
+// Catalogue motion from the first frame to the last, with a measured shift when reliable.
+export function shiftFor(result: SkyResult, a: Astrometry): Shift | null
 {
-    const n = result.frames.length;
-    const to = k > 0 ? k : n - 1;
+    const to = result.frames.length - 1;
     if (to <= 0 || !result.track?.length) {
         return null;
     }
@@ -195,16 +306,19 @@ export function shiftFor(result: SkyResult, a: Astrometry, k: number): Shift | n
     const f1 = result.frames[to]!.frame;
     const mjd0 = frameMjd(f0);
     const mjd1 = frameMjd(f1);
+    const predictedArcsec = separationDeg(positionAt(a, mjd0), positionAt(a, mjd1)) * 3600;
+    const errArcsec = 0.65 * NATIVE_ARCSEC;
     const shift: Shift = {
         from: 0, to,
-        predictedArcsec: separationDeg(positionAt(a, mjd0), positionAt(a, mjd1)) * 3600,
+        predictedArcsec, errArcsec,
+        significant: predictedArcsec >= 2 * errArcsec,
         measured: null,
     };
     const p0 = trackNear(result.track, mjd0);
     const p1 = trackNear(result.track, mjd1);
     const c0 = p0 && centreNear(f0, p0.pix);
     const c1 = p1 && centreNear(f1, p1.pix);
-    const maxDistance = 1.5 * 6.15 / result.grid.pixelArcsec;
+    const maxDistance = 1.5 * NATIVE_ARCSEC / result.grid.pixelArcsec;
     if (!p0 || !p1 || !c0 || !c1
         || Math.hypot(c0.x - p0.pix.x, c0.y - p0.pix.y) > maxDistance
         || Math.hypot(c1.x - p1.pix.x, c1.y - p1.pix.y) > maxDistance) {

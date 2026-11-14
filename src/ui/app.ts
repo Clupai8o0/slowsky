@@ -14,10 +14,10 @@ import { decodeView, encodeView } from '../lib/urlstate';
 import { positionAt } from '../lib/targets';
 import { formatDec, formatRa, parseCoords, resolveName } from '../lib/coords';
 import { createDemoSource } from './demo-source';
-import { diffScale, renderDiverging, type DiffScale } from './compose';
+import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
-import { curveFor, frameMjd, ringsOn, shiftFor, type Curve } from './measure';
+import { curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, type Curve } from './measure';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -26,6 +26,7 @@ type SourceKind = 'live' | 'snapshot' | 'demo';
 const TARGETS = targetsJson as unknown as Target[];
 const FOVS = [0.1, 0.25, 0.5, 1];
 const DEFAULT_FOV = 0.1; // big SPHEREx pixels, and a mover's step is easy to see
+const SAVED_FOV = 0.1; // the saved copy holds this field only; a bigger one reads live
 const DEFAULT_TARGET: TargetId = 'barnard';
 // Middle of SPHEREx's looks so far (1 Jan 2026). Fast movers are centred where they are then, not in 2000:
 // Barnard's Star has walked 4′ north since, which is off the edge of a 0.1° field.
@@ -111,6 +112,79 @@ function targetById(id: TargetId): Target | undefined
     return TARGETS.find((t) => t.id === id);
 }
 
+// Each SPHEREx release links to its archive DOI from the Release row (the citation sits in the link's title).
+const RELEASE_DOI: Partial<Record<string, { id: string; label: string; cite: string }>> = {
+    dr1: { id: '10.26131/IRSA678', label: 'SPHEREx DR1', cite: 'SPHEREx DR1, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA678' },
+    qr3: { id: '10.26131/IRSA662', label: 'SPHEREx QR3', cite: 'SPHEREx QR3, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA662' },
+};
+
+// ---------- small figures ----------
+const MAP_W = 132;
+const MAP_H = 66;
+
+// RA runs right to left, as on a sky chart; 0h at the right edge.
+function mapXY(ra: number, dec: number): [number, number]
+{
+    return [MAP_W * (1 - (((ra % 360) + 360) % 360) / 360), MAP_H * (0.5 - dec / 180)];
+}
+
+// The Milky Way's mid-line (galactic latitude 0) in RA and Dec, as path segments that break where RA wraps.
+const PLANE = ((): string => {
+    const d2r = Math.PI / 180;
+    const raG = 192.85948 * d2r;
+    const decG = 27.12825 * d2r;
+    const lNcp = 122.93192 * d2r;
+    let path = '';
+    let last = NaN;
+    for (let l = 0; l <= 360; l += 4) {
+        const dl = lNcp - l * d2r;
+        const dec = Math.asin(Math.cos(decG) * Math.cos(dl)) / d2r;
+        const ra = (raG + Math.atan2(Math.sin(dl), -Math.sin(decG) * Math.cos(dl))) / d2r;
+        const [x, y] = mapXY(ra, dec);
+        path += `${Number.isFinite(last) && Math.abs(x - last) < MAP_W / 2 ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
+        last = x;
+    }
+    return path;
+})();
+
+function skyMapSvg(ra: number, dec: number): string
+{
+    const [x, y] = mapXY(ra, dec);
+    return `<svg viewBox="0 0 ${MAP_W} ${MAP_H}" width="${MAP_W}" height="${MAP_H}" role="img" aria-label="Position on the whole sky: the gold square, with the Milky Way as a faint band">
+<rect x=".5" y=".5" width="${MAP_W - 1}" height="${MAP_H - 1}" rx="2" class="fr"/>
+<path d="${PLANE}" class="mw"/>
+<path d="M0 ${MAP_H / 2}H${MAP_W}" class="eq"/>
+<rect x="${(x - 3).toFixed(1)}" y="${(y - 3).toFixed(1)}" width="6" height="6" rx="1" class="me"/>
+</svg>`;
+}
+
+const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+
+// Yearly motion as an arrow on a small compass, north up and east left (as the sky image shows it).
+function motionSvg(pmRa: number, pmDec: number): { svg: string; text: string }
+{
+    const pm = Math.hypot(pmRa, pmDec) / 1000; // arcsec a year
+    const pa = (Math.atan2(pmRa, pmDec) * 180) / Math.PI;
+    const way = COMPASS[Math.round((((pa % 360) + 360) % 360) / 45) % 8]!;
+    const S = 66;
+    const c = S / 2;
+    const len = 22;
+    const ux = -pmRa / 1000 / pm;
+    const uy = -pmDec / 1000 / pm;
+    const tx = c + ux * len;
+    const ty = c + uy * len;
+    const head = (k: number) => `${(tx - ux * 6 + k * uy * 4).toFixed(1)} ${(ty - uy * 6 - k * ux * 4).toFixed(1)}`;
+    const svg = `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" role="img" aria-label="Moves ${pm.toFixed(1)} arcseconds a year toward the ${way}">
+<rect x=".5" y=".5" width="${S - 1}" height="${S - 1}" rx="2" class="fr"/>
+<path d="M${c} 8V${S - 8}M8 ${c}H${S - 8}" class="eq"/>
+<text x="${c}" y="7" class="lb">N</text><text x="5" y="${c + 3}" class="lb">E</text>
+<path d="M${c} ${c}L${tx.toFixed(1)} ${ty.toFixed(1)}" class="ar"/>
+<path d="M${head(1)}L${tx.toFixed(1)} ${ty.toFixed(1)}L${head(-1)}" class="ar"/>
+<rect x="${c - 2}" y="${c - 2}" width="4" height="4" rx="1" class="me"/>
+</svg>`;
+    return { svg, text: `${pm.toFixed(1)}″ a year, ${way}` };
+}
+
 function matchTarget(text: string): TargetId | undefined
 {
     const norm = (s: string) => s.toLowerCase().replace(/[’'\s−-]/g, '');
@@ -156,7 +230,11 @@ function shell(): string
   <section class="sk-mod sk-m-about" aria-labelledby="sk-h4">
     <h2 class="sk-mh" id="sk-h4"><span class="ic">${ICON.look}</span>What to look for</h2>
     <p class="sk-h" data-bind="headline"></p>
-    <p class="sk-coord"><span data-bind="name"></span><span data-bind="coords"></span></p>
+    <p class="sk-coord"><span data-bind="name"></span><a class="sk-src" data-ref="coords" target="_blank" rel="noopener"></a></p>
+    <div class="sk-figs">
+      <figure class="sk-fig"><span data-ref="map"></span><figcaption>Where in the sky</figcaption></figure>
+      <figure class="sk-fig" data-ref="pmfig" hidden><span data-ref="pm"></span><figcaption data-bind="pm"></figcaption></figure>
+    </div>
     <p class="sk-body" data-bind="show"></p>
     <p class="sk-body mute"><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
   </section>
@@ -168,7 +246,7 @@ function shell(): string
 <main class="sk-mid">
   <section class="sk-mod sk-m-watch" aria-labelledby="sk-h2">
     <div class="sk-mhrow">
-      <h2 class="sk-mh" id="sk-h2"><i>02</i>Watch it change</h2>
+      <h2 class="sk-mh" id="sk-h2"><i>02</i><span class="w">Watch it change</span></h2>
       <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
       <button type="button" class="sk-focus" data-act="focus" aria-pressed="false" title="Fold both panels (F)"><span class="ic">${ICON.focus}</span><span>Focus</span></button>
     </div>
@@ -184,7 +262,7 @@ function shell(): string
     <div class="sk-ctrl">
     <div class="sk-legrow">
       <div class="sk-leg">
-        <button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button>
+        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-SA 3.0 IGO)">Gaia DR3</a></span>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
@@ -222,7 +300,7 @@ function shell(): string
   </section>
   <section class="sk-mod sk-m-curve" aria-labelledby="sk-h6" data-ref="curve" hidden>
     <h2 class="sk-mh" id="sk-h6"><span class="ic">${ICON.curve}</span>Brightness over time</h2>
-    <div class="sk-lc"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
+    <div class="sk-lc" data-ref="lcwrap"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
     <div class="sk-lcx" data-ref="lcx" aria-hidden="true"></div>
     <p class="sk-body mute" data-bind="lcNote"></p>
   </section>
@@ -231,7 +309,7 @@ function shell(): string
     <dl data-ref="dl"></dl>
     <ul class="sk-notes" data-ref="notes"></ul>
   </section>
-  <footer class="sk-credit"><p data-bind="status"></p><p data-bind="credits"></p></footer>
+  <footer class="sk-credit"><p data-bind="status"></p></footer>
 </aside>
 <p class="sk-sr" aria-live="polite" data-ref="live"></p>
 <div class="sk-toast" data-ref="toast" role="status"></div>`;
@@ -270,8 +348,10 @@ export function mount(root: HTMLElement): void
     let result: SkyResult | null = null;
     let sourceKind: SourceKind = 'live';
     let liveFailed = false; // the saved copy is showing because the live archive did not answer
+    let cored = false; // the picture shows a too-bright core painted white
+    let reading: SourceKind | null = null; // the source being read right now, for the status line
     let curve: Curve | null = null; // brightness against nearby comparison stars, for targets that change
-    const shifts = new Map<number, ReturnType<typeof shiftFor>>(); // measured motion, by frame index
+    let shift: ReturnType<typeof shiftFor> | undefined; // motion from the first look to the last, worked out once per result
     let stretch: ReturnType<typeof sharedStretch> | null = null;
     let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
     let timer = 0;
@@ -338,7 +418,7 @@ export function mount(root: HTMLElement): void
         // Drop the previous view so nothing (play, strip, details) acts on frames of another spot.
         result = null;
         curve = null;
-        shifts.clear();
+        shift = undefined;
         renderCurve();
         stretch = null;
         composed = {};
@@ -353,7 +433,10 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('load').hidden = false;
         root.dataset.loading = 'true';
         progress({ stage: 'search', done: 0, total: 1 });
-        renderText();
+        if (st.wantFrame === undefined) {
+            // The address bar names the spot being opened, not the last one (no stale f=).
+            writeUrl();
+        }
         const req: SkyRequest = {
             center: st.center,
             fovDeg: st.fovDeg,
@@ -366,7 +449,7 @@ export function mount(root: HTMLElement): void
         // The five targets open from the saved copy at once (a live read takes 20-45 s);
         // "Read live" or another colour on another detector goes to the archive.
         const saved = st.target ? targetById(st.target) : undefined;
-        const savedFirst = !st.live && saved !== undefined && st.detector === saved.detector;
+        const savedFirst = !st.live && saved !== undefined && st.detector === saved.detector && st.fovDeg <= SAVED_FOV + 1e-9;
         const order: SourceKind[] = demoOnly ? ['demo'] : savedFirst ? ['snapshot', 'live'] : ['live', 'snapshot'];
         let res: SkyResult | null = null;
         let got: SourceKind = 'live';
@@ -375,6 +458,8 @@ export function mount(root: HTMLElement): void
         let failedLive = false;
         let spare: SkyResult | null = null; // a saved copy without the linked frame, used if live fails
         for (const kind of order) {
+            reading = kind;
+            renderText();
             try {
                 res = await loadFrom(kind, req);
                 got = kind;
@@ -419,6 +504,7 @@ export function mount(root: HTMLElement): void
         if (signal.aborted) {
             return;
         }
+        reading = null;
         ref<HTMLElement>('load').hidden = true;
         delete root.dataset.loading;
         lamInput.disabled = false;
@@ -426,40 +512,49 @@ export function mount(root: HTMLElement): void
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             paintGlow();
             renderText();
-            const why = res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${lastErr instanceof Error ? lastErr.message : ''}`;
+            const why = res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${plainError(lastErr)}`;
             bind('err', why);
             ref<HTMLElement>('err').hidden = false;
+            st.wantFrame = undefined;
+            writeUrl();
             return;
         }
         result = res;
         sourceKind = got;
         liveFailed = failedLive;
+        if (got === 'snapshot' && st.fovDeg > SAVED_FOV + 1e-9) {
+            // Live failed and the saved copy holds only the small field: say what is shown.
+            st.fovDeg = SAVED_FOV;
+        }
         st.lambda = res.lambda;
         // The frames say which detector they came from; near a band edge the wavelength alone can point at the next one.
         st.detector = res.frames[0]?.frame.frame.detector ?? detectorOf(res.lambda);
         stretch = sharedStretch(res.frames);
         composed = {};
         st.index = 0;
+        let hold = false; // a shared link named this frame: open paused on it
         if (st.wantFrame) {
             const k = res.frames.findIndex((f) => f.frame.frame.obsId === st.wantFrame);
             st.index = Math.max(0, k);
             st.wantFrame = undefined;
+            hold = k >= 0;
         }
         if (st.mode !== 'blink') {
             compose();
         }
         const kindNow = st.target ? COPY[st.target].kind : 'field';
-        curve = kindNow === 'variable' || kindNow === 'spectrum' || kindNow === 'cold' ? curveFor(res) : null;
+        curve = kindNow === 'variable' || kindNow === 'spectrum' || kindNow === 'cold' ? curveFor(res, st.target ? targetById(st.target)?.astrometry : undefined) : null;
         renderCurve();
         canvas.width = res.grid.width;
         canvas.height = res.grid.height;
         ov.setAttribute('viewBox', `0 0 ${res.grid.width} ${res.grid.height}`);
         buildStrip();
         draw();
-        writeUrl();
-        if (!reduceMotion && st.mode === 'blink' && res.frames.length > 1) {
+        if (!reduceMotion && !hold && st.mode === 'blink' && res.frames.length > 1) {
             play(true);
         }
+        // After the play state is set: a playing view links without a frame, a paused one with it.
+        writeUrl();
     }
 
     function progress(p: SkyProgress): void
@@ -516,17 +611,18 @@ export function mount(root: HTMLElement): void
             compose();
         }
         const data = st.mode === 'stack' ? composed.stack : st.mode === 'diff' ? composed.diff : undefined;
-        if (!data) {
-            drawFrame(ctx, f, stretch);
+        const { width, height } = data ? result.grid : f.frame.grid;
+        const img = ctx.createImageData(width, height);
+        cored = false;
+        if (st.mode === 'diff' && data) {
+            renderDiverging(data, composed.scale ?? { floor: 0, limit: 1 }, img.data);
         } else {
-            const img = ctx.createImageData(result.grid.width, result.grid.height);
-            if (st.mode === 'stack') {
-                renderRgba(data, stretch, img.data);
-            } else {
-                renderDiverging(data, composed.scale ?? { floor: 0, limit: 1 }, img.data);
-            }
-            ctx.putImageData(img, 0, 0);
+            const pix = data ?? f.frame.data;
+            renderRgba(pix, stretch, img.data);
+            // A star too bright for the camera has blank pixels at its core: paint them white, not black.
+            cored = fillCores(pix, width, height, img.data) > 0;
         }
+        ctx.putImageData(img, 0, 0);
         paintGlow();
         overlay();
         renderCurve();
@@ -564,15 +660,28 @@ export function mount(root: HTMLElement): void
         sec.hidden = false;
         const W = 300;
         const H = 100;
-        const scatter = c.lc.refScatter.filter(Number.isFinite).sort((a, b) => a - b);
-        const noise = scatter.length ? scatter[Math.floor(scatter.length / 2)]! : 0;
+        const noise = Number.isFinite(c.noise) ? c.noise : 0;
+        const name = st.target ? COPY[st.target].display : 'the target';
+        // A catalogued star inside the measuring circle mixes its light in. A cold brown dwarf is fainter than that
+        // star below 4.4 µm, so its chart stays hidden there; for other targets the note just says so.
+        const blendAt = c.blend ? `A Gaia star (G ${c.blend.g.toFixed(1)}) sits ${(c.blend.px * result.grid.pixelArcsec).toFixed(0)}″ from ${name}` : '';
+        const cold = st.target ? COPY[st.target].kind === 'cold' : false;
+        const hideChart = c.blend !== null && cold && c.lc.lambda < 4.4;
+        ref<HTMLElement>('lcwrap').hidden = hideChart;
+        ref<HTMLElement>('lcx').hidden = hideChart;
+        if (hideChart) {
+            bind('lcNote', `${blendAt}, inside the measuring circle. At ${c.lc.lambda.toFixed(2)} µm that star outshines it, so no curve is drawn. Try 4.4 µm or longer, where ${name} is the brighter one.`);
+            return;
+        }
         const ys = pts.map((o) => o.p.relative);
         // Each point's own error: the comparison stars' wobble plus the target's own noise (sky noise over its
         // aperture), scaled the same way as the point, so a faint or missing target still gets an honest bar.
         const scales = pts.filter((o) => o.p.relative !== 0 && o.p.ratio !== 0).map((o) => o.p.ratio / o.p.relative).sort((a, b) => a - b);
         const med = scales.length ? scales[Math.floor(scales.length / 2)]! : NaN;
+        const spread = Math.max(1, NATIVE_ARCSEC / result.grid.pixelArcsec);
         const err = pts.map((o) => {
-            const own = o.p.target.backgroundSigma * Math.sqrt(o.p.target.nPix) / (o.p.refSum * med);
+            // Regridding spreads each detector pixel over several output pixels, so their noise is shared: scale up.
+            const own = o.p.target.backgroundSigma * Math.sqrt(o.p.target.nPix) * spread / (o.p.refSum * med);
             return Math.hypot(Math.abs(o.p.relative) * noise, Number.isFinite(own) ? own : 0);
         });
         let lo = Math.min(...ys.map((v, i) => v - err[i]!), 1 - noise);
@@ -603,7 +712,7 @@ export function mount(root: HTMLElement): void
         const off = c.lc.dropped > 0 ? ` ${c.lc.dropped} ${c.lc.dropped === 1 ? 'frame was' : 'frames were'} too far off this colour.` : '';
         const bad = c.lc.points.length - pts.length;
         const left = off + (bad > 0 ? ` ${bad} ${bad === 1 ? 'look' : 'looks'} could not be measured.` : '');
-        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} nearby comparison stars from Gaia. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%); the bar on each dot adds the star’s own noise. A change inside its bar may be noise.${left}`);
+        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} nearby comparison stars from Gaia. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%); the bar on each dot adds the star’s own noise. A change inside its bar may be noise.${left}${blendAt ? ` ${blendAt}, too close for SPHEREx to split, so the curve includes its light.` : ''}`);
     }
 
     // A tiny copy of the sky, blurred by CSS behind the image: the glow follows what is on screen.
@@ -740,7 +849,24 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('golive').hidden = !(result && sourceKind === 'snapshot' && st.target);
         const copy = st.target ? COPY[st.target] : null;
         bind('name', copy ? copy.display : st.label);
-        bind('coords', `${formatRa(st.center.ra)}  ${formatDec(st.center.dec)}`);
+        const coordsA = ref<HTMLAnchorElement>('coords');
+        coordsA.textContent = `${formatRa(st.center.ra)}  ${formatDec(st.center.dec)}`;
+        // The position's source, on the position: SIMBAD (Harvard mirror; the CDS site is down) by name or by coordinates.
+        const simbadName = st.target ? targetById(st.target)?.name : undefined;
+        coordsA.href = simbadName
+            ? `https://simbad.cfa.harvard.edu/simbad/sim-id?Ident=${encodeURIComponent(simbadName)}`
+            : `https://simbad.cfa.harvard.edu/simbad/sim-coo?Coord=${encodeURIComponent(`${st.center.ra.toFixed(5)} ${st.center.dec >= 0 ? '+' : ''}${st.center.dec.toFixed(5)}`)}&Radius=1&Radius.unit=arcmin`;
+        coordsA.title = simbadName ? `Position and motion: SIMBAD, ${simbadName}` : 'Look up this position in SIMBAD';
+        ref<HTMLElement>('map').innerHTML = skyMapSvg(st.center.ra, st.center.dec);
+        // The motion arrow only for stars that visibly walk: over half an arcsecond a year.
+        const am = st.target ? targetById(st.target)?.astrometry : undefined;
+        const fast = am && Number.isFinite(am.pmRa) && Number.isFinite(am.pmDec) && Math.hypot(am.pmRa, am.pmDec) > 500;
+        ref<HTMLElement>('pmfig').hidden = !fast;
+        if (fast) {
+            const m = motionSvg(am.pmRa, am.pmDec);
+            ref<HTMLElement>('pm').innerHTML = m.svg;
+            bind('pm', m.text);
+        }
         bind('headline', copy ? copy.headline : CUSTOM_COPY.headline);
         bind('show', copy ? copy.show : CUSTOM_COPY.show);
         bind('not', copy ? copy.not : CUSTOM_COPY.not);
@@ -761,6 +887,7 @@ export function mount(root: HTMLElement): void
         gaiaBtn.setAttribute('aria-pressed', String(st.gaia));
         // No catalogue stars came back: hide the toggle rather than offer an empty one.
         gaiaBtn.hidden = !result || result.stars.length === 0;
+        ref<HTMLElement>('gaiaSrc').hidden = gaiaBtn.hidden;
         fovSelect.value = String(st.fovDeg);
         bind('det', `Detector ${lamDraft === null ? st.detector : detectorOf(lamDraft)} of 6`);
 
@@ -775,6 +902,8 @@ export function mount(root: HTMLElement): void
         if (!result) {
             bind('frame', '');
             bind('when', '');
+            bind('statusShort', reading === 'live' ? 'Reading live from NASA’s archive · about 30 s'
+                : reading === 'snapshot' ? 'Opening the saved copy' : reading === 'demo' ? 'Building the simulated sky' : 'Nothing to show');
             return;
         }
         const n = result.frames.length;
@@ -795,6 +924,9 @@ export function mount(root: HTMLElement): void
         sizeBar();
 
         const extraNotes: string[] = [];
+        if (cored) {
+            extraNotes.push('The white core is a star too bright for the camera there: SPHEREx records no value for those pixels.');
+        }
         if (f && lf) {
             const rec = f.frame.frame;
             const rows: [string, string][] = [
@@ -813,21 +945,28 @@ export function mount(root: HTMLElement): void
             const t = st.target ? targetById(st.target) : undefined;
             // The motion rows describe two single frames, so they show only in Blink.
             if (t && COPY[t.id].kind === 'mover' && n > 1 && st.mode === 'blink') {
-                if (!shifts.has(st.index)) {
-                    shifts.set(st.index, shiftFor(result, t.astrometry, st.index));
+                if (shift === undefined) {
+                    shift = shiftFor(result, t.astrometry);
                 }
-                const sh = shifts.get(st.index);
-                if (sh) {
+                const sh = shift;
+                // Under twice the measuring error the shift can't be seen, so the rows stay out.
+                if (sh && sh.significant) {
                     // The expected shift is the solid number. The measured one leans on a centre the camera can't
-                    // see well (the core is saturated), so it is shown as rough and the note says why.
-                    rows.push([`Moved, frames 1 to ${sh.to + 1}`, `${sh.predictedArcsec.toFixed(1)}″ expected`]);
-                    rows.push(['Measured here', sh.measured ? `about ${sh.measured.measuredArcsec.toFixed(0)}″ (rough)` : 'could not measure']);
+                    // see well (the core is saturated), so it carries its error and the note says why.
+                    rows.push([`Moved, looks 1 to ${sh.to + 1}`, `${sh.predictedArcsec.toFixed(1)}″ expected`]);
+                    rows.push(['Measured here', sh.measured ? `${sh.measured.measuredArcsec.toFixed(0)}″ ± ${sh.errArcsec.toFixed(0)}″` : 'could not measure']);
                     extraNotes.push(sh.measured
                         ? 'The star’s core is too bright for the camera to measure, so the measured shift is rough. The expected shift comes from its catalogue motion.'
                         : 'The star’s centre could not be found close enough to where it should be, so only the expected shift from its catalogue motion is shown.');
                 }
             }
-            let html = rows.map(([k, v]) => `<dt>${k}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('');
+            const doi = sourceKind === 'demo' ? undefined : RELEASE_DOI[rec.release];
+            let html = rows.map(([k, v]) => {
+                const val = k === 'Release' && doi
+                    ? `<a class="sk-src" href="https://doi.org/${doi.id}" target="_blank" rel="noopener" title="${esc(doi.cite)}">${esc(doi.label)}</a>`
+                    : esc(v);
+                return `<dt>${k}</dt><dd>${val}</dd>`;
+            }).join('');
             const links: string[] = [];
             if (rec.url) {
                 links.push(`<a href="${esc(rec.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS file</a>`);
@@ -847,8 +986,6 @@ export function mount(root: HTMLElement): void
                 : 'Saved copy of real NASA SPHEREx frames, so it opens at once. Go live reads them from the archive (about 30 s).')
                 : 'Simulated sky for building the page. Not real data.';
         bind('status', status);
-        const credits = ['NASA SPHEREx via IRSA (NASA/IPAC).', ...(sourceKind === 'demo' ? [] : result.credits)];
-        bind('credits', [...new Set(credits)].join(' '));
         ref<HTMLElement>('notes').innerHTML = [...extraNotes, ...result.notes].map((t) => `<li>${esc(t)}</li>`).join('');
         ref<HTMLElement>('live').textContent = `${q<HTMLElement>('[data-bind="frame"]').textContent}, ${q<HTMLElement>('[data-bind="when"]').textContent}`;
         canvas.setAttribute('aria-label', `Sky image. ${ref<HTMLElement>('live').textContent}, ${lam.toFixed(2)} µm`);
@@ -864,6 +1001,18 @@ export function mount(root: HTMLElement): void
         st.index = stepIndex(st.index, result.frames.length, 1);
         draw();
         timer = window.setTimeout(tick, frameDelayMs(FPS));
+    }
+
+    function plainError(e: unknown): string
+    {
+        const msg = e instanceof Error ? e.message : '';
+        if (!msg || /failed to fetch|networkerror|load failed|network/i.test(msg)) {
+            return 'The archive did not answer. Check the connection and try again.';
+        }
+        if (/\b[45]\d\d\b|request failed|http|timed? ?out/i.test(msg)) {
+            return 'NASA’s archive is busy or down right now. Try again in a minute.';
+        }
+        return msg;
     }
 
     function play(on: boolean): void
