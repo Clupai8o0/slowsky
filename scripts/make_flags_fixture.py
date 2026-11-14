@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Download a bounded, fresh SPHEREx FLAGS oracle; never read a local frame.
 
-Run with the interpreter named in the lane brief. Only SIA and S3 are contacted.
+Run with `scripts/.venv/bin/python`. Only SIA and S3 are contacted.
 The complete FLAGS HDU (not the complete FITS file) is decoded by astropy once;
 only selected compressed tiles and their oracle pixels are saved.
 """

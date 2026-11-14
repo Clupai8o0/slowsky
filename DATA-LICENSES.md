@@ -19,6 +19,8 @@ Where each one is used:
 - SPHEREx frames are read live from the public S3 bucket `nasa-irsa-spherex`. The snapshot in `public/snapshot/`
   holds cutouts of the same files, made by `scripts/bake.py`.
 - The SIA search runs through `api/sia.ts` in the site, and directly from `scripts/`.
+- `tests/fixtures/` holds small SPHEREx DR1 and QR3 cutouts and IRSA SIA replies used by the tests, under the
+  same IRSA terms. The scripts that made them are listed in `scripts/README.md`.
 - Gaia DR3 rows (`public/snapshot/*/gaia.json`) were fetched at bake time from STScI's Gaia cone service
   (`gsss.stsci.edu`), with the CfA VizieR mirror as fallback. For live views the page calls the same two services.
 - SIMBAD answers name searches typed into the page. `scripts/targets.py` took the five targets' positions and
@@ -60,11 +62,12 @@ The font files in `src/ui/fonts/` are unmodified Latin subsets from fontsource.
 
 ## Code dependencies
 
-`package.json` lists no runtime packages. These are build and test tools; their own dependencies are in
-`package-lock.json`.
+`package.json` lists one runtime package, used only by the server route that writes the AI note. The rest are
+build and test tools. Their own dependencies are in `package-lock.json`.
 
 | Package | Version | Licence | Used for |
 |---|---|---|---|
+| @anthropic-ai/sdk | 1.8.0 | Apache-2.0 | Calling the Claude API from `api/insight.ts` (server only) |
 | typescript | 7.0.2 | Apache-2.0 | Type checking |
 | vite | 8.3.8 | MIT | Dev server and build |
 | vitest | 5.1.0 | MIT | Tests |
@@ -82,5 +85,7 @@ Astropy asks to be cited (Astropy Collaboration 2013, 2018, 2022) in work that u
 
 ## AI-made content
 
-The code, tests and page text were written with help from Claude Code and Codex.
+The code, tests and page text were written with help from Claude Code, Codex, Gemini and Grok (the full table is
+in the README). The optional research note on the site is written by Claude Opus 5.5 from the page's own
+measurements and is labelled as written by AI.
 The demo video's voice is AI-made (ElevenLabs); any GPT Image pictures are decoration, marked, and never sky data.
