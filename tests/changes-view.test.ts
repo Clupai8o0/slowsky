@@ -81,19 +81,47 @@ describe('Candidate changes panel', () => {
 });
 
 describe('round 11: marks at every end', () => {
+    it('keeps labels outside other rings in the bottom pair and three-spot cluster', () => {
+        for (const points of [[[100, 230], [104, 230]], [[100, 230], [104, 230], [108, 230]]]) {
+            const svg = changesMarks(changesView(found(points.map(([x, y], i) => cand(String(i), x!, y!, 'Spot (candidate).')), [])), 235, 235);
+            const rings = [...svg.matchAll(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"\/><text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"/g)];
+            expect(rings).toHaveLength(points.length);
+            for (let i = 0; i < rings.length; i++) {
+                const [x, y, size] = [Number(rings[i]![4]), Number(rings[i]![5]), Number(rings[i]![6])];
+                const half = size * 0.35 + 1;
+                for (let j = 0; j < rings.length; j++) {
+                    if (i === j) { continue; }
+                    const [cx, cy, radius] = [Number(rings[j]![1]), Number(rings[j]![2]), Number(rings[j]![3])];
+                    expect(x + half <= cx - radius || x - half >= cx + radius || y + 1 <= cy - radius || y - size - 1 >= cy + radius).toBe(true);
+                }
+            }
+        }
+    });
+
+    it('keeps a lone label inside the top and left edges', () => {
+        for (const [x, y] of [[100, 13], [2, 100]]) {
+            const svg = changesMarks(changesView(found([cand('a', x!, y!, 'Spot (candidate).')], [])), 235, 235);
+            const m = /<text x="([^"]+)" y="([^"]+)" font-size="([^"]+)"/.exec(svg)!;
+            const px = Number(m[1]), py = Number(m[2]), size = Number(m[3]);
+            expect(px - size * 0.35 - 1).toBeGreaterThanOrEqual(-0.05);
+            expect(px + size * 0.35 + 1).toBeLessThanOrEqual(235.05);
+            expect(py - size - 1).toBeGreaterThanOrEqual(-0.05);
+            expect(py + 1).toBeLessThanOrEqual(235.05);
+        }
+    });
     it('keeps a lone mark unchanged and separates overlapping numbers', () => {
         const first = cand('a', 50, 50, 'A (candidate).');
         const one = changesView(found([first], []));
         expect(changesMarks(one, 100, 100)).toBe('<svg class="sk-chg-marks" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50.0" cy="50.0" r="5.0"/><text x="50.0" y="42.5" font-size="8.0">1</text></svg>');
         const both = changesMarks(changesView(found([first, cand('b', 54, 50, 'B (candidate).')], [])), 100, 100);
-        expect(both).toBe('<svg class="sk-chg-marks" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50.0" cy="50.0" r="5.0"/><text x="50.0" y="42.5" font-size="8.0">1</text><circle cx="54.0" cy="50.0" r="5.0"/><text x="54.0" y="62.0" font-size="8.0">2</text></svg>');
+        expect(both).toBe('<svg class="sk-chg-marks" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50.0" cy="50.0" r="5.0"/><text x="50.0" y="42.5" font-size="8.0">1</text><circle cx="54.0" cy="50.0" r="5.0"/><text x="62.8" y="52.8" font-size="8.0">2</text></svg>');
     });
 
-    it('tries left and then right when the lower position is outside the picture', () => {
+    it('finds clear alternatives when the lower position is outside the picture', () => {
         const items = [cand('a', 50, 90, 'A (candidate).'), cand('b', 54, 90, 'B (candidate).'), cand('c', 54, 90, 'C (candidate).')];
         const svg = changesMarks(changesView(found(items, [])), 100, 100);
         expect([...svg.matchAll(/<text x="([^"]+)" y="([^"]+)" font-size="[^"]+">(\d+)<\/text>/g)]
-            .map(match => [match[1], match[2], match[3]])).toEqual([['50.0', '82.5', '1'], ['45.2', '92.8', '2'], ['62.8', '92.8', '3']]);
+            .map(match => [match[1], match[2], match[3]])).toEqual([['50.0', '82.5', '1'], ['62.8', '92.8', '2'], ['42.3', '82.5', '3']]);
         expect([...svg.matchAll(/<circle cx="([^"]+)" cy="([^"]+)"/g)].map(match => [match[1], match[2]]))
             .toEqual([['50.0', '90.0'], ['54.0', '90.0'], ['54.0', '90.0']]);
     });
@@ -193,8 +221,8 @@ describe('plain list (compareVisits plain: true)', () => {
     it('P2 prints each new sentence exactly and strips only its S/N figure', () => {
         const ending = "a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
         for (const [reading, start] of [
-            ['moreLater', 'Measured against the sky around it in each visit, there is more light here in the later visit than in the earlier one'],
-            ['lessLater', 'Measured against the sky around it in each visit, there is less light here in the later visit than in the earlier one'],
+            ['moreLater', 'Measured against the change in the sky around it, there is more light here in the later visit than in the earlier one'],
+            ['lessLater', 'Measured against the change in the sky around it, there is less light here in the later visit than in the earlier one'],
             ['unclear', 'The light here differs between the two visits, and which visit has more is not clear'],
         ] as const) {
             const sentence = `${start}; ${ending} (S/N 9.0; candidate). A catalogue star lies 8.0″ away.`;

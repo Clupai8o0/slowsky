@@ -129,6 +129,46 @@ function found(result: SkyResult): VisitChangeResult
 }
 
 describe('change slot', () => {
+    it('keeps visible S/N first after overflow screening and numbers the picture in that order', async () => {
+        const g = { ...grid, width: 200, height: 200, pixelArcsec: 1.5375 };
+        const make = (id: string, time: number) => {
+            const f = frame(id, time);
+            f.grid = g;
+            f.data = new Float32Array(40000);
+            f.data[50 * 200 + 50] = f.data[150 * 200 + 150] = 5;
+            f.context!.box = { x0: 0, y0: 0, x1: 200, y1: 200 };
+            f.context!.wcs = { skyToPix: (s: OutputGrid['center']) => gridSkyToPix(g, s) } as Wcs;
+            f.context!.flags!.names = [{ bit: 0, name: 'OVERFLOW' }];
+            return f;
+        };
+        const a = make('a', 0), b = make('b', 20);
+        const find = (result: SkyResult) => {
+            const value = found(result);
+            value.candidates = [50, 150].map((x, i) => ({ ...candidate, id: String(i), pix: { x, y: x }, snr: i ? 12 : 25,
+                reading: 'moreLater' as const, nearCatalogue: false, lightVisit: 'later' as const, x, y: x, radiusPix: 4,
+                ends: [{ visit: 'later' as const, x, y: x, radiusPix: 4 }], sentence: `Spot ${x} (S/N ${i ? '12.0' : '25.0'}; candidate).`,
+                neutral: `Spot ${x} (S/N ${i ? '12.0' : '25.0'}; candidate).` }));
+            value.plainListInfo = { usedErrorMap: true, matchArcsec: 6 };
+            value.notes = ['Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.'];
+            return value;
+        };
+        const reader = { index: async () => ({}), readFloat32: async (_index: unknown, name: string) => {
+            const data = new Float32Array(40000);
+            if (name === 'IMAGE') { data[50 * 200 + 50] = data[150 * 200 + 150] = 5; }
+            return data;
+        } } as unknown as RangeReader;
+        const read = async (url: string) => { const data = new Int32Array(40000); if (url === 'b') { data[50 * 200 + 50] = 1; } return { data, width: 200, height: 200 }; };
+        const onChange = vi.fn(), box = {} as HTMLElement, marks = {} as HTMLElement;
+        const slot = mountChanges(onChange, { find, reader, read, variance: async () => null });
+        const view = { source: 'live', result: { ...sky([a, b]), grid: g }, index: 0, mode: 'blink' } as SlotView;
+        slot.render(box, marks, view);
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
+        slot.render(box, marks, view);
+        expect(box.innerHTML).toContain('<b>Candidate 1</b> Spot 150 (S/N 12.0; candidate).');
+        expect(box.innerHTML).toContain('<b>Candidate 2</b> Spot 50 (candidate).');
+        expect(box.innerHTML).toContain('spots with no S/N figure come after those with one.');
+        expect(marks.innerHTML).toMatch(/cx="150.0" cy="150.0"[^]*?>1<\/text>[^]*?cx="50.0" cy="50.0"[^]*?>2<\/text>/);
+    });
     it('rebuilds plain list notes after archive flags remove spots', async () => {
         for (const all of [false, true]) {
             const a = frame('a', 0), b = frame('b', 20);
@@ -393,9 +433,17 @@ describe('error maps for the compared visits (C6)', () => {
 describe('plain list (compareVisits plain: true)', () => {
     const at = (x: number, names: string[]) => ({ obsId: '', names: (p: { x: number }) => (p.x === x ? names : []) });
     const plain = { ...candidate, id: 'q', kind: 'unknown' as const, snr: 9, reading: 'moreLater' as const, lightVisit: 'later' as const, x: 1, y: 1,
-        sentence: 'Measured against the sky around it in each visit, there is more light here in the later visit than in the earlier one; a change in a source\'s brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate).',
+        sentence: 'Measured against the change in the sky around it, there is more light here in the later visit than in the earlier one; a change in a source\'s brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate).',
         neutral: 'The light here differs between the two visits, and which visit has more is not clear; a change in a source\'s brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate).',
         ends: [{ visit: 'later' as const, x: 1, y: 1, radiusPix: 2 }] };
+
+    it('reports an incomplete check when one visit is unread and the other partly unread', () => {
+        const early2 = { frame: { obsId: 'early2' } } as RegriddedFrame;
+        const late2 = { frame: { obsId: 'late2' } } as RegriddedFrame;
+        const flags = new Map([['early', null], ['early2', null], ['late', at(1, [])], ['late2', null]]);
+        const line = screen([plain], { earlier: [earlier, early2], later: [later, late2] }, flags, []).kept[0]!.line;
+        expect(line).toBe(`${plain.sentence} Some of the archive flags for this spot could not be read, so that check is incomplete.`);
+    });
 
     it('withdraws plain direction when either visit has OVERFLOW', () => {
         for (const visit of ['earlier', 'later'] as const) {
@@ -410,14 +458,14 @@ describe('plain list (compareVisits plain: true)', () => {
     it('keeps mapped ordering explained when overflow hides every S/N', () => {
         const flags = new Map([['early', at(1, ['OVERFLOW'])], ['late', at(1, [])]]);
         const kept = screen([plain], { earlier: [earlier], later: [later] }, flags, []).kept;
-        expect(plainListNotes(kept, true, 6)).toEqual(['Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.', 'S/N is left out for 1 candidate that an archive flag marks, because the reading there can be unreliable.']);
-        expect(plainListNotes([...kept, ...kept], true, 6)).toEqual(['Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.', 'S/N is left out for 2 candidates that an archive flag marks, because the reading there can be unreliable.']);
+        expect(plainListNotes(kept, true, 6)).toEqual(['Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.', 'S/N is left out for 1 candidate marked by an archive overflow flag, because the S/N figure there can be unreliable.']);
+        expect(plainListNotes([...kept, ...kept], true, 6)).toEqual(['Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.', 'S/N is left out for 2 candidates marked by an archive overflow flag, because the S/N figure there can be unreliable.']);
         expect(plainListNotes([], true, 6)).toEqual([]);
         const noFigure = { ...plain, sentence: plain.sentence.replace('(S/N 9.0; candidate)', '(candidate)'), snrMapMissing: true };
         const mixed = screen([plain, noFigure], { earlier: [earlier], later: [later] }, flags, []).kept;
         expect(plainListNotes(mixed, true, 6)).toEqual([
             'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.',
-            'S/N is left out for 1 candidate that an archive flag marks, because the reading there can be unreliable.',
+            'S/N is left out for 1 candidate marked by an archive overflow flag, because the S/N figure there can be unreliable.',
             "S/N is left out for 1 candidate where the frames' error maps have no value, because the noise there comes from the difference image alone.",
         ]);
     });
@@ -452,20 +500,20 @@ describe('plain list (compareVisits plain: true)', () => {
         const flags = new Map([['early', at(1, [])], ['late', null]]);
         const out = screen([plain], { earlier: [earlier], later: [later] }, flags, []);
         expect(out.allUnread).toBe(false);
-        expect(out.kept[0]!.line).toBe(`${plain.sentence} The archive flags of the later visit could not be read for this spot, so that visit is not checked.`);
+        expect(out.kept[0]!.line).toBe(`${plain.sentence} The archive flags of the later visit could not be read for this spot, so that visit's flags are not checked.`);
         expect(screen([plain], { earlier: [earlier], later: [later] }, new Map(), []).allUnread).toBe(true);
     });
 
     it('P8 two unreadable earlier frames and a readable later frame leave a partial check', () => {
         const early2 = { frame: { obsId: 'early2' } } as RegriddedFrame;
         const c = { ...plain, reading: 'lessLater' as const,
-            sentence: "Measured against the sky around it in each visit, there is less light here in the later visit than in the earlier one; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate).",
+            sentence: "Measured against the change in the sky around it, there is less light here in the later visit than in the earlier one; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate).",
             ends: [{ visit: 'earlier' as const, x: 1, y: 1, radiusPix: 2 }] };
         const flags = new Map([['early', null], ['early2', null], ['late', at(1, [])]]);
         const out = screen([c], { earlier: [earlier, early2], later: [later] }, flags, []);
         expect(out.allUnread).toBe(false);
         expect(out.lead).toEqual([]);
-        expect(out.kept[0]!.line).toBe(`${c.sentence} The archive flags of the earlier visit could not be read for this spot, so that visit is not checked.`);
+        expect(out.kept[0]!.line).toBe(`${c.sentence} The archive flags of the earlier visit could not be read for this spot, so that visit's flags are not checked.`);
         const partly = screen([c], { earlier: [earlier, early2], later: [later] }, new Map([['early', null], ['early2', at(1, [])], ['late', at(1, [])]]), []);
         expect(partly.kept[0]!.line).toBe(`${c.sentence} Some of the archive flags for this spot could not be read, so that check is incomplete.`);
     });

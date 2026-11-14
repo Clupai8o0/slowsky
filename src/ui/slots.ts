@@ -387,7 +387,7 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
                 const info = found.plainListInfo;
                 if (info) {
                     screened.kept.sort((a, b) => Number(Boolean(a.nearCatalogue)) - Number(Boolean(b.nearCatalogue))
-                        || Number(hasSnrFigure(b.line)) - Number(hasSnrFigure(a.line)) || b.snr - a.snr);
+                        || Number(hasSnrFigure(b.line)) - Number(hasSnrFigure(a.line)));
                 }
                 const listNotes = info ? plainListNotes(screened.kept, info.usedErrorMap, info.matchArcsec) : [];
                 const notes = info ? found.notes.flatMap(note => note.startsWith('Listed with spots that have no catalogue star within ')

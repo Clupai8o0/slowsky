@@ -142,7 +142,7 @@ describe('page change list is the plain list', () => {
         const html = await screenedPage(livePair(), x => x < 60 ? 2 : 0);
         const lines = [...html.matchAll(/<li><b>Candidate \d+<\/b> (.*?)<\/li>/g)].map(m => m[1]!);
         expect(lines).toEqual([
-            "Measured against the sky around it in each visit, there is more light here in the later visit than in the earlier one; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N &gt; 50; candidate).",
+            "Measured against the change in the sky around it, there is more light here in the later visit than in the earlier one; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N &gt; 50; candidate).",
             "The light here differs between the two visits, and which visit has more is not clear; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (candidate). In at least one frame of the later visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW; an overflowing pixel can make the reading here unreliable.",
         ]);
         expect(pageNotes(html)).toEqual([
@@ -150,7 +150,7 @@ describe('page change list is the plain list', () => {
             "Noise estimated using the frames' pixel uncertainty maps.",
             'No source above 5 times the noise at the centre of the view in either visit.',
             'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise; spots with no S/N figure come after those with one.',
-            'S/N is left out for 1 candidate that an archive flag marks, because the reading there can be unreliable.',
+            'S/N is left out for 1 candidate marked by an archive overflow flag, because the S/N figure there can be unreliable.',
             'No catalogue stars for this view: every spot is listed without a catalogue match.',
         ]);
     });
@@ -162,7 +162,7 @@ describe('page change list is the plain list', () => {
             "Noise estimated using the frames' pixel uncertainty maps.",
             'No source above 5 times the noise at the centre of the view in either visit.',
             'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.',
-            'S/N is left out for 2 candidates that an archive flag marks, because the reading there can be unreliable.',
+            'S/N is left out for 2 candidates marked by an archive overflow flag, because the S/N figure there can be unreliable.',
             'No catalogue stars for this view: every spot is listed without a catalogue match.',
         ]);
     });

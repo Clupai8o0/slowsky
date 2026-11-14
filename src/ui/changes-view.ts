@@ -144,27 +144,44 @@ export function changesMarks(v: ChangesView, width: number, height: number, all 
     const boxes: { left: number; right: number; top: number; bottom: number }[] = [];
     // One ring per end (both spots of a pair or mover), each the finder's own reading aperture when round 11 gives
     // it (kept at 3 px or more so it stays visible); every ring of a candidate carries its number.
-    const rings = listed(v, all).flatMap((c, i) => {
+    const ends = listed(v, all).flatMap((c, i) => {
         const given = (c.ends?.length ? c.ends : c.lightEnds ?? []).filter(end => Number.isFinite(end.x) && Number.isFinite(end.y));
-        const ends = given.length ? given : [{ x: c.pix.x, y: c.pix.y }];
-        return ends.map((end: { x: number; y: number; radiusPix?: number }) => {
-            const ring = typeof end.radiusPix === 'number' && end.radiusPix > 0 ? Math.max(3, end.radiusPix) : r;
-            const x = end.x.toFixed(1);
-            const y = end.y.toFixed(1);
-            const below = end.y - ring - r * 1.2 < 0;
-            const size = r * 1.6;
-            const halfWidth = size * String(i + 1).length * 0.35 + 1;
-            const box = (px: number, py: number) => ({ left: px - halfWidth, right: px + halfWidth, top: py - size - 1, bottom: py + 1 });
-            const clear = (b: ReturnType<typeof box>) => boxes.every(other => b.right <= other.left || b.left >= other.right || b.bottom <= other.top || b.top >= other.bottom);
-            const free = (b: ReturnType<typeof box>) => b.left >= 0 && b.right <= width && b.top >= 0 && b.bottom <= height && clear(b);
-            const original = { x: end.x, y: below ? end.y + ring + r * 1.4 : end.y - ring - r * 0.5 };
-            const options = [original, { x: end.x, y: end.y + ring + r * 1.4 },
-                { x: end.x - ring - halfWidth, y: end.y + size * 0.35 },
-                { x: end.x + ring + halfWidth, y: end.y + size * 0.35 }];
-            const placed = clear(box(original.x, original.y)) ? original : options.slice(1).find(p => free(box(p.x, p.y))) ?? original;
-            boxes.push(box(placed.x, placed.y));
-            return `<circle cx="${x}" cy="${y}" r="${ring.toFixed(1)}"/><text x="${placed.x.toFixed(1)}" y="${placed.y.toFixed(1)}" font-size="${size.toFixed(1)}">${i + 1}</text>`;
-        });
+        return (given.length ? given : [{ x: c.pix.x, y: c.pix.y, radiusPix: undefined }]).map(end => ({ end, i,
+            ring: typeof end.radiusPix === 'number' && end.radiusPix > 0 ? Math.max(3, end.radiusPix) : r }));
+    });
+    const rings = ends.map(({ end, i, ring }, index) => {
+        const x = end.x.toFixed(1);
+        const y = end.y.toFixed(1);
+        const below = end.y - ring - r * 2.1 - 1 < 0;
+        const size = r * 1.6;
+        const halfWidth = size * String(i + 1).length * 0.35 + 1;
+        const box = (px: number, py: number) => ({ left: px - halfWidth, right: px + halfWidth, top: py - size - 1, bottom: py + 1 });
+        const ringBoxes = ends.flatMap((other, j) => j === index ? [] : [{ left: other.end.x - other.ring, right: other.end.x + other.ring,
+            top: other.end.y - other.ring, bottom: other.end.y + other.ring }]);
+        const obstacles = [...boxes, ...ringBoxes];
+        const clear = (b: ReturnType<typeof box>) => obstacles.every(other => b.right <= other.left || b.left >= other.right || b.bottom <= other.top || b.top >= other.bottom);
+        const free = (b: ReturnType<typeof box>) => b.left >= 0 && b.right <= width && b.top >= 0 && b.bottom <= height && clear(b);
+        const clampX = (px: number) => Math.max(halfWidth, Math.min(width - halfWidth, px));
+        const original = { x: clampX(end.x), y: below ? end.y + ring + r * 1.4 : end.y - ring - r * 0.5 };
+        const options = [original, { x: clampX(end.x), y: end.y + ring + r * 1.4 },
+            { x: end.x - ring - halfWidth, y: end.y + size * 0.35 },
+            { x: end.x + ring + halfWidth, y: end.y + size * 0.35 }];
+        let placed = options.find(p => free(box(p.x, p.y)));
+        if (!placed) {
+            // Search nearby obstacle edges as well, so a small cluster can still keep its numbers beside their rings.
+            const limit = 3 * (ring + size + halfWidth);
+            const nearby = obstacles.filter(b => b.right >= end.x - limit && b.left <= end.x + limit
+                && b.bottom >= end.y - limit && b.top <= end.y + limit);
+            const xs = [original.x, ...nearby.flatMap(b => [b.left - halfWidth - 0.1, b.right + halfWidth + 0.1])];
+            const ys = [original.y, ...nearby.flatMap(b => [b.top - 1.1, b.bottom + size + 1.1])];
+            for (const py of ys) {
+                const px = xs.find(value => Math.abs(value - end.x) <= limit && Math.abs(py - end.y) <= limit && free(box(value, py)));
+                if (px !== undefined) { placed = { x: px, y: py }; break; }
+            }
+        }
+        placed ??= { x: original.x, y: Math.max(size + 1, Math.min(height - 1, original.y)) };
+        boxes.push(box(placed.x, placed.y));
+        return `<circle cx="${x}" cy="${y}" r="${ring.toFixed(1)}"/><text x="${placed.x.toFixed(1)}" y="${placed.y.toFixed(1)}" font-size="${size.toFixed(1)}">${i + 1}</text>`;
     }).join('');
     return `<svg class="sk-chg-marks" viewBox="0 0 ${width} ${height}" aria-hidden="true">${rings}</svg>`;
 }
