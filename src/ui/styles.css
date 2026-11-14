@@ -446,6 +446,18 @@ button { cursor: pointer; }
     .sk-coord span:first-child { display: inline; color: var(--mute); }
     .sk-body { max-width: none; }
 }
+/* Phones: every control is at least 40 px tall to tap, and no label is under 12 px. */
+@media (max-width: 1080px) {
+    .sk-fov select { min-height: 40px; padding: 0 6px; }
+    .sk-key.g { min-height: 40px; }
+    .sk-gk .sk-src { line-height: 40px; padding: 0 4px; }
+    .sk-btn2 { min-height: 40px; }
+    .sk-search input { min-height: 40px; }
+    .sk-m-details dd a { display: inline-flex; align-items: center; min-height: 40px; }
+    .sk-mh, .sk-fov, .sk-bar b, .sk-strip small, .sk-readout > span, .sk-ticks, .sk-axl, .sk-sim { font-size: 12px; }
+    .sk-coord, .sk-read, .sk-m-details dl, .sk-credit, .sk-gk .sk-src, .sk-fig figcaption, .sk-lcy span, .sk-lcx { font-size: 12px; }
+    .sk-mh { letter-spacing: .1em; }
+}
 /* Small phones: the view buttons get their own row so "Subtract" never spills out. */
 @media (max-width: 380px) {
     .sk-player { flex-wrap: wrap; }

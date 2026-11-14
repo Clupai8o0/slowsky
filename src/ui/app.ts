@@ -14,7 +14,7 @@ import { decodeView, encodeView } from '../lib/urlstate';
 import { positionAt } from '../lib/targets';
 import { formatDec, formatRa, parseCoords, resolveName } from '../lib/coords';
 import { createDemoSource } from './demo-source';
-import { diffScale, renderDiverging, type DiffScale } from './compose';
+import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
 import { curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, type Curve } from './measure';
@@ -26,6 +26,7 @@ type SourceKind = 'live' | 'snapshot' | 'demo';
 const TARGETS = targetsJson as unknown as Target[];
 const FOVS = [0.1, 0.25, 0.5, 1];
 const DEFAULT_FOV = 0.1; // big SPHEREx pixels, and a mover's step is easy to see
+const SAVED_FOV = 0.1; // the saved copy holds this field only; a bigger one reads live
 const DEFAULT_TARGET: TargetId = 'barnard';
 // Middle of SPHEREx's looks so far (1 Jan 2026). Fast movers are centred where they are then, not in 2000:
 // Barnard's Star has walked 4′ north since, which is off the edge of a 0.1° field.
@@ -347,6 +348,8 @@ export function mount(root: HTMLElement): void
     let result: SkyResult | null = null;
     let sourceKind: SourceKind = 'live';
     let liveFailed = false; // the saved copy is showing because the live archive did not answer
+    let cored = false; // the picture shows a too-bright core painted white
+    let reading: SourceKind | null = null; // the source being read right now, for the status line
     let curve: Curve | null = null; // brightness against nearby comparison stars, for targets that change
     let shift: ReturnType<typeof shiftFor> | undefined; // motion from the first look to the last, worked out once per result
     let stretch: ReturnType<typeof sharedStretch> | null = null;
@@ -430,7 +433,10 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('load').hidden = false;
         root.dataset.loading = 'true';
         progress({ stage: 'search', done: 0, total: 1 });
-        renderText();
+        if (st.wantFrame === undefined) {
+            // The address bar names the spot being opened, not the last one (no stale f=).
+            writeUrl();
+        }
         const req: SkyRequest = {
             center: st.center,
             fovDeg: st.fovDeg,
@@ -443,7 +449,7 @@ export function mount(root: HTMLElement): void
         // The five targets open from the saved copy at once (a live read takes 20-45 s);
         // "Read live" or another colour on another detector goes to the archive.
         const saved = st.target ? targetById(st.target) : undefined;
-        const savedFirst = !st.live && saved !== undefined && st.detector === saved.detector;
+        const savedFirst = !st.live && saved !== undefined && st.detector === saved.detector && st.fovDeg <= SAVED_FOV + 1e-9;
         const order: SourceKind[] = demoOnly ? ['demo'] : savedFirst ? ['snapshot', 'live'] : ['live', 'snapshot'];
         let res: SkyResult | null = null;
         let got: SourceKind = 'live';
@@ -452,6 +458,8 @@ export function mount(root: HTMLElement): void
         let failedLive = false;
         let spare: SkyResult | null = null; // a saved copy without the linked frame, used if live fails
         for (const kind of order) {
+            reading = kind;
+            renderText();
             try {
                 res = await loadFrom(kind, req);
                 got = kind;
@@ -496,6 +504,7 @@ export function mount(root: HTMLElement): void
         if (signal.aborted) {
             return;
         }
+        reading = null;
         ref<HTMLElement>('load').hidden = true;
         delete root.dataset.loading;
         lamInput.disabled = false;
@@ -503,24 +512,32 @@ export function mount(root: HTMLElement): void
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             paintGlow();
             renderText();
-            const why = res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${lastErr instanceof Error ? lastErr.message : ''}`;
+            const why = res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${plainError(lastErr)}`;
             bind('err', why);
             ref<HTMLElement>('err').hidden = false;
+            st.wantFrame = undefined;
+            writeUrl();
             return;
         }
         result = res;
         sourceKind = got;
         liveFailed = failedLive;
+        if (got === 'snapshot' && st.fovDeg > SAVED_FOV + 1e-9) {
+            // Live failed and the saved copy holds only the small field: say what is shown.
+            st.fovDeg = SAVED_FOV;
+        }
         st.lambda = res.lambda;
         // The frames say which detector they came from; near a band edge the wavelength alone can point at the next one.
         st.detector = res.frames[0]?.frame.frame.detector ?? detectorOf(res.lambda);
         stretch = sharedStretch(res.frames);
         composed = {};
         st.index = 0;
+        let hold = false; // a shared link named this frame: open paused on it
         if (st.wantFrame) {
             const k = res.frames.findIndex((f) => f.frame.frame.obsId === st.wantFrame);
             st.index = Math.max(0, k);
             st.wantFrame = undefined;
+            hold = k >= 0;
         }
         if (st.mode !== 'blink') {
             compose();
@@ -534,7 +551,7 @@ export function mount(root: HTMLElement): void
         buildStrip();
         draw();
         writeUrl();
-        if (!reduceMotion && st.mode === 'blink' && res.frames.length > 1) {
+        if (!reduceMotion && !hold && st.mode === 'blink' && res.frames.length > 1) {
             play(true);
         }
     }
@@ -593,17 +610,18 @@ export function mount(root: HTMLElement): void
             compose();
         }
         const data = st.mode === 'stack' ? composed.stack : st.mode === 'diff' ? composed.diff : undefined;
-        if (!data) {
-            drawFrame(ctx, f, stretch);
+        const { width, height } = data ? result.grid : f.frame.grid;
+        const img = ctx.createImageData(width, height);
+        cored = false;
+        if (st.mode === 'diff' && data) {
+            renderDiverging(data, composed.scale ?? { floor: 0, limit: 1 }, img.data);
         } else {
-            const img = ctx.createImageData(result.grid.width, result.grid.height);
-            if (st.mode === 'stack') {
-                renderRgba(data, stretch, img.data);
-            } else {
-                renderDiverging(data, composed.scale ?? { floor: 0, limit: 1 }, img.data);
-            }
-            ctx.putImageData(img, 0, 0);
+            const pix = data ?? f.frame.data;
+            renderRgba(pix, stretch, img.data);
+            // A star too bright for the camera has blank pixels at its core: paint them white, not black.
+            cored = fillCores(pix, width, height, img.data) > 0;
         }
+        ctx.putImageData(img, 0, 0);
         paintGlow();
         overlay();
         renderCurve();
@@ -883,6 +901,10 @@ export function mount(root: HTMLElement): void
         if (!result) {
             bind('frame', '');
             bind('when', '');
+            if (reading) {
+                bind('statusShort', reading === 'live' ? 'Reading live from NASA’s archive · about 30 s'
+                    : reading === 'snapshot' ? 'Opening the saved copy' : 'Building the simulated sky');
+            }
             return;
         }
         const n = result.frames.length;
@@ -903,6 +925,9 @@ export function mount(root: HTMLElement): void
         sizeBar();
 
         const extraNotes: string[] = [];
+        if (cored) {
+            extraNotes.push('The white core is a star too bright for the camera there: SPHEREx records no value for those pixels.');
+        }
         if (f && lf) {
             const rec = f.frame.frame;
             const rows: [string, string][] = [
@@ -977,6 +1002,15 @@ export function mount(root: HTMLElement): void
         st.index = stepIndex(st.index, result.frames.length, 1);
         draw();
         timer = window.setTimeout(tick, frameDelayMs(FPS));
+    }
+
+    function plainError(e: unknown): string
+    {
+        const msg = e instanceof Error ? e.message : '';
+        if (!msg || /failed to fetch|networkerror|load failed|network/i.test(msg)) {
+            return 'The archive did not answer. Check the connection and try again.';
+        }
+        return msg;
     }
 
     function play(on: boolean): void
