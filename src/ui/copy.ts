@@ -37,7 +37,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         short: 'Fades at some colours',
         kind: 'spectrum',
         headline: 'Epsilon Indi B, missing colours',
-        show: 'Two brown dwarfs, too cold to be stars. Change the colour: they fade where methane and water soak up light.',
+        show: 'Two brown dwarfs: heavier than planets, too light to shine like stars. Change the colour: they fade where methane and water soak up light.',
         not: 'No brightness curve is drawn for it here. Blinking shows how it moves; it does not test whether its brightness changes.',
     },
     wise0855: {
@@ -54,7 +54,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         kind: 'saturated',
         headline: 'R Draconis, too bright to measure',
         show: 'A giant star that swells and shrinks. Look at the glow around it, not the centre.',
-        not: 'Its centre is too bright for the camera in every frame, so the centre cannot be measured.',
+        not: 'Its centre is too bright for the camera in every saved frame, so the centre cannot be measured.',
     },
 };
 
