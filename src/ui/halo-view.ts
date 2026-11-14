@@ -211,12 +211,15 @@ export function haloHtml(h: HaloView, name: string, on: number): string
     // The module's own sentences on the comparison stars and the blank middle, under the readings. Its note says the
     // stars agree, so it shows only when the module gives no reason against a curve; it speaks of the stars the
     // module was given, so the stars the panel left out first are named before it.
+    // The rule is steadyRefs': a star goes while its look-to-look scatter is over 3 times the median of the rest.
     const out = h.leftOut ?? 0;
+    const shown = h.reason ? '' : h.note ?? '';
     const leftOut = out > 0
-        ? `${out === 1 ? 'One comparison star was' : `${out} comparison stars were`} left out because ${out === 1 ? 'its readings' : 'their readings'}`
-            + ` scattered far more from look to look than the other comparison stars’ did.`
+        ? (out === 1 ? 'One comparison star was left out: its readings scattered from look to look more than 3 times as much as the middle value for the other comparison stars'
+            : `${out} comparison stars were left out, one at a time: each one’s readings scattered from look to look more than 3 times as much as the middle value for the comparison stars still in use at that step`)
+            + (shown ? '. The check below covers only the comparison stars that were kept.' : '.')
         : '';
-    const module = [h.caveat, leftOut, h.reason ? '' : h.note].filter((t): t is string => !!t)
+    const module = [h.caveat, leftOut, shown].filter((t): t is string => !!t)
         .map((t) => `<p class="sk-body mute">${esc(t)}</p>`).join('');
     // One reading compared with its own median always reads +0.0%, so show only its noise.
     const one = h.points.length === 1;
