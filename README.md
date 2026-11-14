@@ -134,25 +134,27 @@ in it.
 - Slowsky shows changes between frames. It does not decide what a change is. A change can be noise, a satellite
   trail or a camera artefact, so anything that stands out is a candidate for a closer look, not a result.
 - It is not a planet finder. Do not expect it to show Planet Nine or any other unknown planet. Optical searches by
-  ZTF, DES and Pan-STARRS1 have together ruled out about 78% of its predicted range, and the rest is mostly near
-  V 22 (Brown, Holman & Batygin 2024, arXiv:2401.17977). SPHEREx reaches 19.5 to 19.9 AB (5 sigma) below 3.8 µm
-  only after four observations in each spectral channel, and one frame is shallower (Bock et al. 2025,
-  arXiv:2511.02985). These are different bands, so this is a rough comparison, not a limit this repo computes.
+  ZTF, DES and Pan-STARRS1 have together ruled out about 78% of its predicted range, and what is left is faint,
+  around V 22 (Brown, Holman & Batygin 2024, arXiv:2401.17977). SPHEREx reaches 19.5 to 19.9 AB (5 sigma) below 3.8 µm
+  only after its two-year survey, with four observations in each spectral channel at a typical sky brightness
+  away from the Milky Way's plane, and one frame is shallower (Bock et al. 2025, arXiv:2511.02985). These are
+  different bands, so this is a rough comparison, not a limit this repo computes.
 - Live loading reads many files from the archive and takes 20 to 45 seconds. It reads at most 60 frames per view
   and says so when it does. To choose them it guesses each frame's wavelength at the spot from the frame's corner
   positions in the archive list (about 10 pixels off), then reads the frames nearest the chosen wavelength.
-  When a frame has no corner positions, or the guess does not check out against the first header, frames are spread evenly in time as before.
+  When a frame has no corner positions, or the guess does not check out against the first header, frames are
+  spread evenly in time as before.
 - At very busy spots, such as near the ecliptic poles, the archive can cut its frame list short. The page then
   says some visits may be missing.
 - Gaia rings are moved from the stars' catalogue positions for 2016.0 to each frame's date using the stars' proper
   motion (Stack uses the middle date). The source keeps only stars that were on the field in 2016, so a fast star
-  that walked in from just outside it since then has no ring. Live views show rings only within 0.2° of the centre,
-  and skip them if the catalogue is slow to answer.
+  that walked in from just outside it since then has no ring. Live views ask the catalogue only for stars within
+  0.2° of the centre, and skip the rings if the catalogue is slow to answer.
 - The brightness curve (RW Aurigae and WISE 0855; none is drawn for Epsilon Indi B) divides the target by two to
-  four Gaia comparison stars in the field. They are not checked for steadiness, so a variable one shows up as wobble. The curve appears
-  only when the field holds at least two such stars; in the offline copy that is RW Aurigae only. The shaded band
-  shows how much those comparison stars wobble; a faint target can wobble more. It is a rough check, not
-  calibrated photometry.
+  four Gaia comparison stars in the field. They are not checked for steadiness, so a variable one shows up as
+  wobble. The curve appears only when the field holds at least two such stars; in the offline copy that is
+  RW Aurigae only. The shaded band shows how much those comparison stars wobble; a faint target can wobble more.
+  It is a rough check, not calibrated photometry.
 - For Barnard's Star the page measures how far the star moved between two frames and shows the distance its
   catalogue proper motion predicts beside it. The prediction leaves out parallax (the small back-and-forth shift
   caused by Earth's orbit round the Sun), and the star's bright core is hard to centre, so the two numbers can differ.
