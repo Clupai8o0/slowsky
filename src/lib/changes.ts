@@ -6,7 +6,9 @@ import { gridPixToSky } from './regrid';
 import type { OutputGrid, PixelCoord, RegriddedFrame, SkyCoord } from './types';
 
 export type ChangeKind = 'mover' | 'brightness' | 'unknown';
-export type ChangeReading = 'brighter' | 'fainter' | 'laterOnly' | 'earlierOnly' | 'moved' | 'pair' | 'differs';
+// 'moreLater' / 'lessLater' are the plain list's readings (ChangeOptions.plain): only the sign of the difference.
+export type ChangeReading = 'brighter' | 'fainter' | 'laterOnly' | 'earlierOnly' | 'moved' | 'pair' | 'differs'
+    | 'moreLater' | 'lessLater';
 /** A light-bearing location in output-grid pixels, for checking the corresponding visit. */
 export type ChangeEnd = { visit: 'earlier' | 'later'; x: number; y: number; radiusPix: number };
 export const MIN_CLIPPED_FRAMES = 3;
@@ -42,6 +44,12 @@ export interface ChangeCandidate {
     ends?: ChangeEnd[];
     nearCatalogue?: boolean;
     radiusPix?: number;
+    /** Plain list only: distance to the nearest visit-matched catalogue position within matchArcsec. */
+    catalogueArcsec?: number;
+    /** Plain list only: the spot lies within edgeArcsec of the picture's edge. */
+    nearEdge?: boolean;
+    /** Plain list only: a pixel within one image width (12″) is missing in at least one visit. */
+    nearMissing?: boolean;
 }
 export type VisitChangeCandidate = ChangeCandidate & {
     sentence: string;
@@ -82,6 +90,8 @@ export interface ChangeOptions {
     minFracChange?: number;
     minShiftArcsec?: number;
     maxSpotsPerFrame?: number;
+    /** Plain list: every kept spot is its own candidate with one fixed sentence (no pairing, mover or cause). */
+    plain?: boolean;
 }
 
 // One visit (a stack or a single frame) on the output grid. `variance` is optional: the per-pixel variance on
@@ -109,7 +119,7 @@ function settings(opts: ChangeOptions = {}): Settings
         minSpeedArcsecPerHour: opts.minSpeedArcsecPerHour ?? 5,
         maxSpeedArcsecPerHour: opts.maxSpeedArcsecPerHour ?? 4000, lineTolArcsec: opts.lineTolArcsec ?? 4,
         minFracChange: opts.minFracChange ?? 0.10, minShiftArcsec: opts.minShiftArcsec ?? 3,
-        maxSpotsPerFrame: opts.maxSpotsPerFrame ?? 15 };
+        maxSpotsPerFrame: opts.maxSpotsPerFrame ?? 15, plain: opts.plain ?? false };
 }
 
 function validate(data: Float32Array, grid: OutputGrid): void
@@ -568,9 +578,13 @@ function empty(opt: Settings): ChangeResult
 // showSnr is false when the noise came from the difference image alone: that estimate leaves out each source's own
 // light, so the S/N it gives can be several times too high near anything bright. The value stays in `snr`; only the
 // printed text drops it.
-function finish(result: ChangeResult, opt: Settings, singleFrame = false, showSnr = true): ChangeResult
+// A function decides per candidate (S/N only where both error maps cover the spot). `plainOrder` puts spots with
+// no catalogue star nearby first.
+function finish(result: ChangeResult, opt: Settings, singleFrame = false,
+    showSnr: boolean | ((c: ChangeCandidate) => boolean) = true, plainOrder = false): ChangeResult
 {
-    result.candidates.sort((a, b) => (singleFrame ? Number(b.gaiaMatch) - Number(a.gaiaMatch) : 0)
+    result.candidates.sort((a, b) => (plainOrder ? Number(Boolean(a.nearCatalogue)) - Number(Boolean(b.nearCatalogue))
+        : singleFrame ? Number(b.gaiaMatch) - Number(a.gaiaMatch) : 0)
         || b.snr - a.snr || a.pix.y - b.pix.y || a.pix.x - b.pix.x);
     const total = result.candidates.length;
     result.candidates = result.candidates.slice(0, Math.max(0, opt.maxCandidates));
@@ -580,7 +594,8 @@ function finish(result: ChangeResult, opt: Settings, singleFrame = false, showSn
     }
     result.candidates.forEach((c, i) => {
         c.id = `c${i + 1}`;
-        c.sentence = showSnr ? c.reason : c.reason.replace(SNR_IN_TEXT, '(candidate)');
+        const show = typeof showSnr === 'function' ? showSnr(c) : showSnr;
+        c.sentence = show ? c.reason : c.reason.replace(SNR_IN_TEXT, '(candidate)');
         c.reason = c.sentence;
     });
     return result;
@@ -591,7 +606,8 @@ export const NO_SNR_NOTE = 'Signal-to-noise figures are not shown, because this 
 
 export function snrText(snr: number): string
 {
-    return !Number.isFinite(snr) ? 'S/N not measured' : snr > 50 ? 'S/N > 50' : `S/N ${snr.toFixed(1)}`;
+    // Truncate rather than round, so 49.96 prints 49.9, never "50.0" beside the "> 50" form.
+    return !Number.isFinite(snr) ? 'S/N not measured' : snr > 50 ? 'S/N > 50' : `S/N ${(Math.floor(snr * 10) / 10).toFixed(1)}`;
 }
 
 function candidate(blob: Blob, grid: OutputGrid, stars: StarPix[], opt: Settings, frames: string[]): ChangeCandidate
@@ -1182,6 +1198,59 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
         }
     }
     return false;
+}
+
+// The plain list: one candidate per kept spot, saying only which visit has more light there, with the causes that
+// could do it, and plain lookups (catalogue distance, edge, missing pixels). Pairs are split into their ends, and a
+// spot shared by two candidates is listed once.
+function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image, later: Image, grid: OutputGrid,
+    stars: StarPix[], opt: Settings): ChangeCandidate[]
+{
+    const out: ChangeCandidate[] = [], seen = new Set<string>();
+    const radiusPix = PSF_FWHM / grid.pixelArcsec, edgePix = opt.edgeArcsec / grid.pixelArcsec;
+    for (const c of candidates) {
+        const ends = c.ends ?? [{ visit: c.sign === 1 ? 'later' as const : 'earlier' as const, x: c.pix.x, y: c.pix.y, radiusPix }];
+        for (const end of ends) {
+            const key = `${end.x},${end.y}`;
+            if (seen.has(key)) {
+                continue;
+            }
+            seen.add(key);
+            const pix = { x: end.x, y: end.y };
+            const blob = found.find((b) => b.pix.x === end.x && b.pix.y === end.y);
+            const sign: 1 | -1 = end.visit === 'later' ? 1 : -1;
+            const snr = blob?.snr ?? c.snr;
+            let catalogueArcsec: number | undefined;
+            for (const star of stars) {
+                if (Number.isFinite(star.x) && Number.isFinite(star.y) && (star.visit === undefined || star.visit === end.visit)) {
+                    const d = distance(pix, star, grid);
+                    if (d <= opt.matchArcsec && (catalogueArcsec === undefined || d < catalogueArcsec)) { catalogueArcsec = d; }
+                }
+            }
+            const nearEdge = pix.x < edgePix || pix.y < edgePix || pix.x > grid.width - 1 - edgePix || pix.y > grid.height - 1 - edgePix;
+            let nearMissing = false;
+            const r = Math.ceil(radiusPix);
+            for (let y = Math.round(pix.y) - r; y <= Math.round(pix.y) + r && !nearMissing; y++) {
+                for (let x = Math.round(pix.x) - r; x <= Math.round(pix.x) + r; x++) {
+                    if (x < 0 || y < 0 || x >= grid.width || y >= grid.height || Math.hypot(x - pix.x, y - pix.y) > radiusPix) {
+                        continue;
+                    }
+                    const i = y * grid.width + x;
+                    if (!Number.isFinite(earlier.data[i]!) || !Number.isFinite(later.data[i]!)) { nearMissing = true; break; }
+                }
+            }
+            const facts = (catalogueArcsec !== undefined ? ` A catalogue star lies ${catalogueArcsec.toFixed(1)}″ away.` : '')
+                + (nearEdge ? ' It is near the edge of the picture.' : '')
+                + (nearMissing ? ' Pixels near it are missing in at least one visit.' : '');
+            out.push({ id: '', kind: 'unknown', pix, sky: gridPixToSky(grid, pix), snr, sign,
+                gaiaMatch: catalogueArcsec !== undefined, ...(catalogueArcsec === undefined ? {} : { gaiaDistArcsec: catalogueArcsec, catalogueArcsec }),
+                frames: c.frames, reading: sign === 1 ? 'moreLater' : 'lessLater', ends: [{ ...end }], nearCatalogue: catalogueArcsec !== undefined,
+                nearEdge, nearMissing, radiusPix: end.radiusPix,
+                reason: `${sign === 1 ? 'More' : 'Less'} light here in the later visit than in the earlier one; a real change, a moving source, `
+                    + `a detector hit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}` });
+        }
+    }
+    return out;
 }
 
 export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, stars: StarPix[], opts?: ChangeOptions): VisitChangeResult
@@ -1830,18 +1899,43 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     if (wobble > 0) {
         result.notes.push(`${wobble} ${wobble === 1 ? 'spot' : 'spots'} consistent with a shift of up to 1.5″ between visits not listed.`);
     }
+    if (opt.plain) {
+        result.candidates = plainList(result.candidates, found, earlier, later, grid, stars, opt);
+        result.notes = result.notes.filter((note) => !note.startsWith('Catalogue stars have no ids'));
+        result.notes.push(measurement.usedErrorMap
+            ? `Listed with spots that have no catalogue star within ${opt.matchArcsec}″ first, then by how far each stands out from the noise.`
+            : `Listed with spots that have no catalogue star within ${opt.matchArcsec}″ first, then by how far each stands out from the noise estimated from the difference image; that figure is used only for this order.`);
+    }
     result.candidates.forEach((c) => {
         if (caveat) { c.caveat = caveat; }
     });
     if (centerChecked && centerBlank && !result.candidates.some((c) => distance(c.pix, center, grid) <= opt.matchArcsec)) {
         result.notes.push('No source above 5 times the noise at the centre of the view in either visit.');
     }
-    const finished = finish(result, opt, singleFrame, measurement.usedErrorMap);
+    // S/N prints only where both visits' error maps have a value at every end of the candidate: elsewhere the noise
+    // there came from the difference image alone (Opus r11: a NaN core in the maps left "S/N > 50" from it).
+    const mappedAt = (p: PixelCoord): boolean => {
+        const x = Math.round(p.x), y = Math.round(p.y);
+        const v = varSum && x >= 0 && y >= 0 && x < grid.width && y < grid.height ? varSum[y * grid.width + x]! : NaN;
+        return Number.isFinite(v) && v > 0;
+    };
+    let unmapped = 0;
+    const finished = finish(result, opt, singleFrame, (c) => {
+        if (!measurement.usedErrorMap) {
+            return false;
+        }
+        const ok = (c.ends ?? [c.pix]).every(mappedAt);
+        if (!ok) { unmapped++; }
+        return ok;
+    }, opt.plain);
+    if (unmapped > 0) {
+        finished.notes.push(`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`);
+    }
     return { ...finished, visits, candidates: finished.candidates.map((c) => {
         const ends = c.ends ?? [{ visit: c.sign === 1 ? 'later' as const : 'earlier' as const,
             x: c.pix.x, y: c.pix.y, radiusPix: c.radiusPix ?? 12 / grid.pixelArcsec }];
         return { ...c, sentence: c.reason, reading: c.reading ?? 'differs', ends,
-            nearCatalogue: ends.some((end) => match(end, stars, grid, opt.matchArcsec) !== undefined),
+            nearCatalogue: opt.plain ? Boolean(c.nearCatalogue) : ends.some((end) => match(end, stars, grid, opt.matchArcsec) !== undefined),
             ...(ends.length > 1 ? { lightEnds: ends } : {}),
             lightVisit: c.sign === 1 ? 'later' as const : 'earlier' as const,
             x: c.pix.x, y: c.pix.y, radiusPix: c.radiusPix ?? 12 / grid.pixelArcsec };

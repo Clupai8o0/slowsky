@@ -177,6 +177,82 @@ describe('round 11 public readings', () => {
             expect(r.candidates.some((c) => c.kind === 'mover'), `${near}: ${JSON.stringify(r.candidates.map((c) => c.sentence))}`).toBe(false);
         }
     });
+    it('plain list: one candidate per spot with the fixed sentence, no pair, mover or separation', () => {
+        const P = grid.pixelArcsec, a = noise(grid), b = noise(grid);
+        point(a, grid, 50, 60, 300); point(b, grid, 50 + 8 / P, 60, 300);
+        const full = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b', 60200)), grid, []);
+        const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b', 60200)), grid, [], { plain: true });
+        expect(full.candidates.length).toBe(1);
+        expect(r.candidates.map((c) => c.reading).sort()).toEqual(['lessLater', 'moreLater']);
+        for (const c of r.candidates) {
+            expect(c.kind).toBe('unknown');
+            expect(c.ends).toHaveLength(1);
+            expect(c.ends[0]).toMatchObject({ visit: c.reading === 'moreLater' ? 'later' : 'earlier', x: c.pix.x, y: c.pix.y });
+            expect(c.lightVisit).toBe(c.ends[0]!.visit);
+            expect(c.sentence).toBe(`${c.reading === 'moreLater' ? 'More' : 'Less'} light here in the later visit than in the earlier one; `
+                + `a real change, a moving source, a detector hit or a small shift between the two pictures could cause this (S/N > 50; candidate).`);
+            expect(c.reason).toBe(c.sentence);
+            expect(c).toMatchObject({ nearCatalogue: false, nearEdge: false, nearMissing: false });
+        }
+        expect(new Set(r.candidates.map((c) => `${c.pix.x},${c.pix.y}`)).size).toBe(r.candidates.length);
+        expect(r.notes.join(' ')).not.toContain('Catalogue stars have no ids');
+        expect(r.notes).toContain('Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.');
+    });
+    it('plain list: visit-matched catalogue lookup, order and the no-map order note', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 30, 30, 1000); point(b, grid, 30, 30, 2000);       // catalogue star, strong
+        point(b, grid, 90, 90, 60);                                       // uncatalogued, weaker
+        point(a, grid, 30, 90, 300);                                      // earlier light under a later-only entry
+        const stars = [{ x: 30, y: 30, id: 's' }, { x: 30, y: 90, id: 'pm', visit: 'later' as const, properMotion: true }];
+        const r = compareVisits(image(a, 'a'), image(b, 'b', 60200), grid, stars, { plain: true });
+        const at = (x: number, y: number) => r.candidates.find((c) => Math.hypot(c.pix.x - x, c.pix.y - y) < 3);
+        expect(at(30, 30)).toMatchObject({ reading: 'moreLater', nearCatalogue: true });
+        expect(at(30, 30)!.catalogueArcsec).toBeLessThan(2);
+        expect(at(30, 30)!.sentence).toMatch(/\(candidate\)\. A catalogue star lies \d+\.\d″ away\.$/);
+        expect(at(90, 90)).toMatchObject({ reading: 'moreLater', nearCatalogue: false });
+        // The only entry near (30, 90) is the later-visit position; the light there is in the earlier visit.
+        expect(at(30, 90)).toMatchObject({ reading: 'lessLater', nearCatalogue: false });
+        const order = r.candidates.map((c) => c.nearCatalogue);
+        expect(order).toEqual([...order].sort((x, y) => Number(x) - Number(y)));
+        expect(r.candidates.indexOf(at(90, 90)!)).toBeLessThan(r.candidates.indexOf(at(30, 30)!));
+        expect(r.notes.join(' ')).toContain('from the difference image; that figure is used only for this order.');
+        for (const c of r.candidates) {
+            expect(c.sentence).not.toMatch(/S\/N/);
+        }
+    });
+    it('plain list: edge and missing-pixel lookups', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 5, 60, 300);
+        point(b, grid, 60, 60, 300);
+        for (let y = 63; y < 66; y++) { for (let x = 60; x < 63; x++) { a[y * grid.width + x] = NaN; } }
+        const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b', 60200)), grid, [], { plain: true });
+        const edge = r.candidates.find((c) => c.pix.x < 12);
+        const hole = r.candidates.find((c) => Math.hypot(c.pix.x - 60, c.pix.y - 60) < 3);
+        expect(edge).toMatchObject({ nearEdge: true });
+        expect(edge!.sentence).toContain(' It is near the edge of the picture.');
+        expect(hole).toMatchObject({ nearMissing: true, nearEdge: false });
+        expect(hole!.sentence).toContain(' Pixels near it are missing in at least one visit.');
+    });
+    it('prints S/N only where both error maps cover the spot (Opus r11), in plain and full mode', () => {
+        for (const plain of [false, true]) {
+            const a = noise(grid), b = noise(grid);
+            point(b, grid, 30, 30, 1000); point(b, grid, 90, 90, 1000);
+            const va = new Float32Array(a.length).fill(1), vb = new Float32Array(b.length).fill(1);
+            for (let y = 80; y < 100; y++) { for (let x = 80; x < 100; x++) { va[y * grid.width + x] = NaN; } }
+            const r = compareVisits({ ...image(a, 'a'), variance: va }, { ...image(b, 'b', 60200), variance: vb }, grid, [], { plain });
+            const covered = r.candidates.find((c) => Math.hypot(c.pix.x - 30, c.pix.y - 30) < 3)!;
+            const hole = r.candidates.find((c) => Math.hypot(c.pix.x - 90, c.pix.y - 90) < 3)!;
+            expect(covered.sentence, `${plain}`).toMatch(/\(S\/N > 50; candidate\)/);
+            expect(hole.sentence, `${plain}`).not.toMatch(/S\/N/);
+            expect(r.notes).toContain('S/N is left out for 1 candidate where the frames\' error maps have no value, because the noise there comes from the difference image alone.');
+        }
+    });
+    it('never prints S/N 50.0 below the > 50 form', () => {
+        expect(snrText(49.96)).toBe('S/N 49.9');
+        expect(snrText(50)).toBe('S/N 50.0');
+        expect(snrText(50.01)).toBe('S/N > 50');
+        expect(snrText(5.04)).toBe('S/N 5.0');
+    });
     it('prints no separation for an uncatalogued opposite pair at 8″ and 9″', () => {
         for (const sep of [8, 9]) {
             for (const swap of [false, true]) {
