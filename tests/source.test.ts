@@ -5,8 +5,9 @@ import {
 } from '../src/lib/source';
 import { makeWcs, wcsFromHeader } from '../src/lib/wcs';
 import { gridSkyToPix } from '../src/lib/regrid';
+import { flagNames, parseFlagsLayout } from '../src/lib/flags';
 import type {
-    CardValue, FitsIndex, FrameRecord, PixelBox, RangeReader, SkyCoord, WaveGrid,
+    CardValue, FitsHeader, FitsIndex, FrameRecord, PixelBox, RangeReader, SkyCoord, WaveGrid,
 } from '../src/lib/types';
 
 const CENTER: SkyCoord = { ra: 76.95, dec: 30.40 };
@@ -19,6 +20,18 @@ interface Fake {
     record: FrameRecord;
     cards: Record<string, CardValue>;
     wave: WaveGrid;
+    flagsHeader?: FitsHeader;
+}
+
+function flagsHeader(): FitsHeader
+{
+    return headerFromCards({
+        XTENSION: 'BINTABLE', BITPIX: 8, NAXIS: 2, NAXIS1: 12, NAXIS2: 4, PCOUNT: 32, GCOUNT: 1,
+        TFIELDS: 2, TTYPE1: 'TAG', TFORM1: '1J', TTYPE2: 'COMPRESSED_DATA', TFORM2: '1PB(5)',
+        THEAP: 60, ZIMAGE: true, ZCMPTYPE: 'RICE_1', ZBITPIX: 32, ZNAXIS: 2, ZNAXIS1: 5, ZNAXIS2: 3,
+        ZTILE1: 3, ZTILE2: 2, ZNAME1: 'BLOCKSIZE', ZVAL1: 32, ZNAME2: 'BYTEPIX', ZVAL2: 4,
+        MSKN0001: 'saturated', MSKM0001: 2,
+    });
 }
 
 function fake(obsId: string, tMin: number, rowOffset: number, flipped: boolean): Fake
@@ -66,20 +79,33 @@ function fakeBand(obsId: string, tMin: number, lambda: number, bandwidth = 0.030
     return f;
 }
 
-function fakeReader(fakes = FAKES): RangeReader & { reads: number }
+function fakeReader(fakes = FAKES): RangeReader & { reads: number; indexes: string[]; boxes: { url: string; name: string; box: PixelBox }[] }
 {
     const byUrl = new Map(fakes.map((f) => [f.record.url, f]));
     const reader = {
         reads: 0,
+        indexes: [] as string[],
+        boxes: [] as { url: string; name: string; box: PixelBox }[],
         async index(url: string): Promise<FitsIndex>
         {
+            reader.indexes.push(url);
             const f = byUrl.get(url);
             if (!f) {
                 throw new Error(`no fake for ${url}`);
             }
             const header = headerFromCards(f.cards);
             const hdu = { index: 1, name: 'IMAGE', headerStart: 0, dataStart: 0, dataBytes: 0, header };
-            return { url, sizeBytes: 0, hdus: [hdu], hdu: () => hdu };
+            const hdus = [hdu];
+            if (f.flagsHeader) {
+                hdus.push({ index: 2, name: 'FLAGS', headerStart: 2880, dataStart: 5760, dataBytes: 80, header: f.flagsHeader });
+            }
+            return { url, sizeBytes: 0, hdus, hdu: (name) => {
+                const found = hdus.find(item => item.name === name);
+                if (!found) {
+                    throw new Error(`missing HDU ${name}`);
+                }
+                return found;
+            } };
         },
         async readWaveGrid(index: FitsIndex): Promise<WaveGrid>
         {
@@ -88,6 +114,7 @@ function fakeReader(fakes = FAKES): RangeReader & { reads: number }
         async readFloat32(index: FitsIndex, name: string, box: PixelBox): Promise<Float32Array>
         {
             reader.reads++;
+            reader.boxes.push({ url: index.url, name, box });
             const f = byUrl.get(index.url) as Fake;
             const w = box.x1 - box.x0;
             const h = box.y1 - box.y0;
@@ -157,6 +184,35 @@ describe('live source (fake SIA and S3)', () => {
 
     afterEach(() => {
         vi.unstubAllGlobals();
+    });
+
+    it('retains detector context and optional FLAGS without extra reads', async () => {
+        const fakes = [fakeBand('validD1', 60900, 1), fakeBand('brokenD1', 61080, 1), fakeBand('noneD1', 61260, 1)];
+        const valid = flagsHeader();
+        const broken = flagsHeader();
+        broken.cards.delete('ZCMPTYPE');
+        fakes[0]!.flagsHeader = valid;
+        fakes[1]!.flagsHeader = broken;
+        const reader = fakeReader(fakes);
+        const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record) });
+        const result = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: 1 });
+        expect(result.frames).toHaveLength(3);
+        expect(reader.indexes).toHaveLength(3);
+        expect(new Set(reader.indexes)).toEqual(new Set(fakes.map(f => f.record.url)));
+        expect(reader.reads).toBe(6);
+        for (const { frame } of result.frames) {
+            const fake = fakes.find(f => f.record.url === frame.frame.url)!;
+            const imageRead = reader.boxes.find(read => read.url === fake.record.url && read.name === 'IMAGE')!;
+            expect(frame.context).toBeDefined();
+            expect(frame.context!.url).toBe(fake.record.url);
+            expect(frame.context!.box).toBe(imageRead.box);
+            expect(frame.context!.wcs.params).toEqual(makeWcs(wcsFromHeader(headerFromCards(fake.cards))).params);
+            if (fake === fakes[0]) {
+                expect(frame.context!.flags).toEqual({ layout: parseFlagsLayout(valid, 5760), names: flagNames(valid) });
+            } else {
+                expect(frame.context).not.toHaveProperty('flags');
+            }
+        }
     });
 
     it('keeps a visit when only the farther frame contains the chosen wavelength', async () => {
@@ -1079,6 +1135,9 @@ describe('snapshot source (fake site)', () => {
         expect(res.notes).toContain('Saved copy of real SPHEREx frames, stored with this page.');
         expect(res.source).toBe('snapshot');
         expect(res.frames.length).toBeGreaterThan(0);
+        for (const { frame } of res.frames) {
+            expect(frame).not.toHaveProperty('context');
+        }
         const data = res.frames[0]!.frame.data;
         const finite = Array.from(data).filter(Number.isFinite);
         expect(finite.length).toBeGreaterThan(0);
