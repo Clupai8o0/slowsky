@@ -4,7 +4,7 @@
 // wavelength lock -> regrid) and snapshot (the same steps on frames baked into public/snapshot).
 // Runs in the page and in Web Workers (no DOM globals).
 import type {
-    CardValue, Cutout, Detector, FitsHeader, FrameQuery, FrameRecord, OutputGrid, PixelBox, PixelCoord,
+    CardValue, Cutout, Detector, FitsHeader, FitsIndex, FrameContext, FrameQuery, FrameRecord, OutputGrid, PixelBox, PixelCoord,
     PlayerFrame, RangeReader, RegriddedFrame, SkyCoord, Target, TargetId, WaveGrid, Wcs,
 } from './types';
 import { commonRange, lockWavelength, type LockedFrame } from './lock';
@@ -13,9 +13,10 @@ import { searchFrames, type FrameList } from './sia';
 import { makeWcs, wcsFromHeader } from './wcs';
 import { groupVisits, sampleWave } from './wavelength';
 import { pickByWavelength, predictPixel } from './footprint';
-import { gridForView, gridSkyToPix, regridNorthUp } from './regrid';
+import { gridForView, gridSkyToPix, regridNorthUp, regridVariance } from './regrid';
 import { positionAt, targetById } from './targets';
 import { fetchGaia, type GaiaRow } from './gaia';
+import { flagNames, parseFlagsLayout } from './flags';
 
 export type SkyStage = 'search' | 'headers' | 'pixels' | 'regrid';
 
@@ -31,6 +32,7 @@ export interface SkyRequest {
     detector: Detector;
     lambda?: number; // µm; unset = the middle of the range every visit can reach
     target?: TargetId; // known target: its moving position is tracked and marked
+    withVariance?: boolean; // default false; true adds RegriddedFrame.variance (see regridVariance for what it is; +50% bytes/frame live)
     signal?: AbortSignal;
     onProgress?(p: SkyProgress): void;
 }
@@ -113,6 +115,7 @@ interface FrameInfo {
     lambda: number; // at the target (or the view centre)
     bandwidth: number;
     trackSky?: SkyCoord; // target at this frame's time
+    context?: { url: string; flags?: FrameContext['flags'] };
     loadCutout(box: PixelBox, signal?: AbortSignal): Promise<Cutout>;
 }
 
@@ -335,13 +338,27 @@ async function assemble(
             data,
             lambdaAtCenter: atCentre?.lambda ?? l.lambda,
             bandwidthAtCenter: atCentre?.bandwidth ?? info.bandwidth,
+            ...(info.context ? { context: { wcs: info.wcs, box, ...info.context } } : {}),
         };
+        if (req.withVariance) {
+            const variance = regridVariance(cutout, info.wcs, grid);
+            // A map with no finite, positive pixel is no map: count the frame as missing.
+            if (variance && variance.some((v) => Number.isFinite(v) && v > 0)) {
+                frame.variance = variance;
+            }
+        }
         return { l, info, frame };
     });
 
     const kept = regridded.filter((r): r is NonNullable<typeof r> => r !== undefined);
     if (kept.length < locked.length) {
         notes.push(`${plural(locked.length - kept.length, 'frame')} left out: the view is off the detector.`);
+    }
+    if (req.withVariance) {
+        const missing = kept.filter((r) => !r.frame.variance).length;
+        if (missing > 0) {
+            notes.push(`Error maps could not be read for ${plural(missing, 'frame')}.`);
+        }
     }
     const frames: PlayerFrame[] = kept.map((r) => ({ frame: r.frame, label: frameLabel(r.l.frame, r.l.lambda) }));
     const result: Omit<SkyResult, 'source' | 'stars' | 'credits'> = {
@@ -448,6 +465,14 @@ const DETECTOR_PX = 2040; // SPHEREx detectors are 2040 x 2040; only used to cho
 const GUESS_MAX_ERROR_PX = 40; // a probe guess further off than this means the corners can't be trusted
 const GUESS_EDGE_PX = 20; // a guess this far outside the detector still counts as on it (guesses are ~10 px off)
 
+interface ProbeRead {
+    url?: string;
+    index?: FitsIndex;
+    wave?: WaveGrid;
+    failed?: boolean;
+    error?: unknown;
+}
+
 // When there are too many frames to read every header, guess each frame's wavelength at the spot from its corner
 // positions (SIA s_region) and spend the reads on the frames nearest the chosen wavelength. Inside a visit the spot
 // steps across the detector, and so across the filter, so frames spread evenly in time mostly miss it. The
@@ -461,7 +486,7 @@ async function pickByGuess(
     reader: RangeReader,
     opts: SourceOptions,
     max: number,
-    probeRead: { url?: string },
+    probeRead: ProbeRead,
 ): Promise<{ frames: FrameRecord[]; skippedVisits: number } | undefined>
 {
     if (max < 1) {
@@ -470,9 +495,12 @@ async function pickByGuess(
     let probe: FrameRecord | undefined;
     let probeDepth = 0;
     for (const f of frames) {
-        const p = f.footprint ? predictPixel(f.footprint, [DETECTOR_PX, DETECTOR_PX], lookPoint(target, req, f)) : null;
-        if (!p) {
+        if (!f.footprint) {
             return undefined;
+        }
+        const p = predictPixel(f.footprint, [DETECTOR_PX, DETECTOR_PX], lookPoint(target, req, f));
+        if (!p) {
+            continue;
         }
         const d = Math.min(p.x, p.y, DETECTOR_PX - 1 - p.x, DETECTOR_PX - 1 - p.y);
         if (d > probeDepth) {
@@ -486,6 +514,7 @@ async function pickByGuess(
     try {
         probeRead.url = probe.url;
         const index = await reader.index(probe.url, req.signal);
+        probeRead.index = index;
         const wcs = makeWcs(wcsFromHeader(index.hdu('IMAGE').header));
         const naxis = wcs.params.naxis;
         const look = lookPoint(target, req, probe);
@@ -498,16 +527,25 @@ async function pickByGuess(
         // The footprint order is (-0.5,-0.5), (nx-0.5,-0.5), (nx-0.5,ny-0.5), (-0.5,ny-0.5).
         const corner0 = safeSkyToPix(wcs, probe.footprint[0]!);
         const corner1 = safeSkyToPix(wcs, probe.footprint[1]!);
-        if (!corner0 || !corner1 || Math.hypot(corner0.x + 0.5, corner0.y + 0.5) > GUESS_MAX_ERROR_PX
-            || Math.hypot(corner1.x - (naxis[0] - 0.5), corner1.y + 0.5) > GUESS_MAX_ERROR_PX) {
+        const corner2 = safeSkyToPix(wcs, probe.footprint[2]!);
+        const corner3 = safeSkyToPix(wcs, probe.footprint[3]!);
+        if (!corner0 || !corner1 || !corner2 || !corner3
+            || Math.hypot(corner0.x + 0.5, corner0.y + 0.5) > GUESS_MAX_ERROR_PX
+            || Math.hypot(corner1.x - (naxis[0] - 0.5), corner1.y + 0.5) > GUESS_MAX_ERROR_PX
+            || Math.hypot(corner2.x - (naxis[0] - 0.5), corner2.y - (naxis[1] - 0.5)) > GUESS_MAX_ERROR_PX
+            || Math.hypot(corner3.x + 0.5, corner3.y - (naxis[1] - 0.5)) > GUESS_MAX_ERROR_PX) {
             return undefined;
         }
         const wave = await reader.readWaveGrid(index, req.signal);
+        probeRead.wave = wave;
         const guessed = new Map<string, { lambda: number; bandwidth: number }>();
         for (const f of frames) {
-            const p = f.footprint ? predictPixel(f.footprint, naxis, lookPoint(target, req, f)) : null;
-            if (!p) {
+            if (!f.footprint) {
                 return undefined;
+            }
+            const p = predictPixel(f.footprint, naxis, lookPoint(target, req, f));
+            if (!p) {
+                continue;
             }
             if (!inside(p, naxis, -GUESS_EDGE_PX)) {
                 // Off the detector: never near any wavelength.
@@ -524,17 +562,24 @@ async function pickByGuess(
         if (!Number.isFinite(chosen)) {
             return undefined;
         }
-        // Reserve one header for the probe, even if it is not among the picked frames.
-        const pick = pickByWavelength(visits, (f) => {
+        function predicted(f: FrameRecord): number | undefined
+        {
             const l = lambdaOf(f);
             // Off-detector guesses are known to be useless: a huge finite value makes their visit "far", not "unknown".
             return l === Infinity ? 1e9 : l;
-        }, chosen, limitOf, max - 1);
+        }
+        const probeUrl = probe.url;
+        let pick = pickByWavelength(visits, predicted, chosen, limitOf, max);
+        if (pick.frames.length >= max && !pick.frames.some((f) => f.url === probeUrl)) {
+            pick = pickByWavelength(visits, predicted, chosen, limitOf, max - 1);
+        }
         return pick.frames.length > 0 ? pick : undefined;
     } catch (err) {
         if (req.signal?.aborted) {
             throw err;
         }
+        probeRead.failed = true;
+        probeRead.error = err;
         return undefined;
     }
 }
@@ -553,92 +598,192 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
             const target = knownTarget(req.target);
             // Started now so it costs no waiting time; its failure is absorbed even if the frame work fails first.
             const catalogue = startCatalogue(req, fetcher);
-            req.onProgress?.({ stage: 'search', done: 0, total: 1 });
-            const found = await search({ center: req.center, radiusDeg: 0.001, detector: req.detector }, req.signal);
-            const onDetector = found.filter((f) => f.detector === req.detector);
-            req.onProgress?.({ stage: 'search', done: 1, total: 1 });
-            if ((found as FrameList).truncated) {
-                notes.push('This spot has more frames than the archive lists at once, so some visits may be missing.');
-            }
-            if (onDetector.length === 0) {
-                notes.push(`No SPHEREx frames on detector ${req.detector} cover this spot yet.`);
-            }
-            const visits = groupVisits(onDetector, gap);
-            const maxHeaders = opts.maxHeaders ?? 60;
-            let candidates = onDetector;
-            let skippedVisits = 0;
-            if (onDetector.length > maxHeaders) {
-                const probeRead: { url?: string } = {};
-                const pick = await pickByGuess(onDetector, visits, target, req, reader, opts, maxHeaders, probeRead);
-                const fallback = thinVisits(visits, maxHeaders);
-                // The FITS reader caches the probe URL; otherwise reserve a read for it, including failed reads.
-                const fallbackBudget = !probeRead.url || fallback.some((frame) => frame.url === probeRead.url)
-                    ? maxHeaders : Math.max(0, maxHeaders - 1);
-                candidates = pick?.frames ?? (fallbackBudget === maxHeaders ? fallback : thinVisits(visits, fallbackBudget));
-                skippedVisits = pick?.skippedVisits ?? 0;
-            }
-            if (candidates.length < onDetector.length) {
-                notes.push(`Read ${candidates.length} of ${onDetector.length} frames to keep loading quick.`);
-            }
-            let done = 0;
-            const total = candidates.length;
-            req.onProgress?.({ stage: 'headers', done, total });
-            const infos = await mapLimit(candidates, opts.concurrency ?? 4, async (record): Promise<FrameInfo | undefined> => {
-                req.signal?.throwIfAborted();
-                const index = await reader.index(record.url, req.signal);
-                const header = index.hdu('IMAGE').header;
-                const wcs = makeWcs(wcsFromHeader(header));
-                const look = lookPoint(target, req, record);
-                const pix = safeSkyToPix(wcs, look);
-                done++;
+            try {
+                req.onProgress?.({ stage: 'search', done: 0, total: 1 });
+                const found = await search({ center: req.center, radiusDeg: 0.001, detector: req.detector }, req.signal);
+                const onDetector = found.filter((f) => f.detector === req.detector);
+                req.onProgress?.({ stage: 'search', done: 1, total: 1 });
+                if ((found as FrameList).truncated) {
+                    notes.push('This spot has more frames than the archive lists at once, so some visits may be missing.');
+                }
+                if (onDetector.length === 0) {
+                    notes.push(`No SPHEREx frames on detector ${req.detector} cover this spot yet.`);
+                }
+                const visits = groupVisits(onDetector, gap);
+                const maxHeaders = opts.maxHeaders ?? 60;
+                let candidates = onDetector;
+                let skippedVisits = 0;
+                const probeRead: ProbeRead = {};
+                if (onDetector.length > maxHeaders) {
+                    const pick = await pickByGuess(onDetector, visits, target, req, reader, opts, maxHeaders, probeRead);
+                    if (pick) {
+                        candidates = pick.frames;
+                        skippedVisits = pick.skippedVisits;
+                    } else if (probeRead.failed) {
+                        const fallback = thinVisits(visits, maxHeaders);
+                        candidates = thinVisits(visits, Math.max(0, maxHeaders - 1)).filter((frame) => frame.url !== probeRead.url);
+                        const urls = new Set([probeRead.url, ...candidates.map((frame) => frame.url)]);
+                        for (const frame of [...fallback, ...onDetector]) {
+                            if (urls.size >= maxHeaders) {
+                                break;
+                            }
+                            if (!urls.has(frame.url)) {
+                                candidates.push(frame);
+                                urls.add(frame.url);
+                            }
+                        }
+                        candidates.sort((a, b) => a.tMin - b.tMin);
+                        if (candidates.length === 0) {
+                            throw probeRead.error;
+                        }
+                    } else {
+                        const fallback = thinVisits(visits, maxHeaders);
+                        if (!probeRead.url || fallback.some((frame) => frame.url === probeRead.url)) {
+                            candidates = fallback;
+                        } else {
+                            candidates = thinVisits(visits, Math.max(0, maxHeaders - 1));
+                            const urls = new Set([probeRead.url, ...candidates.map((frame) => frame.url)]);
+                            const budget = Math.min(maxHeaders, new Set(onDetector.map((frame) => frame.url)).size);
+                            for (const frame of [...fallback, ...onDetector]) {
+                                if (urls.size >= budget) {
+                                    break;
+                                }
+                                if (!urls.has(frame.url)) {
+                                    candidates.push(frame);
+                                    urls.add(frame.url);
+                                }
+                            }
+                            if (candidates.length === 0) {
+                                candidates = onDetector.filter((frame) => frame.url === probeRead.url).slice(0, 1);
+                            }
+                            candidates.sort((a, b) => a.tMin - b.tMin);
+                        }
+                    }
+                }
+                let done = 0;
+                let unreadable = probeRead.failed ? 1 : 0;
+                let firstError: unknown = probeRead.error;
+                const total = candidates.length;
                 req.onProgress?.({ stage: 'headers', done, total });
-                if (!pix || !inside(pix, wcs.params.naxis, EDGE_MARGIN_PX)) {
-                    return undefined;
+                async function readInfo(record: FrameRecord): Promise<FrameInfo | undefined>
+                {
+                    let info: FrameInfo | undefined;
+                    try {
+                        req.signal?.throwIfAborted();
+                        const index = record.url === probeRead.url && probeRead.index
+                            ? probeRead.index : await reader.index(record.url, req.signal);
+                        let flags: FrameContext['flags'];
+                        const flagsHdu = index.hdus.find(hdu => hdu.name === 'FLAGS');
+                        if (flagsHdu) {
+                            try {
+                                flags = { layout: parseFlagsLayout(flagsHdu.header, flagsHdu.dataStart), names: flagNames(flagsHdu.header) };
+                            } catch {
+                                // Unsupported FLAGS must not prevent the image from loading.
+                            }
+                        }
+                        const header = index.hdu('IMAGE').header;
+                        const wcs = makeWcs(wcsFromHeader(header));
+                        const look = lookPoint(target, req, record);
+                        const pix = safeSkyToPix(wcs, look);
+                        if (pix && inside(pix, wcs.params.naxis, EDGE_MARGIN_PX)) {
+                            const wave = record.url === probeRead.url && probeRead.wave
+                                ? probeRead.wave : await reader.readWaveGrid(index, req.signal);
+                            const sample = sampleWave(wave, pix);
+                            const version = header.get('PIPEVERS') ?? header.get('VERSION');
+                            const full: FrameRecord = typeof version === 'string' ? { ...record, pipelineVersion: version } : record;
+                            info = {
+                                record: full,
+                                wcs,
+                                wave,
+                                lambda: sample.lambda,
+                                bandwidth: sample.bandwidth,
+                                context: { url: record.url, ...(flags ? { flags } : {}) },
+                                async loadCutout(box: PixelBox, signal?: AbortSignal): Promise<Cutout>
+                                {
+                                    const [image, zodi, variance] = await Promise.all([
+                                        reader.readFloat32(index, 'IMAGE', box, signal),
+                                        reader.readFloat32(index, 'ZODI', box, signal),
+                                        req.withVariance
+                                            ? reader.readFloat32(index, 'VARIANCE', box, signal).catch((e: unknown) => {
+                                                if (signal?.aborted) {
+                                                    throw e;
+                                                }
+                                                return undefined;
+                                            })
+                                            : undefined,
+                                    ]);
+                                    const cutout: Cutout = {
+                                        frame: full, box, width: box.x1 - box.x0, height: box.y1 - box.y0,
+                                        image, zodi, wcs: wcs.params, wave, header,
+                                    };
+                                    if (variance) {
+                                        cutout.variance = variance;
+                                    }
+                                    return cutout;
+                                },
+                            };
+                            if (target) {
+                                info.trackSky = look;
+                            }
+                        }
+                    } catch (err) {
+                        if (req.signal?.aborted) {
+                            throw err;
+                        }
+                        if (unreadable === 0) {
+                            firstError = err;
+                        }
+                        unreadable++;
+                    }
+                    return info;
                 }
-                const wave = await reader.readWaveGrid(index, req.signal);
-                const sample = sampleWave(wave, pix);
-                const version = header.get('PIPEVERS') ?? header.get('VERSION');
-                const full: FrameRecord = typeof version === 'string' ? { ...record, pipelineVersion: version } : record;
-                const info: FrameInfo = {
-                    record: full,
-                    wcs,
-                    wave,
-                    lambda: sample.lambda,
-                    bandwidth: sample.bandwidth,
-                    async loadCutout(box: PixelBox, signal?: AbortSignal): Promise<Cutout>
-                    {
-                        const [image, zodi] = await Promise.all([
-                            reader.readFloat32(index, 'IMAGE', box, signal),
-                            reader.readFloat32(index, 'ZODI', box, signal),
-                        ]);
-                        return {
-                            frame: full, box, width: box.x1 - box.x0, height: box.y1 - box.y0,
-                            image, zodi, wcs: wcs.params, wave, header,
-                        };
-                    },
-                };
-                if (target) {
-                    info.trackSky = look;
+                const infos = await mapLimit(candidates, opts.concurrency ?? 4, async (record) => {
+                    const info = await readInfo(record);
+                    done++;
+                    req.onProgress?.({ stage: 'headers', done, total });
+                    return info;
+                });
+                let usable = infos.filter((f): f is FrameInfo => f !== undefined);
+                let reusedProbe = false;
+                if (usable.length === 0 && unreadable > 0 && probeRead.index && probeRead.wave
+                    && !candidates.some((frame) => frame.url === probeRead.url)) {
+                    const probe = onDetector.find((frame) => frame.url === probeRead.url);
+                    if (probe) {
+                        const info = await readInfo(probe);
+                        if (info) {
+                            usable = [info];
+                            reusedProbe = true;
+                        }
+                    }
                 }
-                return info;
-            });
-            const usable = infos.filter((f): f is FrameInfo => f !== undefined);
-            if (usable.length < candidates.length) {
-                notes.push(`${plural(candidates.length - usable.length, 'frame')} left out: the spot is at the detector edge.`);
+                if (candidates.length < onDetector.length) {
+                    notes.push(`Read ${candidates.length + (reusedProbe ? 1 : 0)} of ${onDetector.length} frames to keep loading quick.`);
+                }
+                if (unreadable > 0) {
+                    if (usable.length === 0) {
+                        throw firstError;
+                    }
+                    notes.push(`${plural(unreadable, 'frame')} could not be read.`);
+                }
+                const atEdge = candidates.length - infos.filter((f) => f !== undefined).length - (unreadable - (probeRead.failed ? 1 : 0));
+                if (atEdge > 0) {
+                    notes.push(`${plural(atEdge, 'frame')} left out: the spot is at the detector edge.`);
+                }
+                const core = await assemble(req, usable, visits, opts, notes, skippedVisits);
+                // The picture is ready: give a slow catalogue a short grace time, then go on without it.
+                const rows = await settleWithin(catalogue.rows, GAIA_GRACE_MS, req.signal);
+                req.signal?.throwIfAborted();
+                const stars = rows ? gaiaStarsOnGrid(rows, core.grid) : [];
+                if (!rows) {
+                    notes.push(GAIA_UNAVAILABLE_NOTE);
+                } else if (stars.length > 0 && req.fovDeg * Math.SQRT1_2 > GAIA_MAX_RADIUS_DEG) {
+                    notes.push(`Gaia stars are shown only within ${GAIA_MAX_RADIUS_DEG}° of the centre.`);
+                }
+                const records = core.frames.map((f) => f.frame.frame);
+                return { source: 'live', stars, credits: credits(records, stars.length > 0), ...core };
+            } finally {
+                catalogue.stop();
             }
-            const core = await assemble(req, usable, visits, opts, notes, skippedVisits);
-            // The picture is ready: give a slow catalogue a short grace time, then go on without it.
-            const rows = await settleWithin(catalogue.rows, GAIA_GRACE_MS, req.signal);
-            catalogue.stop();
-            req.signal?.throwIfAborted();
-            const stars = rows ? gaiaStarsOnGrid(rows, core.grid) : [];
-            if (!rows) {
-                notes.push(GAIA_UNAVAILABLE_NOTE);
-            } else if (stars.length > 0 && req.fovDeg * Math.SQRT1_2 > GAIA_MAX_RADIUS_DEG) {
-                notes.push(`Gaia stars are shown only within ${GAIA_MAX_RADIUS_DEG}° of the centre.`);
-            }
-            const records = core.frames.map((f) => f.frame.frame);
-            return { source: 'live', stars, credits: credits(records, stars.length > 0), ...core };
         },
     };
 }
@@ -761,17 +906,17 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
         async load(req: SkyRequest): Promise<SkyResult>
         {
             if (!req.target) {
-                throw new SkyUnavailable('The offline copy only has the five official targets.');
+                throw new SkyUnavailable('The saved copy only has the five official targets.');
             }
             const target = knownTarget(req.target) as Target;
-            const notes: string[] = ['Offline copy of real SPHEREx frames, baked for this target.'];
+            const notes: string[] = ['Saved copy of real SPHEREx frames, stored with this page.'];
             req.onProgress?.({ stage: 'search', done: 0, total: 1 });
             const index = await getIndex(req.target, req.signal);
             req.onProgress?.({ stage: 'search', done: 1, total: 1 });
             const onDetector = index.frames.filter((f) => f.record.detector === req.detector);
             const visits = groupVisits(onDetector.map((f) => f.record), opts.visitGapDays ?? 10);
             if (onDetector.length === 0) {
-                notes.push(`The offline copy has detector ${target.detector} only for this target.`);
+                notes.push(`The saved copy has detector ${target.detector} only for this target.`);
             }
             if (onDetector.length > 0) {
                 // The baked boxes follow the star at frame time and span about 0.19 deg, so centre there and keep the view inside.
@@ -779,7 +924,7 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
                 const center = positionAt(target.astrometry, meanMjd);
                 const fovDeg = Math.min(req.fovDeg, SNAPSHOT_MAX_FOV_DEG);
                 if (fovDeg < req.fovDeg) {
-                    notes.push(`The offline copy limits the field to ${SNAPSHOT_MAX_FOV_DEG}°.`);
+                    notes.push(`The saved copy limits the field to ${SNAPSHOT_MAX_FOV_DEG}°.`);
                 }
                 req = { ...req, center, fovDeg };
             }
@@ -849,7 +994,7 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
                         }
                         const cutout: Cutout = { frame: record, box: stored, width, height, image, wcs: wcs.params, wave, header };
                         const zodi = plane('ZODI');
-                        const variance = plane('VARIANCE');
+                        const variance = req.withVariance ? plane('VARIANCE') : undefined;
                         if (zodi) {
                             cutout.zodi = zodi;
                         }

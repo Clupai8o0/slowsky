@@ -5,7 +5,102 @@ import { SYSTEM_PROMPT } from '../src/lib/insight-prompt';
 import { TARGETS } from '../src/lib/targets';
 
 const facts: InsightFacts = { targetId: 'custom', ra: 12.34567, dec: -38, lambdaUm: 4.27, visits: [{ mjd: 61000, frames: 3 }, { mjd: 61010, frames: 4 }], lightCurve: { points: [{ mjd: 61000, relative: 1, snr: 20 }, { mjd: 61010, relative: 0.8, snr: 10 }], refScatter: [0.02, 0.03], dropped: 2 }, difference: { peakSigma: -3.4 }, motion: { arcsec: 2.3, days: 10 }, snapshot: true };
-const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3457 deg, Dec -38.0000 deg.', 'Wavelength: 4.270 micron.', 'Visits: 2. Frames in each visit: 3, 4. Time from first to last visit: 10.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.80.', 'Largest change from the median brightness: 11 percent brighter.', 'Lowest signal-to-noise among the points: 10.', 'Reference stars: 2. Scatter of each: 2.0, 3.0 percent.', 'Frames left out because their wavelength did not match: 2.', 'Difference image at the target: 3.4 sigma, fainter in the later visit.', 'Shift in position: 2.3 arcsec over 10.0 days.', 'Frames came from: the baked snapshot.'];
+const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3457 deg, Dec -38.0000 deg.', 'Wavelength: 4.270 micron.', 'Visits: 2. Frames in each visit: 3, 4. Time from first to last visit: 10.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.80.', 'Largest change from the median brightness: 11 percent either side.', 'Lowest signal-to-noise among the points: 10. This counts sky noise only, so the real uncertainty is larger.', 'Reference stars: 2 with available scatter. Scatter of each: 2.0, 3.0 percent.', 'Frames left out because their wavelength did not match: 2.', 'Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit.', 'Shift in position: 2.3 arcsec over 10.0 days.', 'Frames came from: a saved copy.'];
+
+describe('honest fact sheet', () => {
+    const withPoints = (points: { mjd: number; relative: number; snr: number }[]) => ({ ...facts, lightCurve: { ...facts.lightCurve!, points } });
+    it('uses printed precision at the bounds', () => {
+        // The lowest signal-to-noise is rounded down, so the sheet never shows it better than it is.
+        for (const [snr, shown] of [[1, '1'], [1.5, '1'], [1.99, '1'], [99.5, '99'], [100, '100'], [100.4, '100'],
+            [100.99, '100'], [101, 'more than 100']] as const) {
+            expect(factSheet(withPoints([{ mjd: 61000, relative: 1, snr }])).join(' ')).toContain(`points: ${shown}.`);
+        }
+        for (const [peakSigma, shown] of [[100, '100.0 sigma'], [100.04, '100.0 sigma'], [5, '5.0 sigma'], [0.04, 'no change above the noise']] as const) {
+            expect(factSheet({ ...facts, difference: { peakSigma } }).join(' ')).toContain(shown);
+        }
+        expect(factSheet({ ...facts, difference: { peakSigma: 5 } }).join(' ')).toContain('A bright star');
+        const pts = [1, 1, 1.0051].map((relative, i) => ({ mjd: 61000 + i, relative, snr: 10 }));
+        expect(factSheet(withPoints(pts))).toContain('Largest change from the median brightness: 1 percent brighter.');
+    });
+    it('omits the span for a single visit', () => {
+        expect(factSheet({ ...facts, visits: [facts.visits[0]!] }).join(' ')).not.toContain('Time from first to last visit');
+    });
+    it('computes change using only the displayed points', () => {
+        const sheet = factSheet(withPoints([0.8, 1, 1.2, 20].map((relative, i) => ({ mjd: 61000 + i, relative, snr: i === 3 ? 0.9 : 10 }))));
+        expect(sheet.join(' ')).toContain('0.80, 1.00, 1.20. Points too faint');
+        expect(sheet).toContain('Largest change from the median brightness: 20 percent either side.');
+    });
+    it('bounds signal-to-noise and checks the printed bound', () => {
+        const sheet = factSheet(withPoints([{ mjd: 61000, relative: 1, snr: 3582 }]));
+        expect(sheet).toContain('Lowest signal-to-noise among the points: more than 100. This counts sky noise only, so the real uncertainty is larger.');
+        expect(checkNote('The signal-to-noise is more than 100. Safe sentence. Another safe sentence.', sheet).dropped).toBe(0);
+        expect(checkNote('The signal-to-noise is 3582. Safe sentence. Another safe sentence.', sheet).dropped).toBe(1);
+        for (const snr of [-0.01, 0, 0.99]) {
+            expect(factSheet(withPoints([{ mjd: 61000, relative: 1, snr }])).join(' ')).toContain('points: below 1.');
+        }
+    });
+    it('reports equal deviations, negligible changes, and excludes weak points', () => {
+        const pair = [{ mjd: 61000, relative: 0.8, snr: 10 }, { mjd: 61001, relative: 1.2, snr: 10 }];
+        expect(factSheet(withPoints(pair))).toContain('Largest change from the median brightness: 20 percent either side.');
+        expect(factSheet(withPoints(pair.map((p, i) => ({ ...p, relative: i ? 1.001 : 0.999 })) ))).toContain('Largest change from the median brightness: less than 1 percent.');
+        const weak = factSheet(withPoints([...pair, { mjd: 61002, relative: 20, snr: 0.9 }]));
+        expect(weak).toContain('Brightness relative to the reference stars, in time order: 0.80, 1.20. Points too faint to measure are left out.');
+        const one = factSheet(withPoints([pair[0]!, { ...pair[1]!, snr: 0 }]));
+        expect(one.some((line) => /^(Brightness relative|Largest change)/.test(line))).toBe(false);
+    });
+    it('names the direction of a one-sided change and treats printed ties as ties', () => {
+        const pts = (rel: number[]) => withPoints(rel.map((relative, i) => ({ mjd: 61000 + i, relative, snr: 10 })));
+        expect(factSheet(pts([1, 1, 0.5]))).toContain('Largest change from the median brightness: 50 percent dimmer.');
+        expect(factSheet(pts([1, 1, 1.5]))).toContain('Largest change from the median brightness: 50 percent brighter.');
+        expect(factSheet(pts([0.8124, 1, 1.1877]))).toContain('Largest change from the median brightness: 19 percent either side.');
+        expect(factSheet(pts([0.9, 1, 1.1004]))).toContain('Largest change from the median brightness: 10 percent either side.');
+    });
+    it('adds the misalignment caution whenever the printed value is 5.0 or more', () => {
+        expect(factSheet({ ...facts, difference: { peakSigma: 4.96 } }).join(' ')).toContain('5.0 sigma, brighter there in the later visit. A bright star');
+        expect(factSheet({ ...facts, difference: { peakSigma: 4.94 } }).join(' ')).not.toContain('A bright star');
+    });
+    it('keeps the direction of a printed bound', () => {
+        const pad = 'Safe sentence. Another safe sentence.';
+        const big = factSheet(withPoints([{ mjd: 61000, relative: 1, snr: 3582 }]));
+        expect(checkNote(`The signal-to-noise is above 100. ${pad}`, big).dropped).toBe(0);
+        expect(checkNote(`The signal-to-noise is 100. ${pad}`, big).dropped).toBe(1);
+        expect(checkNote(`The signal-to-noise is less than 100. ${pad}`, big).dropped).toBe(1);
+        const low = factSheet(withPoints([{ mjd: 61000, relative: 1, snr: 0.4 }]));
+        expect(checkNote(`The signal-to-noise is below 1. ${pad}`, low).dropped).toBe(0);
+        expect(checkNote(`The signal-to-noise is 1. ${pad}`, low).dropped).toBe(1);
+        const small = factSheet(withPoints([{ mjd: 61000, relative: 0.999, snr: 50 }, { mjd: 61001, relative: 1.001, snr: 50 }]));
+        expect(checkNote(`The largest change was less than 1 percent. ${pad}`, small).dropped).toBe(0);
+        expect(checkNote(`The brightness changed by more than 1 percent. ${pad}`, small).dropped).toBe(1);
+        expect(checkNote(`The brightness changed by 1 percent. ${pad}`, small).dropped).toBe(1);
+        const frames = factSheet({ ...facts, visits: [{ mjd: 61000, frames: 500 }, { mjd: 61010, frames: 7 }] });
+        expect(checkNote(`The first visit had at least 500 frames. ${pad}`, frames).dropped).toBe(0);
+        expect(checkNote(`The first visit had 500 frames. ${pad}`, frames).dropped).toBe(1);
+        expect(checkNote(`The second visit had 7 frames. ${pad}`, frames).dropped).toBe(0);
+        const twelve = factSheet({ ...facts, visits: Array.from({ length: 12 }, (_, i) => ({ mjd: 61000 + 20 * i, frames: 2 })) });
+        expect(twelve[3]).toMatch(/^Visits: at least 12\. /);
+        expect(checkNote(`SPHEREx came back on at least 12 visits. ${pad}`, twelve).dropped).toBe(0);
+        expect(checkNote(`SPHEREx came back on 12 visits. ${pad}`, twelve).dropped).toBe(1);
+    });
+    it('describes the strongest difference pixel with bounds and context', () => {
+        expect(factSheet({ ...facts, difference: { peakSigma: -3.4 } })).toContain('Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit.');
+        expect(factSheet({ ...facts, difference: { peakSigma: 0.01 } })).toContain('Difference image at the target: no change above the noise.');
+        expect(factSheet({ ...facts, difference: { peakSigma: 101 } })).toContain('Difference image at the target: strongest pixel more than 100 sigma, brighter there in the later visit. A bright star leaves marks this strong from a tiny misalignment, and a star that moved leaves a bright side and a dark side.');
+    });
+    it('reports a rounded zero shift and a saved copy', () => {
+        const sheet = factSheet({ ...facts, motion: { arcsec: 0.01, days: 10 } });
+        expect(sheet).toContain('Shift in position: none measured over 10.0 days.');
+        expect(sheet).toContain('Frames came from: a saved copy.');
+    });
+    it('uses the shown visit count when checking past ordinal claims', () => {
+        const sheet = factSheet(facts);
+        expect(checkNote('The third visit was brighter. Safe sentence. Another safe sentence.', sheet).dropped).toBe(1);
+    });
+    it('omits non-finite scatter values', () => {
+        const sheet = factSheet({ ...facts, lightCurve: { ...facts.lightCurve!, refScatter: [NaN, 0.02] } });
+        expect(sheet.join(' ')).not.toContain('NaN');
+        expect(sheet).toContain('Reference stars: 1 with available scatter. Scatter of each: 2.0 percent.');
+    });
+});
 const note = 'What this shows: The wavelength is 4.270 micron. The position is -38.0000 degrees.\nHow far to trust it: More data helps.';
 function createHandlers(deps: Pick<InsightDeps, 'apiKey' | 'model' | 'complete' | 'now'> & Partial<InsightDeps>)
 {
@@ -492,7 +587,7 @@ describe('insight facts and guard', () => {
         expect(factSheet(simple)).toHaveLength(5);
         expect(factSheet({ ...simple, targetId: TARGETS[0]!.id })[0]).toBe(`Target: ${TARGETS[0]!.name}.`);
         expect(factSheet({ ...facts, lightCurve: { ...facts.lightCurve!, points: [...facts.lightCurve!.points].reverse() } })).toEqual(lines);
-        expect(factSheet({ ...facts, lightCurve: { ...facts.lightCurve!, refScatter: [] } })).toContain('Reference stars: none, so the brightness change has no control.');
+        expect(factSheet({ ...facts, lightCurve: { ...facts.lightCurve!, refScatter: [] } })).toContain('Reference stars: scatter unavailable.');
         const zero = factSheet({ ...facts, lightCurve: { ...facts.lightCurve!, points: [{ mjd: 61000, relative: 0, snr: 1 }] } });
         expect(zero.some((line) => line.startsWith('Largest change'))).toBe(false);
     });

@@ -18,6 +18,8 @@ import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
 import { coreBlank, curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
+import { mountAiNote } from './ai-note';
+import { FEATURES, mountFlags, renderSpectrum } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -60,6 +62,7 @@ const ICON = {
     panelL: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/></svg>',
     panelR: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/></svg>',
     focus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/></svg>',
+    note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 4.5h13v15h-13z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg>',
     link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.1-1.1"/></svg>',
 };
 
@@ -256,6 +259,7 @@ function shell(): string
       <canvas class="sk-glow" data-ref="glow" width="24" height="24" aria-hidden="true"></canvas>
       <canvas class="sk-img" data-ref="canvas" role="img" aria-label="Sky image"></canvas>
       <svg class="sk-ov" data-ref="ov" aria-hidden="true" preserveAspectRatio="none"></svg>
+      <div class="sk-slot-flags" data-ref="flags" hidden></div>
       <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
       <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
       <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
@@ -264,12 +268,14 @@ function shell(): string
     <div class="sk-ctrl">
     <div class="sk-legrow">
       <div class="sk-leg">
-        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
+        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA, Gaia DPAC; Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
+        <button type="button" class="sk-key g f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Flagged pixels</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
       <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
     </div>
+    <p class="sk-flagnote" data-ref="flagsNote" hidden></p>
     <div class="sk-player">
       <div class="sk-tr">
         <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
@@ -300,6 +306,21 @@ function shell(): string
     </div>
     <p class="sk-body mute">All of this is infrared: your eyes stop at 0.70 µm. Drag, then let go to load that colour.</p>
   </section>
+  <section class="sk-mod sk-m-spec" aria-labelledby="sk-h8" data-ref="spec" hidden>
+    <h2 class="sk-mh" id="sk-h8"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
+    <div class="sk-slot-spec" data-ref="specBox"></div>
+  </section>
+  <section class="sk-mod sk-m-ai" aria-labelledby="sk-h7" data-ref="ai" data-ai-generated="true" hidden>
+    <h2 class="sk-mh" id="sk-h7" tabindex="-1"><span class="ic">${ICON.note}</span>AI note<span class="sk-ai-tag">AI-written</span></h2>
+    <p class="sk-body mute">A short reading of this view by a language model, from the numbers this page measured.</p>
+    <form class="sk-ai-lock" data-ai="lock" hidden><label><span>Passcode</span><input type="password" autocomplete="off" data-ai="pass" aria-label="AI note passcode"></label><button type="submit" class="sk-btn2">Unlock</button></form>
+    <button type="button" class="sk-btn2 sk-ai-go" data-ai="go" hidden>Write an AI note</button>
+    <p class="sk-ai-msg sk-sr" data-ai="msg" role="status"></p>
+    <div class="sk-ai-out" data-ai="out" aria-live="polite"></div>
+    <details class="sk-ai-given" data-ai="given" hidden><summary>What this page told the AI</summary><ul data-ai="givenList"></ul></details>
+    <p class="sk-ai-disc" data-ai="disc"></p>
+    <p class="sk-ai-left" data-ai="left" hidden></p>
+  </section>
   <section class="sk-mod sk-m-curve" aria-labelledby="sk-h6" data-ref="curve" hidden>
     <h2 class="sk-mh" id="sk-h6"><span class="ic">${ICON.curve}</span>Brightness over time</h2>
     <div class="sk-lc" data-ref="lcwrap"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
@@ -324,6 +345,8 @@ export function mount(root: HTMLElement): void
     const q = <T extends Element>(sel: string) => root.querySelector(sel) as T;
     const qa = <T extends Element>(sel: string) => [...root.querySelectorAll(sel)] as T[];
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
+    const aiNote = mountAiNote(ref<HTMLElement>('ai'));
+    const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const glow = ref<HTMLCanvasElement>('glow');
@@ -360,6 +383,7 @@ export function mount(root: HTMLElement): void
     let timer = 0;
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
+    let flagsOn = false; // the Flags layer over the sky (slot, off until its lane lands)
     let lookup: AbortController | null = null; // pending name lookup; any newer navigation cancels it
 
     function bind(key: string, text: string): void
@@ -671,15 +695,16 @@ export function mount(root: HTMLElement): void
         const H = 100;
         const noise = Number.isFinite(c.noise) ? c.noise : 0;
         const name = st.target ? COPY[st.target].display : 'the target';
-        // A catalogued star inside the measuring circle mixes its light in. A cold brown dwarf is fainter than that
-        // star below 4.4 µm, so its chart stays hidden there; for other targets the note just says so.
+        // A catalogued star inside the measuring circle mixes its light in. For a cold brown dwarf with such a star
+        // in the circle the chart stays hidden below 4.4 µm, where the brown dwarf is faint (Luhman 2014,
+        // arXiv:1404.6501, Table 1); for other targets the note just says so. Nothing here measures which is brighter.
         const blendAt = c.blend ? `A Gaia star (G ${c.blend.g.toFixed(1)}) sits ${(c.blend.px * result.grid.pixelArcsec).toFixed(1)}″ from ${name}` : '';
         const cold = st.target ? COPY[st.target].kind === 'cold' : false;
         const hideChart = c.blend !== null && cold && c.lc.lambda < 4.4;
         ref<HTMLElement>('lcwrap').hidden = hideChart;
         ref<HTMLElement>('lcx').hidden = hideChart;
         if (hideChart) {
-            bind('lcNote', `${blendAt}, inside the measuring circle. At ${c.lc.lambda.toFixed(2)} µm that star outshines it, so no curve is drawn. Try 4.4 µm or longer, where ${name} is the brighter one.`);
+            bind('lcNote', `${blendAt}, close enough that its light may reach the measuring circle. No curve is drawn below 4.4 µm; slide the colour to 4.4 µm or longer.`);
             return;
         }
         const ys = pts.map((o) => o.p.relative);
@@ -850,6 +875,38 @@ export function mount(root: HTMLElement): void
         bind('bar', `${bar / 60}′`);
     }
 
+    // The mover's first-to-last shift, worked out once per result, for the AI note's facts.
+    function noteShift(): ReturnType<typeof shiftFor> | undefined
+    {
+        const t = st.target ? targetById(st.target) : undefined;
+        if (!result || !t || COPY[t.id].kind !== 'mover' || result.frames.length < 2) {
+            return undefined;
+        }
+        if (shift === undefined) {
+            shift = shiftFor(result, t.astrometry);
+        }
+        return shift;
+    }
+
+    // Feature-flagged slots (src/ui/slots.ts): hidden unless the flag is on and the module has something to show.
+    function renderSlots(): void
+    {
+        const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode, source: sourceKind } : null;
+        const spec = ref<HTMLElement>('spec');
+        spec.hidden = !(FEATURES.spectrum && view && renderSpectrum(ref<HTMLElement>('specBox'), view));
+        // FLAGS are read only once the key is switched on (Blink, live frames); a finished read renders again.
+        const fs = flagLayer.update(view, flagsOn);
+        const key = ref<HTMLButtonElement>('flagsKey');
+        key.hidden = !fs.key;
+        key.setAttribute('aria-pressed', String(flagsOn));
+        ref<HTMLElement>('flags').hidden = !fs.layer;
+        const note = ref<HTMLElement>('flagsNote');
+        if (note.textContent !== fs.note) {
+            note.textContent = fs.note;
+        }
+        note.hidden = !(fs.key && fs.note);
+    }
+
     function renderText(): void
     {
         root.dataset.mode = st.mode;
@@ -857,6 +914,8 @@ export function mount(root: HTMLElement): void
         root.dataset.source = sourceKind;
         ref<HTMLElement>('sim').hidden = !(result && sourceKind === 'demo');
         ref<HTMLElement>('golive').hidden = !(result && sourceKind === 'snapshot' && st.target);
+        aiNote.update(result && sourceKind !== 'demo' ? { result, targetId: st.target, center: st.center, curve, shift: noteShift() } : null);
+        renderSlots();
         const copy = st.target ? COPY[st.target] : null;
         bind('name', copy ? copy.display : st.label);
         const coordsA = ref<HTMLAnchorElement>('coords');
@@ -1100,13 +1159,12 @@ export function mount(root: HTMLElement): void
         }
         if (kind === 'cold') {
             const visits = visitsOf(result).map((v) => `${v.n} in ${monthYear(v.mjd)}`);
-            // Expected from its spectrum, not measured here, so it sits in the description, not under "Measured here".
-            const colour = st.detector <= 4
-                ? `At this colour (detector ${st.detector} of 6) expect the light at its spot to be a background star.`
-                : st.detector === 5 ? 'At this colour expect the background star and WISE 0855 both to add light.'
-                    : 'At this colour (detector 6 of 6) WISE 0855 should outshine the background star.';
+            // From earlier telescopes, not measured here, so it sits in the description, not under "Measured here".
+            // Luhman 2014 (arXiv:1404.6501, Table 1): [3.6] 17.44, [4.5] 13.92, W2 (4.6 µm) 13.89 mag. Detector 6
+            // covers 4.42 to 5.00 µm. Other detectors get no sentence here; the card's own line covers 3.6 vs 4.5 µm.
+            const colour = st.detector === 6 ? ' WISE detected it at 4.6 µm, inside this detector’s range (detector 6 of 6).' : '';
             return {
-                show: `${COPY[st.target].show} ${colour}`,
+                show: `${COPY[st.target].show}${colour}`,
                 fact: `This view has ${n} look${n === 1 ? '' : 's'}${visits.length > 1 ? `: ${visits.join(', ')}` : ''}.`,
             };
         }
@@ -1212,6 +1270,9 @@ export function mount(root: HTMLElement): void
             play(!st.playing);
         } else if (b.dataset.act === 'prev' || b.dataset.act === 'next') {
             step(b.dataset.act === 'next' ? 1 : -1);
+        } else if (b.dataset.act === 'flags') {
+            flagsOn = !flagsOn;
+            renderSlots();
         } else if (b.dataset.act === 'gaia') {
             st.gaia = !st.gaia;
             overlay();
@@ -1298,7 +1359,12 @@ export function mount(root: HTMLElement): void
             if (mine.signal.aborted) {
                 return;
             }
-            toast('Couldn’t find that. Try a star name, or RA and Dec like 269.45, 4.69.');
+            // Only numbers, signs and units that parseCoords refused: it reads more than one way ("10 30 20 15").
+            // Asked only after the name lookup, since a few real names look like this ("1H 0707-495").
+            const numeric = /^[+-]?[\d.]/.test(text) && /^[\d\s.,:;+\-hdms°′″'"]+$/i.test(text);
+            toast(numeric
+                ? 'Couldn’t find that name or read it as RA and Dec. Write them with a comma between them, like 269.45, 4.69, or with units, like 17h57m +4d41m.'
+                : 'Couldn’t find that. Try a star name, or RA and Dec like 269.45, 4.69.');
         }
     });
 

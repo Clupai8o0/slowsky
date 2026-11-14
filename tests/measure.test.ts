@@ -112,6 +112,32 @@ describe('curveFor', () => {
         expect(middleMjd(r)).toBeCloseTo(MJD0 + 100, 1);
     });
 
+    it('keeps every frame the wavelength lock kept, cutting on the target, not the view centre', () => {
+        // Detector 4 at 3.7 µm (R 35): the lock allows half a channel, 0.053 µm, wider than a fixed 0.05.
+        const r = result([100, 200, 100]);
+        const lam = 3.7;
+        const half = lam / 35 / 2;
+        r.lambda = lam;
+        r.locked = r.frames.map((_, i) => ({ lambda: lam + (i === 1 ? half : 0), dLambda: i === 1 ? half : 0 })) as unknown as SkyResult['locked'];
+        r.frames.forEach((p, i) => {
+            p.frame.lambdaAtCenter = lam + (i === 1 ? half : 0);
+            p.frame.bandwidthAtCenter = 2 * half;
+        });
+        let c = curveFor(r);
+        expect(c!.frameOf).toEqual([0, 1, 2]);
+        expect(c!.lc.dropped).toBe(0);
+        // Target locked at 0.911 µm (inside 0.900 ± 0.012), but the view centre reads 0.913: still kept.
+        const s = result([100, 200, 100]);
+        s.locked = s.frames.map((_, i) => ({ lambda: i === 1 ? 0.911 : 0.9, dLambda: i === 1 ? 0.011 : 0 })) as unknown as SkyResult['locked'];
+        s.frames.forEach((p, i) => {
+            p.frame.lambdaAtCenter = i === 1 ? 0.913 : 0.9;
+            p.frame.bandwidthAtCenter = 0.024;
+        });
+        c = curveFor(s);
+        expect(c!.frameOf).toEqual([0, 1, 2]);
+        expect(c!.lc.points.map((p) => p.lambda)).toEqual([0.9, 0.911, 0.9]);
+    });
+
     it('keeps references with room for the scaled annulus on a coarse grid', () => {
         const r = result([100, 100]);
         r.grid = { ...grid, pixelArcsec: 6.1, fovDeg: N * 6.1 / 3600 };
@@ -161,7 +187,8 @@ describe('curveFor', () => {
         expect(sumNoise([1000, 10], [0.1, 0.1], [0.0001, 0.1])).toBeLessThan(0.002);
         expect(sumNoise([1000, 10], [0.1, 0.1], [0.1, 0.0001])).toBeGreaterThan(0.09);
         // Non-positive fluxes are skipped and never give a negative noise.
-        expect(sumNoise([400, -450], [0.05, 0.05])).toBeGreaterThanOrEqual(0);
+        // With the negative one skipped, the one star left is the whole sum: its own scatter.
+        expect(sumNoise([400, -450], [0.05, 0.05])).toBeCloseTo(0.05, 6);
         expect(sumNoise([], [])).toBe(0);
     });
 
@@ -178,16 +205,17 @@ describe('curveFor', () => {
 
     it('weights comparison noise by median reference flux over valid frames', () => {
         const r = result([100, 100, 100, 100, 100, 100]);
-        r.frames = [800, 1200, 1000, 900, 1100, 100000].map((flux, k) => ({
+        // Skewed so the median (900) is not the mean (1044): the weight must be the median.
+        r.frames = [800, 820, 1000, 900, 1700, 100000].map((flux, k) => ({
             frame: frame(k, [{ at: TARGET, flux: 100 }, ...REFS.map((at, i) => ({ at, flux: i === 0 ? flux : 20 }))], k === 5 ? TARGET : undefined),
             label: '',
         }));
         const c = curveFor(r);
         expect(c?.refs).toBe(4);
         expect(c!.lc.points.filter((p) => p.valid)).toHaveLength(5);
-        const fluxes = [1000, 20, 20, 20];
         // Aperture sums are proportional to the injected fluxes, and sumNoise depends only on their ratios.
-        expect(c!.noise).toBeCloseTo(sumNoise(fluxes, c!.lc.refScatter), 3);
+        expect(c!.noise).toBeCloseTo(sumNoise([900, 20, 20, 20], c!.lc.refScatter), 3);
+        expect(Math.abs(c!.noise - sumNoise([1044, 20, 20, 20], c!.lc.refScatter))).toBeGreaterThan(1e-3);
         expect(c!.noise).toBeGreaterThan(0.1);
     });
 
@@ -235,6 +263,18 @@ describe('curveFor', () => {
 });
 
 describe('shiftFor', () => {
+    it('reads the first and last look by date, even if the frames come out of order', () => {
+        const a: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 1000 };
+        const r = result([100, 100, 100]);
+        const mid = middleMjd(r);
+        const before = shiftFor(r, a)!;
+        r.frames = [r.frames[2]!, r.frames[0]!, r.frames[1]!];
+        expect(middleMjd(r)).toBeCloseTo(mid, 9);
+        const after = shiftFor(r, a)!;
+        expect([after.from, after.to]).toEqual([1, 0]);
+        expect(after.predictedArcsec).toBeCloseTo(before.predictedArcsec, 9);
+    });
+
     it('is null for one frame and measures from the first to the last otherwise', () => {
         const a: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 0 };
         expect(shiftFor(result([100]), a)).toBeNull();
@@ -258,6 +298,8 @@ describe('shiftFor', () => {
         expect(s?.to).toBe(2);
         expect(s?.predictedArcsec).toBeCloseTo(expected, 8);
         expect(s?.errArcsec).toBeCloseTo(3.9975, 10);
+        // Significant means the expected shift is at least twice the measuring error: 5.5″ is not, 11″ is.
+        expect(s!.predictedArcsec >= 2 * s!.errArcsec).toBe(significant);
         expect(s?.significant).toBe(significant);
     });
 
