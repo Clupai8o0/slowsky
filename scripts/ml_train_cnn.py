@@ -20,6 +20,7 @@ from torch.nn import functional as F
 
 from ml_stamps import CLASSES, FEATURES, ROOT, SIZE, dataset, features
 from ml_train import git_state, metrics, train_trees, tree_probabilities, write_json
+from ml_confirm import LOCK as CONFIRM_LOCK, RESULT as CONFIRM_RESULT
 
 ARCHITECTURE = 'cnn-3x3-gap-features-12-16-16'
 KEYS = ('macroF1', 'accuracy', 'moverRecallSnr10', 'artifactPrecision')
@@ -255,20 +256,9 @@ def mean_metrics(folds):
 def model_card(summary, eval_digest):
     """Public wording and every displayed number come from this run's sidecar."""
     worst = min(summary['folds'], key=lambda fold: fold['macroF1'])
-    labels = {'moverRecallSnr10': 'mover recall at S/N>=10', 'artifactPrecision': 'artifact precision',
-              'macroF1': 'macro-F1'}
+    labels = {'moverRecallSnr10': 'mover recall at S/N>=10', 'artifactPrecision': 'artifact precision'}
     thresholds = summary['gate']['thresholds']
     trees_by_target = {entry['testTarget']: entry['trees'] for entry in summary['comparison']}
-    cnn_shipped = summary['cnnAttempt']['gate']['passed']
-    # One clause per metric (not per field), grouped by target value, keeps every miss inside the card budget.
-    below = {}
-    for key, items in summary['worstFoldGate'].items():
-        if not items:
-            continue
-        values = ', '.join(f"{item['target']} {item['value']:.3f}"
-                           + (' (trees better)' if cnn_shipped and trees_by_target[item['target']][key] > item['value'] else '')
-                           for item in items)
-        below.setdefault(f"{thresholds[key]:.2f}", []).append(f"{labels[key]} on {values}")
     low_bin = next(b for b in summary['recallBySnrBin'] if b['lo'] == 3 and b['hi'] == 5)
     test_counts = sorted({fold['testCount'] for fold in summary['folds']})
     frame_counts = [sum(frame['target'] == fold['testTarget'] for frame in summary['psfMeasurements'])
@@ -291,7 +281,9 @@ def model_card(summary, eval_digest):
                       'Trees retained; the CNN did not pass its comparison checks on these same held-out folds.'),
         'limits': ('Labels change spots only; it does not find planets. Not tested on a real asteroid. '
                    f"Mover recall is {low_bin['classes']['mover']['recall']:.2f} at S/N 3-5. "
-                   f'{share} of test stamps are movers; if real ones are rarer, more mover labels are wrong.'),
+                   f'{share} of test stamps are movers; if real ones are rarer, more mover labels are wrong.'
+                   ' The browser helper also declines faint, over-bright, inconsistent and close-call stamps, '
+                   'so it labels fewer stamps than these scores cover.'),
         'treesMacroF1OriginalFolds': round(summary['cnnAttempt']['sameTestTrees']['meanFoldMetrics']['macroF1'], 3),
         'treesNote': TREES_NOTE, 'evalSha256': eval_digest, 'seed': summary['seed'],
     }
@@ -320,27 +312,29 @@ def model_card(summary, eval_digest):
     names = {'wise0855': 'WISE 0855', 'barnard': "Barnard's Star", 'epsindb': 'eps Indi B',
              'rdra': 'R Dra', 'rwaur': 'RW Aur'}
     weak = [fold for fold in summary['folds']
-            if all(fold[key] < thresholds[key] for key in ('moverRecallSnr10', 'artifactPrecision'))]
+            if any(fold[key] < thresholds[key] for key in labels)]
     weak_notes = []
     for fold in weak:
         target = fold['testTarget']
+        missed = [key for key in labels if fold[key] < thresholds[key]]
         values = []
-        for key in ('moverRecallSnr10', 'artifactPrecision'):
-            value = f"{labels[key]} {fold[key]:.3f}"
+        for key in missed:
+            value = f"{labels[key]}{':' if len(missed) == 1 else ''} {fold[key]:.3f}"
             if target in retest_by_target:
                 value += f" (retest {retest_by_target[target][key]:.3f})"
             values.append(value)
-        gate = thresholds['artifactPrecision']
-        both = f'both {gate:.2f} targets' if gate == thresholds['moverRecallSnr10'] else 'both targets'
-        note = f"{names[target]} missed {both}: {' and '.join(values)}"
-        note += ('; the trees did better on both.' if all(trees_by_target[target][key] > fold[key]
-                  for key in ('moverRecallSnr10', 'artifactPrecision')) else '.')
+        if len(missed) == 1:
+            note = f"{names[target]} missed the {thresholds[missed[0]]:.2f} target on {values[0]}."
+        else:
+            gate = thresholds['artifactPrecision']
+            both = f'both {gate:.2f} targets' if gate == thresholds['moverRecallSnr10'] else 'both targets'
+            note = f"{names[target]} missed {both}: {' and '.join(values)}"
+            note += ('; the trees did better on both.' if all(trees_by_target[target][key] > fold[key]
+                      for key in missed) else '.')
         weak_notes.append(note)
     if worst['testTarget'] not in {fold['testTarget'] for fold in weak}:
         weak_notes.append(f"{names[worst['testTarget']]} has the lowest macro-F1 ({worst['macroF1']:.3f}).")
     card['weakField'] = ' '.join(weak_notes)
-    if below:
-        card['belowGate'] = ' '.join(f"Below the {target} target: {'; '.join(parts)}." for target, parts in below.items())
     return card
 
 
@@ -380,8 +374,7 @@ def self_test():
 
 def check_confirmation(evaluation, eval_digest):
     """Recompute the five frozen-plan gates; no fitting or fresh draw is allowed here."""
-    result_path = ROOT / 'models/change-classifier.confirm.json'
-    lock_path = ROOT / 'models/change-classifier.confirm.lock'
+    result_path, lock_path = CONFIRM_RESULT, CONFIRM_LOCK
     assert not (lock_path.exists() and not result_path.exists()), 'Confirmation lock exists without a result'
     if not result_path.exists():
         return
@@ -389,7 +382,18 @@ def check_confirmation(evaluation, eval_digest):
     assert result['evalSha256'] == eval_digest, 'Confirmation evaluation hash mismatch'
     plan_path = ROOT / 'models/confirmation-plan.json'
     assert result['planSha256'] == sha(plan_path.read_bytes()), 'Confirmation plan hash mismatch'
-    mean, trees = result['meanFoldMetrics'], result['treesMeanFoldMetrics']
+    # The frozen plan uses these five fields from the hash-bound training evaluation.
+    targets = sorted(evaluation['cnnAttempt']['training']['counts'])
+    assert len(targets) == 5, 'Confirmation requires the five planned fields'
+    for folds_key, mean_key in (('folds', 'meanFoldMetrics'), ('treeFolds', 'treesMeanFoldMetrics')):
+        folds = result[folds_key]
+        assert sorted(fold['testTarget'] for fold in folds) == targets, (
+            f'Confirmation {folds_key} must contain each planned field exactly once')
+        recomputed = mean_metrics(folds)
+        for key in KEYS:
+            assert abs(recomputed[key] - result[mean_key][key]) < 1e-12, (
+                f'Confirmation {mean_key} {key} disagrees with its folds')
+    mean, trees = mean_metrics(result['folds']), mean_metrics(result['treeFolds'])
     baseline = evaluation['treesBaseline']['meanFoldMetrics']['macroF1']
     expected = {
         'macroF1': mean['macroF1'] >= 0.8,
@@ -456,8 +460,9 @@ def check():
 
 
 def main(args):
-    if (ROOT / 'models/change-classifier.confirm.json').exists():
-        raise SystemExit('Training refused: a frozen confirmation result exists; do not overwrite its evaluation or model')
+    if CONFIRM_LOCK.exists() or CONFIRM_RESULT.exists():
+        raise SystemExit('Training refused: a frozen confirmation lock or result exists; '
+                         'do not overwrite its evaluation or model')
     started = time.monotonic()
     revision, dirty = git_state(('public/models/change-classifier.json',
                                  'public/models/change-classifier.card.json',

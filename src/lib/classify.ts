@@ -245,7 +245,7 @@ export function stampFor(earlier: Float32Array, later: Float32Array, grid: Outpu
     return result;
 }
 
-/** Row-major peak in the radius-4 disc used by the morphology features and S/N gates. */
+/** Row-major peak in the radius-4 disc used by the morphology features and faintness gate. */
 function corePeak(diff: Float32Array): { peak: number; px: number; py: number }
 {
     let peak = -1, px = 7, py = 7;
@@ -430,7 +430,12 @@ export function classify(model: ClassifierModel, stamp: Float32Array): Classific
     }
     for (let i = 0; i < AREA; i++) {
         const earlier = stamp[i]!, later = stamp[AREA + i]!, difference = stamp[AREA * 2 + i]!;
-        if (Math.abs(difference - (later - earlier)) > 1e-4 * Math.max(1, Math.abs(earlier), Math.abs(later))) {
+        // stampFor and ml_stamps.py each store a/sigma, b/sigma and (b-a)/sigma with
+        // one Float32 rounding. For normal values each error is <= 2^-24 times its unrounded magnitude;
+        // their sum bounds this residual. Eight units allow for the rounded scale
+        // and float64 arithmetic; the floor of 1 also covers Float32 subnormals.
+        const roundingBound = 8 * 2 ** -24 * Math.max(1, Math.abs(earlier), Math.abs(later), Math.abs(difference));
+        if (Math.abs(difference - (later - earlier)) > roundingBound) {
             return { kind: 'declined', reason: 'stamp channels disagree' };
         }
     }
@@ -438,7 +443,8 @@ export function classify(model: ClassifierModel, stamp: Float32Array): Classific
     if (peak < 2.5) {
         return { kind: 'declined', reason: 'too faint to label' };
     }
-    if (peak > 2 * model.training.peakSnrMax) {
+    const fullPeak = diff.reduce((maximum, value) => Math.max(maximum, Math.abs(value)), 0);
+    if (fullPeak > 2 * model.training.peakSnrMax) {
         return { kind: 'declined', reason: 'brighter than anything in training' };
     }
     // An affine plane (including a constant offset) has no localized change.

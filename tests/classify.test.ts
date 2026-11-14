@@ -28,12 +28,13 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     expect(card.treesMacroF1).toBeUndefined();
     expect(card.treesMacroF1OriginalFolds).toBe(round3(evaluation.cnnAttempt.sameTestTrees.meanFoldMetrics.macroF1));
     expect(card.treesNote).toBe('Trees saw 600 stamps per class per target, the CNN 2,500: not like-for-like.');
-    // Every fold under a gate is named on the card with its value.
+    // The weak-field text covers every mover/artifact target miss without a duplicate key.
     const gated = evaluation as typeof evaluation & { worstFoldGate: Record<string, { target: string; value: number }[]> };
-    for (const items of Object.values(gated.worstFoldGate)) {
+    expect(card.belowGate).toBeUndefined();
+    for (const key of ['moverRecallSnr10', 'artifactPrecision']) {
+        const items = gated.worstFoldGate[key]!;
         for (const item of items) {
-            expect(card.belowGate).toContain(item.target);
-            expect(card.belowGate).toContain(item.value.toFixed(3));
+            expect(card.weakField).toContain(item.value.toFixed(3));
         }
     }
     const low = evaluation.recallBySnrBin.find((bin) => bin.lo === 3 && bin.hi === 5)!;
@@ -53,18 +54,9 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
         : `${Number((share * 100).toFixed(2))}% of test stamps are movers`;
     expect(card.limits).toBe('Labels change spots only; it does not find planets. Not tested on a real asteroid. '
         + `Mover recall is ${low.classes.mover.recall!.toFixed(2)} at S/N 3-5. `
-        + `${prevalence}; if real ones are rarer, more mover labels are wrong.`);
-    const misses = Object.values(gated.worstFoldGate).flat();
-    if (misses.length === 0) {
-        expect(card.belowGate).toBeUndefined();
-    } else {
-        expect(card.belowGate).not.toContain('under the gate');
-        for (const key of ['moverRecallSnr10', 'artifactPrecision']) {
-            if (gated.worstFoldGate[key]!.length > 0) {
-                expect(card.belowGate).toMatch(/below the 0\.85 target/i);
-            }
-        }
-    }
+        + `${prevalence}; if real ones are rarer, more mover labels are wrong.`
+        + ' The browser helper also declines faint, over-bright, inconsistent and close-call stamps, '
+        + 'so it labels fewer stamps than these scores cover.');
     for (const text of [JSON.stringify(card), weights.aiNote, weights.madeBy]) {
         expect(text).not.toMatch(/detected a|confirmed|proves|discovery/i);
     }
@@ -99,10 +91,17 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     const names: Record<string, string> = { wise0855: 'WISE 0855', barnard: "Barnard's Star", epsindb: 'eps Indi B',
         rdra: 'R Dra', rwaur: 'RW Aur' };
     const weak = evaluation.folds.filter((f) => f.moverRecallSnr10 < evaluation.gate.thresholds.moverRecallSnr10
-        && f.artifactPrecision < target);
+        || f.artifactPrecision < target);
     const weakText = weak.map((fold) => {
         const retest = (confirm.folds as typeof evaluation.folds).find((f) => f.testTarget === fold.testTarget)!;
         const trees = evaluation.comparison.find((f) => f.testTarget === fold.testTarget)!.trees;
+        const misses = (['moverRecallSnr10', 'artifactPrecision'] as const)
+            .filter((key) => fold[key] < evaluation.gate.thresholds[key]);
+        if (misses.length === 1) {
+            const key = misses[0]!, label = key === 'moverRecallSnr10' ? 'mover recall at S/N>=10' : 'artifact precision';
+            return `${names[fold.testTarget]} missed the ${evaluation.gate.thresholds[key].toFixed(2)} target on ${label}: `
+                + `${fold[key].toFixed(3)} (retest ${retest[key].toFixed(3)}).`;
+        }
         return `${names[fold.testTarget]} missed both ${target.toFixed(2)} targets: mover recall at S/N>=10 `
             + `${fold.moverRecallSnr10.toFixed(3)} (retest ${retest.moverRecallSnr10.toFixed(3)}) and artifact precision `
             + `${fold.artifactPrecision.toFixed(3)} (retest ${retest.artifactPrecision.toFixed(3)})`
@@ -167,11 +166,11 @@ function expectParity(model: ClassifierModel, samples: readonly { stamp: number[
 
 const pythonExecutable = new URL('../scripts/.venv/bin/python', import.meta.url);
 
-/** Execute only selected Python function ASTs: never import or launch the confirmation/training scripts. */
+/** Guard probes use ASTs or command-line copies; never run training or the frozen retest. */
 function pythonProbe(body: string, args: string[] = [])
 {
     execFileSync(pythonExecutable.pathname, ['-c', `
-import ast, copy, hashlib, json, os, sys, time
+import ast, copy, hashlib, json, os, shutil, subprocess, sys, time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -181,26 +180,88 @@ def source(name):
 def functions(tree, names, scope):
     nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
     exec(compile(ast.Module(body=nodes, type_ignores=[]), '<isolated guards>', 'exec'), scope)
-${body}`, ...args], { cwd: new URL('../', import.meta.url), encoding: 'utf8', timeout: 10000 });
+def checkout(folder):
+    for name in ['ml_stamps.py', 'ml_train.py', 'ml_train_cnn.py', 'ml_confirm.py']:
+        destination = folder / 'scripts' / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / 'scripts' / name, destination)
+    for name in ['models', 'public/models']:
+        (folder / name).mkdir(parents=True, exist_ok=True)
+        for path in (ROOT / name).glob('*.json'):
+            shutil.copyfile(path, folder / name / path.name)
+    subprocess.run(['git', 'init', '-q', str(folder)], check=True)
+    subprocess.run(['git', 'add', 'scripts'], cwd=folder, check=True)
+    subprocess.run(['git', '-c', 'user.name=Guard test', '-c', 'user.email=guard@example.invalid',
+                    'commit', '-qm', 'temporary frozen scripts'], cwd=folder, check=True)
+    plan_path = folder / 'models/confirmation-plan.json'
+    plan = json.loads(plan_path.read_text())
+    plan['frozenCommit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=folder, text=True).strip()
+    plan_path.write_text(json.dumps(plan))
+    result_path = folder / 'models/change-classifier.confirm.json'
+    result = json.loads(result_path.read_text())
+    result['planSha256'] = hashlib.sha256(plan_path.read_bytes()).hexdigest()
+    result_path.write_text(json.dumps(result))
+def snapshot(folder):
+    return {str(p.relative_to(folder)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in folder.rglob('*') if p.is_file() and '.git' not in p.relative_to(folder).parts}
+def cli(folder, script, *arguments):
+    return subprocess.run([sys.executable, str(folder / 'scripts' / script), *arguments],
+                          cwd=folder, env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1',
+                                           'PYTHONPATH': str(folder)},
+                          text=True, capture_output=True, timeout=15)
+${body}`, ...args], { cwd: new URL('../', import.meta.url), encoding: 'utf8', timeout: 20000 });
 }
 
 // A Node-only checkout has no optional fixture-rebuild virtualenv; the Python gate still runs with --check.
 describe.skipIf(!existsSync(pythonExecutable))('frozen confirmation guards without training or a confirmation run', () => {
-    it('card-only regeneration writes exactly the public card from existing evidence', () => {
+    it.each(['folds', 'treeFolds'])('CLI check recomputes the stored aggregate from %s on copied evidence', (kind) => {
         pythonProbe(`
-evaluation = json.loads((ROOT / 'models/change-classifier.eval.json').read_bytes())
-writes = []
-scope = dict(ROOT=ROOT, json=json, hashlib=hashlib,
-             TREES_NOTE=evaluation['cnnAttempt']['sameTestTrees']['note'],
-             write_json=lambda path, value: writes.append((path, value)))
-functions(source('ml_train_cnn.py'), ['write_card', 'model_card', 'encode', 'sha'], scope)
-assert scope['write_card']() == 0
-assert writes == [(ROOT / 'public/models/change-classifier.card.json',
-                   json.loads((ROOT / 'public/models/change-classifier.card.json').read_bytes()))]
+with TemporaryDirectory(prefix='slowsky-aggregate-guard-') as temporary:
+    folder = Path(temporary)
+    checkout(folder)
+    path = folder / 'models/change-classifier.confirm.json'
+    result = json.loads(path.read_text())
+    kind = sys.argv[1]
+    key = 'artifactPrecision' if kind == 'folds' else 'macroF1'
+    result[kind][0][key] = 0
+    measured = sum(f[key] for f in result[kind]) / len(result[kind])
+    path.write_text(json.dumps(result))
+    before = snapshot(folder)
+    run = cli(folder, 'ml_train_cnn.py', '--check')
+    assert snapshot(folder) == before, '--check changed copied evidence'
+    assert run.returncode != 0 and 'confirm' in run.stderr.lower(), (
+        f'--check returned {run.returncode}; true {kind} {key} mean={measured:.6f}; '
+        f'stored aggregate unchanged; stdout={run.stdout}; stderr={run.stderr}')
+`, [kind]);
+    });
+
+    it('card-only CLI regeneration writes exactly the public card without entering training', () => {
+        pythonProbe(`
+with TemporaryDirectory(prefix='slowsky-card-cli-') as temporary:
+    folder = Path(temporary)
+    checkout(folder)
+    card_path = folder / 'public/models/change-classifier.card.json'
+    expected = card_path.read_bytes()
+    card_path.unlink()
+    (folder / 'sitecustomize.py').write_text('''import sys
+def guard(frame, event, arg):
+    if event == 'call' and frame.f_code.co_name in {'main', 'dataset', 'fit', 'train_trees'}:
+        if frame.f_code.co_filename.endswith(('ml_train_cnn.py', 'ml_stamps.py', 'ml_train.py')):
+            raise RuntimeError('TRAINING_REACHED: ' + frame.f_code.co_name)
+sys.setprofile(guard)
+''')
+    before = snapshot(folder)
+    run = cli(folder, 'ml_train_cnn.py', '--write-card')
+    assert run.returncode == 0, f'--write-card failed: {run.stderr}'
+    assert card_path.read_bytes() == expected
+    after = snapshot(folder)
+    assert set(after) - set(before) == {'public/models/change-classifier.card.json'}
+    assert all(after[path] == digest for path, digest in before.items()), 'card CLI rewrote other evidence'
 `);
     });
 
-    it.each(['changedMetrics', 'clearRange', 'failedRetest', 'treesWorseOnOne', 'lowestIsWeak', 'multipleWeak', 'noWeak'])(
+    it.each(['changedMetrics', 'clearRange', 'failedRetest', 'treesWorseOnOne', 'lowestIsWeak', 'multipleWeak',
+        'noWeak', 'moverOnly', 'artifactOnly'])(
         'card wording follows changed evidence: %s', (mode) => {
             pythonProbe(`
 mode = sys.argv[1]
@@ -223,6 +284,8 @@ elif mode == 'multipleWeak':
     fold = next(f for f in summary['folds'] if f['testTarget'] == 'epsindb')
     fold.update(moverRecallSnr10=target - 0.01, artifactPrecision=target - 0.01)
 elif mode == 'noWeak': wise.update(moverRecallSnr10=0.9, artifactPrecision=0.9)
+elif mode == 'moverOnly': wise['artifactPrecision'] = 0.9
+elif mode == 'artifactOnly': wise['moverRecallSnr10'] = 0.9
 class EvidenceRoot:
     def __truediv__(self, _): return self
     def exists(self): return True
@@ -247,6 +310,13 @@ elif mode == 'lowestIsWeak': assert 'has the lowest macro-F1' not in card['weakF
 elif mode == 'multipleWeak':
     assert 'eps Indi B missed both' in card['weakField'] and 'WISE 0855 missed both' in card['weakField']
 elif mode == 'noWeak': assert card['weakField'].startswith("Barnard's Star has the lowest macro-F1")
+elif mode in ['moverOnly', 'artifactOnly']:
+    key = 'moverRecallSnr10' if mode == 'moverOnly' else 'artifactPrecision'
+    label = 'mover recall at S/N>=10' if mode == 'moverOnly' else 'artifact precision'
+    retest = next(f for f in confirm['folds'] if f['testTarget'] == 'wise0855')
+    expected = f"WISE 0855 missed the 0.85 target on {label}: {wise[key]:.3f} (retest {retest[key]:.3f})."
+    assert expected in card['weakField'], card['weakField']
+assert 'belowGate' not in card
 `, [mode]);
         });
 
@@ -264,7 +334,8 @@ with TemporaryDirectory(prefix='slowsky-confirm-guard-') as temporary:
     folder = Path(temporary)
     plan, result, lock = folder / 'plan.json', folder / 'result.json', folder / 'result.lock'
     plan.write_text('{}')
-    scope = dict(json=json, os=os, time=time, PLAN=plan, RESULT=result, LOCK=lock, frozen=lambda _: None)
+    scope = dict(json=json, os=os, time=time, PLAN=plan, RESULT=result, LOCK=lock,
+                 frozen=lambda _: None, validate_plan=lambda _: None, dry_run=lambda _: 0)
     functions(tree, ['reserve_confirmation'], scope)
     exec(compile(ast.Module(body=[prefix], type_ignores=[]), '<confirmation preamble>', 'exec'), scope)
     scope['guard'](True)
@@ -301,24 +372,72 @@ assert scope['finish'](False, {'passed': True}) == 0
 `);
     });
 
-    it('refuses training before reaching data generation after confirmation', () => {
+    it.each(['lock', 'result'])('CLI refuses training with an existing confirmation %s on a temp copy', (state) => {
         pythonProbe(`
-def forbidden(*args, **kwargs):
-    raise AssertionError('training/data generation reached after confirmation')
-scope = dict(ROOT=ROOT, time=time, json=json, sha=lambda raw: hashlib.sha256(raw).hexdigest(),
-             git_state=lambda _: ('test', False), dataset=forbidden, write_json=forbidden)
-functions(source('ml_train_cnn.py'), ['main'], scope)
-try:
-    scope['main'](SimpleNamespace())
-except SystemExit as error:
-    assert error.code and 'confirm' in str(error).lower()
-else:
-    raise AssertionError('training was allowed after confirmation')
-`);
+with TemporaryDirectory(prefix='slowsky-training-guard-') as temporary:
+    folder = Path(temporary)
+    checkout(folder)
+    if sys.argv[1] == 'lock':
+        (folder / 'models/change-classifier.confirm.json').unlink()
+        (folder / 'models/change-classifier.confirm.lock').touch()
+    (folder / 'sitecustomize.py').write_text('''import sys
+def guard(frame, event, arg):
+    if event == 'call' and frame.f_code.co_name in {'dataset', 'fit', 'train_trees'}:
+        raise RuntimeError('TRAINING_REACHED: ' + frame.f_code.co_name)
+sys.setprofile(guard)
+''')
+    before = snapshot(folder)
+    run = cli(folder, 'ml_train_cnn.py')
+    assert snapshot(folder) == before, 'training refusal changed copied evidence'
+    assert run.returncode != 0 and 'Training refused:' in run.stderr and 'confirm' in run.stderr.lower(), (
+        f'{sys.argv[1]}: exit={run.returncode}; stdout={run.stdout}; stderr={run.stderr}')
+    assert 'TRAINING_REACHED' not in run.stderr
+`, [state]);
     });
 
+    it.each(['available', 'lock', 'result', 'changedFrozen', 'badPlan'])(
+        'dry CLI only checks metadata and creates no files: %s', (state) => {
+            pythonProbe(`
+with TemporaryDirectory(prefix='slowsky-dry-guard-') as temporary:
+    folder = Path(temporary)
+    checkout(folder)
+    (folder / 'models/change-classifier.confirm.json').unlink()
+    state = sys.argv[1]
+    if state == 'lock': (folder / 'models/change-classifier.confirm.lock').touch()
+    elif state == 'result': (folder / 'models/change-classifier.confirm.json').write_text('{}')
+    elif state == 'changedFrozen':
+        with (folder / 'scripts/ml_train.py').open('a') as stream: stream.write('# changed frozen code')
+    elif state == 'badPlan':
+        path = folder / 'models/confirmation-plan.json'
+        plan = json.loads(path.read_text())
+        plan['freshDraw']['perClassPerTarget'] = 0
+        path.write_text(json.dumps(plan))
+    (folder / 'sitecustomize.py').write_text('''import sys
+class NoTrainingImports:
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'numpy', 'torch', 'ml_stamps', 'ml_train', 'ml_train_cnn'}:
+            raise RuntimeError('TRAINING_IMPORT: ' + fullname)
+sys.meta_path.insert(0, NoTrainingImports())
+''')
+    before = snapshot(folder)
+    run = cli(folder, 'ml_confirm.py', '--dry-run')
+    assert snapshot(folder) == before, 'dry mode created or changed files'
+    assert 'TRAINING_IMPORT' not in run.stderr, run.stderr
+    report = json.loads(run.stdout)
+    assert report['dryRun'] is True
+    assert report['lockExists'] is (state == 'lock')
+    assert report['resultExists'] is (state == 'result')
+    assert report['frozen'] is (state != 'changedFrozen')
+    assert report['planValid'] is (state != 'badPlan')
+    assert (run.returncode == 0) is (state == 'available')
+    assert '731905' in run.stdout and 'wouldRun' in report
+    assert not any(word in run.stdout for word in ['passed', 'macroF1', 'artifactPrecision', 'bootstrap'])
+`, [state]);
+        });
+
     it.each(['checks', 'passed', 'failed', 'macroF1', 'moverRecallSnr10', 'artifactPrecision',
-        'treesMeanFoldMetrics', 'originalTrees', 'evalSha256', 'planSha256', 'orphanLock'])(
+        'treesMeanFoldMetrics', 'originalTrees', 'evalSha256', 'planSha256', 'orphanLock',
+        'duplicateCnnTarget', 'duplicateTreeTarget', 'missingCnnTarget', 'unknownTreeTarget'])(
         'check rejects invalid confirmation evidence: %s', (mode) => {
             pythonProbe(`
 import numpy as np
@@ -335,6 +454,10 @@ elif mode in ['macroF1', 'moverRecallSnr10', 'artifactPrecision']: altered['mean
 elif mode == 'treesMeanFoldMetrics': altered['treesMeanFoldMetrics']['macroF1'] = 1
 elif mode == 'originalTrees': altered['meanFoldMetrics']['macroF1'] = 0.825
 elif mode in ['evalSha256', 'planSha256']: altered[mode] = 'wrong hash'
+elif mode == 'duplicateCnnTarget': altered['folds'][0]['testTarget'] = altered['folds'][1]['testTarget']
+elif mode == 'duplicateTreeTarget': altered['treeFolds'][0]['testTarget'] = altered['treeFolds'][1]['testTarget']
+elif mode == 'missingCnnTarget': altered['folds'].pop()
+elif mode == 'unknownTreeTarget': altered['treeFolds'][0]['testTarget'] = 'unknown'
 class ReadPath:
     def __init__(self, path): self.path = path
     def __truediv__(self, part): return ReadPath(self.path / part)
@@ -350,6 +473,8 @@ def loads(raw):
 # Keep the public-card equality check separate, so it cannot mask a missing confirmation guard.
 card = json.loads((ROOT / 'public/models/change-classifier.card.json').read_bytes())
 scope = dict(ROOT=ReadPath(ROOT), np=np, hashlib=hashlib, json=SimpleNamespace(loads=loads),
+             CONFIRM_RESULT=ReadPath(ROOT / 'models/change-classifier.confirm.json'),
+             CONFIRM_LOCK=ReadPath(ROOT / 'models/change-classifier.confirm.lock'),
              KEYS=('macroF1', 'accuracy', 'moverRecallSnr10', 'artifactPrecision'), model_card=lambda *_: card)
 functions(source('ml_train_cnn.py'), ['check', 'sha', 'mean_metrics', 'check_confirmation', 'confirmation_checks'], scope)
 try:
@@ -402,12 +527,12 @@ describe('snapshot change classifier', () => {
         stamp[225 + 112] = 20;
         stamp[450] = 0.001;
         expect(classify(model, stamp)).toEqual({ kind: 'declined', reason: 'stamp channels disagree' });
-        // Large common backgrounds permit the documented relative tolerance, at every pixel.
+        // A real difference of 0.05 cannot be hidden in identical stored channels at this scale.
         stamp.fill(1000, 0, 450);
         stamp.fill(0.05, 450);
         stamp[225 + 112] = 1005;
         stamp[562] = 5.05;
-        expect(classify(loadClassifier(cnnWeights()), stamp).kind).toBe('nothing');
+        expect(classify(model, stamp)).toEqual({ kind: 'declined', reason: 'stamp channels disagree' });
         const a = new Float32Array(41 * 41).fill(1000.125), b = a.slice();
         b[20 * 41 + 20] = 1005.125;
         const sampled = stampFor(a, b, grid, { x: 20.25, y: 20.25 }, 0.123)!;
@@ -415,13 +540,51 @@ describe('snapshot change classifier', () => {
         expect(classify(loadClassifier(cnnWeights()), sampled).kind).toBe('nothing');
     });
 
-    it('uses the feature disc for both faintness and brightness gates', () => {
+    it('rejects a five-sigma difference on identical million-sigma image channels', () => {
+        const stamp = new Float32Array(675);
+        stamp.fill(1_000_000, 0, 450);
+        stamp[562] = 5;
+        expect(classify(loadClassifier(weights), stamp)).toEqual({
+            kind: 'declined', reason: 'stamp channels disagree',
+        });
+    });
+
+    it('accepts channel rounding in every parity stamp and seeded random float32 images up to 1e6', () => {
+        const model = loadClassifier(cnnWeights());
+        for (const sample of [...parity.cases, ...parity.treeCases, ...parity.cnnCases]) {
+            expect(classify(model, Float32Array.from(sample.stamp))).not.toEqual({
+                kind: 'declined', reason: 'stamp channels disagree',
+            });
+        }
+        let state = 731905;
+        const random = () => {
+            state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+            return state / 2 ** 32;
+        };
+        for (const scale of [1, 1000, 1_000_000]) {
+            for (let i = 0; i < 12; i++) {
+                const a = Float32Array.from({ length: 41 * 41 }, () => (2 * random() - 1) * scale);
+                const b = i % 2 === 0 ? a.map((v) => v + (2 * random() - 1) * 5)
+                    : Float32Array.from(a, () => (2 * random() - 1) * scale);
+                const stamp = stampFor(a, b, grid, { x: 20 + random(), y: 20 + random() }, 0.5 + random())!;
+                expect(stamp).toHaveLength(675);
+                expect(classify(model, stamp)).not.toEqual({ kind: 'declined', reason: 'stamp channels disagree' });
+            }
+        }
+    });
+
+    it('uses the core for faintness and the full stamp for the brightness ceiling', () => {
         const model = loadClassifier(cnnWeights()), stamp = new Float32Array(675);
         stamp[225 + 224] = stamp[450 + 224] = 10;
         expect(classify(model, stamp)).toEqual({ kind: 'declined', reason: 'too faint to label' });
-        stamp[225 + 112] = stamp[450 + 112] = 5;
-        stamp[225 + 224] = stamp[450 + 224] = 1000;
-        expect(classify(model, stamp).kind).toBe('nothing');
+        stamp.fill(0);
+        stamp[225 + 112] = stamp[450 + 112] = 4;
+        stamp[225] = stamp[450] = 1_000_000;
+        for (const candidate of [model, loadClassifier(weights)]) {
+            expect(classify(candidate, stamp)).toEqual({
+                kind: 'declined', reason: 'brighter than anything in training',
+            });
+        }
     });
 
     it('declines a flat gradient even within the training S/N range', () => {
