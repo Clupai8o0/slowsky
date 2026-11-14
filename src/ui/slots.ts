@@ -391,8 +391,14 @@ export function renderHalo(box: HTMLElement, view: SlotView, deps: HaloDeps = {}
     }
     const html = haloHtml(h, card.display, view.mode === 'blink' ? view.index : -1);
     if (haloShown.get(box) !== html) {
+        // Rewriting the panel drops the focused date button; put focus back on the same date.
+        const active = box.ownerDocument?.activeElement as HTMLElement | null | undefined;
+        const k = active && box.contains(active) ? active.dataset?.k : undefined;
         box.innerHTML = html;
         haloShown.set(box, html);
+        if (k !== undefined && /^\d+$/.test(k)) {
+            box.querySelector<HTMLElement>(`[data-k="${k}"]`)?.focus();
+        }
     }
     return true;
 }
