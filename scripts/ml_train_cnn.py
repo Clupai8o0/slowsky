@@ -23,7 +23,7 @@ from ml_train import git_state, metrics, train_trees, tree_probabilities, write_
 
 ARCHITECTURE = 'cnn-3x3-gap-features-12-16-16'
 KEYS = ('macroF1', 'accuracy', 'moverRecallSnr10', 'artifactPrecision')
-TREES_NOTE = 'Trees trained on fewer stamps (600 per class per target vs 2,500 for the CNN)'
+TREES_NOTE = 'Trees saw 600 stamps per class per target, the CNN 2,500: not like-for-like.'
 
 
 def feature_batch(stamps):
@@ -211,7 +211,7 @@ def export_cnn(model, tree_json, counts, args, epochs):
         conv.append({'weights': rounded(fused.weight), 'bias': rounded(fused.bias)})
     return {**{k: tree_json[k] for k in ('version', 'classes', 'stamp', 'features', 'aiNote')},
             'architecture': ARCHITECTURE, 'seed': args.seed,
-            'madeBy': 'Codex (OpenAI); scripts/ml_train_cnn.py; PyTorch CPU',
+            'madeBy': 'Codex (OpenAI) and Claude; scripts/ml_train_cnn.py; PyTorch CPU',
             'inputTransform': 'median-asinh-5',
             'featureMean': rounded(model.feature_mean), 'featureScale': rounded(model.feature_scale),
             'conv': conv, 'dense': [{'weights': rounded(layer.weight), 'bias': rounded(layer.bias)}
@@ -448,10 +448,34 @@ def main(args):
     eval_path = folder / 'change-classifier.eval.json'
     write_json(eval_path, summary)
     worst = min(summary['folds'], key=lambda fold: fold['macroF1'])
+    # Public card: every number computed from the eval written above, never typed.
+    labels = {'moverRecallSnr10': 'mover recall at S/N>=10', 'artifactPrecision': 'artifact precision',
+              'macroF1': 'macro-F1'}
+    trees_by_target = {entry['testTarget']: entry['trees'] for entry in summary['comparison']}
+    below = []
+    for target in dict.fromkeys(item['target'] for items in summary['worstFoldGate'].values() for item in items):
+        parts = [f"{labels[key]} is {item['value']:.3f}" for key, items in summary['worstFoldGate'].items()
+                 for item in items if item['target'] == target]
+        keys = [key for key, items in summary['worstFoldGate'].items() for item in items if item['target'] == target]
+        values = {key: item['value'] for key, items in summary['worstFoldGate'].items()
+                  for item in items if item['target'] == target}
+        better = all(trees_by_target[target][key] > values[key] for key in keys)
+        below.append(f"On {target}, {' and '.join(parts)}, under the gate"
+                     + ('; trees did better there.' if better else '.'))
+    low_bin = next(b for b in summary['recallBySnrBin'] if b['lo'] == 3 and b['hi'] == 5)
+    test_counts = sorted({fold['testCount'] for fold in summary['folds']})
     write_json(public / 'change-classifier.card.json', {
-        'macroF1': summary['meanFoldMetrics']['macroF1'], 'accuracy': summary['meanFoldMetrics']['accuracy'],
-        'worstFold': {'target': worst['testTarget'], 'macroF1': worst['macroF1']},
-        'treesMacroF1': tree_mean['macroF1'], 'treesNote': TREES_NOTE,
+        'meanFoldMacroF1': round(summary['meanFoldMetrics']['macroF1'], 3),
+        'accuracy': round(summary['meanFoldMetrics']['accuracy'], 3),
+        'worstFold': {'target': worst['testTarget'], 'macroF1': round(worst['macroF1'], 3)},
+        'belowGate': ' '.join(below) if below else 'Every fold meets the gate.',
+        'evaluation': (f"Leave-one-target-out over {len(summary['folds'])} SPHEREx target fields; "
+                       + f"{'/'.join(f'{n:,}' for n in test_counts)} test stamps per fold."),
+        'data': 'Fake changes injected into real SPHEREx DR1/QR3 frames. No real movers or variables, no human labels.',
+        'selection': 'CNN chosen over trees on these same held-out folds and test stamps, so this is not an untouched benchmark.',
+        'limits': ('Labels change spots only; it does not find planets. '
+                   f"Mover recall is {low_bin['classes']['mover']['recall']:.2f} at S/N 3-5."),
+        'treesMacroF1': round(tree_mean['macroF1'], 3), 'treesNote': TREES_NOTE,
         'evalSha256': sha(eval_path.read_bytes()), 'seed': summary['seed'],
     })
     selected = [int(np.flatnonzero((targets == target) & (y == kind))[0])

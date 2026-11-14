@@ -15,11 +15,29 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     const card = JSON.parse(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url), 'utf8'));
     const digest = createHash('sha256').update(readFileSync(new URL('../models/change-classifier.eval.json', import.meta.url))).digest('hex');
     const worst = evaluation.folds.find((fold) => fold.testTarget === evaluation.worstFold)!;
-    expect(card.macroF1).toBe(evaluation.meanFoldMetrics.macroF1);
-    expect(card.accuracy).toBe(evaluation.meanFoldMetrics.accuracy);
-    expect(card.worstFold).toEqual({ target: worst.testTarget, macroF1: worst.macroF1 });
-    expect(card.treesMacroF1).toBe(evaluation.cnnAttempt.sameTestTrees.meanFoldMetrics.macroF1);
-    expect(card.treesNote).toBe('Trees trained on fewer stamps (600 per class per target vs 2,500 for the CNN)');
+    const round3 = (value: number): number => Math.round(value * 1000) / 1000;
+    expect(card.macroF1).toBeUndefined();
+    expect(card.meanFoldMacroF1).toBe(round3(evaluation.meanFoldMetrics.macroF1));
+    expect(card.accuracy).toBe(round3(evaluation.meanFoldMetrics.accuracy));
+    expect(card.worstFold).toEqual({ target: worst.testTarget, macroF1: round3(worst.macroF1) });
+    expect(card.treesMacroF1).toBe(round3(evaluation.cnnAttempt.sameTestTrees.meanFoldMetrics.macroF1));
+    expect(card.treesNote).toBe('Trees saw 600 stamps per class per target, the CNN 2,500: not like-for-like.');
+    // Every fold under a gate is named on the card with its value.
+    const gated = evaluation as typeof evaluation & { worstFoldGate: Record<string, { target: string; value: number }[]> };
+    for (const items of Object.values(gated.worstFoldGate)) {
+        for (const item of items) {
+            expect(card.belowGate).toContain(item.target);
+            expect(card.belowGate).toContain(item.value.toFixed(3));
+        }
+    }
+    const low = evaluation.recallBySnrBin.find((bin) => bin.lo === 3 && bin.hi === 5)!;
+    expect(card.limits).toContain(`Mover recall is ${low.classes.mover.recall!.toFixed(2)} at S/N 3-5`);
+    expect(card.evaluation).toContain(`over ${evaluation.folds.length} SPHEREx target fields`);
+    for (const text of [JSON.stringify(card), weights.aiNote, weights.madeBy]) {
+        expect(text).not.toMatch(/discover|confirm|detected/i);
+    }
+    expect(weights.madeBy).toContain('Codex (OpenAI) and Claude');
+    expect(evaluation.treesBaseline.selectionReason).toBe('Baseline only; not shipped. Kept for comparison.');
     const updated = evaluation as typeof evaluation & {
         worstFoldGate: unknown; comparisonNote: string;
         cnnAttempt: typeof evaluation.cnnAttempt & { sameTestTrees: typeof evaluation.cnnAttempt.sameTestTrees & { note: string } };

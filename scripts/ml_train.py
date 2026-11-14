@@ -135,7 +135,7 @@ def export(model, args, counts):
             'madeBy': 'Codex (OpenAI) and Claude; scripts/ml_train.py; PyTorch CPU',
             'aiNote': 'AI-written code, built by Codex (OpenAI) and Claude during the event. '
                       "The output is a model's guess about a candidate, and can be wrong. "
-                      'Training labels are injected fake changes, not confirmed objects.',
+                      'Training labels are fake changes injected into real SPHEREx frames, not real objects.',
             'seed': args.seed, 'classes': CLASSES,
             'stamp': {'size': SIZE, 'channels': ['earlier', 'later', 'later-earlier'],
                       'layout': 'CHW', 'pixelArcsec': NATIVE, 'normalization': 'difference-MAD-sigma',
@@ -196,7 +196,7 @@ def main(args):
                'training': {'rounds': args.rounds, 'perTargetPerClass': args.per_class,
                             'totalStamps': len(y), 'counts': counts, 'cpuThreads': 1},
                'modelFamily': 'gradient-boosted trees on twelve morphology/flux features',
-               'selectionReason': 'Fallback selected after the tiny CNN failed the held-out gate',
+               'selectionReason': 'Baseline only; not shipped. Kept for comparison.',
                'validation': 'Synthetic injections only; each fold holds out all frames of one target. '
                              'Final exported model refits all targets; these are out-of-fold metrics, '
                              'not accuracy on real unknown objects. No human labels or external data.',
