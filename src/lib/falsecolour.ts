@@ -13,11 +13,8 @@ export class FalseColourError extends Error {
     }
 }
 
-// Dark olive hatch colours, deliberately outside the map's green = (red + blue) / 2 line.
-export const NO_COLOUR_HATCH = Object.freeze([
-    Object.freeze([24, 40, 20, 255] as const),
-    Object.freeze([55, 66, 32, 255] as const),
-]);
+// Dark olive, deliberately outside the map's green = (red + blue) / 2 line.
+export const NO_COLOUR_HATCH = Object.freeze([24, 40, 20, 255] as const);
 
 export interface PairStretch {
     sShort: Stretch;
@@ -118,14 +115,14 @@ export function pairStretch(
     };
 }
 
-// RGBA pixels: blue for short, orange for long, grey where equal, opaque hatch where either band is missing.
+// RGBA pixels: blue for short, orange for long, grey where equal, transparent gaps between hatch lines.
 export function falseColourRgba(
     short: Float32Array,
     long: Float32Array,
     sShort: Stretch,
     sLong: Stretch,
-    out?: Uint8ClampedArray,
-    width = short.length,
+    out: Uint8ClampedArray | undefined,
+    width: number,
 ): Uint8ClampedArray
 {
     if (short.length !== long.length) {
@@ -144,7 +141,7 @@ export function falseColourRgba(
         if (vs === undefined || vl === undefined || !Number.isFinite(vs) || !Number.isFinite(vl)) {
             const x = i % width;
             const y = Math.floor(i / width);
-            px.set(NO_COLOUR_HATCH[(x + y) % 4 === 0 ? 1 : 0]!, o);
+            px.set((x + y) % 4 === 0 ? NO_COLOUR_HATCH : [0, 0, 0, 0], o);
             continue;
         }
         // The same pre-curve position for linear and asinh stretches; leave the unsaturated path byte-identical.

@@ -24,9 +24,8 @@ describe('round 9h picture safeguards', () => {
         const b = sourceFrame(1.25, 15, 1000);
         b.data[15 * 31 + 15] = 1500;
         const result = falseColourView(sky([a, b]), sky([sourceFrame(4.6, 15, 1000)]), radii);
-        expect(result.parts.reading).toContain('1.25 µm cannot be measured here (two frames disagree inside the centre circle)');
-        expect(result.rgba[(15 * 31 + 15) * 4 + 3]).toBe(255);
-        expect(result.parts.note).toContain('Hatched areas have no colour: the frames do not all cover them, or two frames disagree there.');
+        expect(result.parts.reading).toContain('1.25 µm shows light that differs between frames');
+        expect(result.parts.note).toContain('or the two frames at one wavelength differ there by more than 60 percent.');
     });
 
     it('uses the median rather than the clipped mean of three frames', () => {
@@ -37,7 +36,7 @@ describe('round 9h picture safeguards', () => {
     it('keeps sky removal and detector-hit cautions visible without a reading', () => {
         const out = makeFalseColourView(sky([sourceFrame(1.25)]), sky([sourceFrame(4.6)]), radii);
         expect(out.parts.note).toContain("Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it.");
-        expect(out.parts.warning).toContain('a detector hit would show as a coloured point');
+        expect(out.parts.warning).toContain('a detector hit can show as a coloured point');
         expect(out.parts.method).not.toContain('middle value');
     });
 
@@ -52,13 +51,17 @@ describe('round 9h picture safeguards', () => {
         expect(Object.values(parts).join(' ')).not.toMatch(/At the centre|signal-to-noise|seen at/);
     });
 
-    it('rejects a 10-spread hit in two frames (50 spreads would miss it)', () => {
+    it('rejects a strong extended hit in two frames', () => {
         const a = measuredFrame(1.25, 0, 121);
         const b = measuredFrame(1.25, 0, 7919);
-        a.data[0] = 10;
+        for (let y = 14; y <= 16; y++) {
+            for (let x = 14; x <= 16; x++) {
+                a.data[y * 31 + x] = 500;
+            }
+        }
         const out = screenColourFrames([a, b]);
-        expect(out.notAgreed[0]).toBe(1);
-        expect(out.data[0]).toBeNaN();
+        expect(out.notAgreed[15 * 31 + 15]).toBe(1);
+        expect(out.data[15 * 31 + 15]).toBeNaN();
     });
 
     it('keeps a 1150-sigma steady core with 3% scatter that five spreads alone would remove', () => {
@@ -71,7 +74,7 @@ describe('round 9h picture safeguards', () => {
         expect(Number.isFinite(screenColourFrames([a, b]).data[p])).toBe(true);
     });
 
-    it.each([[1100, 0], [1100.25, 1]])('screens only above the 20%% mean floor: second value %s', (value, rejected) => {
+    it.each([[1100, 0], [2000, 1]])('screens strong changes while keeping small ones: second value %s', (value, rejected) => {
         const a = sourceFrame(1.25, 15, 900);
         const b = sourceFrame(1.25, 15, value);
         expect(screenColourFrames([a, b]).notAgreed[15 * 31 + 15]).toBe(rejected);
@@ -96,7 +99,7 @@ describe('round 9h picture safeguards', () => {
         expect(hatched).toBeGreaterThan(0);
     });
 
-    it('renders an all-hatch picture when the bands have no shared finite pixels', () => {
+    it('withholds a picture when the bands have no shared finite pixels', () => {
         const a = sourceFrame(1.25);
         const b = sourceFrame(4.6);
         for (let p = 0; p < a.data.length; p++) {
@@ -106,25 +109,22 @@ describe('round 9h picture safeguards', () => {
                 a.data[p] = NaN;
             }
         }
-        const out = falseColourView(sky([a]), sky([b]), radii);
-        for (let p = 0; p < a.data.length; p++) {
-            expect(Array.from(out.rgba.slice(p * 4, p * 4 + 4))).toEqual(NO_COLOUR_HATCH[(p % 31 + Math.floor(p / 31)) % 4 === 0 ? 1 : 0]);
-        }
+        expect(() => falseColourView(sky([a]), sky([b]), radii)).toThrow('False colour is not shown for this view: the frames at the two wavelengths give a colour to less than half of it.');
     });
 
-    it('uses opaque diagonal hatch off the colour-map line, and none for agreed coverage', () => {
-        for (const [r, g, b, alpha] of NO_COLOUR_HATCH) {
-            expect(Math.abs(g - (r + b) / 2)).toBeGreaterThan(8);
-            expect(alpha).toBe(255);
-        }
+    it('uses transparent gaps between diagonal hatch lines, and none for agreed coverage', () => {
+        const [r, g, b, alpha] = NO_COLOUR_HATCH;
+        expect(Math.abs(g - (r + b) / 2)).toBeGreaterThan(8);
+        expect(alpha).toBe(255);
         const lin = { lo: 0, hi: 1, kind: 'linear' } as const;
         const missing = falseColourRgba(new Float32Array(32).fill(NaN), new Float32Array(32), lin, lin, undefined, 8);
         for (let p = 0; p < 32; p++) {
-            expect(Array.from(missing.slice(p * 4, p * 4 + 4))).toEqual(NO_COLOUR_HATCH[(p % 8 + Math.floor(p / 8)) % 4 === 0 ? 1 : 0]);
+            expect(Array.from(missing.slice(p * 4, p * 4 + 4))).toEqual((p % 8 + Math.floor(p / 8)) % 4 === 0 ? NO_COLOUR_HATCH : [0, 0, 0, 0]);
         }
         const out = falseColourView(sky([sourceFrame(1.25), sourceFrame(1.25)]), sky([sourceFrame(4.6), sourceFrame(4.6)]), radii);
         for (let p = 0; p < out.rgba.length; p += 4) {
             expect(Math.abs(out.rgba[p + 1]! - (out.rgba[p]! + out.rgba[p + 2]!) / 2)).toBeLessThanOrEqual(1);
+            expect(out.rgba[p + 3]).toBe(255);
         }
     });
 });
@@ -190,6 +190,119 @@ function studySky(frames: RegriddedFrame[]): SkyResult
 {
     return { ...sky(frames), grid: studyGrid };
 }
+
+describe('round 9i box screen study', () => {
+    it.skipIf(process.env.FC_R9I_STUDY !== '1')('measures steady stars and brightness ratios', () => {
+        const counts = [0, 0, 0, 0];
+        const ratios = [1.5, 1.7, 1.8, 1.85, 1.86, 1.9, 2];
+        const changed = ratios.map(() => 0);
+        for (let draw = 0; draw < 300; draw++) {
+            const random = studyRandom(0x9a170 + draw * 7919);
+            const flux = [38, 100, 400, 4000][draw % 4]!;
+            const a = studyFrame(random, 1.25, 0, 0, flux);
+            const b = studyFrame(random, 1.25, 1, 0, flux);
+            const nearby = (mask: Uint8Array, radius: number) => mask.some((v, p) => v !== 0
+                && Math.hypot(p % 65 - 32, Math.floor(p / 65) - 32) * 1.5375 <= radius);
+            if (nearby(screenColourFrames([a, b]).notAgreed, 30)) {
+                counts[draw % 4]!++;
+            }
+            for (let i = 0; i < ratios.length; i++) {
+                const c = studyFrame(studyRandom(0x71421 + draw * 7919), 1.25, 0, 0, 4000);
+                const d = studyFrame(studyRandom(0x71421 + draw * 7919), 1.25, 1, 0, 4000 * ratios[i]!);
+                if (nearby(screenColourFrames([c, d]).notAgreed, 6)) {
+                    changed[i]!++;
+                }
+            }
+        }
+        console.log('R9I steady per 75 [11,29,115,1150] and ratios per 300', JSON.stringify({ counts, ratios, changed }));
+        expect(counts.reduce((a, b) => a + b, 0)).toBeLessThan(3);
+    }, 300000);
+});
+
+describe('round 9i picture boundaries', () => {
+    it('keeps a realistic bright star core when frames have different detector phases', () => {
+        for (let draw = 0; draw < 30; draw++) {
+            const random = studyRandom(0x9a170 + (4 * draw + 3) * 7919);
+            const a = studyFrame(random, 1.25, 0, 0, 4000);
+            const b = studyFrame(random, 1.25, 1, 0, 4000);
+            expect(screenColourFrames([a, b]).notAgreed[32 * 65 + 32]).toBe(0);
+        }
+    });
+
+    it('keeps noise where the five-spread guard is larger than the fraction', () => {
+        const random = studyRandom(9203);
+        const a = studyFrame(random, 1.25, 0, 0, 0);
+        const b = studyFrame(random, 1.25, 1, 0, 0);
+        const result = screenColourFrames([a, b]);
+        expect(result.notAgreed[32 * 65 + 32]).toBe(0);
+    });
+    it.each([0, 49, 51])('requires at least half the pixels coloured (%s%% overlap)', percent => {
+        const a = sourceFrame(1.25);
+        const b = sourceFrame(4.6);
+        const n = a.data.length;
+        const outside = Math.floor(n / 4);
+        const shared = Math.floor(n * percent / 100);
+        for (let p = 0; p < n; p++) {
+            if (p < outside) {
+                a.data[p] = NaN;
+            } else if (p >= outside + shared) {
+                b.data[p] = NaN;
+            }
+        }
+        if (percent < 50) {
+            expect(() => makeFalseColourView(sky([a]), sky([b]), radii)).toThrow('False colour is not shown for this view: the frames at the two wavelengths give a colour to less than half of it.');
+        } else {
+            const result = makeFalseColourView(sky([a]), sky([b]), radii);
+            expect(result.rgba).toHaveLength(n * 4);
+        }
+    });
+
+    it('requires at least half of the box to be finite in both frames', () => {
+        const a = sourceFrame(1.25);
+        const b = sourceFrame(1.25);
+        for (let y = 13; y <= 17; y++) {
+            for (let x = 13; x <= 17; x++) {
+                if (y < 15 || (y === 15 && x !== 15 && x <= 16)) {
+                    b.data[y * 31 + x] = NaN;
+                }
+            }
+        }
+        expect(screenColourFrames([a, b]).data[15 * 31 + 15]).toBeNaN();
+    });
+
+    it('rejects a 500-value 4 by 4 detector hit at the centre and 20 arcseconds out', () => {
+        for (const x0 of [30, 43]) {
+            const random = studyRandom(845 + x0);
+            const a = studyFrame(random, 1.25, 0, 0, 0);
+            const b = studyFrame(random, 1.25, 1, 0, 0);
+            for (let y = 30; y < 34; y++) {
+                for (let x = x0; x < x0 + 4; x++) {
+                    a.data[y * 65 + x] = a.data[y * 65 + x]! + 500;
+                }
+            }
+            const screened = screenColourFrames([a, b]);
+            for (let y = 30; y < 34; y++) {
+                for (let x = x0; x < x0 + 4; x++) {
+                    expect(screened.data[y * 65 + x]).toBeNaN();
+                }
+            }
+        }
+    });
+
+    it('removes colour within 6 arcseconds of a bright star in only one frame', () => {
+        const random = studyRandom(1941);
+        const a = studyFrame(random, 1.25, 0, 0, 400);
+        const b = studyFrame(random, 1.25, 1, 0, 0);
+        const out = screenColourFrames([a, b]);
+        for (let y = 28; y <= 36; y++) {
+            for (let x = 28; x <= 36; x++) {
+                if (Math.hypot(x - 32, y - 32) * 1.5375 <= 6) {
+                    expect(out.data[y * 65 + x]).toBeNaN();
+                }
+            }
+        }
+    });
+});
 
 describe('round 9h placement rules', () => {
     // Shared light at each possible peak keeps the pixel agreement screen satisfied while changing the brightest
@@ -347,9 +460,10 @@ describe('round 9h reproducible studies', () => {
     }, 300000);
 });
 
-function falseColourRgba(...args: Parameters<typeof makeFalseColourRgba>): Uint8ClampedArray
+function falseColourRgba(short: Float32Array, long: Float32Array, sShort: Parameters<typeof makeFalseColourRgba>[2],
+    sLong: Parameters<typeof makeFalseColourRgba>[3], out?: Uint8ClampedArray, width = grid.width): Uint8ClampedArray
 {
-    return makeFalseColourRgba(args[0], args[1], args[2], args[3], args[4], args[5] ?? grid.width);
+    return makeFalseColourRgba(short, long, sShort, sLong, out, width);
 }
 
 function colourParts(...args: Parameters<typeof makeColourParts>): ReturnType<typeof makeColourParts>
@@ -859,7 +973,7 @@ describe('reliable colour readings', () => {
         const weakReading = falseColourView(sky(lookFrames([5, 5], [0, 200], 1.25)), sky(weak), radii).parts.reading;
         expect(weakReading).not.toContain('different places');
         // Frames this weak cannot be placed one by one: the combined picture decides, and the 2-frame caution stays.
-        expect(weakReading).toBe('At the centre: seen at 1.25 µm (signal-to-noise 7.6, only 2 frames, so a moving source or two detector hits cannot be ruled out); 4.60 µm cannot be measured here (two frames disagree inside the centre circle).');
+        expect(weakReading).toBe('At the centre: seen at 1.25 µm (signal-to-noise 7.6, only 2 frames, so a moving source or two detector hits cannot be ruled out); seen at 4.60 µm (signal-to-noise 7.7, only 2 frames, so a moving source or two detector hits cannot be ruled out).');
     });
     it('groups the strongest frames by look before counting a signal', () => {
         const values = [1.12, 1.29, 1177.54, 1689.28];
@@ -1068,7 +1182,7 @@ describe('reliable colour readings', () => {
         const long = sourceFrame(4.6);
         long.data[0] = NaN;
         expect(falseColourView(sky([sourceFrame(1.25)]), sky([long]), radii).parts.note)
-            .toContain('Hatched areas have no colour: the frames do not all cover them, or two frames disagree there.');
+            .toContain('Hatched areas have no colour: the frames do not all cover them. The grey picture shows through the hatching.');
     });
 
     it.each([
@@ -1172,7 +1286,8 @@ describe('reliable colour readings', () => {
         const short = [sourceFrame(1.25, 15, 900), sourceFrame(1.25, 15, 900), sourceFrame(1.25, 15, 900)];
         const long = [sourceFrame(4.6, 15, 900), sourceFrame(4.6, 15, 900), sourceFrame(4.6, 15, 4500)];
         const result = falseColourView(sky(short), sky(long), radii);
-        expect(result.parts.note).toContain('With 3 or more frames at 1.25 µm and 4.60 µm, the middle value of the frames is used at each pixel, so something that flared or moved may be missing from this picture or look steady in it.');
+        expect(result.parts.note).toContain('With 3 or more frames at 1.25 µm and 4.60 µm, the middle value of the frames is used at each pixel, so something present in fewer than half of the frames is missing from this picture, and something present in most of them looks steady.');
+        expect(result.parts.note).not.toContain('the two frames at one wavelength');
     });
 
     it('clips a one-frame spike while keeping the clipped pixels painted', () => {
@@ -1232,7 +1347,7 @@ describe('reliable colour readings', () => {
     it('warns when a seen band has only one frame', () => {
         const result = falseColourView(sky([sourceFrame(1.25)]), sky([sourceFrame(4.6)]), radii);
         expect(result.parts.reading).toContain('one frame only, so a detector hit cannot be ruled out');
-        expect(result.parts.warning).toContain('a detector hit would show as a coloured point');
+        expect(result.parts.warning).toContain('a detector hit can show as a coloured point');
     });
 
     it('keeps a nebula grey and brighter than sky with different frame skies', () => {
@@ -1427,7 +1542,7 @@ describe('one frame set per band', () => {
             expect(pixel[3]).toBe(255);
             expect(pixel[0] === pixel[1] && pixel[1] === pixel[2]).toBe(true);
         }
-        expect(result.rgba[4 * (15 * 31 + 28) + 3]).toBe(255);
+        expect(result.rgba[4 * (15 * 31 + 28) + 3]).toBe(0);
     });
 
     it('subtracts frame medians over their common area', () => {
@@ -1479,8 +1594,8 @@ describe('one frame set per band', () => {
         missing.data[15 * 31 + 15] = NaN;
         const result = falseColourView(sky([full, missing]), sky([frame(4.6)]), radii);
         expect(result.parts.reading).toContain('1.20 µm cannot be measured here (blank pixels)');
-        expect(result.rgba[4 * (15 * 31 + 15) + 3]).toBe(255);
-        expect(result.parts.note).toContain('Hatched areas have no colour: the frames do not all cover them, or two frames disagree there.');
+        expect(result.rgba[4 * (15 * 31 + 15) + 3]).toBe(0);
+        expect(result.parts.note).toContain('Hatched areas have no colour: the frames do not all cover them, or the two frames at one wavelength differ there by more than 60 percent.');
         const covered = falseColourView(sky([full, frame(1.2)]), sky([frame(4.6)]), radii);
         expect(covered.parts.reading).not.toContain('cannot be measured');
     });
@@ -1640,7 +1755,7 @@ describe('false colour view coverage', () => {
         const partial = frame(4.6);
         partial.data[y * 31 + x] = NaN;
         const result = falseColourView(sky([frame(1.25)]), sky([frame(4.6), partial]), radii);
-        expect(result.rgba[4 * (y * 31 + x) + 3]).toBe(255);
+        expect(result.rgba[4 * (y * 31 + x) + 3]).toBe((x + y) % 4 === 0 ? 255 : 0);
         if (_edge === 'circle edge') {
             expect(result.parts.reading).toContain('4.60 µm cannot be measured here (blank pixels)');
         } else {
@@ -1654,7 +1769,7 @@ describe('false colour view coverage', () => {
         b.data[15 * 31 + 18] = NaN;
         const result = falseColourView(sky([a, b]), sky([frame(4.6)]), radii);
         expect(result.parts.reading).not.toContain('cannot be measured');
-        expect(result.rgba[4 * (15 * 31 + 18) + 3]).toBe(255);
+        expect(result.rgba[4 * (15 * 31 + 18) + 3]).toBe(0);
     });
 
     it('ignores a ring pixel blank in every frame', () => {
@@ -1664,7 +1779,7 @@ describe('false colour view coverage', () => {
         b.data[15 * 31 + 20] = NaN;
         const result = falseColourView(sky([a, b]), sky([frame(4.6)]), radii);
         expect(result.parts.reading).not.toContain('cannot be measured');
-        expect(result.rgba[4 * (15 * 31 + 20) + 3]).toBe(255);
+        expect(result.rgba[4 * (15 * 31 + 20) + 3]).toBe(0);
     });
 
     it('uses the half-pixel centre on an even grid', () => {
@@ -1795,8 +1910,8 @@ describe('false colour sentence', () => {
         expect(Object.values(result.parts).filter(Boolean).join(' ')).toBe(result.sentence);
         const oldParts = colourParts(1.25, 4.6, colourAt(frame(1.25).data, frame(4.6).data, 31, 31, { x: 15, y: 15 }, { pixelArcsec: grid.pixelArcsec, ...radii, minSnr: 3 }), [[at(60000)], [at(60000)]]);
         expect(result.parts).toEqual({ ...oldParts,
-            note: oldParts.note + " Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it. Hatched areas have no colour: the frames do not all cover them, or two frames disagree there.",
-            warning: 'With only one frame at 1.25 µm and 4.60 µm, a detector hit would show as a coloured point.',
+            note: oldParts.note + " Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it. Hatched areas have no colour: the frames do not all cover them. The grey picture shows through the hatching.",
+            warning: 'With only one frame at 1.25 µm and 4.60 µm, a detector hit can show as a coloured point.',
             method: oldParts.method.replace(' The colours in the picture are for looking; this page does not measure a colour.', '') + " The reading adds up all light within 12.3″ of the centre; none of the Gaia stars this page loads lies inside that circle. That list holds only the brighter stars, so a fainter star or a source seen only in infrared can still be inside. The colours in the picture are for looking; this page does not measure a colour.",
         });
         expect(result.parts.warning).not.toContain('not taken at the same times');
@@ -2124,7 +2239,7 @@ describe('round 9d: fixes from the review of round 9c', () => {
             weak[i]!.data[15 * 31 + 15] = 0;
         }
         const reading = falseColourView(sky(lookFrames([5, 5], [0, 200], 1.25)), sky(weak), radii).parts.reading;
-        expect(reading).toContain('4.60 µm cannot be measured here (two frames disagree inside the centre circle)');
+        expect(reading).toContain('4.60 µm shows light here that is brightest 12.30″ from the centre');
     });
 
     it('drops the coarse-pixel excuse from a seen band when the gap is too wide for it', () => {
@@ -2166,7 +2281,7 @@ describe('round 9e: the two-frame rule after the reviews of round 9d', () => {
     it('screens two frames with different bright pixels before judging their places', () => {
         const g = gridOf(4);
         const reading = read(dated(1.25, [15, 15], [2000, 2000], [0, 200], g), dated(4.6, [14, 16], [2000, 2000], [0, 200], g), g);
-        expect(long(reading)).toBe('4.60 µm cannot be measured here (two frames disagree inside the centre circle).');
+        expect(long(reading)).toContain('its two frames do not agree on where it is brightest');
     });
 
     it('screens differing bright pixels on either side of the old placement limit', () => {
@@ -2175,8 +2290,7 @@ describe('round 9e: the two-frame rule after the reviews of round 9d', () => {
         const g = gridOf(2);
         const s = dated(1.25, [15, 15], [2000, 2000], [0, 200], g);
         const at = long(read(s, dated(4.6, [13, 17], [2200, 2000], [0, 200], g), g, wide));
-        expect(at).toContain('4.60 µm cannot be measured here (two frames disagree inside the centre circle)');
-        expect(at).toContain('4.60 µm cannot be measured here (two frames disagree inside the centre circle)');
+        expect(at).toContain('its two frames do not agree on where it is brightest');
         for (const levels of [[2200, 2000], [2000, 2200]]) {
             expect(long(read(s, dated(4.6, [12, 17], levels, [0, 200], g), g, wide))).toBe(`${NOT_COUNTED}.`);
         }
@@ -2393,7 +2507,7 @@ describe('round 9f: the two-frame rule after the reviews of round 9e', () => {
     it('does not list a moving source and detector hits twice for 2 frames from one visit', () => {
         const g = gridOf(4);
         const reading = long(read(dated(1.25, [15, 15], [2000, 2000], [0, 1], g), dated(4.6, [14, 16], [2000, 2000], [0, 1], g), g));
-        expect(reading).toBe('4.60 µm cannot be measured here (two frames disagree inside the centre circle).');
+        expect(reading).toContain('its two frames do not agree on where it is brightest');
     });
 
     it('adds only what is new for 3 frames from one visit whose brightest points are far apart', () => {
@@ -2415,10 +2529,10 @@ describe('round 9g: tests for two untested edits', () => {
         + "one's own sky level is taken off: blue means brighter at the shorter wavelength, orange means brighter at the "
         + 'longer one, grey means about the same. Coloured rims around bright stars can come from the two pictures not '
         + "being equally sharp. Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it. "
-        + 'Hatched areas have no colour: the frames do not all cover them, or two frames disagree there. '
+        + 'Hatched areas have no colour: the frames do not all cover them. The grey picture shows through the hatching. '
         + 'With 3 or more frames at 1.25 µm and 4.60 µm, the middle value of the '
-        + 'frames is used at each pixel, so something that flared or moved may be missing from this '
-        + 'picture or look steady in it.';
+        + 'frames is used at each pixel, so something present in fewer than half of the frames is missing from this '
+        + 'picture, and something present in most of them looks steady.';
     const METHOD = 'The reading adds up a small circle of pixels and takes off the sky just around it, so it need not '
         + 'match the tint of the middle pixels. Frames taken less than 10 days apart count as one visit. Position is '
         + 'compared only between frames with a signal-to-noise of at least 10. The reading adds up all light within '

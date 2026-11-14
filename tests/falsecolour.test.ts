@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    FalseColourError, NO_COLOUR_HATCH, centroidOffset, colourAt, falseColourLegend, falseColourRgba, pairStretch,
+    FalseColourError, NO_COLOUR_HATCH, centroidOffset, colourAt, falseColourLegend, falseColourRgba as renderRgba, pairStretch,
 } from '../src/lib/falsecolour';
 import type { ColourAt, PairStretch } from '../src/lib/falsecolour';
 import { centroid } from '../src/lib/photometry';
@@ -9,6 +9,11 @@ import type { PixelCoord, Stretch } from '../src/lib/types';
 
 const SIZE = 41;
 const CENTER: PixelCoord = { x: 20, y: 20 };
+
+function falseColourRgba(short: Float32Array, long: Float32Array, sShort: Stretch, sLong: Stretch, out?: Uint8ClampedArray): Uint8ClampedArray
+{
+    return renderRgba(short, long, sShort, sLong, out, short.length);
+}
 
 interface SyntheticSource extends PixelCoord {
     flux: number;
@@ -288,7 +293,7 @@ describe('falseColourRgba', () => {
         expectPixelNear(
             falseColourRgba(Float32Array.from([Number.POSITIVE_INFINITY]), Float32Array.from([0]), lin, lin),
             0,
-            [...NO_COLOUR_HATCH[1]!],
+            [...NO_COLOUR_HATCH],
             0,
         );
 
@@ -311,7 +316,7 @@ describe('falseColourRgba', () => {
         expect(px).toBe(out);
 
         for (let i = 0; i < 5; i++) {
-            expectPixelNear(px, i, [...NO_COLOUR_HATCH[i % 4 === 0 ? 1 : 0]!], 0);
+            expectPixelNear(px, i, i % 4 === 0 ? [...NO_COLOUR_HATCH] : [0, 0, 0, 0], 0);
         }
         expectPixelNear(px, 5, [0, 0, 0, 255], 0);
         expectPixelNear(px, 6, [94, 174, 255, 255], 0);

@@ -12,7 +12,7 @@
 import { readFlags } from '../lib/flags';
 import { flagsRgba, regridFlags, summariseFlags } from '../lib/flags-view';
 import { createLiveSource, type SkyResult, type SkySource } from '../lib/source';
-import { ColourGridError, falseColourView, pictureOnlyParts } from '../lib/falsecolour-view';
+import { ColourGridError, falseColourView, pictureOnlyParts, TOO_LITTLE_COLOUR } from '../lib/falsecolour-view';
 import { apertureFor } from './measure';
 import type { RegriddedFrame, TargetId } from '../lib/types';
 import { COPY } from './copy';
@@ -345,7 +345,8 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                     try {
                         entry = { status: 'ready', picture: falseColourView(current, other, apertureFor(current.grid)) };
                     } catch (error) {
-                        entry = { status: 'failed', note: error instanceof ColourGridError ? FALSE_COLOUR_TEXT.grid : FALSE_COLOUR_TEXT.picture };
+                        entry = { status: 'failed', note: error instanceof ColourGridError ? FALSE_COLOUR_TEXT.grid
+                            : error instanceof Error && error.message === TOO_LITTLE_COLOUR ? TOO_LITTLE_COLOUR : FALSE_COLOUR_TEXT.picture };
                     }
                 }
                 onChange();

@@ -191,6 +191,27 @@ function colourHarness(enabled = true, readingEnabled = true)
 }
 
 describe('false colour slot', () => {
+    it('shows the reason when less than half the view can be coloured', async () => {
+        const h = colourHarness();
+        const a = frame('a');
+        const b = frame('b');
+        b.lambdaAtCenter = 4.6;
+        for (let p = 0; p < a.data.length; p++) {
+            if (p % 97 < 49) {
+                b.data[p] = NaN;
+            } else {
+                a.data[p] = NaN;
+            }
+        }
+        const v = view(sky([a]), 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([b]));
+        await flush();
+        const state = h.slot.update(v, true);
+        expect(state.layer).toBe(false);
+        expect(state.note).toBe('False colour is not shown for this view: the frames at the two wavelengths give a colour to less than half of it.');
+        expect(h.paint).not.toHaveBeenCalled();
+    });
     it('defaults both switches off and accepts fcReading in preview features', () => {
         expect(DEFAULT_FEATURES.falseColour).toBe(false);
         expect(DEFAULT_FEATURES.fcReading).toBe(false);
@@ -218,7 +239,7 @@ describe('false colour slot', () => {
         expect(state.note).not.toMatch(/At the centre|signal-to-noise|seen at|The reading|Position is compared|count as one visit/);
         expect(state.note).toContain('Blue:');
         expect(state.note).toContain('Hatched areas have no colour:');
-        expect(state.split?.lead).toContain('a detector hit would show as a coloured point');
+        expect(state.split?.lead).toContain('a detector hit can show as a coloured point');
     });
     it('does not request a partner when the current view has no frames', () => {
         const h = colourHarness();
@@ -244,7 +265,7 @@ describe('false colour slot', () => {
         const note = h.slot.update(v, true).note;
         expect(note).toContain('Blue: 1.23 µm (the shorter wavelength), 2 frames, 2025-07-01 and 2026-09-01.');
         expect(note).toContain('Orange: 4.57 µm (the longer wavelength), 1 frame, 2025-11-21.');
-        expect(note).toContain('The two colours were not taken at the same times, so anything that moved or changed in between shows a false tint.');
+        expect(note).toContain('The two colours were not taken at the same times, so anything that moved or changed in between can show a false tint.');
     });
 
     it('omits the time warning for the same frame times', async () => {
