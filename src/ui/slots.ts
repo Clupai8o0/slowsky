@@ -9,7 +9,7 @@ import { flagsRgba, regridFlags, summariseFlags } from '../lib/flags-view';
 import type { SkyResult } from '../lib/source';
 import type { RegriddedFrame } from '../lib/types';
 
-export const FEATURES = Object.freeze({ spectrum: false, flags: false });
+export const FEATURES = Object.freeze({ spectrum: false, flags: true });
 
 export interface SlotView {
     result: SkyResult;
@@ -28,9 +28,9 @@ export function renderSpectrum(box: HTMLElement, view: SlotView): boolean
     return false;
 }
 
-// Flag names (from the file's own MSKN cards) the layer leaves out. FULLSAMPLE is information only and GHOST_FPA
-// is unused (Explanatory Supplement v2.1, Table 16). SOURCE marks every pixel of a catalogue star, which covers
-// up to 75% of a crowded field (research/12), so drawing it would hide the picture.
+// Flag names (from the file's own MSKN cards) the layer leaves out, per the Explanatory Supplement, Table 16:
+// FULLSAMPLE is "purely informational", GHOST_FPA is "currently unused", and SOURCE marks pixels "mapped to a
+// known source", so it sits on the stars themselves and drawing it would hide the picture.
 export const FLAGS_LEFT_OUT: ReadonlySet<string> = new Set(['SOURCE', 'FULLSAMPLE', 'GHOST_FPA']);
 export const FLAGS_COLOR: [number, number, number] = [255, 79, 216];
 export const FLAGS_ALPHA = 170;
