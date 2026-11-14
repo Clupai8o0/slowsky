@@ -290,6 +290,9 @@ describe('regridVariance', () => {
         cut.variance = new Float32Array(81).fill(12);
         const data = regridNorthUp(cut, wcs, grid);
         const variance = regridVariance(cut, wcs, grid)!;
+        const center = Math.floor(data.length / 2);
+        expect(data[center]).toBeNaN();
+        expect(regridNorthUp(mkCutout(params, box, new Float32Array(81).fill(10)), wcs, grid)[center]).toBe(10);
         expect(variance.length).toBe(data.length);
         expect(data.some(Number.isNaN)).toBe(true);
         expect(data.some(Number.isFinite)).toBe(true);
@@ -323,7 +326,7 @@ describe('regridVariance', () => {
         }
     });
 
-    it.each([-1, NaN, Infinity, -Infinity])('masks an invalid V sample (%s) only in variance', (invalid) => {
+    it.each([0, -1, NaN, Infinity, -Infinity])('masks an invalid V sample (%s) only in variance', (invalid) => {
         const cut = mkCutout(params, box, new Float32Array(81).fill(10));
         cut.variance = new Float32Array(81).fill(12);
         cut.variance[4 * 9 + 4] = invalid;
@@ -340,6 +343,13 @@ describe('regridVariance', () => {
             }
         }
         expect(extraNaN).toBeGreaterThan(0);
+        expect(variance.some(Number.isFinite)).toBe(true);
+    });
+
+    it.each([80, 82])('rejects a variance plane of length %i', (length) => {
+        const cut = mkCutout(params, box, new Float32Array(81));
+        cut.variance = new Float32Array(length);
+        expect(() => regridVariance(cut, wcs, grid)).toThrow(/variance.*pixels/i);
     });
 
     it('returns undefined without a variance plane', () => {

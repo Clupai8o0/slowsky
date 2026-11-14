@@ -82,12 +82,20 @@ export function regridNorthUp(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float
     return resample(cutout, wcs, grid, 'image');
 }
 
-// Interpolate V itself: its spatial shape is used to rescale finder noise.
-// Invalid V adds holes only to this plane; IMAGE and ZODI define its footprint.
+// Relative noise map, not a calibrated variance. Per pixel it overstates the true
+// variance by 1.3 to 4 times (sigma up to 2 times), because the image is
+// interpolated with weights w and this map uses sum(w V), not sum(w^2 V).
+// Oversampled output pixels share input pixels, so a sum over neighbouring pixels
+// understates the noise. Rescale it against measured scatter before reading it as
+// a sigma. The map is NaN wherever data is NaN or a file variance is invalid,
+// even when the image value is finite.
 export function regridVariance(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float32Array | undefined
 {
     if (!cutout.variance) {
         return undefined;
+    }
+    if (cutout.variance.length !== cutout.width * cutout.height) {
+        throw new Error(`regridVariance: variance has ${cutout.variance.length} pixels, cutout needs ${cutout.width * cutout.height}`);
     }
     return resample(cutout, wcs, grid, 'variance');
 }
@@ -204,8 +212,8 @@ function resample(cutout: Cutout, wcs: Wcs, grid: OutputGrid, plane: 'image' | '
                 const v10 = variance[k + 1] ?? NaN;
                 const v01 = variance[k + cw] ?? NaN;
                 const v11 = variance[k + cw + 1] ?? NaN;
-                if (!Number.isFinite(v00) || v00 < 0 || !Number.isFinite(v10) || v10 < 0
-                    || !Number.isFinite(v01) || v01 < 0 || !Number.isFinite(v11) || v11 < 0) {
+                if (!Number.isFinite(v00) || v00 <= 0 || !Number.isFinite(v10) || v10 <= 0
+                    || !Number.isFinite(v01) || v01 <= 0 || !Number.isFinite(v11) || v11 <= 0) {
                     out[row + i] = NaN;
                 } else {
                     const top = v00 + (v10 - v00) * fx;

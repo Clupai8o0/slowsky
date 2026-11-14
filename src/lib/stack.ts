@@ -15,6 +15,7 @@ export class StackError extends Error
 
 export interface StackResult {
     data: Float32Array;
+    // Relative noise map; see regridVariance. Any kept frame with invalid variance makes that pixel NaN.
     variance?: Float32Array;
     n: Uint16Array;
 }
@@ -227,7 +228,12 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
         if (variance && variances && indices) {
             let sumVariance = 0;
             for (let i = 0; i < m; i++) {
-                sumVariance += variances[indices[i]!]![p]!;
+                const v = variances[indices[i]!]![p]!;
+                if (!Number.isFinite(v) || v < 0) {
+                    sumVariance = NaN;
+                    break;
+                }
+                sumVariance += v;
             }
             variance[p] = m > 0 ? sumVariance / (m * m) : NaN;
         }
@@ -254,6 +260,11 @@ function checkVarianceLength(result: StackResult, operation: string): void
     }
 }
 
+function validVariance(value: number): boolean
+{
+    return Number.isFinite(value) && value >= 0;
+}
+
 export function subtract(a: StackResult | Float32Array, b: StackResult | Float32Array): StackResult
 {
     const ra = asResult(a);
@@ -274,7 +285,9 @@ export function subtract(a: StackResult | Float32Array, b: StackResult | Float32
             data[i] = va - vb;
             n[i] = Math.min(ra.n[i]!, rb.n[i]!);
             if (variance) {
-                variance[i] = ra.variance![i]! + rb.variance![i]!;
+                const va = ra.variance![i]!;
+                const vb = rb.variance![i]!;
+                variance[i] = validVariance(va) && validVariance(vb) ? va + vb : NaN;
             }
         } else {
             data[i] = NaN;
@@ -312,19 +325,24 @@ export function add(a: StackResult, b: StackResult): StackResult
             data[i] = b.data[i]!;
             n[i] = Math.min(wb, 65535);
             if (variance) {
-                variance[i] = b.variance![i]!;
+                const vb = b.variance![i]!;
+                variance[i] = validVariance(vb) ? vb : NaN;
             }
         } else if (wb === 0) {
             data[i] = a.data[i]!;
             n[i] = Math.min(wa, 65535);
             if (variance) {
-                variance[i] = a.variance![i]!;
+                const va = a.variance![i]!;
+                variance[i] = validVariance(va) ? va : NaN;
             }
         } else {
             data[i] = (a.data[i]! * wa + b.data[i]! * wb) / w;
             n[i] = Math.min(w, 65535);
             if (variance) {
-                variance[i] = (wa * wa * a.variance![i]! + wb * wb * b.variance![i]!) / (w * w);
+                const va = a.variance![i]!;
+                const vb = b.variance![i]!;
+                variance[i] = validVariance(va) && validVariance(vb)
+                    ? (wa * wa * va + wb * wb * vb) / (w * w) : NaN;
             }
         }
     }

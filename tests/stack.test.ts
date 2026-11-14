@@ -95,6 +95,26 @@ function boxSum(img: Float32Array, w: number, cx: number, cy: number): number
 }
 
 describe('stackVisit', () => {
+    it('keeps clipped image and counts byte identical with variance', () => {
+        const frames = [-100, 1, -1, 0, 0.5].map((v, i) => mkFrame(new Float32Array([v]), {
+            variance: new Float32Array([[1000, 3, 6, 9, 12][i]!]),
+        }));
+        const options = { background: 'none' as const, clipSigma: 4 };
+        const result = stackVisit(frames, options);
+        const without = stackVisit(frames.map(({ variance, ...frame }) => frame), options);
+        expect(result.n[0]).toBe(4);
+        expect(result.variance![0]).toBe(30 / 16);
+        expect(new Uint8Array(result.data.buffer)).toEqual(new Uint8Array(without.data.buffer));
+        expect(new Uint8Array(result.n.buffer)).toEqual(new Uint8Array(without.n.buffer));
+    });
+
+    it.each([-5, NaN, Infinity, -Infinity])('masks invalid kept variance %s without changing data or counts', (invalid) => {
+        const frames = [2, 4].map((v) => mkFrame(new Float32Array([v]), { variance: new Float32Array([invalid]) }));
+        const result = stackVisit(frames, { background: 'none' });
+        expect(result.variance![0]).toBeNaN();
+        expect(result.data[0]).toBe(3);
+        expect(result.n[0]).toBe(2);
+    });
     it('propagates V/4 for four frames without changing image stacking', () => {
         const frames = [12, 14, 10, 16].map((v) => mkFrame(new Float32Array([v, v + 2, v + 4, v + 6]), {
             variance: new Float32Array([8, 12, 16, 20]),
@@ -284,6 +304,16 @@ describe('stackVisit', () => {
 });
 
 describe('subtract', () => {
+    it.each([-5, NaN, Infinity, -Infinity])('masks invalid variance %s without changing data or counts', (invalid) => {
+        const a: StackResult = { data: new Float32Array([5]), n: new Uint16Array([3]), variance: new Float32Array([invalid]) };
+        const b: StackResult = { data: new Float32Array([2]), n: new Uint16Array([4]), variance: new Float32Array([1]) };
+        for (const result of [subtract(a, b), subtract(b, a)]) {
+            expect(result.variance![0]).toBeNaN();
+            expect(result.n[0]).toBe(3);
+        }
+        expect(subtract(a, b).data[0]).toBe(3);
+        expect(subtract(b, a).data[0]).toBe(-3);
+    });
     it('adds visit variances and masks missing data', () => {
         const a: StackResult = {
             data: new Float32Array([5, NaN]), n: new Uint16Array([3, 0]), variance: new Float32Array([2, 7]),
@@ -342,6 +372,18 @@ describe('subtract', () => {
 });
 
 describe('add', () => {
+    it.each([-5, NaN, Infinity, -Infinity])('masks invalid contributing variance %s without changing data or counts', (invalid) => {
+        const a: StackResult = { data: new Float32Array([2]), n: new Uint16Array([2]), variance: new Float32Array([invalid]) };
+        const b: StackResult = { data: new Float32Array([8]), n: new Uint16Array([4]), variance: new Float32Array([1]) };
+        for (const result of [add(a, b), add(b, a)]) {
+            expect(result.variance![0]).toBeNaN();
+            expect(result.data[0]).toBe(6);
+            expect(result.n[0]).toBe(6);
+        }
+        const empty: StackResult = { data: new Float32Array([NaN]), n: new Uint16Array([0]), variance: new Float32Array([1]) };
+        expect(add(a, empty).variance![0]).toBeNaN();
+        expect(add(empty, a).variance![0]).toBeNaN();
+    });
     it('weights variances by squared counts and ignores zero-weight NaNs', () => {
         const a: StackResult = {
             data: new Float32Array([2, NaN, 5, NaN, 6]), n: new Uint16Array([2, 0, 3, 0, 0]),
