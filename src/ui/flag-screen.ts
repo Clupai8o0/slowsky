@@ -130,6 +130,7 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
 {
     const dropped = new Set<string>();
     let count = 0;
+    let two = false; // a dropped candidate had two spots
     const kept: (ScreenedCandidate & { unread: 'none' | 'some' | 'all' })[] = [];
     const read = (frames: RegriddedFrame[], at: PixelCoord) => frames.map(f => frameFlags.get(f.frame.obsId)?.names(at) ?? null);
     for (const c of candidates) {
@@ -139,6 +140,7 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
         const bad = own.flatMap(o => o.names.flatMap(names => names?.filter(n => (DROP_FLAGS as readonly string[]).includes(n)) ?? []));
         if (bad.length) {
             count++;
+            two ||= ends.length > 1;
             bad.forEach(n => dropped.add(n));
             continue;
         }
@@ -201,6 +203,6 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
     const flags = list.length === 1 ? `the archive flag ${list[0]}` : `at least one of these archive flags: ${list.join(', ')}`;
     const dropNote = count === 0 ? undefined
         : `${count === 1 ? '1 candidate is not listed:' : `${count} candidates are not listed: for each,`} in at least one frame of `
-            + `the visit where its spot, or one of its two spots, shows more light, that frame’s brightest pixel within 12″ of that spot carries ${flags}.`;
+            + `the visit where its spot${two ? ', or one of its two spots,' : ''} shows more light, that frame’s brightest pixel within 12″ of that spot carries ${flags}.`;
     return { kept, dropNote, allUnread, lead };
 }

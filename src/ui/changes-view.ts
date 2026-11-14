@@ -11,9 +11,10 @@ import type { ChangeCandidate, ChangeEnd, ChangeReading, ChangeResult } from '..
 // Round 11 adds `reading` (what the sentence reads from the two visits) and `ends` (every lobe: one for a single
 // spot, two for a pair or mover, each with its reading aperture `radiusPix`); `lightEnds` stays as an alias of
 // `ends` for movers. The radius stays optional here only for older candidates that carry no `ends`.
-export type Reading = ChangeReading;
+// 'moreLater' / 'lessLater': the finder's plain list (compareVisits `plain: true`), one spot each, no star claim.
+export type Reading = ChangeReading | 'moreLater' | 'lessLater';
 export type CandidateEnd = Omit<ChangeEnd, 'radiusPix'> & { radiusPix?: number };
-export type PanelCandidate = Omit<ChangeCandidate, 'lightEnds' | 'ends'> & {
+export type PanelCandidate = Omit<ChangeCandidate, 'lightEnds' | 'ends' | 'reading'> & {
     sentence?: string; caveat?: string; lightVisit?: 'earlier' | 'later'; x?: number; y?: number;
     reading?: Reading; ends?: CandidateEnd[]; lightEnds?: CandidateEnd[]; nearCatalogue?: boolean;
 };
@@ -53,8 +54,16 @@ export function orderNote(candidates: (PanelCandidate & { line?: string })[]): s
     }
     // "away from catalogue stars" only for a group whose every candidate the finder says is not near one.
     const away = (g: number) => candidates.filter((c) => groupOf(c) === g).every((c) => c.nearCatalogue === false) ? ' away from catalogue stars' : '';
-    const label = ['single spots' + away(0), 'pairs of spots' + away(1), 'spots or pairs near catalogue stars'];
+    const pairs = groups.includes(1) || candidates.some((c) => groupOf(c) === 2 && (c.ends ?? c.lightEnds ?? []).length > 1);
+    const label = [(pairs ? 'single spots' : 'spots') + away(0), 'pairs of spots' + away(1), pairs ? 'spots or pairs near catalogue stars' : 'spots near catalogue stars'];
     return `Listed in groups, each ${by}: ${groups.map((g) => label[g]).join(', then ')}.`;
+}
+
+// The finder's plain list: it orders the candidates itself and says how in its notes, so the panel keeps that order
+// and adds no order sentence of its own.
+export function isPlain(candidates: PanelCandidate[]): boolean
+{
+    return candidates.length > 0 && candidates.every((c) => c.reading === 'moreLater' || c.reading === 'lessLater');
 }
 
 function listed<T>(v: { candidates: T[] }, all: boolean): T[]
@@ -71,9 +80,9 @@ export function changesView(found: ChangeResult | { error: string }): ChangesVie
     // In groups (single spots, then pairs, then spots near catalogue stars), each strongest first (stable; an S/N
     // that is not a number goes last), so a capped list keeps the strongest away from bright-star residuals.
     const strength = (c: PanelCandidate) => (typeof c.snr === 'number' && !Number.isNaN(c.snr) ? c.snr : -Infinity);
-    const candidates = (found.candidates as PanelCandidate[]).filter((c) => Number.isFinite(c.pix.x) && Number.isFinite(c.pix.y))
-        .map((c) => ({ ...c, line: c.sentence ?? c.reason }))
-        .sort((a, b) => groupOf(a) - groupOf(b) || strength(b) - strength(a));
+    const placed = (found.candidates as PanelCandidate[]).filter((c) => Number.isFinite(c.pix.x) && Number.isFinite(c.pix.y))
+        .map((c) => ({ ...c, line: c.sentence ?? c.reason }));
+    const candidates = isPlain(placed) ? placed : placed.sort((a, b) => groupOf(a) - groupOf(b) || strength(b) - strength(a));
     const lead = withCaveats(candidates);
     const visits = (found as ChangeResult & { visits?: FinderVisits }).visits;
     return {
@@ -108,12 +117,12 @@ export function changesHtml(v: ChangesView, all = false): string
 {
     const lead = (v.lead ?? []).map(s => `<p class="sk-chg-lead">${esc(s)}</p>`).join('');
     const rest = v.candidates.length - LIST_CAP;
-    const order = orderNote(v.candidates);
+    const order = isPlain(v.candidates) ? '' : orderNote(v.candidates);
     const button = rest > 0
         ? ` <button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? 'Show fewer' : `Show ${rest} more`}</button>`
         : '';
     // The order is said when the list is cut or grouped; a short plain list needs no explanation.
-    const more = button || order.startsWith('Listed in groups') ? `<p class="sk-chg-more-row">${order}${button}</p>` : '';
+    const more = button || order.startsWith('Listed in groups') ? `<p class="sk-chg-more-row">${`${order}${button}`.trim()}</p>` : '';
     const list = v.candidates.length
         ? `<ol class="sk-chg">${listed(v, all).map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(c.line)}</li>`).join('')}</ol>${more}`
         : v.ran ? `<p class="sk-chg-lead">${EMPTY_LEAD}</p>` : '';

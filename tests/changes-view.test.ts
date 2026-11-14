@@ -153,7 +153,7 @@ describe('round 11: order wording follows what the lines show', () => {
     it('says by S/N only when a listed line shows one', () => {
         const a = { ...cand('a', 1, 1, 'a (S/N 9.0; candidate).'), snr: 9, nearCatalogue: false };
         const b = { ...cand('b', 2, 1, 'b (S/N 8.0; candidate).'), snr: 8, nearCatalogue: true };
-        expect(changesHtml(changesView(found([a, b], [])))).toContain('Listed in groups, each by S/N, highest first: single spots away from catalogue stars, then spots or pairs near catalogue stars.');
+        expect(changesHtml(changesView(found([a, b], [])))).toContain('Listed in groups, each by S/N, highest first: spots away from catalogue stars, then spots near catalogue stars.');
     });
 });
 
@@ -169,5 +169,30 @@ describe('round 11: groups from the review', () => {
     it('sorts an S/N that is not a number last', () => {
         const v = changesView(found([{ ...cand('u', 1, 1, 'u (candidate).'), snr: undefined as unknown as number }, { ...cand('f', 2, 1, 'f (candidate).'), snr: 5 }], []));
         expect(v.candidates.map((c) => c.id)).toEqual(['f', 'u']);
+    });
+});
+
+describe('plain list (compareVisits plain: true)', () => {
+    const plain = (id: string, snr: number, reading: 'moreLater' | 'lessLater', near: boolean) => ({ ...cand(id, 10 + snr, 10, `${id} (candidate).`), snr, reading, nearCatalogue: near,
+        ends: [{ visit: reading === 'moreLater' ? 'later' as const : 'earlier' as const, x: 10 + snr, y: 10, radiusPix: 4 }] }) as unknown as ChangeCandidate;
+    // (cast: the plain readings join ChangeReading with -b3's plain mode)
+
+    it('keeps the finder\'s order and adds no order sentence; the button still shows', () => {
+        // The finder's own order (away from catalogue stars first); the panel would otherwise sort by S/N.
+        const list = [plain('a', 5, 'moreLater', false), plain('b', 9, 'lessLater', false), plain('c', 20, 'moreLater', true),
+            ...Array.from({ length: 7 }, (_, i) => plain(`d${i}`, 6, 'lessLater', true))];
+        const v = changesView(found(list, ['Listed with spots away from catalogue stars first.']));
+        expect(v.candidates.map((c) => c.id).slice(0, 3)).toEqual(['a', 'b', 'c']);
+        const html = changesHtml(v);
+        expect(html).not.toContain('Listed in groups');
+        expect(html).not.toContain('Listed by');
+        expect(html).toContain('<p class="sk-chg-more-row"><button type="button" class="sk-chg-more" data-chg-more aria-expanded="false">Show 2 more</button></p>');
+        expect(html).toContain('<li>Listed with spots away from catalogue stars first.</li>');
+        expect(changesMarks(v, 200, 100).match(/<circle/g)).toHaveLength(8);
+    });
+
+    it('a short plain list has no order row at all', () => {
+        const html = changesHtml(changesView(found([plain('a', 5, 'moreLater', false), plain('c', 20, 'moreLater', true)], [])));
+        expect(html).not.toContain('sk-chg-more-row');
     });
 });
