@@ -95,6 +95,8 @@ export interface LiveOptions extends SourceOptions {
     search?: (q: FrameQuery, signal?: AbortSignal) => Promise<FrameRecord[]>;
     reader?: RangeReader;
     maxHeaders?: number; // most frames whose headers are read (default 60); every visit is kept
+    requestTimeoutMs?: number; // each archive request, including its body (default 20000)
+    loadTimeoutMs?: number; // one complete live load (default 90000)
 }
 
 export interface SnapshotOptions extends SourceOptions {
@@ -328,6 +330,7 @@ async function assemble(
             return undefined;
         }
         const cutout = await info.loadCutout(box, req.signal);
+        req.signal?.throwIfAborted();
         const data = regridNorthUp(cutout, info.wcs, grid);
         const atCentre = inside(centrePix, info.wcs.params.naxis, 0) ? sampleWave(info.wave, centrePix) : undefined;
         done++;
@@ -406,6 +409,95 @@ function knownTarget(id: TargetId | undefined): Target | undefined
 const GAIA_UNAVAILABLE_NOTE = 'Gaia stars are not available for this view.';
 const GAIA_MAX_RADIUS_DEG = 0.2; // the widest cone gaia.ts accepts
 const GAIA_GRACE_MS = 1500; // how long a finished picture waits for a slow catalogue
+
+export class ArchiveTimeoutError extends Error {
+    constructor()
+    {
+        super('Network request timed out.');
+        this.name = 'ArchiveTimeoutError';
+    }
+}
+
+// Keep the deadline until the response stream finishes, not merely until headers arrive.
+function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: number): typeof fetch
+{
+    return async (input, init) => {
+        const request = new AbortController();
+        const upstream = init?.signal;
+        let bodyReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+        const abort = (): void => request.abort(upstream?.aborted ? upstream.reason : load.signal.reason);
+        const timer = setTimeout(() => load.abort(new ArchiveTimeoutError()), timeoutMs);
+        const cleanup = (): void => {
+            clearTimeout(timer);
+            load.signal.removeEventListener('abort', onAbort);
+            upstream?.removeEventListener('abort', onAbort);
+        };
+        const onAbort = (): void => {
+            abort();
+            if (bodyReader) {
+                void bodyReader.cancel(request.signal.reason).catch(() => undefined);
+            }
+            cleanup();
+        };
+        load.signal.addEventListener('abort', onAbort, { once: true });
+        upstream?.addEventListener('abort', onAbort, { once: true });
+        if (load.signal.aborted || upstream?.aborted) {
+            onAbort();
+            throw request.signal.reason;
+        }
+        const cancelled = new Promise<never>((_resolve, reject) => {
+            request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true });
+        });
+        try {
+            const response = await Promise.race([fetcher(input, { ...init, signal: request.signal }), cancelled]);
+            if (request.signal.aborted) {
+                void response.body?.cancel().catch(() => undefined);
+                throw request.signal.reason;
+            }
+            if (!response.body) {
+                cleanup();
+                return response;
+            }
+            const reader = response.body.getReader();
+            bodyReader = reader;
+            let cancelling = false;
+            const stream = new ReadableStream<Uint8Array>({
+                async pull(controller)
+                {
+                    try {
+                        const chunk = await Promise.race([reader.read(), cancelled]);
+                        if (chunk.done) {
+                            if (!cancelling) {
+                                cleanup();
+                            }
+                            controller.close();
+                        } else {
+                            controller.enqueue(chunk.value);
+                        }
+                    } catch (error) {
+                        if (!cancelling) {
+                            cleanup();
+                        }
+                        controller.error(error);
+                    }
+                },
+                async cancel(reason)
+                {
+                    cancelling = true;
+                    try {
+                        await Promise.race([reader.cancel(reason), cancelled]);
+                    } finally {
+                        cleanup();
+                    }
+                },
+            });
+            return new Response(stream, { status: response.status, statusText: response.statusText, headers: response.headers });
+        } catch (error) {
+            cleanup();
+            throw error;
+        }
+    };
+}
 
 // Runs the Gaia cone search beside the frame work. `rows` never rejects: undefined means "no catalogue".
 function startCatalogue(req: SkyRequest, fetcher: typeof fetch): { rows: Promise<GaiaRow[] | undefined>; stop: () => void }
@@ -514,6 +606,7 @@ async function pickByGuess(
     try {
         probeRead.url = probe.url;
         const index = await reader.index(probe.url, req.signal);
+        req.signal?.throwIfAborted();
         probeRead.index = index;
         const wcs = makeWcs(wcsFromHeader(index.hdu('IMAGE').header));
         const naxis = wcs.params.naxis;
@@ -537,6 +630,7 @@ async function pickByGuess(
             return undefined;
         }
         const wave = await reader.readWaveGrid(index, req.signal);
+        req.signal?.throwIfAborted();
         probeRead.wave = wave;
         const guessed = new Map<string, { lambda: number; bandwidth: number }>();
         for (const f of frames) {
@@ -587,65 +681,59 @@ async function pickByGuess(
 export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = {}): SkySource
 {
     const fetcher = opts.fetch ?? globalThis.fetch.bind(globalThis);
-    const reader = opts.reader ?? createRangeReader({ fetch: fetcher });
-    const search = opts.search ?? ((q: FrameQuery, signal?: AbortSignal) => searchFrames(q, signal, fetcher));
     const gap = opts.visitGapDays ?? 10;
     return {
         async load(req: SkyRequest): Promise<SkyResult>
         {
             req.signal?.throwIfAborted();
-            const notes: string[] = [];
-            const target = knownTarget(req.target);
-            // Started now so it costs no waiting time; its failure is absorbed even if the frame work fails first.
-            const catalogue = startCatalogue(req, fetcher);
-            try {
-                req.onProgress?.({ stage: 'search', done: 0, total: 1 });
-                const found = await search({ center: req.center, radiusDeg: 0.001, detector: req.detector }, req.signal);
-                const onDetector = found.filter((f) => f.detector === req.detector);
-                req.onProgress?.({ stage: 'search', done: 1, total: 1 });
-                if ((found as FrameList).truncated) {
-                    notes.push('This spot has more frames than the archive lists at once, so some visits may be missing.');
-                }
-                if (onDetector.length === 0) {
-                    notes.push(`No SPHEREx frames on detector ${req.detector} cover this spot yet.`);
-                }
-                const visits = groupVisits(onDetector, gap);
-                const maxHeaders = opts.maxHeaders ?? 60;
-                let candidates = onDetector;
-                let skippedVisits = 0;
-                const probeRead: ProbeRead = {};
-                if (onDetector.length > maxHeaders) {
-                    const pick = await pickByGuess(onDetector, visits, target, req, reader, opts, maxHeaders, probeRead);
-                    if (pick) {
-                        candidates = pick.frames;
-                        skippedVisits = pick.skippedVisits;
-                    } else if (probeRead.failed) {
-                        const fallback = thinVisits(visits, maxHeaders);
-                        candidates = thinVisits(visits, Math.max(0, maxHeaders - 1)).filter((frame) => frame.url !== probeRead.url);
-                        const urls = new Set([probeRead.url, ...candidates.map((frame) => frame.url)]);
-                        for (const frame of [...fallback, ...onDetector]) {
-                            if (urls.size >= maxHeaders) {
-                                break;
-                            }
-                            if (!urls.has(frame.url)) {
-                                candidates.push(frame);
-                                urls.add(frame.url);
-                            }
-                        }
-                        candidates.sort((a, b) => a.tMin - b.tMin);
-                        if (candidates.length === 0) {
-                            throw probeRead.error;
-                        }
-                    } else {
-                        const fallback = thinVisits(visits, maxHeaders);
-                        if (!probeRead.url || fallback.some((frame) => frame.url === probeRead.url)) {
-                            candidates = fallback;
-                        } else {
-                            candidates = thinVisits(visits, Math.max(0, maxHeaders - 1));
+            const callerSignal = req.signal;
+            const controller = new AbortController();
+            const abort = (): void => controller.abort(callerSignal?.reason);
+            callerSignal?.addEventListener('abort', abort, { once: true });
+            const timer = setTimeout(() => controller.abort(new ArchiveTimeoutError()), opts.loadTimeoutMs ?? 90000);
+            const timedFetch = archiveFetch(fetcher, controller, opts.requestTimeoutMs ?? 20000);
+            const reader = opts.reader ?? createRangeReader({ fetch: timedFetch });
+            const search = opts.search ?? ((q: FrameQuery, signal?: AbortSignal) => searchFrames(q, signal, timedFetch));
+            const loadReq = { ...req, signal: controller.signal };
+            let onAbort: (() => void) | undefined;
+            const cancelled = new Promise<never>((_resolve, reject) => {
+                onAbort = () => reject(controller.signal.reason);
+                controller.signal.addEventListener('abort', onAbort, { once: true });
+            });
+            async function work(req: SkyRequest): Promise<SkyResult>
+            {
+                const notes: string[] = [];
+                const target = knownTarget(req.target);
+                // Started now so it costs no waiting time; its failure is absorbed even if the frame work fails first.
+                const catalogue = startCatalogue(req, fetcher);
+                try {
+                    req.onProgress?.({ stage: 'search', done: 0, total: 1 });
+                    const found = await search({ center: req.center, radiusDeg: 0.001, detector: req.detector }, req.signal);
+                    req.signal?.throwIfAborted();
+                    const onDetector = found.filter((f) => f.detector === req.detector);
+                    req.onProgress?.({ stage: 'search', done: 1, total: 1 });
+                    if ((found as FrameList).truncated) {
+                        notes.push('This spot has more frames than the archive lists at once, so some visits may be missing.');
+                    }
+                    if (onDetector.length === 0) {
+                        notes.push(`No SPHEREx frames on detector ${req.detector} cover this spot yet.`);
+                    }
+                    const visits = groupVisits(onDetector, gap);
+                    const maxHeaders = opts.maxHeaders ?? 60;
+                    let candidates = onDetector;
+                    let skippedVisits = 0;
+                    const probeRead: ProbeRead = {};
+                    if (onDetector.length > maxHeaders) {
+                        const pick = await pickByGuess(onDetector, visits, target, req, reader, opts, maxHeaders, probeRead);
+                        if (pick) {
+                            candidates = pick.frames;
+                            skippedVisits = pick.skippedVisits;
+                        } else if (probeRead.failed) {
+                            const fallback = thinVisits(visits, maxHeaders);
+                            candidates = thinVisits(visits, Math.max(0, maxHeaders - 1)).filter((frame) => frame.url !== probeRead.url);
                             const urls = new Set([probeRead.url, ...candidates.map((frame) => frame.url)]);
-                            const budget = Math.min(maxHeaders, new Set(onDetector.map((frame) => frame.url)).size);
                             for (const frame of [...fallback, ...onDetector]) {
-                                if (urls.size >= budget) {
+                                if (urls.size >= maxHeaders) {
                                     break;
                                 }
                                 if (!urls.has(frame.url)) {
@@ -653,136 +741,170 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
                                     urls.add(frame.url);
                                 }
                             }
-                            if (candidates.length === 0) {
-                                candidates = onDetector.filter((frame) => frame.url === probeRead.url).slice(0, 1);
-                            }
                             candidates.sort((a, b) => a.tMin - b.tMin);
-                        }
-                    }
-                }
-                let done = 0;
-                let unreadable = probeRead.failed ? 1 : 0;
-                let firstError: unknown = probeRead.error;
-                const total = candidates.length;
-                req.onProgress?.({ stage: 'headers', done, total });
-                async function readInfo(record: FrameRecord): Promise<FrameInfo | undefined>
-                {
-                    let info: FrameInfo | undefined;
-                    try {
-                        req.signal?.throwIfAborted();
-                        const index = record.url === probeRead.url && probeRead.index
-                            ? probeRead.index : await reader.index(record.url, req.signal);
-                        let flags: FrameContext['flags'];
-                        const flagsHdu = index.hdus.find(hdu => hdu.name === 'FLAGS');
-                        if (flagsHdu) {
-                            try {
-                                flags = { layout: parseFlagsLayout(flagsHdu.header, flagsHdu.dataStart), names: flagNames(flagsHdu.header) };
-                            } catch {
-                                // Unsupported FLAGS must not prevent the image from loading.
+                            if (candidates.length === 0) {
+                                throw probeRead.error;
                             }
-                        }
-                        const header = index.hdu('IMAGE').header;
-                        const wcs = makeWcs(wcsFromHeader(header));
-                        const look = lookPoint(target, req, record);
-                        const pix = safeSkyToPix(wcs, look);
-                        if (pix && inside(pix, wcs.params.naxis, EDGE_MARGIN_PX)) {
-                            const wave = record.url === probeRead.url && probeRead.wave
-                                ? probeRead.wave : await reader.readWaveGrid(index, req.signal);
-                            const sample = sampleWave(wave, pix);
-                            const version = header.get('PIPEVERS') ?? header.get('VERSION');
-                            const full: FrameRecord = typeof version === 'string' ? { ...record, pipelineVersion: version } : record;
-                            info = {
-                                record: full,
-                                wcs,
-                                wave,
-                                lambda: sample.lambda,
-                                bandwidth: sample.bandwidth,
-                                context: { url: record.url, ...(flags ? { flags } : {}) },
-                                async loadCutout(box: PixelBox, signal?: AbortSignal): Promise<Cutout>
-                                {
-                                    const [image, zodi, variance] = await Promise.all([
-                                        reader.readFloat32(index, 'IMAGE', box, signal),
-                                        reader.readFloat32(index, 'ZODI', box, signal),
-                                        req.withVariance
-                                            ? reader.readFloat32(index, 'VARIANCE', box, signal).catch((e: unknown) => {
-                                                if (signal?.aborted) {
-                                                    throw e;
-                                                }
-                                                return undefined;
-                                            })
-                                            : undefined,
-                                    ]);
-                                    const cutout: Cutout = {
-                                        frame: full, box, width: box.x1 - box.x0, height: box.y1 - box.y0,
-                                        image, zodi, wcs: wcs.params, wave, header,
-                                    };
-                                    if (variance) {
-                                        cutout.variance = variance;
+                        } else {
+                            const fallback = thinVisits(visits, maxHeaders);
+                            if (!probeRead.url || fallback.some((frame) => frame.url === probeRead.url)) {
+                                candidates = fallback;
+                            } else {
+                                candidates = thinVisits(visits, Math.max(0, maxHeaders - 1));
+                                const urls = new Set([probeRead.url, ...candidates.map((frame) => frame.url)]);
+                                const budget = Math.min(maxHeaders, new Set(onDetector.map((frame) => frame.url)).size);
+                                for (const frame of [...fallback, ...onDetector]) {
+                                    if (urls.size >= budget) {
+                                        break;
                                     }
-                                    return cutout;
-                                },
-                            };
-                            if (target) {
-                                info.trackSky = look;
+                                    if (!urls.has(frame.url)) {
+                                        candidates.push(frame);
+                                        urls.add(frame.url);
+                                    }
+                                }
+                                if (candidates.length === 0) {
+                                    candidates = onDetector.filter((frame) => frame.url === probeRead.url).slice(0, 1);
+                                }
+                                candidates.sort((a, b) => a.tMin - b.tMin);
                             }
                         }
-                    } catch (err) {
-                        if (req.signal?.aborted) {
-                            throw err;
-                        }
-                        if (unreadable === 0) {
-                            firstError = err;
-                        }
-                        unreadable++;
                     }
-                    return info;
-                }
-                const infos = await mapLimit(candidates, opts.concurrency ?? 4, async (record) => {
-                    const info = await readInfo(record);
-                    done++;
+                    let done = 0;
+                    let unreadable = probeRead.failed ? 1 : 0;
+                    let firstError: unknown = probeRead.error;
+                    const total = candidates.length;
                     req.onProgress?.({ stage: 'headers', done, total });
-                    return info;
-                });
-                let usable = infos.filter((f): f is FrameInfo => f !== undefined);
-                let reusedProbe = false;
-                if (usable.length === 0 && unreadable > 0 && probeRead.index && probeRead.wave
-                    && !candidates.some((frame) => frame.url === probeRead.url)) {
-                    const probe = onDetector.find((frame) => frame.url === probeRead.url);
-                    if (probe) {
-                        const info = await readInfo(probe);
-                        if (info) {
-                            usable = [info];
-                            reusedProbe = true;
+                    async function readInfo(record: FrameRecord): Promise<FrameInfo | undefined>
+                    {
+                        let info: FrameInfo | undefined;
+                        try {
+                            req.signal?.throwIfAborted();
+                            const index = record.url === probeRead.url && probeRead.index
+                                ? probeRead.index : await reader.index(record.url, req.signal);
+                            req.signal?.throwIfAborted();
+                            let flags: FrameContext['flags'];
+                            const flagsHdu = index.hdus.find(hdu => hdu.name === 'FLAGS');
+                            if (flagsHdu) {
+                                try {
+                                    flags = { layout: parseFlagsLayout(flagsHdu.header, flagsHdu.dataStart), names: flagNames(flagsHdu.header) };
+                                } catch {
+                                    // Unsupported FLAGS must not prevent the image from loading.
+                                }
+                            }
+                            const header = index.hdu('IMAGE').header;
+                            const wcs = makeWcs(wcsFromHeader(header));
+                            const look = lookPoint(target, req, record);
+                            const pix = safeSkyToPix(wcs, look);
+                            if (pix && inside(pix, wcs.params.naxis, EDGE_MARGIN_PX)) {
+                                const wave = record.url === probeRead.url && probeRead.wave
+                                    ? probeRead.wave : await reader.readWaveGrid(index, req.signal);
+                                req.signal?.throwIfAborted();
+                                const sample = sampleWave(wave, pix);
+                                const version = header.get('PIPEVERS') ?? header.get('VERSION');
+                                const full: FrameRecord = typeof version === 'string' ? { ...record, pipelineVersion: version } : record;
+                                info = {
+                                    record: full,
+                                    wcs,
+                                    wave,
+                                    lambda: sample.lambda,
+                                    bandwidth: sample.bandwidth,
+                                    context: { url: record.url, ...(flags ? { flags } : {}) },
+                                    async loadCutout(box: PixelBox, signal?: AbortSignal): Promise<Cutout>
+                                    {
+                                        const [image, zodi, variance] = await Promise.all([
+                                            reader.readFloat32(index, 'IMAGE', box, signal),
+                                            reader.readFloat32(index, 'ZODI', box, signal),
+                                            req.withVariance
+                                                ? reader.readFloat32(index, 'VARIANCE', box, signal).catch((e: unknown) => {
+                                                    if (signal?.aborted) {
+                                                        throw e;
+                                                    }
+                                                    return undefined;
+                                                })
+                                                : undefined,
+                                        ]);
+                                        const cutout: Cutout = {
+                                            frame: full, box, width: box.x1 - box.x0, height: box.y1 - box.y0,
+                                            image, zodi, wcs: wcs.params, wave, header,
+                                        };
+                                        if (variance) {
+                                            cutout.variance = variance;
+                                        }
+                                        return cutout;
+                                    },
+                                };
+                                if (target) {
+                                    info.trackSky = look;
+                                }
+                            }
+                        } catch (err) {
+                            if (req.signal?.aborted) {
+                                throw err;
+                            }
+                            if (unreadable === 0) {
+                                firstError = err;
+                            }
+                            unreadable++;
+                        }
+                        return info;
+                    }
+                    const infos = await mapLimit(candidates, opts.concurrency ?? 4, async (record) => {
+                        const info = await readInfo(record);
+                        done++;
+                        req.onProgress?.({ stage: 'headers', done, total });
+                        return info;
+                    });
+                    let usable = infos.filter((f): f is FrameInfo => f !== undefined);
+                    let reusedProbe = false;
+                    if (usable.length === 0 && unreadable > 0 && probeRead.index && probeRead.wave
+                        && !candidates.some((frame) => frame.url === probeRead.url)) {
+                        const probe = onDetector.find((frame) => frame.url === probeRead.url);
+                        if (probe) {
+                            const info = await readInfo(probe);
+                            if (info) {
+                                usable = [info];
+                                reusedProbe = true;
+                            }
                         }
                     }
-                }
-                if (candidates.length < onDetector.length) {
-                    notes.push(`Read ${candidates.length + (reusedProbe ? 1 : 0)} of ${onDetector.length} frames to keep loading quick.`);
-                }
-                if (unreadable > 0) {
-                    if (usable.length === 0) {
-                        throw firstError;
+                    if (candidates.length < onDetector.length) {
+                        notes.push(`Read ${candidates.length + (reusedProbe ? 1 : 0)} of ${onDetector.length} frames to keep loading quick.`);
                     }
-                    notes.push(`${plural(unreadable, 'frame')} could not be read.`);
+                    if (unreadable > 0) {
+                        if (usable.length === 0) {
+                            throw firstError;
+                        }
+                        notes.push(`${plural(unreadable, 'frame')} could not be read.`);
+                    }
+                    const atEdge = candidates.length - infos.filter((f) => f !== undefined).length - (unreadable - (probeRead.failed ? 1 : 0));
+                    if (atEdge > 0) {
+                        notes.push(`${plural(atEdge, 'frame')} left out: the spot is at the detector edge.`);
+                    }
+                    const core = await assemble(req, usable, visits, opts, notes, skippedVisits);
+                    // The picture is ready: give a slow catalogue a short grace time, then go on without it.
+                    const rows = await settleWithin(catalogue.rows, GAIA_GRACE_MS, req.signal);
+                    req.signal?.throwIfAborted();
+                    const stars = rows ? gaiaStarsOnGrid(rows, core.grid) : [];
+                    if (!rows) {
+                        notes.push(GAIA_UNAVAILABLE_NOTE);
+                    } else if (stars.length > 0 && req.fovDeg * Math.SQRT1_2 > GAIA_MAX_RADIUS_DEG) {
+                        notes.push(`Gaia stars are shown only within ${GAIA_MAX_RADIUS_DEG}° of the centre.`);
+                    }
+                    const records = core.frames.map((f) => f.frame.frame);
+                    return { source: 'live', stars, credits: credits(records, stars.length > 0), ...core };
+                } finally {
+                    catalogue.stop();
                 }
-                const atEdge = candidates.length - infos.filter((f) => f !== undefined).length - (unreadable - (probeRead.failed ? 1 : 0));
-                if (atEdge > 0) {
-                    notes.push(`${plural(atEdge, 'frame')} left out: the spot is at the detector edge.`);
-                }
-                const core = await assemble(req, usable, visits, opts, notes, skippedVisits);
-                // The picture is ready: give a slow catalogue a short grace time, then go on without it.
-                const rows = await settleWithin(catalogue.rows, GAIA_GRACE_MS, req.signal);
-                req.signal?.throwIfAborted();
-                const stars = rows ? gaiaStarsOnGrid(rows, core.grid) : [];
-                if (!rows) {
-                    notes.push(GAIA_UNAVAILABLE_NOTE);
-                } else if (stars.length > 0 && req.fovDeg * Math.SQRT1_2 > GAIA_MAX_RADIUS_DEG) {
-                    notes.push(`Gaia stars are shown only within ${GAIA_MAX_RADIUS_DEG}° of the centre.`);
-                }
-                const records = core.frames.map((f) => f.frame.frame);
-                return { source: 'live', stars, credits: credits(records, stars.length > 0), ...core };
+            }
+            try {
+                return await Promise.race([work(loadReq), cancelled]);
             } finally {
-                catalogue.stop();
+                clearTimeout(timer);
+                callerSignal?.removeEventListener('abort', abort);
+                if (onAbort) {
+                    controller.signal.removeEventListener('abort', onAbort);
+                }
+                controller.abort();
             }
         },
     };
