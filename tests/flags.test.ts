@@ -348,11 +348,12 @@ describe('FLAGS layouts and safety', () => {
         expect(calls).toEqual([]);
     });
 
-    it('refuses a cutout whose tiles would decode more than 4096 x 4096 pixels, before any fetch', async () => {
+    it('refuses a cutout of more than 2048 x 2048 pixels inside a legal image, before any fetch', async () => {
+        // The image and its tiles are within MAX_AXIS, so this reaches the pixel budget, not the axis check.
         const side = MAX_AXIS;
         const layout: FlagsLayout = {
-            width: side, height: side * 2, tileWidth: side, tileHeight: side, tilesAcross: 1,
-            rowSize: 8, rowCount: 2, tableStart: 0, tableBytes: 16, heapStart: 16, heapBytes: 8,
+            width: side, height: side, tileWidth: side / 2, tileHeight: side / 2, tilesAcross: 2,
+            rowSize: 8, rowCount: 4, tableStart: 0, tableBytes: 32, heapStart: 32, heapBytes: 8,
             descriptor: 'P', descriptorOffset: 0, blockSize: 32, bytePix: 4,
         };
         let calls = 0;
@@ -360,8 +361,8 @@ describe('FLAGS layouts and safety', () => {
             calls += 1;
             return new Response(new Uint8Array(5));
         };
-        await expect(readFlags('x', layout, { x0: 0, y0: 0, x1: side, y1: side * 2 }, { fetcher }))
-            .rejects.toThrow('FLAGS image is too large');
+        await expect(readFlags('x', layout, { x0: 0, y0: 0, x1: side / 2 + 1, y1: side / 2 }, { fetcher }))
+            .rejects.toThrow('FLAGS cutout would decode too many pixels');
         expect(calls).toBe(0);
     });
 
