@@ -969,6 +969,8 @@ export function mount(root: HTMLElement): void
                 rows.push(['File', rec.obsId]);
             } else if (st.mode === 'diff') {
                 rows.push(['Files', `${last!.obsId} − ${first!.obsId}`]);
+            } else {
+                rows.push(['Files', `${n}, ${first!.obsId} to ${last!.obsId}`]);
             }
             if (rec.pipelineVersion && !many) {
                 rows.push(['Pipeline', rec.pipelineVersion]);
@@ -999,7 +1001,7 @@ export function mount(root: HTMLElement): void
                 return `<dt>${k}</dt><dd>${val}</dd>`;
             }).join('');
             const links: string[] = [];
-            if (many && st.mode === 'diff') {
+            if (many) {
                 for (const [r, label] of [[first!, 'first'], [last!, 'last']] as const) {
                     if (r.url) {
                         links.push(`<a href="${esc(r.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS, ${label}</a>`);
