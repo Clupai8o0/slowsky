@@ -117,9 +117,10 @@ through the CfA mirror. The full list, with licences and credit lines: [DATA-LIC
 | Tool | Maker | Used for |
 |---|---|---|
 | Claude Code (Claude Fable, Opus, Sonnet and Haiku models) | Anthropic | Writing and reviewing code, tests, planning help, page text drafts |
-| Codex | OpenAI | Writing and reviewing code |
-| Gemini (through Antigravity) | Google | Writing and reviewing code |
-| Grok (through Grok Build) | xAI | Writing and reviewing code |
+| Claude API (Claude Opus 5.5) | Anthropic | Inside the site: the server route `api/insight.ts` writes the optional research note from the page's own measurements. The note is labelled as written by AI and sits behind a passcode; the route stays off until it is set up |
+| Codex (GPT-6.1 Sol and Terra models) | OpenAI | Writing and reviewing code |
+| Gemini (Argon and Carbon models, through Antigravity) | Google | Writing and reviewing code |
+| Grok 4.7 (through Grok Build) | xAI | Reviewing code |
 | ElevenLabs | ElevenLabs | AI voice in the demo video |
 | GPT Image | OpenAI | Decorative images, if used, marked where they appear |
 

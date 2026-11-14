@@ -12,6 +12,8 @@ python3 -m venv scripts/.venv && scripts/.venv/bin/pip install -r scripts/requir
 | `targets.py` | `src/data/targets.json` (5 official targets: position, epoch, proper motion, source) | fixtures |
 | `fixtures.py` | `tests/fixtures/` (one real DR1 header, a small box of pixels, astropy WCS and wave values) | fixtures |
 | `bake.py` | `public/snapshot/` (frame lists, raw cutouts, Gaia rows for the 5 targets) | snapshot bake |
+| `make_cube_fixture.py` | `tests/fixtures/cube/` (small byte ranges of the all-sky spectral cube, with reference values) | spectrum |
+| `make_flags_fixture.py` | `tests/fixtures/flags/` (a few compressed tiles of one frame's FLAGS layer, with decoded values) | flags |
 
 ## Browser smoke test
 
