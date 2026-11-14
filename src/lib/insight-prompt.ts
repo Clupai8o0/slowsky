@@ -38,16 +38,16 @@ Write every number in digits and copy its printed unit and bound.
 - "There are fewer than 3 visits, so the change counts for little." Use only if a change was measured and the sheet has fewer than 3 visits.
 - "The lowest signal-to-noise is small, so the change counts for little." Use only if a change was measured and it is below 1 or under 3.
 - "There is nothing measured to interpret yet." Use only if there is no brightness, difference or shift line.
-- "This is a candidate only." Use only if a shift was measured, or a change was measured and, when reference-star scatter is printed, the brightness change is larger than every printed scatter value, or the difference line reports a change. This sentence does not count as a measurement.
-Here a change was measured when the largest change is not "less than 1 percent", or exactly two brightness readings differ, or the sheet has a difference line and it does not say "no change above the noise". A shift was measured when the shift line gives a number of arcsec, not "none measured".
+- "This is a candidate only." Use only if a shift was measured or there is a notable change. This sentence does not count as a measurement.
+Here a change was measured when the largest change is not "less than 1 percent", or exactly two brightness readings differ, or the sheet has a difference line and it does not say "no change above the noise". A shift was measured when the shift line gives a number of arcsec, not "none measured". There is a notable change in two cases only. One: the difference line gives 3 sigma or more. Two: the largest change is not "less than 1 percent", or exactly two brightness readings differ, and either the sheet prints no reference-star scatter or that brightness change is larger than every printed scatter value.
 In the third paragraph use 1 or 2 of these sentences, exactly as written. Any other sentence there will be removed.
-- "Wait for another visit to see whether the change repeats." Only when a change was measured and, when reference-star scatter is printed, the brightness change is larger than every printed scatter value, or the difference line reports a change.
+- "Wait for another visit to see whether the change repeats." Only when there is a notable change.
 - "Compare the target with the reference stars in the same frames." Only when the sheet says 1 or more reference stars have available scatter.
 - "Look at Subtract to see what is left at the target." Only when there are at least 2 visits.
 - "Switch on Flagged pixels to see whether one sits on the target." Always allowed.
 - "Step through the frames in Blink to see whether one frame stands out." Always allowed.
 - "Switch on Brightest Gaia stars to see whether a catalogue star lies at the target." Always allowed.
-- "Change the colour to see whether the change shows at another wavelength." Only when a change was measured and, when reference-star scatter is printed, the brightness change is larger than every printed scatter value, or the difference line reports a change.
+- "Change the colour to see whether the change shows at another wavelength." Only when there is a notable change.
 - "Change the colour to look at another wavelength." Always allowed.
 Use plain words, no extra headings, lists or markdown.
 

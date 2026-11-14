@@ -148,7 +148,7 @@ describe('round 16 conservative labelled forms', () => {
     it('J3 drops duplicated units', () => {
         expect(keeps('The wavelength is 1.234 micron micron.', sheet('1.00, 1.10'))).toBe(false);
     });
-    it('K1 requires a notable change or a reporting difference line', () => {
+    it('K1 requires a notable change: brightness above the scatter, or a difference line of 3 sigma or more', () => {
         const sentences = ['This is a candidate only.', 'Wait for another visit to see whether the change repeats.', 'Change the colour to see whether the change shows at another wavelength.'];
         const cases: [string, string[], boolean][] = [
             ['two inside scatter', sheet('1.00, 1.01', undefined, '2.0'), false],
@@ -156,6 +156,15 @@ describe('round 16 conservative labelled forms', () => {
             ['median above scatter', sheet('1.00, 1.00, 1.30', '30 percent above it', '5'), true],
             ['no reference stars', sheet('1.00, 1.01'), true],
             ['difference despite flat readings', sheet('1.00, 1.00', undefined, '50', 'strongest pixel 3.4 sigma, brighter there in the later visit'), true],
+            ['3.0 sigma difference despite flat readings', sheet('1.00, 1.00', undefined, '50', 'strongest pixel 3.0 sigma, fainter there in the later visit'), true],
+            ['more than 100 sigma difference', sheet('1.00, 1.00', undefined, '50', 'strongest pixel more than 100 sigma, brighter there in the later visit'), true],
+            ['0.3 sigma difference and flat readings', sheet('1.00, 1.00', undefined, '50', 'strongest pixel 0.3 sigma, brighter there in the later visit'), false],
+            ['2.9 sigma difference and flat readings', sheet('1.00, 1.00', undefined, '50', 'strongest pixel 2.9 sigma, brighter there in the later visit'), false],
+            ['0.3 sigma difference and a change inside the scatter', sheet('1.00, 1.00, 1.01', 'less than 1 percent', '2.0', 'strongest pixel 0.3 sigma, brighter there in the later visit'), false],
+            ['0.3 sigma difference and two readings inside the scatter', sheet('1.00, 1.01', undefined, '2.0', 'strongest pixel 0.3 sigma, brighter there in the later visit'), false],
+            ['0.3 sigma difference but brightness above the scatter', sheet('1.00, 1.00, 1.30', '30 percent above it', '5', 'strongest pixel 0.3 sigma, brighter there in the later visit'), true],
+            ['two readings from zero inside a printed scatter', sheet('0.00, 0.10', undefined, '2.0'), false],
+            ['two readings from below zero: a percent of a negative brightness means nothing', sheet('-0.10, 0.10', undefined, '2.0'), false],
         ];
         for (const [name, source, expected] of cases) {
             for (const [i, sentence] of sentences.entries()) { expect(keeps(sentence, source, i > 0), `${name}: ${sentence}`).toBe(expected); }
@@ -167,8 +176,21 @@ describe('round 16 conservative labelled forms', () => {
         expect(keeps(sentences[0]!, [...cases[0]![1], 'Shift in position: 2.0 arcsec over 10.0 days.'])).toBe(true);
         expect(keeps(sentences[0]!, sheet('1.00, 1.01', undefined, '0.5'))).toBe(true);
     });
+    it('R1 keeps a scatter comparison only after the median sentence it compares', () => {
+        const source = sheet('1.00, 1.00, 1.30', '30 percent above it', '5.0, 6.0');
+        const median = 'The largest change from the median brightness is 30 percent above the median.';
+        const scatter = 'The 2 reference stars scatter by 5.0 and 6.0 percent.';
+        const comparison = 'The change is larger than that scatter.';
+        const note = (trust: string) => `What this shows: The wavelength is 1.234 micron.\nHow far to trust it: ${trust}\nWhat to check next: Change the colour to look at another wavelength.`;
+        const full = checkNote(note(`${median} ${scatter} ${comparison}`), source, { labelled: true }).text;
+        const noMedian = checkNote(note(`${scatter} ${comparison}`), source, { labelled: true }).text;
+        expect(full, 'scatter sentence form').toContain(scatter);
+        expect(full).toContain(comparison);
+        expect(noMedian).toContain(scatter);
+        expect(noMedian).not.toContain(comparison);
+    });
     it('K2 spells out the restrictions in the prompt', () => {
-        for (const instruction of ['Never when the sheet says "at least" or says points were left out.', 'or the sheet has a difference line and it does not say "no change above the noise"', 'copy the whole warning immediately after the difference sentence, in the same paragraph', 'Use only when the sheet has a Largest change line.']) {
+        for (const instruction of ['Never when the sheet says "at least" or says points were left out.', 'or the sheet has a difference line and it does not say "no change above the noise"', 'copy the whole warning immediately after the difference sentence, in the same paragraph', 'Use only when the sheet has a Largest change line.', 'One: the difference line gives 3 sigma or more.', '"Wait for another visit to see whether the change repeats." Only when there is a notable change.', '"Change the colour to see whether the change shows at another wavelength." Only when there is a notable change.', 'Use only if a shift was measured or there is a notable change.']) {
             expect(SYSTEM_PROMPT).toContain(instruction);
         }
     });

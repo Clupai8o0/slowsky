@@ -321,11 +321,13 @@ export function checkNote(text: string, sheet: string[], opts: { labelled?: bool
     const differenceLine = sheet.find((line) => /^Difference image at the target:/i.test(line));
     const caution = differenceLine?.match(/^Difference image at the target: .+?\.\s+(.+\.)$/i)?.[1];
     const changeSeen = Boolean((change && change !== 'less than 1') || (readingValues.length === 2 && Number(readingValues[0]) !== Number(readingValues[1])) || (differenceLine && !/no change above the noise/i.test(differenceLine)));
-    const differenceSeen = Boolean(differenceLine && !/no change above the noise/i.test(differenceLine));
+    // A difference line counts as a notable change only at 3 sigma or more. The bar is ours: a weaker strongest pixel is what noise alone gives.
+    const differenceSigma = differenceLine?.match(/strongest pixel (more than 100|\d+(?:\.\d+)?) sigma/i)?.[1];
+    const differenceNotable = Boolean(differenceSigma && (differenceSigma === 'more than 100' || Number(differenceSigma) >= 3));
     const brightnessSeen = Boolean((change && change !== 'less than 1') || (readingValues.length === 2 && Number(readingValues[0]) !== Number(readingValues[1])));
     const firstReading = Number(readingValues[0]);
-    const changePercent = change ? (change === 'less than 1' ? null : Number(change)) : readingValues.length === 2 && firstReading !== 0 ? Math.abs(Number(readingValues[1]) - firstReading) / Math.abs(firstReading) * 100 : null;
-    const changeNotable = differenceSeen || (brightnessSeen && (!scatterValues.length || (changePercent !== null && changePercent > Math.max(...scatterValues) + 1e-10)));
+    const changePercent = change ? (change === 'less than 1' ? null : Number(change)) : readingValues.length === 2 && firstReading > 0 ? Math.abs(Number(readingValues[1]) - firstReading) / Math.abs(firstReading) * 100 : null;
+    const changeNotable = differenceNotable || (brightnessSeen && (!scatterValues.length || (changePercent !== null && changePercent > Math.max(...scatterValues) + 1e-10)));
     // An endpoint sentence hides a middle reading that lies outside the endpoints.
     const endsHide = readingValues.length > 2 && readingValues.slice(1, -1).map(Number).some((v) => v > Math.max(Number(readingValues[0]), Number(readingValues.at(-1))) || v < Math.min(Number(readingValues[0]), Number(readingValues.at(-1))));
     const fewer = sheet.some((line) => /Points too faint to measure are left out/i.test(line));
