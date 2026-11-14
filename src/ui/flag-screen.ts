@@ -160,9 +160,9 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
             // Each frame has its own brightest pixel. A pair's or mover's ends sit in different visits, so each
             // visit is named with its own spot; two ends in one visit are not told apart.
             const split = ends.length > 1 && new Set(ends.map(end => end.visit)).size === ends.length;
-            const pixel = ends.length === 1 ? 'that frame’s brightest pixel within 12″ of the spot'
-                : split ? 'that frame’s brightest pixel within 12″ of its spot in that visit'
-                    : 'that frame’s brightest pixel within 12″ of at least one of its spots';
+            const pixel = ends.length === 1 ? 'the detector pixel at that frame’s brightest point within 12″ of the spot'
+                : split ? 'the detector pixel at that frame’s brightest point within 12″ of its spot in that visit'
+                    : 'the detector pixel at that frame’s brightest point within 12″ of at least one of its spots';
             const flagged = `In ${where}, the archive flags ${pixel} as OVERFLOW`;
             // Without the finder's `reading` (before round 11) every non-mover line is withdrawn: hiding a sound
             // reading is safer than showing one OVERFLOW may have spoiled. Only a known comparison is named as one.
@@ -212,7 +212,7 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
     const flags = list.length === 1 ? `the archive flag ${list[0]}` : `at least one of these archive flags: ${list.join(', ')}`;
     const dropNote = count === 0 ? undefined
         : `${count === 1 ? '1 candidate is not listed:' : `${count} candidates are not listed: for each,`} in at least one frame of `
-            + (plainDropped ? `a checked visit, that frame’s brightest pixel within 12″ of its spot carries ${flags}.`
-                : `the visit where its spot${two ? ', or one of its two spots,' : ''} shows more light, that frame’s brightest pixel within 12″ of that spot carries ${flags}.`);
+            + (plainDropped ? `a checked visit, the detector pixel at that frame’s brightest point within 12″ of its spot carries ${flags}.`
+                : `the visit where its spot${two ? ', or one of its two spots,' : ''} shows more light, the detector pixel at that frame’s brightest point within 12″ of that spot carries ${flags}.`);
     return { kept, dropNote, allUnread, lead };
 }

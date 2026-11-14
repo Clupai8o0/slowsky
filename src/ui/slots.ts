@@ -285,10 +285,13 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
     const reader = deps.reader ?? createRangeReader({ fetch: deps.fetcher });
     const shown = new WeakMap<HTMLElement, string>();
     let current: SkyResult | null = null;
+    let currentSource: SlotView['source'] | null = null;
     let resultView: ChangesView | null = null;
     let controller = new AbortController();
-    // Finished panels by result, so coming back to a result does not read the archive again.
-    const done = new WeakMap<SkyResult, ChangesView | null>();
+    // Finished panels by result, so coming back to a result does not read the archive again. A saved view has
+    // its own store: a list worked out from a live read must never show on a saved copy of the same result.
+    const doneLive = new WeakMap<SkyResult, ChangesView | null>();
+    const doneSaved = new WeakMap<SkyResult, ChangesView | null>();
     // Results whose full list is open ("Show N more"), and the boxes that already listen for that button.
     const open = new WeakSet<SkyResult>();
     const wired = new WeakSet<HTMLElement>();
@@ -334,15 +337,16 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         controller = new AbortController();
         const reset = controller.signal;
         current = result;
-        if (done.has(result)) {
-            resultView = done.get(result) ?? null;
-            return;
-        }
+        currentSource = source;
         const saved = source === 'snapshot';
         if (saved && !deps.savedList) {
             // No finder run and no marks: an unchecked list would be longer than the checked one a live read gives.
             resultView = { candidates: [], notes: [SAVED_NOTE], ran: false };
-            done.set(result, resultView);
+            return;
+        }
+        const done = saved ? doneSaved : doneLive;
+        if (done.has(result)) {
+            resultView = done.get(result) ?? null;
             return;
         }
         const first = changesFor(result, deps.find);
@@ -430,9 +434,10 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         if (view.source === 'demo') {
             controller.abort();
             current = null;
+            currentSource = null;
             return false;
         }
-        if (current !== view.result) {
+        if (current !== view.result || currentSource !== view.source) {
             start(view.result, view.source);
         }
         const v = resultView;
