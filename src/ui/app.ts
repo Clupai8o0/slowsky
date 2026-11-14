@@ -191,10 +191,11 @@ function motionSvg(pmRa: number, pmDec: number): { svg: string; text: string }
     const tx = c + ux * len;
     const ty = c + uy * len;
     const head = (k: number) => `${(tx - ux * 6 + k * uy * 4).toFixed(1)} ${(ty - uy * 6 - k * ux * 4).toFixed(1)}`;
-    const svg = `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" role="img" aria-label="Moves ${pm.toFixed(1)} arcseconds a year toward the ${way}">
+    // N and E sit just outside the frame, at full label size, so they never cover the arrow.
+    const svg = `<svg viewBox="-16 -16 ${S + 16} ${S + 16}" width="${S + 16}" height="${S + 16}" role="img" aria-label="Moves ${pm.toFixed(1)} arcseconds a year toward the ${way}">
 <rect x=".5" y=".5" width="${S - 1}" height="${S - 1}" rx="2" class="fr"/>
 <path d="M${c} 8V${S - 8}M8 ${c}H${S - 8}" class="eq"/>
-<text x="${c}" y="7" class="lb">N</text><text x="5" y="${c + 3}" class="lb">E</text>
+<text x="${c}" y="-5" class="lb">N</text><text x="-8" y="${c + 4}" class="lb">E</text>
 <path d="M${c} ${c}L${tx.toFixed(1)} ${ty.toFixed(1)}" class="ar"/>
 <path d="M${head(1)}L${tx.toFixed(1)} ${ty.toFixed(1)}L${head(-1)}" class="ar"/>
 <rect x="${c - 2}" y="${c - 2}" width="4" height="4" rx="1" class="me"/>
@@ -490,7 +491,21 @@ export function mount(root: HTMLElement): void
         st.lambda = undefined;
         st.live = false;
         st.label = COPY[id].display;
+        swapText();
         void load();
+    }
+
+    // One beat of data-swap: styles.css fades the left panel's notes in as they change (opacity only).
+    let swapTimer = 0;
+    function swapText(): void
+    {
+        delete root.dataset.swap;
+        void root.offsetWidth;
+        root.dataset.swap = '';
+        clearTimeout(swapTimer);
+        swapTimer = window.setTimeout(() => {
+            delete root.dataset.swap;
+        }, 220);
     }
 
     function setSpot(center: SkyCoord, label: string): void
@@ -499,6 +514,7 @@ export function mount(root: HTMLElement): void
         st.center = center;
         st.label = label;
         st.lambda = undefined;
+        swapText();
         void load();
     }
 
@@ -533,9 +549,7 @@ export function mount(root: HTMLElement): void
         stretch = null;
         composed = {};
         strip.innerHTML = '';
-        ov.innerHTML = '';
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        paintGlow();
+        // The last picture and its rings stay in place, dimmed (styles.css [data-loading]), until the new frames arrive.
         ref<HTMLElement>('dl').innerHTML = '';
         ref<HTMLElement>('notes').innerHTML = '';
         lamInput.disabled = true;
@@ -647,6 +661,7 @@ export function mount(root: HTMLElement): void
         lamInput.disabled = false;
         if (!res || res.frames.length === 0) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ov.innerHTML = '';
             paintGlow();
             renderText();
             // Frames exist, but none could be used: blank in this view, off the detector, or the spot at its edge.
@@ -728,7 +743,7 @@ export function mount(root: HTMLElement): void
         bind('stage', `${STAGE_TEXT[p.stage]}${p.total > 1 ? ` · ${Math.min(p.done + 1, n)} of ${n}` : ''}`);
         const stages = ['search', 'headers', 'pixels', 'regrid'];
         const frac = (stages.indexOf(p.stage) + Math.min(p.done / n, 1)) / stages.length;
-        ref<HTMLElement>('prog').style.width = `${Math.round(frac * 100)}%`;
+        ref<HTMLElement>('prog').style.setProperty('--p', frac.toFixed(3)); // styles.css fills the line by scaleX
     }
 
     // ---------- drawing ----------

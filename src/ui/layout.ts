@@ -13,7 +13,9 @@ const FOLDED_W = 0; // a folded rail and its gutter take no width (--lcol, --lg 
 // Side by side (styles.css, .sk[data-side]): the controls column and the gap beside the sky.
 const CTRL_W = 300;
 const CTRL_GAP = 32;
-const ANIM_MS = 320; // a little over the 280 ms grid transition
+const ANIM_MS = 260; // a little over the 240 ms enter in styles.css (sk-in-l, sk-in-r)
+const MOVE_MS = 220; // the centre settling into its new place
+const MOVE_EASE = 'cubic-bezier(.5, 0, .1, 1)'; // --ease-move in styles.css
 
 function read(): Saved
 {
@@ -139,10 +141,9 @@ export function initLayout(root: HTMLElement): Layout
             - (folded.left ? 0 : gutter + current('left'))
             - (folded.right ? 0 : gutter + current('right')));
         const short = vh <= 820;
-        const focus = folded.left && folded.right;
-        // Mirrors --w in styles.css: the sky's size when the controls sit under it.
+        // Mirrors --w in styles.css: the sky's size when the controls sit under it (--under is set there).
         const floor = short ? 320 : 360;
-        const under = short ? (focus ? 374 : 404) : (focus ? 362 : 398);
+        const under = parseFloat(cs.getPropertyValue('--under')) || 436;
         const stacked = Math.min(midW, Math.max(floor, vh - under));
         const top = sky.getBoundingClientRect().top - root.getBoundingClientRect().top;
         const side = Math.floor(Math.min(vh - parseFloat(cs.paddingBottom) - top, midW - CTRL_W - CTRL_GAP));
@@ -155,11 +156,37 @@ export function initLayout(root: HTMLElement): Layout
         }
     }
 
-    // While a rail opens or shuts, its content keeps its width (styles.css [data-anim]) instead of rewrapping.
-    function animate(): void
+    // The columns snap to their new widths at once (no grid animation, so nothing re-lays-out every frame). An opened
+    // rail's content fades in from its side (styles.css [data-anim]), and the centre glides from where it was to
+    // where it is now, by transform only (FLIP).
+    function animate(opening: Side | 'both' | null, change: () => void): void
     {
-        root.dataset.anim = '';
+        const watch = root.querySelector<HTMLElement>('.sk-m-watch');
+        const before = sky?.getBoundingClientRect();
+        change();
         clearTimeout(animTimer);
+        if (opening) {
+            root.dataset.anim = `${opening}-open`;
+        } else {
+            delete root.dataset.anim;
+        }
+        const after = sky?.getBoundingClientRect();
+        const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (watch && before && after && after.width > 0 && !still && typeof watch.animate === 'function') {
+            const s = before.width / after.width;
+            const box = watch.getBoundingClientRect();
+            // Map the sky's new box onto its old one; the rest of the centre rides along.
+            const ox = after.left - box.left;
+            const oy = after.top - box.top;
+            const dx = before.left - after.left;
+            const dy = before.top - after.top;
+            if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || Math.abs(s - 1) > 0.01) {
+                watch.animate([
+                    { transformOrigin: `${ox}px ${oy}px`, transform: `translate(${dx}px, ${dy}px) scale(${s})` },
+                    { transformOrigin: `${ox}px ${oy}px`, transform: 'none' },
+                ], { duration: MOVE_MS, easing: MOVE_EASE });
+            }
+        }
         animTimer = window.setTimeout(() => {
             delete root.dataset.anim;
         }, ANIM_MS);
@@ -172,21 +199,24 @@ export function initLayout(root: HTMLElement): Layout
 
     function fold(s: Side, v: boolean): void
     {
-        animate();
-        folded[s] = v;
-        fit();
-        apply();
+        animate(v ? null : s, () => {
+            folded[s] = v;
+            fit();
+            apply();
+        });
         save();
     }
 
     function toggleFocus(): void
     {
         const on = !(folded.left && folded.right);
-        animate();
-        folded.left = on;
-        folded.right = on;
-        fit();
-        apply();
+        const opening = on ? null : folded.left && folded.right ? 'both' : folded.left ? 'left' : folded.right ? 'right' : null;
+        animate(opening, () => {
+            folded.left = on;
+            folded.right = on;
+            fit();
+            apply();
+        });
         save();
     }
 
