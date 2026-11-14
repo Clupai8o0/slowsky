@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { blankRadius, HaloError, haloCurve, ringAperture, ringFor } from '../src/lib/halo';
 import type { RingOptions } from '../src/lib/halo';
-import { lightCurve } from '../src/lib/photometry';
+import { aperture, lightCurve, resampleNoiseScale } from '../src/lib/photometry';
 import type { ApertureOptions } from '../src/lib/photometry';
 import type { PixelCoord, RegriddedFrame } from '../src/lib/types';
 
@@ -184,6 +184,48 @@ describe('blankRadius', () => {
 });
 
 describe('ringAperture', () => {
+    it('propagates the noise weights of fitted missing pixels', () => {
+        const data = new Float32Array(width * height).fill(10);
+        const opts = { ...options, binWidth: 2, noiseScale: 2.8 };
+        const ring = indices(target, 6, 10);
+        ring.forEach((offset, i) => { data[offset] = i % 10 === 0 ? NaN : 20; });
+        indices(target, 14, 18).forEach((offset, i) => { data[offset] = 9 + i % 3; });
+        const measured = ringAperture(data, width, height, target, opts);
+        expect(measured.valid).toBe(true);
+        // Measure each real pixel's influence on the fitted sum instead of duplicating the fit formula.
+        let squaredWeights = 0;
+        for (const offset of ring.filter((offset) => Number.isFinite(data[offset]))) {
+            data[offset]! += 1;
+            squaredWeights += (ringAperture(data, width, height, target, opts).sum - measured.sum) ** 2;
+            data[offset]! -= 1;
+        }
+        const skyVariance = Math.PI / 2 * ring.length ** 2 / measured.nSky;
+        const expected = measured.backgroundSigma * Math.sqrt(squaredWeights + skyVariance) * opts.noiseScale;
+        expect(measured.noise).toBeCloseTo(expected, 8);
+    });
+
+    it.each([1, 2, 5])('rejects a sliver bin with only %s real pixels to fit', (count) => {
+        const at = { x: 40.3, y: 39.6 };
+        const f = steepFrame(at);
+        const sliver = indices(at, 9, 9.09);
+        expect(sliver).toHaveLength(6);
+        sliver.slice(count).forEach((offset) => { f.data[offset] = NaN; });
+        const measured = ringAperture(f.data, width, height, at,
+            { ...options, ringOut: 9.09, binWidth: 1, minFraction: 0.1 });
+        expect(measured.valid).toBe(false);
+        expect(measured.sum).toBeNaN();
+    });
+
+    it('rejects a fill fit with eight pixels but no radius spread', () => {
+        const at = { x: 40.5, y: 40.5 };
+        const f = steepFrame(at);
+        const ring = indices(at, 9, 10);
+        const finite = ring.filter((offset) => Math.hypot(offset % width - at.x, Math.floor(offset / width) - at.y) < 9.2).slice(0, 8);
+        expect(finite).toHaveLength(8);
+        ring.filter((offset) => !finite.includes(offset)).forEach((offset) => { f.data[offset] = NaN; });
+        expect(ringAperture(f.data, width, height, at, { ...options, binWidth: 1, minFraction: 0.1 }).valid).toBe(false);
+    });
+
     it('checks containment at all boundaries including exact outer-radius equality', () => {
         const data = new Float32Array(400).fill(10);
         const opts = { ringIn: 1, ringOut: 3, skyIn: 3, skyOut: 7 };
@@ -311,6 +353,7 @@ describe('ringAperture', () => {
         { skyIn: 9 }, { skyIn: NaN }, { skyOut: 14 }, { skyOut: Infinity },
         { minFraction: 0 }, { minFraction: 1.01 }, { minFraction: NaN },
         { binWidth: 0 }, { binWidth: -1 }, { binWidth: NaN }, { binWidth: Infinity },
+        { noiseScale: 0 }, { noiseScale: 0.9 }, { noiseScale: NaN }, { noiseScale: Infinity },
     ])('throws HaloError for bad options %j', (bad) => {
         expect(() => ringAperture(frame(0).data, width, height, target, { ...options, ...bad })).toThrow(HaloError);
     });
@@ -329,7 +372,7 @@ describe('ringAperture', () => {
         expect(result.sum).toBe(0);
     });
 
-    it('accepts exactly 80 percent finite pixels and uses the full ring count for SNR', () => {
+    it('accepts exactly 80 percent finite pixels and includes fill and sky noise', () => {
         const opts = { ringIn: 2, ringOut: 5, skyIn: 6, skyOut: 8 };
         const ring = indices(target, opts.ringIn, opts.ringOut);
         expect(ring.length % 5).toBe(0);
@@ -339,11 +382,25 @@ describe('ringAperture', () => {
         const result = ringAperture(data, width, height, target, opts);
         expect(result.valid).toBe(true);
         expect(result.nPix / ring.length).toBe(0.8);
-        expect(result.snr).toBeCloseTo(10 * Math.sqrt(60) / 1.4826, 10);
+        const noise = 1.4826 * Math.sqrt(60 * (1 + Math.PI / 2 * 60 / result.nSky));
+        expect(result.noise).toBeGreaterThan(noise);
+        expect(result.snr).toBeCloseTo(600 / result.noise, 10);
     });
 });
 
 describe('ringFor', () => {
+    it.each([0, 2, 4, 8])('chooses a ring from fitting frames and invalidates the frame at x=%s', (x) => {
+        const positions = [target, { x, y: 40 }];
+        const frames = positions.map((at, i) => frame(i, 1, i === 0 ? 2.2 : 6, at));
+        const chosen = ringFor(frames, (_f, i) => positions[i]!);
+        expect(chosen).toEqual(ringFor([frames[0]!], target));
+        const curve = haloCurve(frames, (_f, i) => positions[i]!, refs,
+            { ...options, ...chosen, skyIn: chosen.ringOut + 2, skyOut: chosen.ringOut + 6 });
+        expect(curve.points.map((point) => point.valid)).toEqual([true, false]);
+        expect(curve.points[1]!.relative).toBeNaN();
+        expect(() => ringFor([frames[1]!], positions[1]!)).toThrow(HaloError);
+    });
+
     it('reports missing frames and rings that do not fit any selected frame', () => {
         expect(() => ringFor([], target)).toThrow('No frames given');
         expect(() => ringFor([frame(0)], target, { lambda: 3 })).toThrow('No frame at this wavelength');
@@ -372,7 +429,8 @@ describe('ringFor', () => {
         expect(() => ringFor([frame(0)], target)).toThrow(HaloError);
         const blank = frame(1);
         blank.data.fill(Number.NaN);
-        expect(() => ringFor([frame(0, 1, 2.2), blank], target)).toThrow(HaloError);
+        expect(() => ringFor([blank], target)).toThrow(HaloError);
+        expect(ringFor([frame(0, 1, 2.2), blank], target)).toEqual(ringFor([frame(0, 1, 2.2)], target));
         for (const opts of [{ margin: -1 }, { margin: NaN }, { thickness: 0 }, { thickness: Infinity }]) {
             expect(() => ringFor([frame(0, 1, 2.2)], target, opts)).toThrow(HaloError);
         }
@@ -424,6 +482,128 @@ describe('ringFor', () => {
 });
 
 describe('haloCurve', () => {
+    it.each([0, -1])('rejects an individual comparison with nonpositive net signal %s', (signal) => {
+        const f = frame(0);
+        const ref = refs[1]!;
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                if (Math.hypot(x - ref.x, y - ref.y) <= 3) {
+                    f.data[y * width + x] = 3 + signal;
+                }
+            }
+        }
+        const point = haloCurve([f], target, refs, options).points[0]!;
+        expect(point.refSum).toBeGreaterThan(0);
+        expect(point.valid).toBe(false);
+        expect(point.relative).toBeNaN();
+    });
+
+    it.each([0.125, 0.25, 0.5])('exposes position sensitivity at an offset of %s native pixels', (offsetNative) => {
+        const catalog = { x: 40.3, y: 39.6 };
+        const ring = ringFor([steepFrame(catalog)], catalog);
+        const opts = { ...options, ...ring, skyIn: ring.ringOut + 2, skyOut: ring.ringOut + 6 };
+        for (const angle of [0, Math.PI / 4, Math.PI / 2, Math.PI, 3 * Math.PI / 2]) {
+            const at = {
+                x: catalog.x + 2 * offsetNative * Math.cos(angle),
+                y: catalog.y + 2 * offsetNative * Math.sin(angle),
+            };
+            const f = steepFrame(at);
+            const truth = haloCurve([f], at, refs, opts).points[0]!.target.sum;
+            const point = haloCurve([f], catalog, refs, opts).points[0]!;
+            const bias = Math.abs(point.target.sum / truth - 1);
+            expect(point.valid).toBe(true);
+            if (angle === 0) {
+                expect(bias).toBeGreaterThan(0.02);
+                expect(point.target.noise / truth).toBeLessThan(bias);
+            }
+            expect(bias <= 0.02 || point.caveats?.some((text) => /position.*sky.noise/i.test(text))).toBe(true);
+        }
+    });
+
+    it('rejects a native half-pixel sliver bin after a single lost pixel', () => {
+        const at = { x: 40.3, y: 39.6 };
+        const f = steepFrame(at);
+        f.data[indices(at, 9, 9.09)[0]!] = NaN;
+        expect(haloCurve([f], at, refs, { ...options, ringOut: 9.09 }).points[0]!.valid).toBe(false);
+    });
+
+    it.each([2, 3])('refuses reversed frame times even at wavelength %s', (lambda) => {
+        const f = frame(0, 1, 2.2, target, lambda);
+        f.frame.tMax = f.frame.tMin - 1;
+        for (const measure of [
+            () => haloCurve([f], target, refs, { ...options, lambda: 2 }),
+            () => ringFor([f], target, { lambda: 2 }),
+        ]) {
+            expect(measure).toThrow(HaloError);
+            expect(measure).toThrow('Frame end must not be before its start');
+        }
+    });
+
+    it.each([0, -1, NaN, Infinity, -Infinity])('reports pixelArcsec=%s as HaloError before wavelength selection', (pixelArcsec) => {
+        const f = frame(0, 1, 2.2, target, 3);
+        f.grid.pixelArcsec = pixelArcsec;
+        for (const measure of [
+            () => haloCurve([f], target, refs, { ...options, lambda: 2 }),
+            () => ringFor([f], target, { lambda: 2 }),
+        ]) {
+            expect(measure).toThrow(HaloError);
+            expect(measure).toThrow('Pixel size must be finite and positive');
+        }
+    });
+
+    it.each([0, -1, 0.99, NaN, Infinity, -Infinity])('rejects minSnr=%s below the finite floor of 1', (minSnr) => {
+        expect(() => haloCurve([frame(0)], target, refs, { ...options, minSnr })).toThrow(HaloError);
+    });
+
+    it('gates faint rings on scaled SNR, including the threshold equality', () => {
+        const f = frame(0);
+        indices(target, 6, 10).forEach((offset) => { f.data[offset] = 3.5; });
+        indices(target, 14, 18).forEach((offset, i) => { f.data[offset] = 2 + i % 3; });
+        const point = haloCurve([f], target, refs, options).points[0]!;
+        expect(point.valid).toBe(true);
+        expect(point.target.snr).toBeGreaterThan(1);
+        expect(point.target.snr).toBeLessThan(2);
+        expect(haloCurve([f], target, refs, { ...options, minSnr: 2 }).points[0]!.valid).toBe(false);
+        expect(haloCurve([f], target, refs, { ...options, minSnr: point.target.snr }).points[0]!.valid).toBe(true);
+        indices(target, 6, 10).forEach((offset) => { f.data[offset] = 3.1; });
+        expect(haloCurve([f], target, refs, options).points[0]!.valid).toBe(false);
+    });
+
+    it('rejects a ring whose sky noise cannot give a positive SNR', () => {
+        const f = frame(0);
+        indices(target, 14, 18).forEach((offset) => { f.data[offset] = 3; });
+        expect(haloCurve([f], target, refs, options).points[0]!.valid).toBe(false);
+    });
+
+    it.each([undefined, 5])('propagates comparison-star noise with noiseScale=%s', (noiseScale) => {
+        const f = frame(0);
+        for (const ref of refs) {
+            indices(ref, 6, 10).forEach((offset, i) => { f.data[offset] = 2 + i % 3; });
+        }
+        const point = haloCurve([f], target, refs, { ...options, noiseScale }).points[0]!;
+        const measuredRefs = refs.map((ref) => aperture(f.data, width, height, ref,
+            { ...options, noiseScale: noiseScale ?? resampleNoiseScale(f.grid.pixelArcsec) }));
+        const refNoise = Math.hypot(...measuredRefs.map((ref) => ref.noise));
+        expect(point.valid).toBe(true);
+        expect(point.relativeNoise).toBeCloseTo(point.relative * Math.hypot(
+            point.target.noise / point.target.sum, refNoise / point.refSum,
+        ), 12);
+        expect(Number.isFinite(point.relativeNoise)).toBe(true);
+    });
+
+    it.each([6.15, 3.075, 1.5375])('scales ring noise and sky-level uncertainty on a %s arcsec grid', (pixelArcsec) => {
+        const f = frame(0);
+        f.grid.pixelArcsec = pixelArcsec;
+        indices(target, 14, 18).forEach((offset, i) => { f.data[offset] = 2 + i % 3; });
+        const measured = haloCurve([f], target, refs, options).points[0]!.target;
+        const count = indices(target, 6, 10).length;
+        const expected = measured.backgroundSigma * Math.sqrt(count * (1 + Math.PI / 2 * count / measured.nSky));
+        expect(measured.noise).toBeCloseTo(expected * resampleNoiseScale(pixelArcsec), 10);
+        expect(measured.snr).toBeCloseTo(measured.sum / measured.noise, 10);
+        const explicit = haloCurve([f], target, refs, { ...options, noiseScale: 7 }).points[0]!.target;
+        expect(explicit.noise).toBeCloseTo(expected * 7, 10);
+    });
+
     it.each([0, 1, 2, 3])('rejects or corrects disconnected blank pattern %i', (kind) => {
         const at = { x: 40.5, y: 40.5 };
         const baseline = frame(0, 1, 0, at);
@@ -516,7 +696,7 @@ describe('haloCurve', () => {
         });
         for (const frames of [[zero], [negative, positive]]) {
             for (const point of haloCurve(frames, target, refs, options).points) {
-                expect(!point.valid || [point.relative, point.ratio, point.mjd].every(Number.isFinite)).toBe(true);
+                expect(!point.valid || [point.relative, point.relativeNoise, point.target.noise, point.ratio, point.mjd].every(Number.isFinite)).toBe(true);
             }
             expect(haloCurve(frames, target, refs, options).points[0]!.valid).toBe(false);
         }
@@ -537,6 +717,12 @@ describe('haloCurve', () => {
         expect(curve.points[1]!.target.sum).toBeNaN();
         expect(curve.points[1]!.target.snr).toBe(0);
         const chosen = ringFor(frames, target);
+        // A perfectly flat, truncated synthetic sky cannot support an SNR estimate.
+        for (const f of frames) {
+            indices(target, chosen.ringOut + 2, chosen.ringOut + 6).forEach((offset, i) => {
+                f.data[offset] = 3 + (i % 3 - 1) * 1e-4;
+            });
+        }
         const safe = haloCurve(frames, target, refs, { ...options, ...chosen, skyIn: chosen.ringOut + 2, skyOut: chosen.ringOut + 6 });
         expect(safe.points.every((point) => point.valid)).toBe(true);
         safe.points.forEach((point, i) => {

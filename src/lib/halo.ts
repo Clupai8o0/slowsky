@@ -1,5 +1,5 @@
 import type { PixelCoord, RegriddedFrame } from './types';
-import { aperture } from './photometry';
+import { aperture, resampleNoiseScale } from './photometry';
 import type { ApertureOptions, ApertureResult, LightCurve, LightCurvePoint } from './photometry';
 
 const NATIVE_PIXEL_ARCSEC = 6.15;
@@ -7,6 +7,23 @@ const NATIVE_PIXEL_ARCSEC = 6.15;
 const RING_BIN_NATIVE = 0.5;
 
 type RingBin = { all: number; finite: number; total: number; sr: number; srr: number; svr: number; mr: number };
+
+export interface HaloCurvePoint extends LightCurvePoint {
+    /** Propagated target and comparison sky noise on relative brightness, conditional on the median baseline. */
+    relativeNoise: number;
+    /** Systematic limitations that must accompany any displayed point and its sky-noise error bar. */
+    caveats: string[];
+}
+
+export interface HaloCurve extends LightCurve {
+    points: HaloCurvePoint[];
+}
+
+export type HaloCurveOptions = RingOptions & ApertureOptions & WavelengthOptions & {
+    seed?: number;
+    /** Minimum ring sky-noise SNR for a valid curve point; finite and >= 1, default 1. */
+    minSnr?: number;
+};
 
 export class HaloError extends Error {
     constructor(message: string)
@@ -23,6 +40,8 @@ export interface RingOptions {
     skyOut?: number;
     minFraction?: number;
     binWidth?: number;
+    /** Multiplier on sky noise; defaults to 1 here and the grid's resampling scale in haloCurve. */
+    noiseScale?: number;
 }
 
 interface BlankOptions {
@@ -177,13 +196,17 @@ function checkRingOptions(opts: RingOptions): Required<RingOptions>
     const skyOut = opts.skyOut ?? skyIn + 4;
     const minFraction = opts.minFraction ?? 0.8;
     const binWidth = opts.binWidth ?? ringOut - ringIn;
+    const noiseScale = opts.noiseScale ?? 1;
     if (!Number.isFinite(ringIn) || ringIn <= 0 || !Number.isFinite(ringOut) || ringOut <= ringIn
         || !Number.isFinite(skyIn) || skyIn < ringOut || !Number.isFinite(skyOut) || skyOut <= skyIn
         || !Number.isFinite(minFraction) || minFraction <= 0 || minFraction > 1
         || !Number.isFinite(binWidth) || binWidth <= 0) {
         throw new HaloError('Require finite ordered ring/sky radii and 0 < minFraction <= 1');
     }
-    return { ringIn, ringOut, skyIn, skyOut, minFraction, binWidth };
+    if (!Number.isFinite(noiseScale) || noiseScale < 1) {
+        throw new HaloError('Noise scale must be finite and at least 1');
+    }
+    return { ringIn, ringOut, skyIn, skyOut, minFraction, binWidth, noiseScale };
 }
 
 function ringContained(width: number, height: number, at: PixelCoord, ringOut: number): boolean
@@ -206,8 +229,30 @@ function binSum(bin: RingBin): number
     const meanR = bin.sr / bin.finite;
     const meanV = bin.total / bin.finite;
     const spread = bin.srr - bin.finite * meanR * meanR;
-    const slope = missing > 0 && spread > 1e-9 * bin.finite ? (bin.svr - bin.finite * meanR * meanV) / spread : 0;
+    const slope = missing > 0 ? (bin.svr - bin.finite * meanR * meanV) / spread : 0;
     return bin.total + missing * meanV + slope * (bin.mr - missing * meanR);
+}
+
+function canFillBin(bin: RingBin, binWidth: number): boolean
+{
+    if (bin.all === bin.finite) {
+        return true;
+    }
+    // Fit only with >= 8 real pixels and a radius standard deviation >= 10% of the bin width.
+    const spread = bin.srr / bin.finite - (bin.sr / bin.finite) ** 2;
+    return bin.finite >= 8 && spread > 0 && spread >= (0.1 * binWidth) ** 2;
+}
+
+function binNoisePixels(bin: RingBin): number
+{
+    if (bin.all === bin.finite) {
+        return bin.all;
+    }
+    const meanR = bin.sr / bin.finite;
+    const spread = bin.srr - bin.finite * meanR * meanR;
+    const missingRadius = bin.mr - (bin.all - bin.finite) * meanR;
+    // Sum of squared linear-fit weights, including the leverage of the missing radii.
+    return bin.all ** 2 / bin.finite + missingRadius ** 2 / spread;
 }
 
 // True when a blank area that starts inside ringIn reaches the ring's pixel footprints.
@@ -226,7 +271,7 @@ export function ringAperture(
     opts: RingOptions,
 ): ApertureResult
 {
-    const { ringIn, ringOut, skyIn, skyOut, minFraction, binWidth } = checkRingOptions(opts);
+    const { ringIn, ringOut, skyIn, skyOut, minFraction, binWidth, noiseScale } = checkRingOptions(opts);
     checkImage(data, width, height);
     if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) {
         return {
@@ -270,13 +315,13 @@ export function ringAperture(
     const background = median(sky);
     const backgroundSigma = 1.4826 * median(sky.map((value) => Math.abs(value - background)));
     const valid = ringContained(width, height, at, ringOut) && allRing > 0 && sky.length >= 8
-        && [...bins.values()].every((bin) => bin.finite / bin.all >= minFraction);
+        && [...bins.values()].every((bin) => bin.finite / bin.all >= minFraction && canFillBin(bin, binWidth));
     const sum = valid ? [...bins.values()].reduce((total, bin) => total + binSum(bin), 0)
         - background * allRing : Number.NaN;
-    // Not yet honest: this leaves out the shared noise of resampled pixels (RESAMPLE_NOISE_FACTOR in
-    // photometry.ts) and the sky-level term. Fix before the module is shown on the page.
-    const noise = backgroundSigma * Math.sqrt(allRing);
-    const snr = valid && backgroundSigma > 0 ? sum / noise : 0;
+    // The sky median is shared by every ring pixel, just as in aperture().
+    const noisePixels = valid ? [...bins.values()].reduce((total, bin) => total + binNoisePixels(bin), 0) : Number.NaN;
+    const noise = backgroundSigma * Math.sqrt(noisePixels + Math.PI / 2 * allRing ** 2 / sky.length) * noiseScale;
+    const snr = valid && Number.isFinite(noise) && noise > 0 ? sum / noise : 0;
     return { valid, sum, background, backgroundSigma, nPix, nSky: sky.length, noise, snr };
 }
 
@@ -302,6 +347,9 @@ function checkFrames(frames: RegriddedFrame[]): void
 {
     const grid = frames[0]?.grid;
     for (const f of frames) {
+        if (!Number.isFinite(f.grid.pixelArcsec) || f.grid.pixelArcsec <= 0) {
+            throw new HaloError('Pixel size must be finite and positive');
+        }
         if (grid && (f.grid.width !== grid.width || f.grid.height !== grid.height
             || f.grid.pixelArcsec !== grid.pixelArcsec)) {
             throw new HaloError('All frames must have matching width, height and pixelArcsec');
@@ -309,6 +357,9 @@ function checkFrames(frames: RegriddedFrame[]): void
         checkImage(f.data, f.grid.width, f.grid.height);
         if (!Number.isFinite(f.frame.tMin) || !Number.isFinite(f.frame.tMax)) {
             throw new HaloError('Frame times must be finite');
+        }
+        if (f.frame.tMax < f.frame.tMin) {
+            throw new HaloError('Frame end must not be before its start');
         }
     }
 }
@@ -323,10 +374,7 @@ export function ringFor(
     if (frames.length === 0) {
         throw new HaloError('No frames given');
     }
-    const pixelArcsec = frames[0]?.grid.pixelArcsec;
-    if (pixelArcsec === undefined || !Number.isFinite(pixelArcsec) || pixelArcsec <= 0) {
-        throw new HaloError('Require frames with a positive finite pixel scale');
-    }
+    const pixelArcsec = frames[0]!.grid.pixelArcsec;
     const native = NATIVE_PIXEL_ARCSEC / pixelArcsec;
     const margin = opts.margin ?? 2 * native;
     const thickness = opts.thickness ?? 3 * native;
@@ -343,13 +391,17 @@ export function ringFor(
     const locations: { frame: RegriddedFrame; at: PixelCoord }[] = [];
     selected.forEach(({ frame: f, index: i }) => {
         const at = typeof target === 'function' ? target(f, i) : target;
-        locations.push({ frame: f, at });
         const blank = blankRadius(f.data, f.grid.width, f.grid.height, at, blankOpts);
-        if (blank.touchesLimit) {
-            throw new HaloError('Blank region reaches the search limit');
+        // An unbounded core or a ring that cannot fit this frame cannot set the common ring.
+        if (blank.touchesLimit || !ringContained(f.grid.width, f.grid.height, at, blank.radius + margin + thickness)) {
+            return;
         }
+        locations.push({ frame: f, at });
         largest = Math.max(largest, blank.radius);
     });
+    if (locations.length === 0) {
+        throw new HaloError('The ring does not fit in the picture: use a wider view');
+    }
     if (largest === 0) {
         throw new HaloError('No frame has a blank centre');
     }
@@ -371,10 +423,14 @@ export function haloCurve(
     frames: RegriddedFrame[],
     target: PixelCoord | ((f: RegriddedFrame, i: number) => PixelCoord),
     refs: PixelCoord[],
-    opts: RingOptions & ApertureOptions & WavelengthOptions & { seed?: number },
-): LightCurve
+    opts: HaloCurveOptions,
+): HaloCurve
 {
     checkRingOptions(opts);
+    const minSnr = opts.minSnr ?? 1;
+    if (!Number.isFinite(minSnr) || minSnr < 1) {
+        throw new HaloError('Minimum SNR must be finite and at least 1');
+    }
     if (refs.length === 0) {
         throw new HaloError('At least one reference star is required');
     }
@@ -391,12 +447,13 @@ export function haloCurve(
     if (Number.isNaN(reference)) {
         return { points: [], dropped: frames.length, refScatter: [], lambda: Number.NaN };
     }
-    const points: LightCurvePoint[] = [];
+    const points: HaloCurvePoint[] = [];
     const refRatios: number[][] = refs.length >= 2 ? refs.map(() => []) : [];
     for (const { frame: f, index } of kept) {
         const at = typeof target === 'function' ? target(f, index) : target;
+        const noiseScale = opts.noiseScale ?? resampleNoiseScale(f.grid.pixelArcsec);
         const measured = ringAperture(f.data, f.grid.width, f.grid.height, at,
-            { ...opts, binWidth: RING_BIN_NATIVE * NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec });
+            { ...opts, noiseScale, binWidth: RING_BIN_NATIVE * NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec });
         if (Number.isFinite(at.x) && Number.isFinite(at.y)) {
             if (blankInRing(f, at, opts.ringIn, opts.ringOut)) {
                 measured.valid = false;
@@ -404,15 +461,22 @@ export function haloCurve(
                 measured.snr = 0;
             }
         }
-        const referenceResults = refs.map((ref) => aperture(f.data, f.grid.width, f.grid.height, ref, opts));
+        const referenceResults = refs.map((ref) => aperture(f.data, f.grid.width, f.grid.height, ref, { ...opts, noiseScale }));
         const refSum = referenceResults.reduce((sum, ref) => sum + ref.sum, 0);
         const ratio = measured.sum / refSum;
+        const refNoise = Math.hypot(...referenceResults.map((ref) => ref.noise));
+        const ratioNoise = Math.hypot(measured.noise / refSum, ratio * (refNoise / refSum));
         const mjd = f.frame.tMin / 2 + f.frame.tMax / 2;
-        const valid = measured.valid && measured.sum > 0 && referenceResults.every((ref) => ref.valid)
-            && refSum > 0 && Number.isFinite(ratio) && Number.isFinite(mjd);
+        const valid = measured.valid && measured.sum > 0 && measured.snr >= minSnr && Number.isFinite(measured.snr)
+            && referenceResults.every((ref) => ref.valid && ref.sum > 0 && Number.isFinite(ref.sum))
+            && refSum > 0 && Number.isFinite(refSum) && Number.isFinite(ratio)
+            && Number.isFinite(ratioNoise) && Number.isFinite(mjd);
         points.push({
             mjd, lambda: f.lambdaAtCenter, target: measured,
             refSum, ratio: valid ? ratio : Number.NaN, relative: Number.NaN, valid,
+            // Held in ratio units until the median baseline is available below.
+            relativeNoise: valid ? ratioNoise : Number.NaN,
+            caveats: ['Ring brightness depends on the catalogue position; position uncertainty is not included in the sky-noise error.'],
         });
         if (valid) {
             for (let i = 0; i < refRatios.length; i++) {
@@ -433,7 +497,8 @@ export function haloCurve(
     for (const point of points) {
         if (point.valid && Number.isFinite(medianRatio) && medianRatio !== 0) {
             point.relative = point.ratio / medianRatio;
-            if (!Number.isFinite(point.relative)) {
+            point.relativeNoise /= medianRatio;
+            if (!Number.isFinite(point.relative) || !Number.isFinite(point.relativeNoise)) {
                 point.valid = false;
             }
         } else {
