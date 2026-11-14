@@ -1,7 +1,7 @@
 // The AI note is written by Anthropic's Claude from numbers this app measured. See README, "AI tools used".
 import Anthropic from '@anthropic-ai/sdk';
-import { checkNote, factSheet, InsightError, validateFacts } from '../src/lib/insight.js';
-import { SYSTEM_PROMPT, userMessage } from '../src/lib/insight-prompt.js';
+import { ASK_ENABLED, checkNote, factSheet, InsightError, validateFacts, validateQuestion } from '../src/lib/insight.js';
+import { ASK_CANNOT, ASK_SYSTEM_PROMPT, askMessage, SYSTEM_PROMPT, userMessage } from '../src/lib/insight-prompt.js';
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -99,6 +99,7 @@ export interface InsightDeps {
     maxPerDay: number;
     maxPerHour: number;
     storeMissing?: boolean;
+    askEnabled?: boolean;
 }
 type Answer = { text: string; model: string; dropped: number };
 const answers = new Map<string, Answer>();
@@ -181,10 +182,28 @@ function networkAddress(ip: string): string
     } catch { return ip; }
 }
 class StoreFailure extends Error {}
+function checkAnswer(text: string, sheet: string[], completion: Completion): { text: string; dropped: number }
+{
+    let checked;
+    try { checked = checkNote(text, sheet); } catch (error) {
+        if (error instanceof InsightError && error.code === 'unverified') { return { text: ASK_CANNOT, dropped: 0 }; }
+        throw error;
+    }
+    // Check the original reply too: checkNote can drop a URL or a numeric sentence containing a banned word.
+    const original = completion.text;
+    if (completion.refused || !checked.text.trim() || original.trim().split(/\s+/u).length > 90 || checked.text.trim().split(/\s+/u).length > 90
+        || /\b(discover\w*|detected|confirm\w*|proves?)\b/i.test(original)
+        || /\b(?:i (?:cannot|can['’]t|am unable|(?:must )?(?:refuse|decline))|i['’]m (?:sorry|unable)|unable to (?:answer|help|comply))\b/i.test(original)
+        || /[<>]|\b(?:[a-z][a-z\d+.-]*:\/\/|www\.|mailto:)|(?:^|\s)\/\/\S+|\b(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z]{2,}\b/i.test(original)) {
+        return { ...checked, text: ASK_CANNOT };
+    }
+    return checked;
+}
 export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Response>; POST(r: Request): Promise<Response> }
 {
     const minute = 60000, hour = 3600000, day = 86400000, guessWindow = 900000;
     const enabled = Boolean(!deps.storeMissing && deps.apiKey && (deps.passcode || deps.open));
+    const askEnabled = deps.askEnabled ?? ASK_ENABLED;
     const local = deps.local ?? localStore;
     async function counter(method: 'hit' | 'count', key: string, window: number, now: number): Promise<number> {
         try { return await deps.store[method](key, window, now); } catch { throw new StoreFailure(); }
@@ -233,7 +252,17 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
             return json({ enabled: true, locked: Boolean(deps.passcode), unlocked, model: deps.model, ...(unlocked ? { remaining: Math.max(0, deps.maxPerUserDay - await counter('count', `user-day:${id}`, day, now)) } : {}) });
         },
         async POST(request: Request): Promise<Response> {
-            if (!enabled) { return failure(503, 'off'); }
+            if (!enabled) {
+                // Keep disabled notes' response while giving a disabled question its own off response.
+                if (!askEnabled) {
+                    try {
+                        const body = await readBody(request);
+                        const parsed: unknown = body === null ? null : JSON.parse(body);
+                        if (parsed && typeof parsed === 'object' && 'question' in parsed) { return failure(404, 'off'); }
+                    } catch { /* Disabled notes still return off for malformed bodies. */ }
+                }
+                return failure(503, 'off');
+            }
             const site = request.headers.get('sec-fetch-site');
             const origin = request.headers.get('origin');
             try {
@@ -241,11 +270,17 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
             } catch { return failure(403, 'forbidden'); }
             if (!/^application\/json(?:\s*;|\s*$)/i.test(request.headers.get('content-type') ?? '')) { return failure(400, 'invalid'); }
             let facts;
+            let question: string | undefined;
             try {
                 const body = await readBody(request);
                 if (body === null) { return failure(413, 'too_large'); }
                 const parsed: unknown = JSON.parse(body);
-                if (!parsed || typeof parsed !== 'object' || !('facts' in parsed)) { return failure(400, 'invalid'); }
+                if (!parsed || typeof parsed !== 'object') { return failure(400, 'invalid'); }
+                if ('question' in parsed) {
+                    if (!askEnabled) { return failure(404, 'off'); }
+                    question = validateQuestion(parsed.question);
+                }
+                if (!('facts' in parsed)) { return failure(400, 'invalid'); }
                 facts = validateFacts(parsed.facts);
             } catch { return failure(400, 'invalid'); }
             const now = deps.now(), id = await visitor(request);
@@ -254,7 +289,7 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
             if (state === 'busy') { return failure(429, 'busy', { 'Retry-After': String(retry(guessWindow, now)) }); }
             if (state === 'locked') { return failure(401, 'locked'); }
             const key = await hash(JSON.stringify(facts));
-            const hit = answers.get(key);
+            const hit = question === undefined ? answers.get(key) : undefined;
             if (hit) { return json({ ...hit, cached: true }, 200, { 'X-Robots-Tag': 'noindex' }); }
             if (!deps.passcode && await brake(id, now)) { return failure(429, 'busy', { 'Retry-After': String(retry(minute, now)) }); }
             const limits = [
@@ -279,16 +314,17 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
                 const timeout = new Promise<never>((_resolve, reject) => {
                     timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); }, 25000);
                 });
-                const completion = await Promise.race([deps.complete(SYSTEM_PROMPT, userMessage(sheet), controller.signal), timeout]);
-                if (completion.refused) { return failure(502, 'no_note'); }
+                const completion = await Promise.race([deps.complete(question === undefined ? SYSTEM_PROMPT : ASK_SYSTEM_PROMPT, question === undefined ? userMessage(sheet) : askMessage(sheet, question), controller.signal), timeout]);
+                if (completion.refused && question === undefined) { return failure(502, 'no_note'); }
                 const endings = completion.stopReason === 'max_tokens' ? [...completion.text.matchAll(/[.!?](?=\s|$)/g)] : [];
                 let text = completion.stopReason === 'max_tokens' ? completion.text.slice(0, (endings.at(-1)?.index ?? -1) + 1).trimEnd() : completion.text;
                 if (completion.stopReason === 'max_tokens' && /\d\.$/.test(text)) {
                     endings.pop();
                     text = completion.text.slice(0, (endings.at(-1)?.index ?? -1) + 1).trimEnd();
                 }
-                const checked = checkNote(text, sheet);
+                const checked = question === undefined ? checkNote(text, sheet) : checkAnswer(text, sheet, completion);
                 const answer = { ...checked, model: completion.model };
+                if (question !== undefined) { return json({ ...answer, cached: false, remaining: Math.max(0, deps.maxPerUserDay - hits[1]!), kind: 'answer' }, 200, { 'X-Robots-Tag': 'noindex' }); }
                 if (answers.size >= 200) { answers.delete(answers.keys().next().value!); }
                 answers.set(key, answer);
                 return json({ ...answer, cached: false, remaining: Math.max(0, deps.maxPerUserDay - hits[1]!) }, 200, { 'X-Robots-Tag': 'noindex' });

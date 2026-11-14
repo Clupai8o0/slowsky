@@ -1,5 +1,7 @@
 import { TARGETS } from './targets.js';
 
+export const ASK_ENABLED = false;
+
 export interface InsightFacts {
     targetId: string;
     ra: number; dec: number; lambdaUm: number;
@@ -10,6 +12,7 @@ export interface InsightFacts {
     snapshot: boolean;
 }
 export interface InsightNote { text: string; model: string; dropped: number; cached: boolean; remaining?: number }
+export interface InsightAnswer extends InsightNote { kind: 'answer'; cached: false }
 export interface InsightStatus { enabled: boolean; locked: boolean; unlocked: boolean; model?: string; remaining?: number; busy?: boolean; retryAfter?: number }
 export type InsightErrorCode = 'off' | 'locked' | 'invalid' | 'busy' | 'unverified' | 'failed';
 export class InsightError extends Error {
@@ -79,6 +82,14 @@ export function validateFacts(value: unknown): InsightFacts
         result.motion = { arcsec: number(m.arcsec, 0, 100000), days: number(m.days, 0, 4000) };
     }
     return result;
+}
+export function validateQuestion(value: unknown): string
+{
+    if (typeof value !== 'string' || /[\p{Cc}<>]/u.test(value)) { throw new InsightError('invalid'); }
+    const trimmed = value.trim();
+    const length = Array.from(trimmed).length;
+    if (length < 3 || length > 200) { throw new InsightError('invalid'); }
+    return trimmed.replace(/\s+/gu, ' ');
 }
 export function factSheet(f: InsightFacts): string[]
 {
@@ -369,18 +380,33 @@ export async function insightEnabled(fetcher: typeof fetch = fetch): Promise<boo
         return response.status === 200 && (await response.json()).enabled === true;
     } catch { return false; }
 }
-export async function fetchInsight(facts: InsightFacts, opts: { signal?: AbortSignal; fetcher?: typeof fetch; passcode?: string } = {}): Promise<InsightNote>
+type InsightOptions = { signal?: AbortSignal; fetcher?: typeof fetch; passcode?: string };
+export async function fetchInsight(facts: InsightFacts, opts: InsightOptions = {}): Promise<InsightNote>
 {
     const clean = validateFacts(facts);
     const key = JSON.stringify(clean);
     const hit = cache.get(key);
     if (hit) { return { ...hit, cached: true }; }
+    const note = await requestInsight(clean, opts);
+    if (cache.size >= 50) { cache.delete(cache.keys().next().value!); }
+    cache.set(key, note);
+    return { ...note };
+}
+export async function askInsight(facts: InsightFacts, question: string, opts: InsightOptions = {}): Promise<InsightAnswer>
+{
+    const clean = validateFacts(facts);
+    const normalized = validateQuestion(question);
+    const answer = await requestInsight(clean, opts, normalized);
+    return { ...answer, kind: 'answer', cached: false };
+}
+async function requestInsight(clean: InsightFacts, opts: InsightOptions, question?: string): Promise<InsightNote>
+{
     try {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (opts.passcode !== undefined) { headers['X-Insight-Passcode'] = opts.passcode; }
-        const response = await (opts.fetcher ?? fetch)('/api/insight', { method: 'POST', headers, body: JSON.stringify({ facts: clean }), signal: opts.signal });
+        const response = await (opts.fetcher ?? fetch)('/api/insight', { method: 'POST', headers, body: JSON.stringify({ facts: clean, ...(question !== undefined ? { question } : {}) }), signal: opts.signal });
         if (!response.ok) {
-            let code: InsightErrorCode = response.status === 503 ? 'off' : response.status === 401 ? 'locked' : response.status === 400 || response.status === 413 ? 'invalid' : response.status === 429 ? 'busy' : response.status === 422 ? 'unverified' : 'failed';
+            let code: InsightErrorCode = response.status === 503 || (question !== undefined && response.status === 404) ? 'off' : response.status === 401 ? 'locked' : response.status === 400 || response.status === 413 ? 'invalid' : response.status === 429 ? 'busy' : response.status === 422 ? 'unverified' : 'failed';
             const rawRetry = response.headers.get('Retry-After');
             const retryAfter = rawRetry !== null && /^\d+$/.test(rawRetry) ? Number(rawRetry) : undefined;
             let reason: string | undefined;
@@ -389,10 +415,9 @@ export async function fetchInsight(facts: InsightFacts, opts: { signal?: AbortSi
         }
         const data: unknown = await response.json();
         if (!data || typeof data !== 'object' || typeof (data as InsightNote).text !== 'string' || typeof (data as InsightNote).model !== 'string' || typeof (data as InsightNote).dropped !== 'number') { throw new InsightError('failed'); }
+        if (question !== undefined && ((data as InsightAnswer).kind !== 'answer' || (data as InsightNote).cached !== false)) { throw new InsightError('failed'); }
         const note: InsightNote = { text: (data as InsightNote).text, model: (data as InsightNote).model, dropped: (data as InsightNote).dropped, cached: (data as InsightNote).cached === true, ...(typeof (data as InsightNote).remaining === 'number' ? { remaining: (data as InsightNote).remaining } : {}) };
-        if (cache.size >= 50) { cache.delete(cache.keys().next().value!); }
-        cache.set(key, note);
-        return { ...note };
+        return note;
     } catch (error) {
         if (opts.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) { throw error; }
         if (error instanceof InsightError) { throw error; }
