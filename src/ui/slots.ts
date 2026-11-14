@@ -11,8 +11,10 @@
 // - halo: a panel under "Brightness over time", for the R Draconis halo curve (lane/halo3).
 import { readFlags } from '../lib/flags';
 import { flagsRgba, regridFlags, summariseFlags } from '../lib/flags-view';
-import type { SkyResult } from '../lib/source';
-import type { RegriddedFrame } from '../lib/types';
+import { createLiveSource, type SkyResult, type SkySource } from '../lib/source';
+import { ColourGridError, falseColourView } from '../lib/falsecolour-view';
+import { apertureFor } from './measure';
+import type { RegriddedFrame, TargetId } from '../lib/types';
 
 export const FEATURES = Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
 
@@ -215,19 +217,128 @@ export interface FalseColourSlot {
     update(view: SlotView | null, on: boolean): LayerState;
 }
 
-export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps: { enabled?: boolean } = {}): FalseColourSlot
+export interface FalseColourDeps {
+    enabled?: boolean;
+    source?: SkySource;
+    paint?: (layer: HTMLElement, rgba: Uint8ClampedArray, width: number, height: number) => void;
+}
+
+// These partner wavelengths and threshold are a design choice for this view.
+const COLOUR_THRESHOLD = 2.42;
+const COLOUR_SHORT = 1.25;
+const COLOUR_LONG = 4.60;
+// The detectors that carry those two wavelengths (nominal ranges: 2 covers 1.10 to 1.62 µm, 6 covers 4.42 to 5.00).
+const COLOUR_SHORT_DETECTOR = 2;
+const COLOUR_LONG_DETECTOR = 6;
+
+export const FALSE_COLOUR_TEXT = Object.freeze({
+    snapshot: 'False colour needs a live read. Go live to load a second wavelength; the saved copy holds one wavelength per target.',
+    stack: 'False colour is drawn in Stack.',
+    loading: 'Reading the second colour…',
+    failed: 'The second colour could not be read.',
+    grid: 'The two colours are on different grids.',
+    picture: 'False colour could not be drawn for this view.',
+    empty: 'No frames were found in this view.',
+});
+
+export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps: FalseColourDeps = {}): FalseColourSlot
 {
     const enabled = deps.enabled ?? FEATURES.falseColour;
-    void layer;
-    void onChange;
+    const paint = deps.paint ?? paintCanvas;
+    let result: SkyResult | null = null;
+    let controller: AbortController | null = null;
+    let generation = 0;
+    let entry: { status: 'loading' | 'failed'; note: string } | { status: 'ready'; picture: ReturnType<typeof falseColourView> } | null = null;
+    let painted = false;
+
+    function reset(next: SkyResult | null): void
+    {
+        controller?.abort();
+        controller = null;
+        generation++;
+        result = next;
+        entry = null;
+        painted = false;
+    }
+
+    function start(view: SlotView): void
+    {
+        const current = view.result;
+        const partner = current.lambda >= COLOUR_THRESHOLD ? COLOUR_SHORT : COLOUR_LONG;
+        controller = new AbortController();
+        const mine = generation;
+        entry = { status: 'loading', note: FALSE_COLOUR_TEXT.loading };
+        try {
+            const source = deps.source ?? createLiveSource();
+            source.load({ center: current.grid.center, fovDeg: current.grid.fovDeg,
+                detector: partner === COLOUR_SHORT ? COLOUR_SHORT_DETECTOR : COLOUR_LONG_DETECTOR, lambda: partner,
+                ...(view.targetId ? { target: view.targetId as TargetId } : {}), signal: controller.signal }).then(other => {
+                if (mine !== generation) {
+                    return;
+                }
+                if (!other.frames.length) {
+                    entry = { status: 'failed', note: `No frames were found at ${partner.toFixed(2)} µm.` };
+                } else {
+                    try {
+                        entry = { status: 'ready', picture: falseColourView(current, other, apertureFor(current.grid)) };
+                    } catch (error) {
+                        entry = { status: 'failed', note: error instanceof ColourGridError ? FALSE_COLOUR_TEXT.grid : FALSE_COLOUR_TEXT.picture };
+                    }
+                }
+                onChange();
+            }, () => {
+                if (mine === generation) {
+                    entry = { status: 'failed', note: FALSE_COLOUR_TEXT.failed };
+                    onChange();
+                }
+            });
+        } catch {
+            entry = { status: 'failed', note: FALSE_COLOUR_TEXT.failed };
+        }
+    }
+
     return {
         update(view: SlotView | null, on: boolean): LayerState
         {
-            void on;
-            if (!enabled || !view) {
+            if (!enabled || !view || view.source === 'demo') {
+                if (result) {
+                    reset(null);
+                }
                 return { key: false, layer: false, note: '' };
             }
-            return { key: false, layer: false, note: '' };
+            if (result !== view.result) {
+                reset(view.result);
+            }
+            if (!on || view.source !== 'live' || view.mode !== 'stack') {
+                // A finished picture is kept for this view, so switching back does not read the archive again.
+                // A read still running is dropped, and a failed one is forgotten so switching on again retries.
+                if (entry && entry.status !== 'ready') {
+                    reset(view.result);
+                }
+                const note = !on ? '' : view.source === 'snapshot' ? FALSE_COLOUR_TEXT.snapshot
+                    : view.mode !== 'stack' ? FALSE_COLOUR_TEXT.stack : '';
+                return { key: true, layer: false, note };
+            }
+            if (!view.result.frames.length) {
+                return { key: true, layer: false, note: FALSE_COLOUR_TEXT.empty };
+            }
+            if (!entry) {
+                start(view);
+            }
+            if (!entry || entry.status !== 'ready') {
+                return { key: true, layer: false, note: entry?.note ?? FALSE_COLOUR_TEXT.failed };
+            }
+            try {
+                if (!painted) {
+                    const picture = entry.picture;
+                    paint(layer, picture.rgba, picture.width, picture.height);
+                    painted = true;
+                }
+                return { key: true, layer: true, note: entry.picture.sentence };
+            } catch {
+                entry = { status: 'failed', note: FALSE_COLOUR_TEXT.picture };
+                return { key: true, layer: false, note: FALSE_COLOUR_TEXT.picture };
+            }
         },
     };
 }
