@@ -48,7 +48,7 @@ describe('archive flag screen', () => {
         expect(plain.kept[0]!.line).toBe('Changed at S/N 7.0 (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of each visit.');
         const snr = screen([{ ...candidate, reason: 'A catalogue star here is brighter than in the earlier image (S/N 12.0; candidate).' }],
             { earlier: [earlier], later: [later] }, flags, []);
-        expect(snr.kept[0]!.line).toBe('A difference between the visits at S/N 12.0 (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of each visit, so the brightness comparison is not shown.');
+        expect(snr.kept[0]!.line).toBe('A difference between the visits, at S/N 12.0 (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of each visit, so the brightness comparison is not shown.');
         for (const c of [...r.kept, ...both.kept, ...plain.kept, ...snr.kept]) {
             expect(c.line.replace(c.reason, '')).not.toMatch(/discovery|detected|confirmed|proves|changed|brighter/i);
         }
@@ -143,7 +143,7 @@ describe('change slot', () => {
         const box = {} as HTMLElement;
         const marks = {} as HTMLElement;
         slot.render(box, marks, v);
-        expect(box.innerHTML).toContain('Checking the archive flags for these spots; the list may update.');
+        expect(box.innerHTML).toContain('Checking the archive flags for these spots; the list and its numbers may update.');
         expect(box.innerHTML).toContain('Candidate 2');
         await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
         slot.render(box, marks, v);
@@ -173,14 +173,20 @@ describe('change slot', () => {
 
     it('resolves saved frames immediately without reads', () => {
         const reader = { index: vi.fn() } as unknown as RangeReader;
-        const slot = mountChanges(vi.fn(), { reader, find: found });
+        const find = vi.fn(found);
+        const slot = mountChanges(vi.fn(), { reader, find });
         const a = frame('a', 0);
         const b = frame('b', 20);
         delete a.context;
         delete b.context;
         const box = {} as HTMLElement;
-        slot.render(box, {} as HTMLElement, { source: 'snapshot', result: sky([a, b]), index: 0, mode: 'blink' });
-        expect(box.innerHTML).toContain('The archive flags could not be read for the listed spots, so they are listed without that check.');
+        const result = sky([a, b]);
+        slot.render(box, {} as HTMLElement, { source: 'snapshot', result, index: 0, mode: 'blink' });
+        expect(box.innerHTML).toContain('Archive flags are not checked in a saved view, so these spots are listed without that check.');
+        // Leaving for the demo and coming back reuses the finished panel.
+        expect(slot.render(box, {} as HTMLElement, { source: 'demo', result, index: 0, mode: 'blink' })).toBe(false);
+        slot.render(box, {} as HTMLElement, { source: 'snapshot', result, index: 0, mode: 'blink' });
+        expect(find).toHaveBeenCalledTimes(1);
         expect(box.innerHTML).not.toContain('Checking the archive');
         expect(reader.index).not.toHaveBeenCalled();
     });
@@ -215,5 +221,23 @@ describe('light visit from the finder', () => {
         const c = { ...candidate, sign: 1 as const, lightVisit: 'earlier' as const };
         expect(screen([c], { earlier: [earlier], later: [later] }, flags, ['TRANSIENT']).kept).toHaveLength(0);
         expect(screen([{ ...c, lightVisit: 'later' as const }], { earlier: [earlier], later: [later] }, flags, ['TRANSIENT']).kept).toHaveLength(1);
+    });
+});
+
+describe('review fixes', () => {
+    it('counts a candidate as unread in full when no frame of its light visit was read', () => {
+        const flags = new Map([['early', { obsId: 'early', names: () => [] }], ['late', null]]);
+        const other = { ...candidate, id: 'z', sign: -1 as const };
+        const r = screen([candidate, other], { earlier: [earlier], later: [later] }, flags, []);
+        expect(r.kept[0]!.line).toBe('A spot appeared. The archive flags for this spot could not be read, so it is listed without that check.');
+        expect(r.kept[1]!.line).toBe('A spot appeared. Some of the archive flags for this spot could not be read, so that check is incomplete.');
+        const empty = screen([candidate], { earlier: [earlier], later: [] }, flags, []);
+        expect(empty.allUnread).toBe(true);
+    });
+
+    it('names a catalogue star when it drops the direction for OVERFLOW', () => {
+        const flags = new Map([['early', { obsId: 'early', names: () => ['OVERFLOW'] }], ['late', { obsId: 'late', names: () => [] }]]);
+        const c = { ...candidate, gaiaMatch: true, reason: 'A catalogue star here is fainter than in the earlier image (S/N > 50; candidate).' };
+        expect(screen([c], { earlier: [earlier], later: [later] }, flags, []).kept[0]!.line).toBe('A difference between the visits at a catalogue star, at S/N > 50 (candidate). The archive flags the brightest pixel within 12″ as OVERFLOW in at least one frame of the earlier visit, so the brightness comparison is not shown.');
     });
 });

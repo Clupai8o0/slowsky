@@ -56,6 +56,8 @@ export function nativePeak(frame: RegriddedFrame, image: Float32Array, zodi: Flo
             }
             const n = (y - box.y0) * (box.x1 - box.x0) + x - box.x0;
             const value = image[n]! - zodi[n]!;
+            // A pixel with no finite value (NONFUNC pixels are often blank) cannot be the brightest, so it is
+            // never the one read; such pixels add no light to the picture either.
             if (Number.isFinite(value) && value > best) {
                 best = value;
                 native = { x, y };
@@ -102,7 +104,7 @@ export async function readFrameFlags(frame: RegriddedFrame, deps: { reader: Rang
     }
 }
 
-export function screen(candidates: PanelCandidate[], visits: { earlier: RegriddedFrame[]; later: RegriddedFrame[] }, frameFlags: Map<string, FrameFlags | null>, order: string[]): { kept: ScreenedCandidate[]; dropNote?: string; allUnread: boolean; lead: string[] }
+export function screen(candidates: PanelCandidate[], visits: { earlier: RegriddedFrame[]; later: RegriddedFrame[] }, frameFlags: Map<string, FrameFlags | null>, order: string[], saved = false): { kept: ScreenedCandidate[]; dropNote?: string; allUnread: boolean; lead: string[] }
 {
     const dropped = new Set<string>();
     let count = 0;
@@ -132,19 +134,23 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
             if (!mover && /\b(brighter|fainter|appeared)\b/i.test(said)) {
                 // Keep the finder's own S/N (as it wrote it); drop only the direction it read.
                 const snr = /S\/N (?:> 50|\d+(?:\.\d+)?)/.exec(said)?.[0];
-                line = `A difference between the visits${snr ? ` at ${snr}` : ''} (candidate). ${flagged}, so the brightness comparison is not shown.`;
+                line = `A difference between the visits${c.gaiaMatch ? ' at a catalogue star' : ''}${snr ? `, at ${snr}` : ''} (candidate). ${flagged}, so the brightness comparison is not shown.`;
             } else {
                 line = `${line} ${flagged}.`;
             }
         }
+        // When no frame of the visit with the light was read, the drop check never ran: that counts as unread
+        // in full, even if the other visit read fine (or the visit has no frames here at all).
         const needed = mover ? light : [...early, ...late];
+        const lightRead = light.some(n => n !== null);
         const missing = needed.filter(n => n === null).length;
-        kept.push({ ...c, line, unread: missing === 0 ? 'none' : missing === needed.length ? 'all' : 'some' });
+        kept.push({ ...c, line, unread: !lightRead ? 'all' : missing === 0 ? 'none' : 'some' });
     }
     const allUnread = kept.length > 0 && kept.every(c => c.unread === 'all');
     const lead: string[] = [];
     if (allUnread) {
-        lead.push('The archive flags could not be read for the listed spots, so they are listed without that check.');
+        lead.push(saved ? 'Archive flags are not checked in a saved view, so these spots are listed without that check.'
+            : 'The archive flags could not be read for the listed spots, so they are listed without that check.');
     }
     for (const c of kept) {
         if (!allUnread && c.unread === 'all') {

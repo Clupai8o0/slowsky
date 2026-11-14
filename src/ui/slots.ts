@@ -279,6 +279,8 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
     let current: SkyResult | null = null;
     let resultView: ChangesView | null = null;
     let controller = new AbortController();
+    // Finished panels by result, so coming back to a result does not read the archive again.
+    const done = new WeakMap<SkyResult, ChangesView | null>();
 
     function start(result: SkyResult, source: SlotView['source']): void
     {
@@ -286,9 +288,14 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         controller = new AbortController();
         const reset = controller.signal;
         current = result;
+        if (done.has(result)) {
+            resultView = done.get(result) ?? null;
+            return;
+        }
         const initial = changesFor(result, deps.find);
         resultView = initial;
         if (!initial?.candidates.length) {
+            done.set(result, initial);
             return;
         }
         // The finder's own list of the compared frames when it gives one, else the same split it makes by default.
@@ -299,17 +306,19 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         const later = visits.length > 1 ? visits[visits.length - 1]! : [];
         const frames = [...earlier, ...later];
         const order = frames.flatMap(f => f.context?.flags?.names.map(n => n.name) ?? []);
+        const saved = source === 'snapshot';
         const finish = (flags: Map<string, FrameFlags | null>) => {
-            const screened = screen(initial.candidates, { earlier, later }, flags, order);
+            const screened = screen(initial.candidates, { earlier, later }, flags, order, saved);
             resultView = { ...initial, candidates: screened.kept, lead: screened.lead,
                 ran: screened.dropNote && !screened.kept.length ? false : initial.ran,
                 notes: [...initial.notes, ...(screened.dropNote ? [screened.dropNote] : [])] };
+            done.set(result, resultView);
         };
-        if (source === 'snapshot' || !frames.some(f => f.context?.flags)) {
+        if (saved || !frames.some(f => f.context?.flags)) {
             finish(new Map());
             return;
         }
-        resultView = { ...initial, notes: [...initial.notes, 'Checking the archive flags for these spots; the list may update.'] };
+        resultView = { ...initial, notes: [...initial.notes, 'Checking the archive flags for these spots; the list and its numbers may update.'] };
         void (async () => {
             const flags = new Map<string, FrameFlags | null>();
             for (const frame of frames) {
