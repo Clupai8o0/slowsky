@@ -129,6 +129,7 @@ export function aperture(
             }
         }
     }
+    const nRing = ring.length;
     const initialBackground = median(ring);
     const limit = 3 * madSigma(ring, initialBackground);
     // Compact in place: a zero MAD retains only pixels equal to the median.
@@ -142,7 +143,7 @@ export function aperture(
     ring.length = nSky;
     const background = median(ring);
     const backgroundSigma = madSigma(ring, background);
-    valid = valid && nPix > 0 && nSky >= 20;
+    valid = valid && nPix > 0 && nRing >= 20;
     const sum = valid ? total - nPix * background : Number.NaN;
     const snr = valid && backgroundSigma > 0 ? sum / (backgroundSigma * Math.sqrt(nPix)) : 0;
     return { valid, sum, background, backgroundSigma, nPix, nSky, snr };
@@ -232,9 +233,18 @@ export function lightCurve(
     if (!Number.isFinite(maxDeltaUm) || maxDeltaUm < 0 || (opts.lambda !== undefined && !Number.isFinite(opts.lambda))) {
         throw new PhotometryError('Wavelength and nonnegative tolerance must be finite');
     }
-    const lambda = opts.lambda ?? median(frames.map((f) => f.lambdaAtCenter));
+    let lambda = opts.lambda;
+    if (lambda === undefined) {
+        const finite = frames.map((f) => f.lambdaAtCenter).filter((value) => Number.isFinite(value))
+            .sort((a, b) => a - b);
+        if (finite.length === 0) {
+            return { points: [], dropped: frames.length, refScatter: [], lambda: Number.NaN };
+        }
+        lambda = finite[Math.floor((finite.length - 1) / 2)]!;
+    }
+    const reference = lambda;
     const kept = frames.map((frame, index) => ({ frame, index }))
-        .filter(({ frame }) => Math.abs(frame.lambdaAtCenter - lambda) <= maxDeltaUm)
+        .filter(({ frame }) => Math.abs(frame.lambdaAtCenter - reference) <= maxDeltaUm + 1e-9)
         .sort((a, b) => a.frame.frame.tMin - b.frame.frame.tMin);
     const points: LightCurvePoint[] = [];
     const refRatios: number[][] = refs.length >= 2 ? refs.map(() => []) : [];
@@ -282,5 +292,5 @@ export function lightCurve(
         }
         return Math.sqrt(ratios.reduce((sum, ratio) => sum + (ratio / middle - 1) ** 2, 0) / ratios.length);
     });
-    return { points, dropped: frames.length - kept.length, refScatter, lambda };
+    return { points, dropped: frames.length - kept.length, refScatter, lambda: reference };
 }
