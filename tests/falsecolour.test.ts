@@ -483,7 +483,7 @@ describe('colourAt', () => {
 
     it('throws FalseColourError when noiseScale is below 1 or non-finite', () => {
         const pic = makePatch([{ ...CENTER, flux: 1200 }], 0.5);
-        for (const noiseScale of [0, 0.5, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+        for (const noiseScale of [0, 0.5, 0.99, 1 - Number.EPSILON, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
             expect(() => colourAt(pic, pic, SIZE, SIZE, CENTER, { pixelArcsec: 6.15, noiseScale })).toThrow(FalseColourError);
         }
     });
@@ -501,6 +501,14 @@ describe('colourAt', () => {
         expect(atZero.seen).toBe('both');
         expect(atZero.valid).toBe(true);
         expect(Number.isFinite(atZero.index)).toBe(true);
+
+        // Even with minSnr 0, a flat patch (sum 0) and a dip (sum below 0) are not seen.
+        const flat = makePatch([], 0.5);
+        const dipped = makePatch([{ ...CENTER, flux: -50 }], 0.5);
+        const flatAtZero = colourAt(flat, flat, SIZE, SIZE, CENTER, { pixelArcsec: 6.15, minSnr: 0 });
+        expect(flatAtZero.seen).toBe('neither');
+        expect(flatAtZero.valid).toBe(false);
+        expect(colourAt(dipped, dipped, SIZE, SIZE, CENTER, { pixelArcsec: 6.15, minSnr: 0 }).seen).toBe('neither');
     });
 
     it('reports seen neither on a quantised sky ring where MAD clips to zero despite +/-10 outliers', () => {
@@ -532,9 +540,12 @@ describe('colourAt', () => {
                 ringIdx++;
             }
         }
-        quantised[centre.y * qSize + centre.x] = 1e-4;
+        // A bright centre: it is unseen only because the ring gives no measurable noise, not because it is faint.
+        quantised[centre.y * qSize + centre.x] = 1000;
 
         const res = colourAt(quantised, quantised, qSize, qSize, centre, { pixelArcsec: 6.15 });
+        expect(res.short).toBeCloseTo(1000, 3);
+        expect(res.snrShort).toBe(0);
         expect(res.seen).toBe('neither');
         expect(res.valid).toBe(false);
         expect(res.index).toBeNaN();
@@ -551,6 +562,11 @@ describe('colourAt', () => {
         expect(two.snrShort).toBeCloseTo(one.snrShort / 2, 9);
         expect(two.snrLong).toBeCloseTo(one.snrLong / 2, 9);
         expect(two.snrShort).toBeGreaterThan(byRule.snrShort);
+
+        // An override above the rule's 5.6 must also win, so the rule is not a ceiling.
+        const ten = colourAt(short, long, nSize, nSize, spot, { pixelArcsec: 6.15 / 4, noiseScale: 10 });
+        expect(ten.snrShort).toBeCloseTo(one.snrShort / 10, 9);
+        expect(ten.snrShort).toBeLessThan(byRule.snrShort);
     });
 });
 
