@@ -99,7 +99,7 @@ function component(group: Token[], kind: 'ra' | 'dec'): number | null
     let value = 0;
     let previousRank = -1;
     for (let i = 0; i < group.length; i++) {
-        const unit = group[i]?.unit ?? '';
+        const unit = (group[i]?.unit ?? '').replace(/''/g, '"');
         const rank = unit === '' ? i : 'hd°'.includes(unit) ? 0 : "m′'".includes(unit) ? 1 : 's″"'.includes(unit) ? 2 : -1;
         const part = values[i] ?? NaN;
         if (unit.length > 1 || rank <= previousRank || (rank > 0 && part >= 60)

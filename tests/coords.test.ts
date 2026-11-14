@@ -4,6 +4,10 @@ import { formatDec, formatRa, parseCoords, resolveName, separationDeg } from '..
 const RW_AUR = { ra: 76.95625, dec: 30.4014 };
 
 describe('parseCoords', () => {
+    it('accepts a doubled-apostrophe arcsecond marker', () => {
+        expect(parseCoords("12h30m +20d30'00''")).toEqual({ ra: 187.5, dec: 20.5 });
+    });
+
     it('reads decimal degrees in several spellings', () => {
         expect(parseCoords('76.956 30.401')).toEqual({ ra: 76.956, dec: 30.401 });
         expect(parseCoords('76.956, +30.401')).toEqual({ ra: 76.956, dec: 30.401 });
