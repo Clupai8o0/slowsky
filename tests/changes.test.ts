@@ -161,6 +161,22 @@ describe('round 11 public readings', () => {
         expect(loose.some((c) => c.kind === 'mover')).toBe(false);
         expect(loose.length).toBeGreaterThan(0);
     });
+    it('does not let an unseen motion star claim a catalogued stationary swap in a crowded field (Codex r11c)', () => {
+        const P = grid.pixelArcsec, x = 55, y = 60, sep = 9 / P;
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, x, y, 3000); point(a, grid, x + sep, y, 30);
+        point(b, grid, x, y, 30); point(b, grid, x + sep, y, 3000);
+        const others = [{ x: x - 10 / P, y: y + 8 / P, id: 'n1' }, { x: x - 6 / P, y: y - 14 / P, id: 'n2' },
+            { x: x + 4 / P, y: y + 16 / P, id: 'n3' }, { x: x - 16 / P, y: y - 2 / P, id: 'n4' }];
+        for (const o of others) { point(a, grid, o.x, o.y, 20); point(b, grid, o.x, o.y, 20); }
+        for (const near of [7, 2]) {
+            const stars = [...others, { x, y, id: 'steady' },
+                { x, y: y + near / P, id: 'pm', visit: 'earlier' as const, properMotion: true },
+                { x: x + sep, y: y + near / P, id: 'pm', visit: 'later' as const, properMotion: true }];
+            const r = compareVisits(mapped(image(a, 'a', 60000)), mapped(image(b, 'b', 60365.25)), grid, stars);
+            expect(r.candidates.some((c) => c.kind === 'mover'), `${near}: ${JSON.stringify(r.candidates.map((c) => c.sentence))}`).toBe(false);
+        }
+    });
     it('prints no separation for an uncatalogued opposite pair at 8″ and 9″', () => {
         for (const sep of [8, 9]) {
             for (const swap of [false, true]) {
@@ -229,8 +245,9 @@ describe('round 11 public readings', () => {
         point(a, grid, 60, 60, 3000); point(b, grid, 60 + 1.7 / grid.pixelArcsec, 60, 3000);
         const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
         console.log('r11 shift:', JSON.stringify(r.candidates));
-        const pair = r.candidates.find((c) => c.sentence.startsWith('Opposite changes'));
-        expect(pair?.sentence).toMatch(/small shift.*two peaks.*this far apart/);
+        const pair = r.candidates.find((c) => c.sentence.startsWith('Two close spots'));
+        expect(pair?.sentence).toMatch(/a small shift of one source/);
+        expect(pair?.sentence).not.toMatch(/\d″/);
     });
     it('names visit wavelengths and excludes central candidates from the blank note', () => {
         const a = noise(grid), b = noise(grid);
@@ -1858,23 +1875,22 @@ describe('round 9 wobble and coverage guards', () => {
                 for (const c of r.candidates) {
                     retained++;
                     expect(c.kind, measured(r)).toBe('unknown');
-                    expect(c.reason, measured(r)).toMatch(/^Opposite changes are about \d+\.\d″ apart; a slow mover/);
+                    expect(c.reason, measured(r)).toMatch(/^Two close spots changed in opposite ways; a small shift of one source, a slow mover/);
                 }
             }
         }
         expect(retained).toBeGreaterThan(0);
     });
 
-    it('keeps an unresolved shift below the default mover cutoff and quotes the measured distance (A4 cutoff)', () => {
+    it('keeps an unresolved shift below the default mover cutoff and quotes no distance (A4 cutoff, Codex r11c)', () => {
         const a = noise(grid), b = noise(grid);
         point(a, grid, 60.3, 60.2, 300); point(b, grid, 60.3 + 2 / P, 60.2, 300);
         const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60.3, y: 60.2, id: 's' }]);
         expect(r.candidates, measured(r)).toHaveLength(1);
         expect(r.candidates[0]!.kind).toBe('unknown');
-        const value = r.candidates[0]!.reason.match(/^Opposite changes are about ([\d.]+)″ apart/);
-        expect(value, measured(r)).not.toBeNull();
-        expect(Number(value![1])).toBeGreaterThan(9);
-        expect(Number(value![1])).toBeLessThan(13);
+        // A 2″ shift gives peaks about 11″ apart, so no number is printed.
+        expect(r.candidates[0]!.reason, measured(r)).toMatch(/^Two close spots changed in opposite ways/);
+        expect(r.candidates[0]!.reason).not.toMatch(/\d″/);
     });
 
     it('checks ordinary wobble before pairing an uncatalogued dipole with a low shift cutoff (A4 ordinary)', () => {
@@ -2040,7 +2056,7 @@ describe('round 9 wobble and coverage guards', () => {
             const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x, y, id: 's' }]);
             expect(r.candidates.length, measured(r)).toBeGreaterThan(0);
             expect(r.candidates.every((c) => c.kind === 'unknown'), measured(r)).toBe(true);
-            expect(r.candidates.every((c) => /^(The two visits differ \d+\.\d″ from a brighter catalogue star whose light overlaps here|Opposite changes are about \d+\.\d″ apart)/.test(c.reason)), measured(r)).toBe(true);
+            expect(r.candidates.every((c) => /^(The two visits differ \d+\.\d″ from a brighter catalogue star whose light overlaps here|Two close spots changed in opposite ways)/.test(c.reason)), measured(r)).toBe(true);
         });
     }
 
@@ -2324,7 +2340,7 @@ describe('round 10 retained changes', () => {
         const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, stars);
         expect(r.candidates, measured(r)).toHaveLength(1);
         expect(r.candidates[0]!.kind, measured(r)).toBe('unknown');
-        expect(r.candidates[0]!.reason, measured(r)).toMatch(/^Opposite changes are about [\d.]+″ apart/);
+        expect(r.candidates[0]!.reason, measured(r)).toMatch(/^Two close spots changed in opposite ways/);
     });
 
     it('keeps an unresolved dipole blended with one catalogue star', () => {

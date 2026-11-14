@@ -1364,7 +1364,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     // Difference lobes can be displaced from their source centres by the image width. Require both
     // date-tagged positions within one FWHM, matching direction and vector within one FWHM.
     // `endError` is the larger distance from a lobe to its dated catalogue position, in arcsec.
-    const predictedMotion = (negative: Blob, positive: Blob): { motion: number; endError: number } | undefined => {
+    const predictedMotion = (negative: Blob, positive: Blob): { motion: number; endError: number; id: string } | undefined => {
         for (const first of stars) {
             if (!first.id || first.visit !== 'earlier' || !first.properMotion) { continue; }
             const firstPos = { x: first.motionX ?? first.x, y: first.motionY ?? first.y };
@@ -1377,7 +1377,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 const endError = Math.max(distance(negative.pix, firstPos, grid), distance(positive.pix, secondPos, grid));
                 if (motion >= opt.minShiftArcsec && endError <= PSF_FWHM && dx * ox + dy * oy > 0
                     && Math.hypot(dx - ox, dy - oy) * grid.pixelArcsec <= PSF_FWHM) {
-                    return { motion, endError };
+                    return { motion, endError, id: first.id };
                 }
             }
         }
@@ -1526,10 +1526,13 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             }
             const negativeStar = nearestStar(negative.pix);
             // Crowding makes light centroids unreliable, but a catalogue motion test uses the lobe positions only.
-            // When both lobes sit within one native pixel plus the wobble of the star's two dated positions, the
-            // listed motion is still the reading to report, hedged for the crowding (Barnard's Star at 4.6 µm:
-            // 5 catalogue stars within 24″, lobes 0.7″ and about 2″ from the dated positions).
-            const tightPrediction = predicted !== undefined && predicted.endError <= NATIVE + WOBBLE_ARCSEC;
+            // When both lobes sit within a quarter image width of the star's two dated positions AND that star is
+            // the nearest catalogue entry to each lobe, the listed motion is still the reading to report, hedged for
+            // the crowding (Barnard's Star at 4.6 µm: 5 catalogue stars within 24″, lobes 0.7″ and about 2″ from
+            // the dated positions). A nearer catalogue entry means the light may be that star's (Codex r11c: a
+            // catalogued stationary pair swapping light with an unseen motion star 7″ away read as a mover).
+            const tightPrediction = predicted !== undefined && predicted.endError <= PSF_FWHM / 4
+                && nearestStar(negative.pix)?.id === predicted.id && nearestStar(positive.pix)?.id === predicted.id;
             const isCrowded = crowded[i] || crowded[j];
             // A single star's own dipole may put one lobe just outside the matching radius. Test that pair
             // for wobble/slow-shift ambiguity; other neighbour-dominated spots cannot give reliable centroids.
@@ -1611,7 +1614,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             c.reading = 'pair';
             c.ends = [{ visit: 'earlier', ...found[ambiguous.j]!.pix, radiusPix: 12 / grid.pixelArcsec },
                 { visit: 'later', ...positive.pix, radiusPix: 12 / grid.pixelArcsec }];
-            c.reason = `Opposite changes are about ${ambiguous.shift.toFixed(1)}″ apart; a slow mover or two changing sources could look like this, and a small shift of one source can produce two peaks about this far apart regardless of the shift (${snrText(c.snr)}; candidate).`;
+            // No separation is printed: a small shift of one source gives two peaks about one image width apart whatever
+            // the shift (1.7″ printed 10.8″; a 2″ swap printed 11.0″, Codex r11c).
+            c.reason = `Two close spots changed in opposite ways; a small shift of one source, a slow mover, or two changing sources could look like this (${snrText(c.snr)}; candidate).`;
             result.candidates.push(c);
         }
     }
