@@ -240,13 +240,29 @@ def visible_error(pg):
     return ""
 
 
+def wait_js(pg, expression, arg=None, timeout=5000):
+    """Poll a page expression from Python.
+
+    Playwright's own wait_for_function polls with eval() inside the page, which the site's Content Security Policy
+    (no 'unsafe-eval') refuses whenever the first check is not already true. evaluate() goes through the debugger
+    and is not subject to the policy, so the page is tested with its real policy in force.
+    """
+    deadline = time.time() + timeout / 1000
+    while True:
+        if pg.evaluate(expression, arg):
+            return
+        if time.time() >= deadline:
+            raise TimeoutError(f"page condition not met within {timeout / 1000:g}s")
+        pg.wait_for_timeout(50)
+
+
 def pause_first_frame(pg):
     play = pg.locator('button[data-act="play"]')
     if play.get_attribute("aria-label") == "Pause":
         play.click()
-    pg.wait_for_function("document.querySelector('button[data-act=\"play\"]')?.getAttribute('aria-label') === 'Play'", timeout=5000)
+    wait_js(pg, "document.querySelector('button[data-act=\"play\"]')?.getAttribute('aria-label') === 'Play'", timeout=5000)
     pg.locator('[data-ref="strip"] button').first.click()
-    pg.wait_for_function(r"""() => {
+    wait_js(pg, r"""() => {
         const label = document.querySelector('[data-bind="frame"]')?.textContent?.trim() || '';
         const match = /^Frame 1 of (\d+)/.exec(label);
         return match && document.querySelectorAll('[data-ref="strip"] button').length === Number(match[1]);
@@ -421,13 +437,13 @@ def run_target(browser, base, tid, label, click, mode, timeout, out, brk, live_t
         tsel = f'button[data-target="{tid}"]'
         pg.locator(tsel + ":visible").first.wait_for(timeout=15000)
         if click:
-            pg.wait_for_function("document.querySelector('[data-ref=\"dl\"]')?.textContent.includes('File')", timeout=timeout * 1000)
+            wait_js(pg, "document.querySelector('[data-ref=\"dl\"]')?.textContent.includes('File')", timeout=timeout * 1000)
             old = pg.evaluate("document.querySelector('[data-ref=\"dl\"]').textContent")
             pg.locator(tsel + ":visible").first.click()
         try:
-            pg.wait_for_function("(s) => document.querySelector(s)?.getAttribute('aria-pressed') === 'true'", arg=tsel, timeout=timeout * 1000)
+            wait_js(pg, "(s) => document.querySelector(s)?.getAttribute('aria-pressed') === 'true'", arg=tsel, timeout=timeout * 1000)
             if click:  # the load finished: details now describe a different file than the previous target's
-                pg.wait_for_function("(o) => document.querySelector('[data-ref=\"dl\"]').textContent !== o", arg=old, timeout=timeout * 1000)
+                wait_js(pg, "(o) => document.querySelector('[data-ref=\"dl\"]').textContent !== o", arg=old, timeout=timeout * 1000)
         except Exception:
             raise RuntimeError(f"target {tid} did not become selected/loaded within {timeout:g}s")
         deadline = time.time() + timeout
