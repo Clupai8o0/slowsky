@@ -197,6 +197,18 @@ describe('SIA rows', () => {
         const b = rowToFrame({ ...row, energy_bandpassname: 'SPHEREx-D2' });
         expect(a?.obsId).not.toBe(b?.obsId);
     });
+    it('treats a 200 reply that is not a VOTable as a failure, not an empty sky', async () => {
+        const page = vi.fn(async () => new Response('<!doctype html><html><body>Slowsky</body></html>')) as unknown as typeof fetch;
+        await expect(searchFrames(q, undefined, page)).rejects.toThrow('not a frame list');
+        const blank = vi.fn(async () => new Response('')) as unknown as typeof fetch;
+        await expect(searchFrames(q, undefined, blank)).rejects.toThrow('not a frame list');
+        const none = '<?xml version="1.0"?><VOTABLE version="1.3"><RESOURCE type="results"><INFO name="QUERY_STATUS" value="OK"/><TABLE><DATA><TABLEDATA/></DATA></TABLE></RESOURCE></VOTABLE>';
+        const empty = vi.fn(async () => new Response(none)) as unknown as typeof fetch;
+        expect(await searchFrames(q, undefined, empty)).toHaveLength(0);
+        // A namespace prefix on the root element is still a VOTable (the saved real reply has one).
+        expect(fixture).toMatch(/<ns0:VOTABLE\b/);
+        expect((await searchFrames(q, undefined, mockFetch())).length).toBeGreaterThan(0);
+    });
     it('throws on a failed search', async () => {
         await expect(searchFrames(q, undefined, vi.fn(async () => new Response('', { status: 500 })) as unknown as typeof fetch)).rejects.toThrow();
     });
