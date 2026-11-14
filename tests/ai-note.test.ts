@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { busyText, factsInput, leftText, visitGroups } from '../src/ui/ai-note';
+import { busyText, disclaimer, factsInput, leftText, modelName, visitGroups } from '../src/ui/ai-note';
 import { buildFacts } from '../src/lib/insight-facts';
 import { validateFacts } from '../src/lib/insight';
 import type { SkyResult } from '../src/lib/source';
@@ -80,5 +80,19 @@ describe('panel wording', () => {
         expect(busyText({ reason: 'daily' })).toBe('You have used today’s AI notes.');
         expect(busyText({ retryAfter: 20 })).toBe('Too many requests. Try again in 20 s.');
         expect(busyText({})).toBe('Too many requests. Try again in a minute.');
+    });
+});
+
+describe('AI label', () => {
+    it('names the model in plain words', () => {
+        expect(modelName('claude-opus-5-5')).toBe('Claude Opus 5.5');
+        expect(modelName('claude-sonnet-5-5-20261101')).toBe('Claude Sonnet 5.5');
+        expect(modelName('claude-haiku-5')).toBe('Claude Haiku 5');
+        expect(modelName(undefined)).toBe('Claude');
+        expect(modelName('<b>x</b>')).toBe('Claude');
+    });
+
+    it('always says it is AI-written and not a measurement', () => {
+        expect(disclaimer('claude-opus-5-5')).toBe('Written by AI (Claude Opus 5.5) from the measurements on this page. It can be wrong and is not a measurement: check it against the numbers.');
     });
 });

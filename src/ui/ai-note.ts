@@ -10,7 +10,22 @@ import type { Curve, Shift } from './measure';
 import { frameMjd } from './measure';
 
 export const PASS_KEY = 'slowsky.insight.passcode';
-export const DISCLAIMER = 'Written by Claude (Anthropic) from the numbers on this page. It can be wrong. It is not a measurement.';
+// The line shown with every note, naming the model when the server says which one writes it.
+export function disclaimer(model?: string): string
+{
+    return `Written by AI (${modelName(model)}) from the measurements on this page. It can be wrong and is not a measurement: check it against the numbers.`;
+}
+
+// 'claude-opus-5-5' -> 'Claude Opus 5.5'. Anything else Anthropic-shaped falls back to plain 'Claude'.
+export function modelName(model?: string): string
+{
+    const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?(?:$|-\d{8}$)/.exec(model ?? '');
+    if (!m) {
+        return 'Claude';
+    }
+    const family = m[1]!.charAt(0).toUpperCase() + m[1]!.slice(1);
+    return `Claude ${family} ${m[2]}${m[3] ? `.${m[3]}` : ''}`;
+}
 
 // Frames less than `gapDays` apart are one visit, chained, in date order (the same rule as visitsOf).
 export function visitGroups(result: SkyResult, gapDays = 10): RegriddedFrame[][]
@@ -153,6 +168,8 @@ export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightS
     const out = q<HTMLElement>('out');
     const msg = q<HTMLElement>('msg');
     const left = q<HTMLElement>('left');
+    const disc = q<HTMLElement>('disc');
+    disc.textContent = disclaimer();
     let st: InsightStatus | null = null;
     let view: NoteView | null = null;
     let ctrl: AbortController | null = null;
@@ -271,9 +288,11 @@ export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightS
                 return;
             }
             renderNote(out, note.text);
+            disc.textContent = disclaimer(note.model);
             out.hidden = false;
             setMsg('AI note written.', true);
-            if (note.remaining !== undefined) {
+            // A cached note carries the allowance from when it was written, so it can't update the count.
+            if (note.remaining !== undefined && !note.cached) {
                 setLeft(note.remaining);
             }
         } catch (err) {
@@ -307,6 +326,7 @@ export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightS
 
     void status({ passcode: passcode() }).then((s) => {
         st = s;
+        disc.textContent = disclaimer(s.model);
         setLeft(s.remaining);
         if (s.busy) {
             setMsg(busyText(s));
