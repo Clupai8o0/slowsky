@@ -28,6 +28,8 @@ const DEFAULT_TARGET: TargetId = 'barnard';
 // Middle of SPHEREx's looks so far (1 Jan 2026). Fast movers are centred where they are then, not in 2000:
 // Barnard's Star has walked 4′ north since, which is off the edge of a 0.1° field.
 const SKY_EPOCH_MJD = 61041;
+// Gaia lists hundreds of stars in a 0.1° field, most too faint to see here. Ring only the brightest.
+const GAIA_RINGS = 40;
 const FPS = 1.5;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ICON = {
@@ -152,7 +154,7 @@ function shell(): string
     </div>
     <div class="sk-legrow">
       <div class="sk-leg">
-        <button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Gaia catalogue stars</button>
+        <button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
@@ -478,7 +480,8 @@ export function mount(root: HTMLElement): void
             `<circle cx="${(x + 0.5).toFixed(2)}" cy="${(y + 0.5).toFixed(2)}" r="${r}" class="${cls}" fill="none" vector-effect="non-scaling-stroke"/>`;
         const scale = result.grid.width / 60;
         if (st.gaia && st.mode !== 'diff') {
-            for (const s of result.stars) {
+            const bright = [...result.stars].sort((p, q) => p.g - q.g).slice(0, GAIA_RINGS);
+            for (const s of bright) {
                 parts.push(ring(s.pix.x, s.pix.y, Math.max(2.4, scale * 0.9), 'gaia'));
             }
         }
