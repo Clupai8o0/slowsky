@@ -7,14 +7,14 @@ export type HintKind = 'mover' | 'brightness' | 'artifact' | 'nothing';
 export type HintInput = { kind: HintKind; p?: unknown } | { kind: 'declined'; reason?: string };
 
 // Plain words for each answer. Each says what it is closest to among the fake changes the model was trained on,
-// not what the spot is, and asks the visitor to look; "noise" and "camera effect" say the model misses many faint
+// not what the spot is, and asks the visitor to look; every answer but "moving" says the model misses many faint
 // movers in its own tests (mover recall 0.55 at S/N 3-5, public/models/change-classifier.card.json), so nobody skips
 // a spot on its word.
 const LOOK = 'Check both frames yourself.';
 const MISSES = 'In its own tests it missed many faint moving spots.';
 export const HINT_TEXT: Readonly<Record<HintKind | 'declined', string>> = Object.freeze({
     mover: `Sort hint: closest to the fake moving spots it was trained on. ${LOOK}`,
-    brightness: `Sort hint: closest to the fake spots whose light was raised or lowered in training. ${LOOK}`,
+    brightness: `Sort hint: closest to the fake spots whose light was raised or lowered in training. ${MISSES} ${LOOK}`,
     artifact: `Sort hint: closest to the fake camera or processing effects it was trained on. ${MISSES} ${LOOK}`,
     nothing: `Sort hint: closest to the plain noise it was trained on. ${MISSES} ${LOOK}`,
     declined: `Sort hint: not given. The helper skips some spots, such as very faint, very bright, off-centre or close-call ones. ${LOOK}`,
