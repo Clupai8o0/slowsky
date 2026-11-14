@@ -238,7 +238,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     let period = 0;
     let exhausted = false;
     let checkingCharge = false;
-    let queuedCharge: { request: AiRequest; sent: string | undefined; charged: boolean } | undefined;
+    let queuedCharge: { request: AiRequest; sent: string | undefined } | undefined;
     const askOn = deps.askOn ?? ASK_ENABLED;
 
     function startRequest(): AiRequest
@@ -337,8 +337,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         }
     }
 
-    // `charged` is false only for the tab-visible check: nothing was sent, so a reply without a count changes nothing.
-    function recheckRemaining(request: AiRequest | undefined, sent: string | undefined, charged = true): void
+    function recheckRemaining(request: AiRequest | undefined, sent: string | undefined): void
     {
         if (!request) {
             return;
@@ -347,7 +346,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
             request = { order: request.order, generation, period };
             sent = passcode();
         }
-        queuedCharge = { request, sent, charged: charged || Boolean(queuedCharge?.charged) };
+        queuedCharge = { request, sent };
         if (checkingCharge) {
             return;
         }
@@ -362,9 +361,10 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                         exhaustRemaining(pending.request);
                     } else if (typeof s.remaining === 'number' && Number.isFinite(s.remaining)) {
                         setRequestRemaining(s.remaining, pending.request);
-                    } else if (pending.charged) {
-                        // The server sends no count without a passcode. After a request that may have been
-                        // counted, no line is better than a line that is one too high.
+                    } else {
+                        // The server sends no count without a passcode, so the line cannot be confirmed: a
+                        // request here or in another tab may have been counted. No line is better than one
+                        // that is too high.
                         exhaustRemaining(pending.request);
                     }
                 } catch {
@@ -661,7 +661,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
             return;
         }
         lastVisibleCheck = now();
-        recheckRemaining({ order: requestOrder, generation, period }, passcode(), false);
+        recheckRemaining({ order: requestOrder, generation, period }, passcode());
     });
 
     return {

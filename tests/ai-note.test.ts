@@ -1203,7 +1203,7 @@ describe('note and question coordination', () => {
         expect(doc.el('msg').textContent).toBe(MSG.failed);
     });
 
-    it('C5 a tab-visible check that gives no count leaves an open-mode count as it is', async () => {
+    it('C5 a tab-visible check that gives no count hides an open-mode count (another tab may have used it)', async () => {
         const { doc, ai } = pair(async () => noteReply(4), async () => answer(3), async () => ({ enabled: true, locked: false, unlocked: true }));
         await flush();
         ai.update(noteView());
@@ -1213,8 +1213,7 @@ describe('note and question coordination', () => {
         doc.visibilityState = 'visible';
         doc.fire('visibilitychange');
         await flush();
-        expect(doc.el('left').textContent).toContain('4 ');
-        expect(doc.el('left').hidden).toBe(false);
+        expect(doc.el('left').hidden).toBe(true);
     });
 
     it('C6 note 502 no_note rechecks the charged count', async () => {
