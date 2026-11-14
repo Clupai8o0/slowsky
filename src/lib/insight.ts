@@ -86,31 +86,61 @@ export function factSheet(f: InsightFacts): string[]
     const times = f.visits.map((v) => v.mjd);
     const match = name?.match(/^(\w+) J(\d{4}\d*(?:\.\d+)?)([-+−])(\d{4}\d*(?:\.\d+)?)$/i);
     const short = match ? `, also written ${match[1]} ${match[2]!.slice(0, 4)}${match[3]}${match[4]!.slice(0, 4)}` : '';
-    const lines = [`Target: ${name ?? 'a position typed in by the visitor'}${short}.`, `Position: RA ${f.ra.toFixed(4)} deg, Dec ${f.dec.toFixed(4)} deg.`, `Wavelength: ${f.lambdaUm.toFixed(3)} micron.`, `Visits: ${f.visits.length}. Frames in each visit: ${f.visits.map((v) => v.frames).join(', ')}. Time from first to last visit: ${(Math.max(...times) - Math.min(...times)).toFixed(1)} days.`];
+    const frames = f.visits.map((v) => v.frames === 500 ? 'at least 500' : String(v.frames)).join(', ');
+    const span = f.visits.length > 1 ? ` Time from first to last visit: ${(Math.max(...times) - Math.min(...times)).toFixed(1)} days.` : '';
+    const lines = [`Target: ${name ?? 'a position typed in by the visitor'}${short}.`, `Position: RA ${f.ra.toFixed(4)} deg, Dec ${f.dec.toFixed(4)} deg.`, `Wavelength: ${f.lambdaUm.toFixed(3)} micron.`, `Visits: ${f.visits.length >= 12 ? 'at least 12' : f.visits.length}. Frames in each visit: ${frames}.${span}`];
     if (f.lightCurve) {
         const lc = f.lightCurve;
-        const values = [...lc.points].sort((a, b) => a.mjd - b.mjd).map((p) => p.relative);
-        const sorted = [...values].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        const median = sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
-        const furthest = values.reduce((a, b) => Math.abs(b - median) > Math.abs(a - median) ? b : a);
-        lines.push(`Brightness relative to the reference stars, in time order: ${values.map((n) => n.toFixed(2)).join(', ')}.`);
-        if (median !== 0) {
-            const change = (furthest / median - 1) * 100;
-            lines.push(`Largest change from the median brightness: ${Math.abs(change).toFixed(0)} percent ${change <= 0 ? 'dimmer' : 'brighter'}.`);
+        const kept = lc.points.filter((p) => p.snr >= 1);
+        const values = kept.sort((a, b) => a.mjd - b.mjd).map((p) => p.relative);
+        if (values.length >= 2) {
+            const sorted = [...values].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+            lines.push(`Brightness relative to the reference stars, in time order: ${values.map((n) => n.toFixed(2)).join(', ')}.${kept.length < lc.points.length ? ' Points too faint to measure are left out.' : ''}`);
+            if (median !== 0) {
+                const below = median - sorted[0]!;
+                const above = sorted[sorted.length - 1]! - median;
+                // Compare the printed percents: 0.81, 1.00, 1.19 is a tie, not "19 percent brighter".
+                const down = (below / median * 100).toFixed(0);
+                const up = (above / median * 100).toFixed(0);
+                const amount = below > above ? down : up;
+                const description = amount === '0' ? 'less than 1 percent' : `${amount} percent ${down === up ? 'either side' : below > above ? 'dimmer' : 'brighter'}`;
+                lines.push(`Largest change from the median brightness: ${description}.`);
+            }
         }
-        lines.push(`Lowest signal-to-noise among the points: ${Math.min(...lc.points.map((p) => p.snr)).toFixed(0)}.`, lc.refScatter.length ? `Reference stars: ${lc.refScatter.length}. Scatter of each: ${lc.refScatter.map((n) => (n * 100).toFixed(1)).join(', ')} percent.` : 'Reference stars: none, so the brightness change has no control.', `Frames left out because their wavelength did not match: ${lc.dropped}.`);
+        const snr = Math.min(...lc.points.map((p) => p.snr));
+        const flooredSnr = Math.floor(snr);
+        const snrText = snr < 1 ? 'below 1' : flooredSnr > 100 ? 'more than 100' : String(flooredSnr);
+        const scatter = lc.refScatter.filter(Number.isFinite);
+        lines.push(`Lowest signal-to-noise among the points: ${snrText}. This counts sky noise only, so the real uncertainty is larger.`, scatter.length ? `Reference stars: ${scatter.length} with available scatter. Scatter of each: ${scatter.map((n) => (n * 100).toFixed(1)).join(', ')} percent.` : 'Reference stars: scatter unavailable.', `Frames left out because their wavelength did not match: ${lc.dropped}.`);
     }
     if (f.difference) {
-        lines.push(`Difference image at the target: ${Math.abs(f.difference.peakSigma).toFixed(1)} sigma, ${f.difference.peakSigma >= 0 ? 'brighter' : 'fainter'} in the later visit.`);
+        const peak = Math.abs(f.difference.peakSigma);
+        if (peak.toFixed(1) === '0.0') {
+            lines.push('Difference image at the target: no change above the noise.');
+        } else {
+            const value = Number(peak.toFixed(1)) > 100 ? 'more than 100' : peak.toFixed(1);
+            const caution = Number(peak.toFixed(1)) >= 5 ? ' A bright star leaves marks this strong from a tiny misalignment, and a star that moved leaves a bright side and a dark side.' : '';
+            lines.push(`Difference image at the target: strongest pixel ${value} sigma, ${f.difference.peakSigma >= 0 ? 'brighter' : 'fainter'} there in the later visit.${caution}`);
+        }
     }
     if (f.motion) {
-        lines.push(`Shift in position: ${f.motion.arcsec.toFixed(1)} arcsec over ${f.motion.days.toFixed(1)} days.`);
+        const shift = f.motion.arcsec.toFixed(1);
+        lines.push(`Shift in position: ${shift === '0.0' ? 'none measured' : `${shift} arcsec`} over ${f.motion.days.toFixed(1)} days.`);
     }
-    lines.push(`Frames came from: ${f.snapshot ? 'the baked snapshot' : "NASA's live archive"}.`);
+    lines.push(`Frames came from: ${f.snapshot ? 'a saved copy' : "NASA's live archive"}.`);
     return lines;
 }
-type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp };
+type Bound = 'min' | 'max' | undefined;
+type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp; bound?: Bound };
+// The direction of a bound written just before a number: "more than 100" is a floor, "below 1" a ceiling.
+function boundBefore(text: string, ai: boolean): Bound
+{
+    if ((ai ? /\b(?:more than|over|above|greater than|higher than|exceeds?|exceeding|in excess of|at least)\s*$/i : /\b(?:more than|at least)\s*$/i).test(text)) { return 'min'; }
+    if ((ai ? /\b(?:below|under|less than|lower than|fewer than|smaller than|at most)\s*$/i : /\b(?:below|less than)\s*$/i).test(text)) { return 'max'; }
+    return undefined;
+}
 const countNouns: [RegExp, RegExp, RegExp?][] = [
     [/^Visits$/i, /^(?:visits?|epochs?|passes?|observations?)$/i],
     [/^Frames in each visit$/i, /^(?:frames?|images?|exposures?)$/i, /\b(?:visits?|each|per|every)\b/i],
@@ -168,7 +198,8 @@ function sheetFacts(sheet: string[]): NumberFact[]
             const words = new RegExp(`(?:^|[^\\p{L}])(?:${stems})`, 'iu');
             const count = countNouns.find(([pattern]) => pattern.test(label));
             for (const list of lists(segment[2]!)) {
-                for (const value of list.values) { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2] }); }
+                const bound = boundBefore(segment[2]!.slice(0, list.start), false);
+                list.values.forEach((value, i) => { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words, nouns: count?.[1], required: count?.[2], bound: i === 0 ? bound : undefined }); });
             }
         }
     }
@@ -183,7 +214,7 @@ function sheetFacts(sheet: string[]): NumberFact[]
 export function checkNote(text: string, sheet: string[]): { text: string; dropped: number }
 {
     const facts = sheetFacts(sheet);
-    const visitCount = Number(sheet.join('\n').match(/^Visits:\s*(\d+)\./m)?.[1] ?? 3);
+    const visitCount = Number(sheet.join('\n').match(/^Visits:\s*(?:at least\s+)?(\d+)\./m)?.[1] ?? 3);
     const target = sheet.join('\n').match(/^Target:\s*(.+)\.$/m)?.[1];
     const dash = '[-\\u2010-\\u2015\\u2212]';
     const names: string[] = [];
@@ -214,12 +245,15 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             const nounFollower = follower.replace(/^of\s+(?:the|its|their|these|those)\s+/i, '');
             const followingWords = nounFollower.match(/^[a-z]+(?:-[a-z]+)*(?:\s+[a-z]+(?:-[a-z]+)*)?/i)?.[0].split(/\s+/) ?? [];
             const noun = list.unit ? undefined : followingWords.find((word) => countingNoun.test(word));
+            const lead = boundBefore(value.slice(0, list.start), true);
             const unitlessBlocked = Boolean(list.unit) || /^[°′″$€£±×^/]/.test(follower) || /^[A-Z]/.test(follower) || foreign.test(follower);
-            for (const raw of list.values) {
+            for (const [index, raw] of list.values.entries()) {
                 const val = Number(raw.replace('−', '-'));
+                const bound = index === 0 ? lead : undefined;
                 const integer = !raw.includes('.');
                 if (integer && MISSION_COUNTS.some((entry) => entry.value === val && entry.nouns.test(follower))) { continue; }
                 if (!facts.some((fact) => {
+                    if (fact.bound && fact.bound !== bound) { return false; }
                     if (fact.value !== val || (integer && !fact.integer) || !fact.words.test(fact.required && noun ? value : context)) { return false; }
                     if (noun && (!fact.nouns?.test(noun) || (fact.required && !fact.required.test(value)))) { return false; }
                     if (fact.unit) { return list.unit === fact.unit; }

@@ -60,6 +60,38 @@ function base(): FactsInput
 }
 
 describe('buildFacts', () => {
+    it('floors wire signal-to-noise at two decimals and preserves below-one readings', () => {
+        const first = curve([60500, 60501]);
+        first.points[1]!.target.snr = 0.9999;
+        const second = curve([60500, 60501]);
+        second.points[1]!.target.snr = 0.991;
+        const a = buildFacts({ ...base(), lightCurve: first });
+        const b = buildFacts({ ...base(), lightCurve: second });
+        expect(a).toEqual(b);
+        expect(a.lightCurve!.points[1]!.snr).toBe(0.99);
+        expect(factSheet(a).join(' ')).toContain('points: below 1.');
+        for (const [input, expected] of [[1.15, 1.15], [0.9999999999999999, 0.99], [-1.151, -1.16]] as const) {
+            first.points[1]!.target.snr = input;
+            expect(buildFacts({ ...base(), lightCurve: first }).lightCurve!.points[1]!.snr).toBe(expected);
+        }
+    });
+    it('describes retained visits and capped frame counts honestly and validates the result', () => {
+        const visits = Array.from({ length: 13 }, (_, i) => [frame(60500 + i)]);
+        visits[0] = Array.from({ length: 501 }, () => frame(60500));
+        const f = buildFacts({ ...base(), visits, lightCurve: { ...curve([60500, 60501]), refScatter: [NaN, 0.02] } });
+        expect(validateFacts(f)).toEqual(f);
+        expect(f.lightCurve!.refScatter).toEqual([0.02]);
+        const line = factSheet(f).find((s) => s.startsWith('Visits:'))!;
+        expect(line).toContain('Visits: at least 12.');
+        expect(line).toContain('at least 500');
+    });
+    it('does not round a sub-one signal-to-noise into a brightness measurement', () => {
+        const lc = curve([60500, 60501]);
+        lc.points[1]!.target.snr = 0.99;
+        const f = buildFacts({ ...base(), lightCurve: lc });
+        expect(f.lightCurve!.points[1]!.snr).toBeLessThan(1);
+        expect(factSheet(f).some((line) => line.startsWith('Brightness relative'))).toBe(false);
+    });
     it('full input passes validateFacts and the sheet shows the rounded numbers', () => {
         const diff = noise(441, prng(1));
         diff[220] = 20;
@@ -72,9 +104,9 @@ describe('buildFacts', () => {
         expect(sheet).toContain('1.00, 0.87');
         expect(sheet).toContain('Scatter of each: 1.2, 4.6 percent');
         expect(sheet).toContain('did not match: 3');
-        expect(sheet).toMatch(/Difference image at the target: \d+\.\d sigma, brighter/);
+        expect(sheet).toMatch(/Difference image at the target: strongest pixel \d+\.\d sigma, brighter/);
         expect(sheet).toContain('Shift in position: 1.9 arcsec over 180.1 days');
-        expect(sheet).toContain('baked snapshot');
+        expect(sheet).toContain('a saved copy');
     });
 
     it('leaves optional sections off when missing, empty or all-NaN', () => {
