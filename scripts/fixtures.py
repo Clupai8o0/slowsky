@@ -31,7 +31,12 @@ def query(collection, ra, dec, save=False):
     response = SESSION.get('https://irsa.ipac.caltech.edu/SIA', params={'COLLECTION': collection, 'POS': f'CIRCLE {ra} {dec} 0.001', 'MAXREC': 50}, timeout=90)
     response.raise_for_status()
     if save:
-        (OUT/'sia_rwaur.xml').write_bytes(response.content)
+        # Saved reply: narrow TIME window so it is a complete (QUERY_STATUS OK) reply under 300 KB, not an OVERFLOW one.
+        full = SESSION.get('https://irsa.ipac.caltech.edu/SIA', params={'COLLECTION': collection, 'POS': f'CIRCLE {ra} {dec} 0.001', 'TIME': '60919 60950', 'MAXREC': 1000}, timeout=90)
+        full.raise_for_status()
+        if b'name="QUERY_STATUS" value="OK"' not in full.content:
+            raise RuntimeError('Saved SIA reply is not QUERY_STATUS OK')
+        (OUT/'sia_rwaur.xml').write_bytes(full.content)
     table = parse_single_table(io.BytesIO(response.content)).to_table(use_names_over_ids=True)
     return [row for row in table if str(row['energy_bandpassname']) == 'SPHEREx-D1']
 
