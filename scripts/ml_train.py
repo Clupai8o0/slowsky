@@ -130,7 +130,7 @@ def git_state(outputs):
     return revision, bool(status.strip())
 
 
-def export(model, args, counts):
+def export(model, args, counts, peak_snr_max):
     return {'version': 1, 'architecture': 'gradient-boosted-trees-12',
             'madeBy': 'Codex (OpenAI) and Claude; scripts/ml_train.py; PyTorch CPU',
             'aiNote': 'AI-written code, built by Codex (OpenAI) and Claude during the event. '
@@ -141,7 +141,7 @@ def export(model, args, counts):
                       'layout': 'CHW', 'pixelArcsec': NATIVE, 'normalization': 'difference-MAD-sigma',
                       'preprocess': 'twelve-morphology-flux-features'},
             'training': {'rounds': args.rounds, 'perTargetPerClass': args.per_class,
-                         'counts': counts, 'split': 'leave-one-target-out',
+                         'counts': counts, 'peakSnrMax': peak_snr_max, 'split': 'leave-one-target-out',
                          'optimizer': 'multiclass-Newton-gradient-boosting', 'learningRate': 0.1,
                          'maxDepth': 3, 'l2': 5, 'minimumLeaf': 12,
                          'torch': torch.__version__, 'numpy': np.__version__},
@@ -178,10 +178,15 @@ def main(args):
     model = train_trees(fx, y, args.rounds)
     counts = {target: {name: int(((targets == target) & (y == i)).sum())
                        for i, name in enumerate(CLASSES)} for target in names}
+    # Runtime compares the same observed sigma-normalized difference channel,
+    # including noise/registration residuals, rather than the requested injection.
+    peak_snrs = np.max(np.abs(x[:, 2]), axis=(1, 2))
+    peak_snr_max = float(np.max(peak_snrs))
     model_path = ROOT / 'public/models/change-classifier.json'
-    write_json(model_path, export(model, args, counts))
+    write_json(model_path, export(model, args, counts, peak_snr_max))
     digest = hashlib.sha256(model_path.read_bytes()).hexdigest()
-    selected = [int(np.flatnonzero((targets == target) & (y == kind))[0])
+    # Parity fixtures exercise inference within the runtime's supported range.
+    selected = [int(np.flatnonzero((targets == target) & (y == kind) & (peak_snrs >= 2.5))[0])
                 for target in names for kind in range(4)]
     probs = tree_probabilities(model, fx[selected])
     write_json(ROOT / 'tests/fixtures/classify-parity.json', {
@@ -194,7 +199,8 @@ def main(args):
                'gitSha': revision, 'gitDirty': dirty, 'seed': args.seed, 'classes': CLASSES, 'modelSha256': digest,
                'modelBytes': model_path.stat().st_size, 'elapsedSeconds': time.monotonic() - started,
                'training': {'rounds': args.rounds, 'perTargetPerClass': args.per_class,
-                            'totalStamps': len(y), 'counts': counts, 'cpuThreads': 1},
+                            'totalStamps': len(y), 'counts': counts, 'cpuThreads': 1,
+                            'peakSnrMax': peak_snr_max},
                'modelFamily': 'gradient-boosted trees on twelve morphology/flux features',
                'selectionReason': 'Baseline only; not shipped. Kept for comparison.',
                'validation': 'Synthetic injections only; each fold holds out all frames of one target. '

@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CLASSES = ['mover', 'brightness', 'artifact', 'nothing']
 SIZE = 15
 NATIVE = 6.15
+# Common stand-in for the change finder's centroid error, in native pixels.
+CENTRE_JITTER_SIGMA = 0.3
 ALLOWED = {'spherex_dr1', 'spherex_dr1_deep', 'spherex_qr3', 'spherex_qr3_deep'}
 
 
@@ -125,7 +127,26 @@ def read_frames(snapshot):
     return frames, skipped
 
 
-def sample(frame, kind, rng):
+def signal_centre(difference):
+    """Local |difference| flux centroid around the candidate's strongest peak.
+
+    Use the same radius-four candidate core for every class, keeping a mover's
+    other epoch (up to 20 pixels away) from dragging its centre between peaks.
+    An uninjected/static example has no signal: use its nominal candidate site.
+    Coordinates here are zero-based array indices, unlike the injection grid.
+    """
+    yy, xx = np.indices(difference.shape)
+    absolute = np.abs(difference)
+    core = (xx - 22) ** 2 + (yy - 22) ** 2 <= 16
+    py, px = np.unravel_index(np.argmax(np.where(core, absolute, -1)), absolute.shape)
+    flux = absolute * ((xx - px) ** 2 + (yy - py) ** 2 <= 16)
+    total = float(flux.sum())
+    if total == 0:
+        return np.array([22.0, 22.0])
+    return np.array([float((flux * xx).sum() / total), float((flux * yy).sum() / total)])
+
+
+def sample(frame, kind, rng, centres=None):
     # A 47-pixel region contains the 15-pixel stamp and a 20-pixel motion.
     if kind == 1 or (kind == 3 and rng.random() < 0.65):
         choices = [s for s in frame.stars if 4 <= s['snr'] <= 200]
@@ -150,7 +171,7 @@ def sample(frame, kind, rng):
     sigma = robust_sigma(b - a)
     if not np.isfinite(sigma) or sigma <= 0:
         return None
-    # Candidate-centred, with random fractional-pixel centring.
+    # Continuous source positions; detector hits below stay on native pixels.
     px, py = 23 + rng.uniform(-0.45, 0.45), 23 + rng.uniform(-0.45, 0.45)
     # Sample an actual width measured in this frame, retaining spatial PSF
     # variation that would be lost by using only one median width per frame.
@@ -217,14 +238,49 @@ def sample(frame, kind, rng):
         snr = float(np.max(np.abs(delta_b - delta_a)) / sigma)
     else:
         snr = 0.0
+    centre = signal_centre(delta_b - delta_a)
+    extraction = centre + rng.normal(0, CENTRE_JITTER_SIGMA, 2)
+    if centres is not None:
+        centres.append(extraction - centre)
     # Same bilinear native stamp extraction as stampFor, CHW / MAD sigma.
     sy, sx = np.mgrid[-7:8, -7:8].astype(float)
-    sa, sb = bilinear(a, 22 + sx, 22 + sy), bilinear(b, 22 + sx, 22 + sy)
+    sa = bilinear(a, extraction[0] + sx, extraction[1] + sy)
+    sb = bilinear(b, extraction[0] + sx, extraction[1] + sy)
     stamp = np.stack((sa / sigma, sb / sigma, (sb - sa) / sigma)).astype(np.float32)
     stamp = np.rot90(stamp, int(rng.integers(4)), axes=(1, 2))
     if rng.random() < 0.5:
         stamp = stamp[:, :, ::-1]
     return stamp.copy(), snr, subtype
+
+
+def check_centres(seed=20261114, per_class=240):
+    """Manual diagnostic only; never called by either training script."""
+    frames, _ = read_frames(ROOT / 'public/snapshot')
+    rng = np.random.default_rng(seed)
+    means, spreads = [], []
+    count = per_class * len({frame.target for frame in frames})
+    for kind, name in enumerate(CLASSES):
+        offsets = []
+        attempts = 0
+        while len(offsets) < count:
+            attempts += 1
+            if attempts > count * 200:
+                raise RuntimeError(f'Cannot check centres for {name}')
+            sample(frames[int(rng.integers(len(frames)))], kind, rng, offsets)
+        offsets = np.array(offsets)
+        mean, spread = offsets.mean(0), offsets.std(0, ddof=1)
+        means.append(mean)
+        spreads.append(spread)
+        print(f'{name}: n={count} offset mean=({mean[0]:+.4f}, {mean[1]:+.4f}) px; '
+              f'spread=({spread[0]:.4f}, {spread[1]:.4f}) px', flush=True)
+    # Five standard errors allow ordinary seeded sampling noise, while the old
+    # dead-centre hot pixels and fixed half-pixel hits fail the spread check.
+    mean_error = CENTRE_JITTER_SIGMA / np.sqrt(count)
+    spread_error = CENTRE_JITTER_SIGMA / np.sqrt(2 * (count - 1))
+    assert np.max(np.abs(means)) < 5 * mean_error, 'Class centring bias'
+    assert np.max(np.abs(np.array(spreads) - CENTRE_JITTER_SIGMA)) < 5 * spread_error, 'Class jitter mismatch'
+    assert np.max(np.ptp(means, axis=0)) < 5 * np.sqrt(2) * mean_error, 'Class means differ'
+    assert np.max(np.ptp(spreads, axis=0)) < 5 * np.sqrt(2) * spread_error, 'Class spreads differ'
 
 
 def dataset(snapshot=ROOT / 'public/snapshot', seed=20261114, per_class=240):
@@ -317,7 +373,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seed', type=int, default=20261114)
     parser.add_argument('--per-class', type=int, default=240)
+    parser.add_argument('--check-centres', action='store_true')
     args = parser.parse_args()
+    if args.per_class < 2:
+        parser.error('Need at least two examples per class')
+    if args.check_centres:
+        check_centres(args.seed, args.per_class)
+        raise SystemExit(0)
     x, y, target, snr, info = dataset(seed=args.seed, per_class=args.per_class)
     print(json.dumps({'shape': list(x.shape), 'classes': CLASSES,
                       'measuredFrames': len(info['psfMeasurements']),

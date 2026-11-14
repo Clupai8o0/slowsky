@@ -2,6 +2,12 @@ import type { OutputGrid, PixelCoord } from './types';
 
 export type ModelKind = 'mover' | 'brightness' | 'artifact' | 'nothing';
 
+export type Classification = {
+    kind: ModelKind;
+    /** Uncalibrated scores, not probabilities; never show as percentages or "% sure". */
+    p: Record<ModelKind, number>;
+} | { kind: 'declined'; reason: string };
+
 type Tree = { value: number[] } | { feature: number; threshold: number; left: Tree; right: Tree };
 
 interface ModelBase {
@@ -18,7 +24,7 @@ interface ModelBase {
         normalization: 'difference-MAD-sigma';
         preprocess: 'twelve-morphology-flux-features';
     };
-    training: Record<string, unknown>;
+    training: Record<string, unknown> & { peakSnrMax: number };
     features: string[];
 }
 
@@ -143,11 +149,15 @@ export function loadClassifier(json: unknown): ClassifierModel
             throw new Error('Classifier: invalid class counts');
         }
     }
+    if (typeof training.peakSnrMax !== 'number' || !Number.isFinite(training.peakSnrMax)
+        || training.peakSnrMax < 2.5) {
+        throw new Error('Classifier: missing or invalid training peak S/N maximum; retrain the model');
+    }
     const base: ModelBase = { version: 1, madeBy: root.madeBy,
         aiNote: root.aiNote, seed: root.seed, classes: KINDS.slice(),
         stamp: { size: SIZE, channels: ['earlier', 'later', 'later-earlier'], layout: 'CHW',
             pixelArcsec: NATIVE, normalization: 'difference-MAD-sigma', preprocess: PREPROCESS },
-        training: { ...training }, features: FEATURES.slice() };
+        training: { ...training, peakSnrMax: training.peakSnrMax }, features: FEATURES.slice() };
     if (root.architecture === ARCHITECTURE) {
         if (!Array.isArray(root.trees) || root.trees.length < 1 || root.trees.length > 256
             || !Number.isInteger(training.rounds) || training.rounds !== root.trees.length) {
@@ -387,11 +397,34 @@ function cnnLogits(model: CnnModel, stamp: Float32Array, features: number[]): nu
     return dense(dense(combined, model.dense[0]!).map((v) => Math.max(0, v)), model.dense[1]!);
 }
 
-/** Twelve morphology/flux features; dispatch exported CNN or boosted trees. */
-export function classify(model: ClassifierModel, stamp: Float32Array): { kind: ModelKind; p: Record<ModelKind, number> }
+/** Label an in-range candidate with the exported CNN or boosted trees.
+ * p contains uncalibrated scores, not probabilities; never show percentages or "% sure".
+ * Decline faint, over-bright or spatially flat changes before inference.
+ */
+export function classify(model: ClassifierModel, stamp: Float32Array): Classification
 {
     if (stamp.length !== AREA * 3 || !stamp.every(Number.isFinite)) {
         throw new Error('Classifier: expected a finite 3x15x15 stamp');
+    }
+    const diff = stamp.subarray(AREA * 2), peak = Math.max(...diff.map(Math.abs));
+    if (peak < 2.5) {
+        return { kind: 'declined', reason: 'too faint to label' };
+    }
+    if (peak > 2 * model.training.peakSnrMax) {
+        return { kind: 'declined', reason: 'brighter than anything in training' };
+    }
+    // An affine plane (including a constant offset) has no localized change.
+    // Fit all pixels so rounding noise in a Float32 gradient is tolerated.
+    let mean = 0, slopeX = 0, slopeY = 0;
+    const moment = AREA * (SIZE * SIZE - 1) / 12;
+    for (let i = 0; i < AREA; i++) {
+        mean += diff[i]! / AREA;
+        slopeX += diff[i]! * (i % SIZE - 7) / moment;
+        slopeY += diff[i]! * (Math.floor(i / SIZE) - 7) / moment;
+    }
+    if (diff.every((v, i) => Math.abs(v - mean - slopeX * (i % SIZE - 7)
+        - slopeY * (Math.floor(i / SIZE) - 7)) <= peak * 1e-6)) {
+        return { kind: 'declined', reason: 'no localized change to label' };
     }
     const features = featuresFor(stamp);
     const logits = model.architecture === CNN ? cnnLogits(model, stamp, features) : [0, 0, 0, 0];

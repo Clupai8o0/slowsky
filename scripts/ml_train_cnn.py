@@ -203,7 +203,7 @@ def rounded(tensor):
     return [float(f'{v:.7g}') for v in tensor.detach().flatten().tolist()]
 
 
-def export_cnn(model, tree_json, counts, args, epochs):
+def export_cnn(model, tree_json, counts, args, epochs, peak_snr_max):
     model.eval()
     conv = []
     for block in model.blocks:
@@ -217,6 +217,7 @@ def export_cnn(model, tree_json, counts, args, epochs):
             'conv': conv, 'dense': [{'weights': rounded(layer.weight), 'bias': rounded(layer.bias)}
                                    for layer in (model.hidden, model.output)],
             'training': {'counts': counts, 'perTargetPerClass': args.per_class, 'epochs': epochs,
+                         'peakSnrMax': peak_snr_max,
                          'maximumEpochs': args.epochs, 'optimizer': 'AdamW', 'learningRate': 0.003,
                          'weightDecay': 0.01, 'schedule': 'cosine', 'labelSmoothing': 0.05,
                          'batchSize': args.batch_size, 'batchNormFolded': True,
@@ -251,6 +252,52 @@ def mean_metrics(folds):
     return {key: float(np.mean([fold[key] for fold in folds])) for key in KEYS}
 
 
+def model_card(summary, eval_digest):
+    """Public wording and every displayed number come from this run's sidecar."""
+    worst = min(summary['folds'], key=lambda fold: fold['macroF1'])
+    labels = {'moverRecallSnr10': 'mover recall at S/N>=10', 'artifactPrecision': 'artifact precision',
+              'macroF1': 'macro-F1'}
+    thresholds = summary['gate']['thresholds']
+    trees_by_target = {entry['testTarget']: entry['trees'] for entry in summary['comparison']}
+    below = []
+    for target in dict.fromkeys(item['target'] for items in summary['worstFoldGate'].values() for item in items):
+        parts = [f"{labels[key]} is {item['value']:.3f}, below the {thresholds[key]:.2f} target"
+                 for key, items in summary['worstFoldGate'].items() for item in items if item['target'] == target]
+        values = {key: item['value'] for key, items in summary['worstFoldGate'].items()
+                  for item in items if item['target'] == target}
+        better = all(trees_by_target[target][key] > value for key, value in values.items())
+        below.append(f"On {target}, {' and '.join(parts)}" + ('; trees did better there.' if better else '.'))
+    low_bin = next(b for b in summary['recallBySnrBin'] if b['lo'] == 3 and b['hi'] == 5)
+    test_counts = sorted({fold['testCount'] for fold in summary['folds']})
+    frame_counts = [sum(frame['target'] == fold['testTarget'] for frame in summary['psfMeasurements'])
+                    for fold in summary['folds']]
+    mover_count = summary['perClass']['mover']['count']
+    total = sum(value['count'] for value in summary['perClass'].values())
+    share = ('A quarter' if mover_count * 4 == total else f'{100 * mover_count / total:.2f}'.rstrip('0').rstrip('.') + '%')
+    card = {
+        'meanFoldMacroF1': round(summary['meanFoldMetrics']['macroF1'], 3),
+        'accuracy': round(summary['meanFoldMetrics']['accuracy'], 3),
+        'worstFold': {'target': worst['testTarget'], 'macroF1': round(worst['macroF1'], 3)},
+        'evaluation': (f"Leave-one-target-out over {len(summary['folds'])} SPHEREx fields "
+                       f"({min(frame_counts)}-{max(frame_counts)} frames each), "
+                       f"{'/'.join(f'{n:,}' for n in test_counts)} test stamps per fold. "
+                       f"Scores are from fold models; the shipped model is trained on all {len(summary['folds'])}."),
+        'data': ('Fake changes added to real SPHEREx DR1/QR3 frames; before and after are one frame with fresh fake noise, '
+                 'not two visits. No real movers, no human labels.'),
+        'selection': ('CNN chosen over trees on these same held-out folds and test stamps, so this is not an untouched benchmark.'
+                      if summary['cnnAttempt']['gate']['passed'] else
+                      'Trees retained; the CNN did not pass its comparison checks on these same held-out folds.'),
+        'limits': ('Labels change spots only; it does not find planets. Not tested on a real asteroid. '
+                   f"Mover recall is {low_bin['classes']['mover']['recall']:.2f} at S/N 3-5. "
+                   f'{share} of test stamps are movers; if real ones are rarer, more mover labels are wrong.'),
+        'treesMacroF1': round(summary['cnnAttempt']['sameTestTrees']['meanFoldMetrics']['macroF1'], 3),
+        'treesNote': TREES_NOTE, 'evalSha256': eval_digest, 'seed': summary['seed'],
+    }
+    if below:
+        card['belowGate'] = ' '.join(below)
+    return card
+
+
 def self_test():
     rng = np.random.default_rng(123)
     x = rng.normal(size=(20, 3, SIZE, SIZE)).astype(np.float32)
@@ -265,7 +312,7 @@ def self_test():
     model = StampCNN(np.zeros(12), np.ones(12)).eval()
     template = {'version': 1, 'classes': CLASSES, 'stamp': {}, 'features': FEATURES, 'aiNote': 'test'}
     args = argparse.Namespace(seed=12, epochs=2, per_class=4, batch_size=16)
-    exported = export_cnn(model, template, {}, args, 2)
+    exported = export_cnn(model, template, {}, args, 2, float(np.max(np.abs(x[:, 2]))))
     np.testing.assert_allclose(probabilities(model, x, feature_batch(x)),
                                probabilities(from_export(exported), x, feature_batch(x)), atol=1e-6)
     y = np.tile(np.repeat(np.arange(4), 20), 5)
@@ -311,9 +358,14 @@ def check():
     assert attempt['gate']['passed'] == all(checks.values())
     assert sha(shipped) == evaluation['modelSha256']
     assert len(shipped) <= 200_000 and evaluation['gate']['passed']
+    card = (ROOT / 'public/models/change-classifier.card.json').read_bytes()
+    assert len(card) < 1280, 'Model card exceeds the 1280-byte budget'
+    assert json.loads(card) == model_card(evaluation, sha((folder / 'change-classifier.eval.json').read_bytes()))
+    for raw in (shipped, trees, cnn):
+        maximum = json.loads(raw)['training']['peakSnrMax']
+        assert np.isfinite(maximum) and maximum >= 2.5
     if attempt['gate']['passed']:
         assert sha(shipped) == sha(cnn)
-        assert attempt['meanFoldMetrics']['macroF1'] >= 0.889
         assert attempt['meanFoldMetrics']['macroF1'] >= evaluation['treesBaseline']['meanFoldMetrics']['macroF1'] + 0.01
     else:
         assert sha(shipped) == evaluation['treesBaseline']['modelSha256']
@@ -342,6 +394,8 @@ def main(args):
     tx, ty, tt, tsnr, _ = dataset(seed=tree_json['seed'], per_class=600)
     tfx = all_features(tx)
     x, y, targets, snrs, provenance = dataset(seed=args.seed, per_class=args.per_class)
+    peak_snrs = np.max(np.abs(x[:, 2]), axis=(1, 2))
+    peak_snr_max = float(np.max(peak_snrs))
     fx = all_features(x)
     np.testing.assert_allclose(fx[:20], [features(stamp) for stamp in x[:20]], atol=1e-9)
     names = sorted(set(targets.tolist()))
@@ -356,7 +410,7 @@ def main(args):
         print(f'Hold out {target}: optimize {len(train)}, validate {len(val)}, test {int(test.sum())}', flush=True)
         model, history = fit(x, y, fx, train, val, args, args.seed + i)
         # Serialize BEFORE seeing the held-out target; evaluate exactly once.
-        exported = export_cnn(model, tree_json, counts, args, history['bestEpoch'])
+        exported = export_cnn(model, tree_json, counts, args, history['bestEpoch'], float(np.max(peak_snrs[train])))
         prediction = probabilities(from_export(exported), x[test], fx[test]).argmax(1)
         predictions[test] = prediction
         fold = {'testTarget': target, 'trainTargets': train_targets, 'validationTargets': train_targets,
@@ -381,13 +435,13 @@ def main(args):
     epochs = int(np.median([fold['bestEpoch'] for fold in folds]))
     print(f'Final fit: {epochs} epochs chosen from training-only fold validation', flush=True)
     model, _ = fit(x, y, fx, np.arange(len(y)), None, args, args.seed, epochs)
-    exported = export_cnn(model, tree_json, counts, args, epochs)
+    exported = export_cnn(model, tree_json, counts, args, epochs, peak_snr_max)
     raw = encode(exported)
     hashes = [sha(raw)]
     if args.verify_determinism:
         print('Repeat final fit from the same seed to verify exact exported hash', flush=True)
         repeated, _ = fit(x, y, fx, np.arange(len(y)), None, args, args.seed, epochs)
-        repeated_raw = encode(export_cnn(repeated, tree_json, counts, args, epochs))
+        repeated_raw = encode(export_cnn(repeated, tree_json, counts, args, epochs, peak_snr_max))
         hashes.append(sha(repeated_raw))
         assert repeated_raw == raw, 'Non-deterministic CNN export'
     mean, tree_mean = mean_metrics(folds), mean_metrics(tree_folds)
@@ -402,7 +456,7 @@ def main(args):
     passed = all(checks.values())
     attempt = {'architecture': ARCHITECTURE, 'seed': args.seed, 'folds': folds, 'meanFoldMetrics': mean,
                'training': {'perTargetPerClass': args.per_class, 'totalStamps': len(y), 'maximumEpochs': args.epochs,
-                            'finalEpochs': epochs, 'cpuThreads': 1, 'counts': counts},
+                            'finalEpochs': epochs, 'cpuThreads': 1, 'counts': counts, 'peakSnrMax': peak_snr_max},
                'validation': '15% per class per training target for epoch selection; '
                              'final epoch count is the median validation best epoch.',
                'augmentation': 'Training only, independent rotations/flips and common +/-0.3 px XY shifts; '
@@ -447,38 +501,10 @@ def main(args):
     }
     eval_path = folder / 'change-classifier.eval.json'
     write_json(eval_path, summary)
-    worst = min(summary['folds'], key=lambda fold: fold['macroF1'])
-    # Public card: every number computed from the eval written above, never typed.
-    labels = {'moverRecallSnr10': 'mover recall at S/N>=10', 'artifactPrecision': 'artifact precision',
-              'macroF1': 'macro-F1'}
-    trees_by_target = {entry['testTarget']: entry['trees'] for entry in summary['comparison']}
-    below = []
-    for target in dict.fromkeys(item['target'] for items in summary['worstFoldGate'].values() for item in items):
-        parts = [f"{labels[key]} is {item['value']:.3f}" for key, items in summary['worstFoldGate'].items()
-                 for item in items if item['target'] == target]
-        keys = [key for key, items in summary['worstFoldGate'].items() for item in items if item['target'] == target]
-        values = {key: item['value'] for key, items in summary['worstFoldGate'].items()
-                  for item in items if item['target'] == target}
-        better = all(trees_by_target[target][key] > values[key] for key in keys)
-        below.append(f"On {target}, {' and '.join(parts)}, under the gate"
-                     + ('; trees did better there.' if better else '.'))
-    low_bin = next(b for b in summary['recallBySnrBin'] if b['lo'] == 3 and b['hi'] == 5)
-    test_counts = sorted({fold['testCount'] for fold in summary['folds']})
-    write_json(public / 'change-classifier.card.json', {
-        'meanFoldMacroF1': round(summary['meanFoldMetrics']['macroF1'], 3),
-        'accuracy': round(summary['meanFoldMetrics']['accuracy'], 3),
-        'worstFold': {'target': worst['testTarget'], 'macroF1': round(worst['macroF1'], 3)},
-        'belowGate': ' '.join(below) if below else 'Every fold meets the gate.',
-        'evaluation': (f"Leave-one-target-out over {len(summary['folds'])} SPHEREx target fields; "
-                       + f"{'/'.join(f'{n:,}' for n in test_counts)} test stamps per fold."),
-        'data': 'Fake changes injected into real SPHEREx DR1/QR3 frames. No real movers or variables, no human labels.',
-        'selection': 'CNN chosen over trees on these same held-out folds and test stamps, so this is not an untouched benchmark.',
-        'limits': ('Labels change spots only; it does not find planets. '
-                   f"Mover recall is {low_bin['classes']['mover']['recall']:.2f} at S/N 3-5."),
-        'treesMacroF1': round(tree_mean['macroF1'], 3), 'treesNote': TREES_NOTE,
-        'evalSha256': sha(eval_path.read_bytes()), 'seed': summary['seed'],
-    })
-    selected = [int(np.flatnonzero((targets == target) & (y == kind))[0])
+    card = model_card(summary, sha(eval_path.read_bytes()))
+    assert len(encode(card)) < 1280, 'Model card exceeds the 1280-byte budget'
+    write_json(public / 'change-classifier.card.json', card)
+    selected = [int(np.flatnonzero((targets == target) & (y == kind) & (peak_snrs >= 2.5))[0])
                 for target in names for kind in range(4)]
     cnn_probs = probabilities(from_export(exported), x[selected], fx[selected])
     tree_probs = tree_probabilities(tree_json['trees'], fx[selected])

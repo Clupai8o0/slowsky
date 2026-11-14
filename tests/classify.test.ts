@@ -32,7 +32,33 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     }
     const low = evaluation.recallBySnrBin.find((bin) => bin.lo === 3 && bin.hi === 5)!;
     expect(card.limits).toContain(`Mover recall is ${low.classes.mover.recall!.toFixed(2)} at S/N 3-5`);
-    expect(card.evaluation).toContain(`over ${evaluation.folds.length} SPHEREx target fields`);
+    const frameCounts = evaluation.folds.map((fold) => evaluation.psfMeasurements
+        .filter((frame) => frame.target === fold.testTarget).length);
+    const testCounts = [...new Set(evaluation.folds.map((fold) => fold.testCount))].sort((a, b) => a - b);
+    expect(card.evaluation).toBe(`Leave-one-target-out over ${evaluation.folds.length} SPHEREx fields `
+        + `(${Math.min(...frameCounts)}-${Math.max(...frameCounts)} frames each), `
+        + `${testCounts.map((n) => n.toLocaleString('en-US')).join('/')} test stamps per fold. `
+        + `Scores are from fold models; the shipped model is trained on all ${evaluation.folds.length}.`);
+    expect(card.data).toBe('Fake changes added to real SPHEREx DR1/QR3 frames; before and after are one frame with fresh fake noise, '
+        + 'not two visits. No real movers, no human labels.');
+    const total = Object.values(evaluation.perClass).reduce((sum, value) => sum + value.count, 0);
+    const share = evaluation.perClass.mover.count / total;
+    const prevalence = share === 0.25 ? 'A quarter of test stamps are movers'
+        : `${Number((share * 100).toFixed(2))}% of test stamps are movers`;
+    expect(card.limits).toBe('Labels change spots only; it does not find planets. Not tested on a real asteroid. '
+        + `Mover recall is ${low.classes.mover.recall!.toFixed(2)} at S/N 3-5. `
+        + `${prevalence}; if real ones are rarer, more mover labels are wrong.`);
+    const misses = Object.values(gated.worstFoldGate).flat();
+    if (misses.length === 0) {
+        expect(card.belowGate).toBeUndefined();
+    } else {
+        expect(card.belowGate).not.toContain('under the gate');
+        for (const key of ['moverRecallSnr10', 'artifactPrecision']) {
+            if (gated.worstFoldGate[key]!.length > 0) {
+                expect(card.belowGate).toContain('below the 0.85 target');
+            }
+        }
+    }
     for (const text of [JSON.stringify(card), weights.aiNote, weights.madeBy]) {
         expect(text).not.toMatch(/discover|confirm|detected/i);
     }
@@ -49,7 +75,7 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     expect(evaluation.configurationSelection).toContain('Development validation, not an untouched benchmark');
     expect(card.evalSha256).toBe(digest);
     expect(card.seed).toBe(evaluation.seed);
-    expect(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url)).length).toBeLessThan(1024);
+    expect(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url)).length).toBeLessThan(1280);
     const thresholds = { moverRecallSnr10: 0.85, artifactPrecision: 0.85, macroF1: 0.80 } as const;
     const expected = Object.fromEntries(Object.entries(thresholds).map(([key, threshold]) => [key,
         evaluation.folds.filter((fold) => fold[key as keyof typeof thresholds] < threshold)
@@ -71,14 +97,69 @@ function cnnWeights()
         featureScale: Array(12).fill(1) as number[],
         conv: [layer(3, 12, 9), layer(12, 16, 9), layer(16, 16, 9)],
         dense: [layer(28, 32, 1), { ...layer(32, 4, 1), bias: [0, 1, 2, 3] }],
-        training: { ...treeWeights.training, epochs: 20, batchNormFolded: true } };
+        training: { ...treeWeights.training, peakSnrMax: 40, epochs: 20, batchNormFolded: true } };
 }
 
 describe('snapshot change classifier', () => {
+    it('declines a flat gradient even within the training S/N range', () => {
+        const stamp = new Float32Array(675);
+        for (let y = 0; y < 15; y++) {
+            for (let x = 0; x < 15; x++) {
+                const at = y * 15 + x, value = 4 + x / 7 + y / 14;
+                stamp[225 + at] = value;
+                stamp[450 + at] = value;
+            }
+        }
+        expect(classify(loadClassifier(cnnWeights()), stamp)).toEqual({
+            kind: 'declined', reason: 'no localized change to label',
+        });
+    });
+
+    it('declines pure noise with a peak below 2.5 sigma', () => {
+        const stamp = new Float32Array(675);
+        for (let i = 0; i < 225; i++) {
+            stamp[i] = Math.sin(i * 73.1) * 1.1;
+            stamp[225 + i] = Math.cos(i * 17.3) * 1.1;
+            stamp[450 + i] = stamp[225 + i]! - stamp[i]!;
+        }
+        expect(classify(loadClassifier(cnnWeights()), stamp)).toEqual({
+            kind: 'declined', reason: 'too faint to label',
+        });
+    });
+
+    it('declines a peak at three times the recorded training maximum', () => {
+        for (const peakSnrMax of [12, 40]) {
+            const cnn = cnnWeights();
+            cnn.training.peakSnrMax = peakSnrMax;
+            const stamp = new Float32Array(675);
+            stamp[225 + 112] = stamp[450 + 112] = -3 * peakSnrMax;
+            expect(classify(loadClassifier(cnn), stamp)).toEqual({
+                kind: 'declined', reason: 'brighter than anything in training',
+            });
+        }
+    });
+
+    it('keeps both S/N boundaries in range and validates the recorded maximum', () => {
+        const cnn = cnnWeights();
+        for (const peak of [2.5, 2 * cnn.training.peakSnrMax]) {
+            const stamp = new Float32Array(675);
+            stamp[225 + 112] = stamp[450 + 112] = peak;
+            expect(classify(loadClassifier(cnn), stamp).kind).toBe('nothing');
+        }
+        for (const peakSnrMax of [undefined, '40', NaN, Infinity, -1, 0, 2.4]) {
+            expect(() => loadClassifier({ ...cnn, training: { ...cnn.training, peakSnrMax } })).toThrow(/peak S\/N/);
+        }
+    });
+
     it('dispatches folded CNN weights and rejects malformed neural layers', () => {
         const cnn = cnnWeights();
         const model = loadClassifier(cnn);
-        const result = classify(model, new Float32Array(675));
+        const stamp = new Float32Array(675);
+        stamp[225 + 112] = stamp[450 + 112] = 5;
+        const result = classify(model, stamp);
+        if (result.kind === 'declined') {
+            throw new Error(result.reason);
+        }
         expect(result.kind).toBe('nothing');
         expect(result.p.nothing).toBeCloseTo(Math.exp(3) / (1 + Math.exp(1) + Math.exp(2) + Math.exp(3)), 12);
         for (const bad of [
@@ -121,16 +202,20 @@ describe('snapshot change classifier', () => {
         expect(parity.cases).toHaveLength(20);
         for (const sample of parity.cases) {
             const result = classify(model, Float32Array.from(sample.stamp));
+            if (result.kind === 'declined') {
+                throw new Error(result.reason);
+            }
             model.classes.forEach((kind, i) => {
                 expect(Math.abs(result.p[kind] - sample.probabilities[i]!)).toBeLessThan(1e-4);
             });
+            expect(result.kind).toBe(model.classes[sample.probabilities.indexOf(Math.max(...sample.probabilities))]);
             expect(Object.values(result.p).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 12);
         }
         expect(() => classify(model, new Float32Array(4))).toThrow();
         const invalid = new Float32Array(675);
         invalid[1] = NaN;
         expect(() => classify(model, invalid)).toThrow();
-        expect(classify(model, new Float32Array(675)).kind).toBe('nothing');
+        expect(classify(model, new Float32Array(675))).toEqual({ kind: 'declined', reason: 'too faint to label' });
     });
 
     it('matches PyTorch for the CNN attempt and the unchanged phone fallback', () => {
@@ -139,6 +224,9 @@ describe('snapshot change classifier', () => {
             expect(cases).toHaveLength(20);
             for (const sample of cases) {
                 const result = classify(model, Float32Array.from(sample.stamp));
+                if (result.kind === 'declined') {
+                    throw new Error(result.reason);
+                }
                 model.classes.forEach((kind, i) => {
                     expect(Math.abs(result.p[kind] - sample.probabilities[i]!)).toBeLessThan(1e-4);
                 });
@@ -220,6 +308,9 @@ describe('snapshot change classifier', () => {
         }
         const result = classify(loadClassifier(weights), stampFor(a, b, grid, { x: 22, y: 20 }, 1)!);
         expect(result.kind).toBe('mover');
+        if (result.kind === 'declined') {
+            throw new Error(result.reason);
+        }
         expect(result.p.mover).toBeGreaterThan(0.5);
     });
 
