@@ -45,8 +45,8 @@ export const COPY: Record<TargetId, TargetCopy> = {
         short: 'The coldest brown dwarf known',
         kind: 'cold',
         headline: 'WISE 0855, the coldest neighbour',
-        show: 'The coldest brown dwarf known. It gives almost no light at short colours: slide to the longest colours to see it appear.',
-        not: 'The notes on its colours come from earlier telescopes. Only the brightness curve is measured from these frames.',
+        show: 'The coldest brown dwarf known. It gives almost no light at short colours: slide to the longest colours, where earlier telescopes found it brightest.',
+        not: 'The notes on its colours come from earlier telescopes. Any brightness curve shown is measured from these frames.',
     },
     rdra: {
         display: 'R Draconis',
