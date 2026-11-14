@@ -40,6 +40,23 @@ const ICON = {
     prev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>',
     next: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg>',
     search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
+    // One mark per kind of target, so the list reads at a glance and still works when the panel is folded.
+    mover: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l8.5-8.5" stroke-dasharray="1.6 3"/><circle cx="16.5" cy="7.5" r="3"/></svg>',
+    variable: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor" stroke="none"/></svg>',
+    spectrum: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4.5l6.5 13h-13z"/><path d="M14.2 10.5l6.3-2.5M15.4 12.8l5.1-.3M16.5 15.2l4 2"/></svg>',
+    cold: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v17M4.6 7.75l14.8 8.5M4.6 16.25l14.8-8.5"/><path d="M9.5 5l2.5 2 2.5-2M9.5 19l2.5-2 2.5 2"/></svg>',
+    saturated: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.8"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M5.5 18.5l1.8-1.8M16.7 7.3l1.8-1.8"/></svg>',
+    blink: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.8 12s3.4-6 9.2-6 9.2 6 9.2 6-3.4 6-9.2 6-9.2-6-9.2-6z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+    stack: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5l8 4-8 4-8-4z"/><path d="M4 12.5l8 4 8-4M4 16.5l8 4 8-4"/></svg>',
+    diff: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="5.6"/><circle cx="15" cy="12" r="5.6"/></svg>',
+    look: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.5v3.5M12 18v3.5M2.5 12H6M18 12h3.5"/></svg>',
+    info: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 11v5.5"/><circle cx="12" cy="8" r=".6" fill="currentColor"/></svg>',
+    curve: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 17.5l5-6 4 3.5 7.5-9"/><path d="M3.5 20.5h17"/></svg>',
+    field: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5L18.5 6M4 19.5h16"/><path d="M12.5 19.5a8.5 8.5 0 0 0-2.6-6.1"/></svg>',
+    retry: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.8 4.5v4h-4"/></svg>',
+    file: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/></svg>',
+    out: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5h5.5V10M19.5 4.5L11 13"/><path d="M17.5 14v5.5h-13v-13H10"/></svg>',
+    colour: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12c2-5 4-5 6 0s4 5 6 0 4-5 6 0"/></svg>',
     focus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/></svg>',
     link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.1-1.1"/></svg>',
 };
@@ -122,12 +139,14 @@ const axisPct = (lam: number) => ((lam - AXIS_MIN) / (LAM_MAX - AXIS_MIN)) * 100
 
 function shell(): string
 {
-    const targets = ORDER.map((id) => `<button type="button" data-target="${id}" aria-pressed="false"><b>${esc(COPY[id].display)}</b><small>${esc(COPY[id].short)}</small></button>`).join('');
+    const targets = ORDER.map((id) => `<button type="button" data-target="${id}" aria-pressed="false"><span class="ic k">${ICON[COPY[id].kind]}</span><b>${esc(COPY[id].display)}</b><small>${esc(COPY[id].short)}</small></button>`).join('');
+    // The folded left panel: the same targets as icons, then search.
+    const mini = ORDER.map((id) => `<button type="button" class="sk-mi" data-target="${id}" aria-pressed="false" aria-label="${esc(COPY[id].display)}" title="${esc(COPY[id].display)}: ${esc(COPY[id].short)}"><span class="ic">${ICON[COPY[id].kind]}</span></button>`).join('');
     const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
     const ticks = [0.4, 1, 2, 3, 4, 5].map((t) => `<span style="left:${axisPct(t).toFixed(2)}%">${t}</span>`).join('');
     return `
 <aside class="sk-rail sk-left" id="sk-left">
-  <button type="button" class="sk-tab" data-act="fold-left" aria-controls="sk-left" aria-expanded="true"><i aria-hidden="true"></i><span>01 Choose a target</span></button>
+  <nav class="sk-mini" aria-label="Targets (panel folded)"><i class="sk-mini-dot" aria-hidden="true"></i>${mini}<span class="sk-mini-gap"></span><button type="button" class="sk-mi" data-act="mini-search" aria-label="Search the sky" title="Search the sky"><span class="ic">${ICON.search}</span></button></nav>
   <div class="sk-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span><span class="sk-tag">Watch the sky change.</span><span class="sk-sub2">Infrared frames from NASA’s SPHEREx</span></div>
   <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
     <h2 class="sk-mh" id="sk-h1"><i>01</i>Choose a target</h2>
@@ -135,7 +154,7 @@ function shell(): string
     <form class="sk-search" data-ref="search" role="search"><span class="ic">${ICON.search}</span><input name="q" placeholder="Any star, or RA, Dec" autocomplete="off" aria-label="Search the sky: a star name, or RA and Dec"></form>
   </section>
   <section class="sk-mod sk-m-about" aria-labelledby="sk-h4">
-    <h2 class="sk-mh" id="sk-h4">What to look for</h2>
+    <h2 class="sk-mh" id="sk-h4"><span class="ic">${ICON.look}</span>What to look for</h2>
     <p class="sk-h" data-bind="headline"></p>
     <p class="sk-coord"><span data-bind="name"></span><span data-bind="coords"></span></p>
     <p class="sk-body" data-bind="show"></p>
@@ -160,7 +179,7 @@ function shell(): string
       <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
       <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
       <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
-      <div class="sk-err" data-ref="err" hidden><p data-bind="err"></p><button type="button" class="sk-btn2" data-act="retry">Try again</button></div>
+      <div class="sk-err" data-ref="err" hidden><p data-bind="err"></p><button type="button" class="sk-btn2" data-act="retry"><span class="ic">${ICON.retry}</span>Try again</button></div>
     </div>
     <div class="sk-legrow">
       <div class="sk-leg">
@@ -168,7 +187,7 @@ function shell(): string
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
-      <label class="sk-fov">Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
+      <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
     </div>
     <div class="sk-player">
       <div class="sk-tr">
@@ -176,7 +195,7 @@ function shell(): string
         <button type="button" class="sk-btn go" data-act="play" aria-label="Play"></button>
         <button type="button" class="sk-btn" data-act="next" aria-label="Next frame"><span class="ic">${ICON.next}</span></button>
       </div>
-      <div class="sk-seg" role="group" aria-label="View"><button type="button" data-mode="blink">Blink</button><button type="button" data-mode="stack">Stack</button><button type="button" data-mode="diff">Subtract</button></div>
+      <div class="sk-seg" role="group" aria-label="View"><button type="button" data-mode="blink"><span class="ic">${ICON.blink}</span>Blink</button><button type="button" data-mode="stack"><span class="ic">${ICON.stack}</span>Stack</button><button type="button" data-mode="diff"><span class="ic">${ICON.diff}</span>Subtract</button></div>
     </div>
     <p class="sk-hint" data-bind="hint"></p>
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
@@ -187,7 +206,7 @@ function shell(): string
   <button type="button" class="sk-fold" data-act="fold-right" aria-controls="sk-right" aria-expanded="true" aria-label="Fold the colour panel" title="Fold or open the colour panel"><span class="ic">${ICON.next}</span></button>
 </div>
 <aside class="sk-rail sk-right" id="sk-right">
-  <button type="button" class="sk-tab" data-act="fold-right" aria-controls="sk-right" aria-expanded="true"><span>03 Colour and frame</span></button>
+  <div class="sk-mini" role="group" aria-label="Colour and frame (panel folded)"><i class="sk-mini-dot" aria-hidden="true"></i><button type="button" class="sk-mi sk-mi-lam" data-act="fold-right" aria-label="Change the colour" title="Change the colour"><span class="ic">${ICON.colour}</span><b data-bind="lam"></b><small>µm</small></button><button type="button" class="sk-mi" data-act="fold-right" aria-label="Show this frame’s details" title="This frame"><span class="ic">${ICON.info}</span></button><button type="button" class="sk-mi" data-act="copy" aria-label="Copy link" title="Copy link"><span class="ic">${ICON.link}</span></button></div>
   <div class="sk-status"><p><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span></p><div class="sk-acts"><button type="button" class="sk-btn2 sk-golive" data-act="live" data-ref="golive" hidden><i aria-hidden="true"></i>Go live</button><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div></div>
   <section class="sk-mod sk-m-colour" aria-labelledby="sk-h3">
     <h2 class="sk-mh" id="sk-h3"><i>03</i>Change the colour</h2>
@@ -201,13 +220,13 @@ function shell(): string
     <p class="sk-body mute">All of this is infrared: your eyes stop at 0.70 µm. Drag, then let go to load that colour.</p>
   </section>
   <section class="sk-mod sk-m-curve" aria-labelledby="sk-h6" data-ref="curve" hidden>
-    <h2 class="sk-mh" id="sk-h6">Brightness over time</h2>
+    <h2 class="sk-mh" id="sk-h6"><span class="ic">${ICON.curve}</span>Brightness over time</h2>
     <div class="sk-lc"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
     <div class="sk-lcx" data-ref="lcx" aria-hidden="true"></div>
     <p class="sk-body mute" data-bind="lcNote"></p>
   </section>
   <section class="sk-mod sk-m-details" aria-labelledby="sk-h5">
-    <h2 class="sk-mh" id="sk-h5">This frame</h2>
+    <h2 class="sk-mh" id="sk-h5"><span class="ic">${ICON.info}</span>This frame</h2>
     <dl data-ref="dl"></dl>
     <ul class="sk-notes" data-ref="notes"></ul>
   </section>
@@ -550,7 +569,8 @@ export function mount(root: HTMLElement): void
             + `<g class="dots">${pts.map(dot).join('')}</g>`;
         const pct = (v: number) => `${v >= 1 ? '+' : '−'}${Math.abs((v - 1) * 100).toFixed(Math.abs(v - 1) < 0.1 ? 1 : 0)}%`;
         ref<HTMLElement>('lcy').innerHTML = `<span style="top:0">${pct(hi)}</span><span style="top:${((hi - 1) / (hi - lo) * 100).toFixed(1)}%">usual</span><span style="top:100%">${pct(lo)}</span>`;
-        ref<HTMLElement>('lcx').innerHTML = `<span>${monthYear(t0)}</span><span>${monthYear(t1)}</span>`;
+        // The band's key sits between the dates, so nobody reads it as the star's own error bar.
+        ref<HTMLElement>('lcx').innerHTML = `<span>${monthYear(t0)}</span><span class="b"><i></i>band: ${c.refs} reference stars</span><span>${monthYear(t1)}</span>`;
         const min = Math.min(...ys);
         const max = Math.max(...ys);
         ref<SVGSVGElement>('lc').setAttribute('aria-label', `Brightness over ${pts.length} looks, from ${pct(min)} to ${pct(max)} of usual. Steady stars nearby vary by about ${(noise * 100).toFixed(1)}%.`);
@@ -744,6 +764,7 @@ export function mount(root: HTMLElement): void
         }
         sizeBar();
 
+        const extraNotes: string[] = [];
         if (f && lf) {
             const rec = f.frame.frame;
             const rows: [string, string][] = [
@@ -766,16 +787,20 @@ export function mount(root: HTMLElement): void
                 }
                 const sh = shifts.get(st.index);
                 if (sh) {
-                    rows.push([`Moved, frames 1 to ${sh.to + 1}`, `${sh.measuredArcsec.toFixed(1)}″ (expected ${sh.predictedArcsec.toFixed(1)}″)`]);
+                    // The expected shift is the solid number. The measured one leans on a centre the camera can't
+                    // see well (the core is saturated), so it is shown as rough and the note says why.
+                    rows.push([`Moved, frames 1 to ${sh.to + 1}`, `${sh.predictedArcsec.toFixed(1)}″ expected`]);
+                    rows.push(['Measured here', `about ${sh.measuredArcsec.toFixed(0)}″ (rough)`]);
+                    extraNotes.push('The star’s core is too bright for the camera to measure, so the measured shift is rough. The expected shift comes from its catalogue motion.');
                 }
             }
             let html = rows.map(([k, v]) => `<dt>${k}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('');
             const links: string[] = [];
             if (rec.url) {
-                links.push(`<a href="${esc(rec.url)}" rel="noopener" target="_blank">FITS file</a>`);
+                links.push(`<a href="${esc(rec.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS file</a>`);
             }
             if (rec.irsaUrl) {
-                links.push(`<a href="${esc(rec.irsaUrl)}" rel="noopener" target="_blank">IRSA</a>`);
+                links.push(`<a href="${esc(rec.irsaUrl)}" rel="noopener" target="_blank"><span class="ic">${ICON.out}</span>IRSA</a>`);
             }
             if (links.length) {
                 html += `<dt>Open</dt><dd>${links.join(' · ')}</dd>`;
@@ -791,7 +816,7 @@ export function mount(root: HTMLElement): void
         bind('status', status);
         const credits = ['NASA SPHEREx via IRSA (NASA/IPAC).', ...(sourceKind === 'demo' ? [] : result.credits)];
         bind('credits', [...new Set(credits)].join(' '));
-        ref<HTMLElement>('notes').innerHTML = result.notes.map((t) => `<li>${esc(t)}</li>`).join('');
+        ref<HTMLElement>('notes').innerHTML = [...extraNotes, ...result.notes].map((t) => `<li>${esc(t)}</li>`).join('');
         ref<HTMLElement>('live').textContent = `${q<HTMLElement>('[data-bind="frame"]').textContent}, ${q<HTMLElement>('[data-bind="when"]').textContent}`;
         canvas.setAttribute('aria-label', `Sky image. ${ref<HTMLElement>('live').textContent}, ${lam.toFixed(2)} µm`);
     }
