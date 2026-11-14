@@ -372,7 +372,8 @@ const haloShown = new WeakMap<HTMLElement, string>();
 
 export function renderHalo(box: HTMLElement, view: SlotView, deps: HaloDeps = {}): boolean
 {
-    if (view.source === 'demo') {
+    const card = view.targetId && view.targetId in COPY ? COPY[view.targetId as TargetId] : undefined;
+    if (view.source === 'demo' || card?.kind !== 'saturated') {
         return false;
     }
     let h = haloCache.get(view.result);
@@ -383,8 +384,7 @@ export function renderHalo(box: HTMLElement, view: SlotView, deps: HaloDeps = {}
     if (!h) {
         return false;
     }
-    const name = view.targetId && view.targetId in COPY ? COPY[view.targetId as TargetId].display : 'the star';
-    const html = haloHtml(h, name, view.mode === 'blink' ? view.index : -1);
+    const html = haloHtml(h, card.display, view.mode === 'blink' ? view.index : -1);
     if (haloShown.get(box) !== html) {
         box.innerHTML = html;
         haloShown.set(box, html);

@@ -113,7 +113,7 @@ describe('haloFor', () => {
                 point(c, { relative: 1.1, caveats: ['Ring brightness is sensitive to the catalogue position.'] }),
             ]),
         })!;
-        expect(h.kind).toBe('curve');
+        expect(h.kind).toBe('table');
         expect(h.points.map((p) => p.mjd)).toEqual([a, c]);
         expect(h.looks).toBe(3);
         expect(h.caveats).toEqual([
@@ -122,11 +122,21 @@ describe('haloFor', () => {
         ]);
     });
 
-    it('says too few when under two looks can be drawn', () => {
+    it('gives a table, not a line, under three looks, and says so with the visit count', () => {
         const r = result([5000, 5000]);
-        const h = haloFor(r, { ring, curve: fake([point(MJD0), point(MJD0 + 100, { valid: false, relative: NaN, relativeNoise: NaN })]) })!;
-        expect(h.kind).toBe('few');
-        expect(haloHtml(h, 'R Draconis', -1)).toContain('could be measured in 1 of 2 looks: too few to draw.');
+        const bad = { valid: false, relative: NaN, relativeNoise: NaN };
+        const h = haloFor(r, { ring, curve: fake([point(MJD0, { lambda: 0.82 }), point(MJD0 + 3, { lambda: 0.84, relative: 1.06 })]) })!;
+        expect(h.kind).toBe('table');
+        const html = haloHtml(h, 'R Draconis', -1);
+        expect(html).toContain('could be measured in 2 of 2 looks (1 visit). Not enough looks at this colour to draw a curve: it needs at least 3.');
+        expect(html).toContain('<table');
+        expect(html).not.toContain('<svg');
+        expect(html).toContain('0.82 µm');
+        expect(html).toContain('+6.0% ± 2.0%');
+        expect(html).toContain('from 0.82 to 0.84 µm; looks at slightly different colours can read differently for that reason alone.');
+        const none = haloFor(r, { ring, curve: fake([point(MJD0, bad), point(MJD0 + 100, bad)]) })!;
+        expect(none.kind).toBe('none');
+        expect(haloHtml(none, 'R Draconis', -1)).toContain('could be measured in 0 of 2 looks (0 visits).');
     });
 
     it('asks for a wider field when the ring does not fit, and hides on other module errors', () => {
@@ -149,7 +159,8 @@ describe('haloFor', () => {
 describe('haloHtml', () => {
     const view: HaloView = {
         kind: 'curve', lambda: 0.912, ringIn: 15.04, ringOut: 33.5, refs: 3, looks: 3, dropped: 1,
-        points: [{ mjd: MJD0, k: 2, relative: 0.95, err: 0.02 }, { mjd: MJD0 + 180, k: 0, relative: 1.05, err: 0.03 }],
+        points: [{ mjd: MJD0, k: 2, lambda: 0.912, relative: 0.95, err: 0.02 }, { mjd: MJD0 + 90, k: 1, lambda: 0.912, relative: 1, err: 0.02 },
+            { mjd: MJD0 + 180, k: 0, lambda: 0.912, relative: 1.05, err: 0.03 }],
         caveats: [{ text: 'Ring <b>sensitive</b>', mjds: [MJD0] }],
     };
 
@@ -157,7 +168,9 @@ describe('haloHtml', () => {
         const html = haloHtml(view, 'R Draconis', 0);
         expect(html).toContain('At 0.91 µm: the light in a ring 15″ to 34″ from R Draconis’s centre');
         expect(html).toContain('measured against 3 nearby comparison stars from Gaia');
-        expect(html).toContain('1 frame was too far off this colour. 1 look could not be measured.');
+        expect(html).toContain('1 frame was too far off this colour.');
+        expect(html).not.toContain('could not be measured');
+        expect(html).not.toContain('different colours');
         expect(html).toContain('class="on" data-k="0"');
         expect(html).toContain('class="" data-k="2"');
         expect(html).toContain('Ring &lt;b&gt;sensitive&lt;/b&gt;');
@@ -166,7 +179,7 @@ describe('haloHtml', () => {
     });
 
     it('never claims more than was measured, in any state', () => {
-        for (const kind of ['curve', 'few', 'nofit'] as const) {
+        for (const kind of ['curve', 'table', 'none', 'nofit'] as const) {
             expect(haloHtml({ ...view, kind }, 'R Draconis', -1)).not.toMatch(BANNED);
         }
         expect(haloHtml({ ...view, kind: 'nofit' }, 'R Draconis', -1)).toContain('Choose a wider field');
@@ -190,7 +203,13 @@ describe('renderHalo', () => {
         expect(b.innerHTML).not.toBe(first);
     });
 
-    it('shows nothing on the simulated sky', () => {
-        expect(renderHalo(box(), v(result([5000, 5000]), { source: 'demo' }), { ring, curve: fake([]) })).toBe(false);
+    it('shows nothing on the simulated sky, or for a target whose card does not say its centre is too bright', () => {
+        const r = result([5000, 5000, 5000]);
+        const curve = vi.fn(fake([point(MJD0 + 0.005), point(MJD0 + 100.005), point(MJD0 + 200.005)]));
+        expect(renderHalo(box(), v(r, { source: 'demo' }), { ring, curve })).toBe(false);
+        for (const targetId of ['barnard', 'rwaur', undefined]) {
+            expect(renderHalo(box(), v(r, { targetId }), { ring, curve })).toBe(false);
+        }
+        expect(curve).not.toHaveBeenCalled();
     });
 });

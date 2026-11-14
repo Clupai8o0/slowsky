@@ -1,10 +1,12 @@
-// "Halo over time": for a star whose centre has no value in the frames (R Draconis), the light in a ring around
-// that blank centre, look by look, against steady Gaia stars (src/lib/halo.ts). It says what was measured, never
-// that the star changed. Only looks the module marks valid are drawn; each look's caveats are shown as text.
+// "Halo over time": for a target whose card says its centre is too bright to measure (R Draconis), the light in a
+// ring around the blank centre, look by look, against steady Gaia stars (src/lib/halo.ts). It says what was
+// measured, never that the star changed. Only looks the module marks valid are used; each look's caveats are shown
+// as text. Under MIN_CURVE looks it gives a table of readings, not a line. Which targets get it is decided by the
+// card (kind 'saturated'), never by finding a blank centre: Barnard's Star's centre is often blank too.
 import { HaloError, haloCurve, ringFor, type HaloCurve } from '../lib/halo';
 import type { SkyResult } from '../lib/source';
 import type { PixelCoord, RegriddedFrame } from '../lib/types';
-import { apertureFor, coreBlank, frameMjd, lockedFrames, middleMjd, pickRefs, steadyRefs, trackNear } from './measure';
+import { apertureFor, frameMjd, lockedFrames, middleMjd, pickRefs, steadyRefs, trackNear } from './measure';
 
 // Stand-ins for the module in tests.
 export interface HaloDeps {
@@ -15,12 +17,13 @@ export interface HaloDeps {
 export interface HaloPoint {
     mjd: number;
     k: number; // index in result.frames
+    lambda: number; // µm this look was measured at
     relative: number; // ring light over the comparison stars, divided by its median over the looks
     err: number; // the module's relativeNoise, same units
 }
 
 export interface HaloView {
-    kind: 'curve' | 'few' | 'nofit';
+    kind: 'curve' | 'table' | 'none' | 'nofit';
     lambda: number;
     ringIn: number; // arcsec from the centre
     ringOut: number;
@@ -30,6 +33,9 @@ export interface HaloView {
     dropped: number; // frames too far off this colour
     caveats: { text: string; mjds: number[] }[];
 }
+
+// Fewer looks than this get a table of readings: two points always make a line that looks like a trend.
+export const MIN_CURVE = 3;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -41,13 +47,12 @@ function date(mjd: number, withDay: boolean): string
     return `${withDay ? `${d.getUTCDate()} ` : ''}${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
-// Null when there is nothing to say: no blank centre, no track, too few frames or comparison stars, or the module
-// cannot measure this view for a reason other than the ring not fitting.
+// Null when there is nothing to say: no track, too few frames or comparison stars, or the module cannot measure
+// this view for a reason other than the ring not fitting. The caller decides whether the target gets a panel.
 export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
 {
     const track = result.track;
-    const blank = coreBlank(result);
-    if (!track?.length || !blank || blank.blank === 0 || result.frames.length < 2) {
+    if (!track?.length || result.frames.length < 2) {
         return null;
     }
     const mid = middleMjd(result);
@@ -101,12 +106,12 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
         const k = order[i];
         if (p.valid === true && Number.isFinite(p.relative) && Number.isFinite(err) && err >= 0
             && Number.isFinite(p.mjd) && k !== undefined) {
-            points.push({ mjd: p.mjd, k, relative: p.relative, err });
+            points.push({ mjd: p.mjd, k, lambda: p.lambda, relative: p.relative, err });
         }
     });
     points.sort((a, b) => a.mjd - b.mjd);
     return {
-        kind: points.length >= 2 ? 'curve' : 'few',
+        kind: points.length >= MIN_CURVE ? 'curve' : points.length > 0 ? 'table' : 'none',
         lambda: Number.isFinite(lc.lambda) ? lc.lambda : result.lambda,
         ringIn: ring.ringIn * px,
         ringOut: ring.ringOut * px,
@@ -116,6 +121,13 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
         dropped: lc.dropped,
         caveats: [...caveats].map(([text, mjds]) => ({ text, mjds })),
     };
+}
+
+// Looks less than 10 days apart count as one visit (as visitsOf in measure.ts).
+function visitCount(mjds: number[]): number
+{
+    const t = [...mjds].sort((a, b) => a - b);
+    return t.filter((v, i) => i === 0 || v - t[i - 1]! >= 10).length;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -133,8 +145,28 @@ export function haloHtml(h: HaloView, name: string, on: number): string
     const notes = h.caveats.length
         ? `<ul class="sk-notes">${h.caveats.map((c) => `<li>${esc(c.mjds.map((t) => date(t, true)).join(', '))}: ${esc(c.text)}</li>`).join('')}</ul>`
         : '';
-    if (h.kind === 'few') {
-        return `<p class="sk-body mute">At ${h.lambda.toFixed(2)} µm, ${where}, could be measured in ${h.points.length} of ${plural(h.looks, 'look', 'looks')}: too few to draw.${off}</p>${notes}`;
+    const pct = (v: number) => `${v >= 1 ? '+' : '−'}${Math.abs((v - 1) * 100).toFixed(Math.abs(v - 1) < 0.1 ? 1 : 0)}%`;
+    const lams = h.points.map((p) => p.lambda).filter(Number.isFinite);
+    const lamLo = Math.min(...lams);
+    const lamHi = Math.max(...lams);
+    // The ring and the comparison stars need not share a colour, so looks a little apart in wavelength can differ.
+    const colours = lams.length > 1 && lamHi - lamLo >= 0.005
+        ? ` These looks were taken from ${lamLo.toFixed(2)} to ${lamHi.toFixed(2)} µm; looks at slightly different colours can read differently for that reason alone.`
+        : '';
+    const visits = visitCount(h.points.map((p) => p.mjd));
+    if (h.kind === 'none' || h.kind === 'table') {
+        const head = `At ${h.lambda.toFixed(2)} µm, ${where}, could be measured in ${h.points.length} of ${plural(h.looks, 'look', 'looks')}`
+            + ` (${plural(visits, 'visit', 'visits')}). Not enough looks at this colour to draw a curve: it needs at least ${MIN_CURVE}.${off}`;
+        if (h.kind === 'none') {
+            return `<p class="sk-body mute">${head}</p>${notes}`;
+        }
+        const rows = h.points.map((p) => `<tr><td>${date(p.mjd, true)}</td><td>${p.lambda.toFixed(2)} µm</td>`
+            + `<td>${pct(p.relative)} ± ${(p.err * 100).toFixed(1)}%</td></tr>`).join('');
+        const table = `<table class="sk-halo-t"><caption class="sk-sr">Light in the ring, each look</caption>`
+            + '<thead><tr><th scope="col">Look</th><th scope="col">Colour</th><th scope="col">Ring light vs their median</th></tr></thead>'
+            + `<tbody>${rows}</tbody></table>`;
+        return `<p class="sk-body mute">${head}</p>${table}<p class="sk-body mute">Measured against ${h.refs} nearby comparison stars from Gaia. `
+            + `The ± is each reading’s noise: the sky around the ring and around the comparison stars, and how far off the star’s catalogue position could be.${colours}</p>${notes}`;
     }
     const W = 300;
     const H = 100;
@@ -148,7 +180,6 @@ export function haloHtml(h: HaloView, name: string, on: number): string
     const t1 = pts[pts.length - 1]!.mjd;
     const x = (t: number) => (6 + ((t - t0) / (t1 - t0 || 1)) * (W - 12)).toFixed(1);
     const y = (v: number) => (((hi - v) / (hi - lo)) * H).toFixed(1);
-    const pct = (v: number) => `${v >= 1 ? '+' : '−'}${Math.abs((v - 1) * 100).toFixed(Math.abs(v - 1) < 0.1 ? 1 : 0)}%`;
     const ys = pts.map((p) => p.relative);
     const label = `Light in the ring over ${pts.length} looks, from ${pct(Math.min(...ys))} to ${pct(Math.max(...ys))} of the median.`;
     const svg = `<svg role="img" aria-label="${esc(label)}" preserveAspectRatio="none" viewBox="0 0 ${W} ${H}">`
@@ -164,6 +195,6 @@ export function haloHtml(h: HaloView, name: string, on: number): string
     const left = off + (bad > 0 ? ` ${plural(bad, 'look', 'looks')} could not be measured.` : '');
     const note = `At ${h.lambda.toFixed(2)} µm: ${where}, measured against ${h.refs} nearby comparison stars from Gaia, look by look. `
         + 'The bar on each dot is its noise: the sky around the ring and around the comparison stars, and how far off the '
-        + `star’s catalogue position could be. A change inside its bar may be noise.${left}`;
+        + `star’s catalogue position could be. A change inside its bar may be noise.${colours}${left}`;
     return `<div class="sk-lc">${svg}${axis}</div>${dates}<p class="sk-body mute">${note}</p>${notes}`;
 }
