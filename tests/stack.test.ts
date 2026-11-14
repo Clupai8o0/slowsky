@@ -497,6 +497,11 @@ describe('groupByVisit', () => {
         expect(visits[1]!.map((f) => f.frame.tMin)).toEqual([60200]);
         expect(groupByVisit([])).toEqual([]);
     });
+    it('groups by consecutive midpoint gaps and splits at exactly ten days', () => {
+        const d = new Float32Array(4);
+        const frames = [60000, 60009, 60018, 60028].map((tMin) => mkFrame(d, { tMin }));
+        expect(groupByVisit(frames).map((v) => v.map((f) => f.frame.tMin))).toEqual([[60000, 60009, 60018], [60028]]);
+    });
 });
 
 describe('symmetricRange', () => {

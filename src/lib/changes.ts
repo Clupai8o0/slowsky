@@ -20,8 +20,24 @@ export interface ChangeCandidate {
     speedArcsecPerHour?: number;
     paDeg?: number;
     track?: { mjd: number; pix: PixelCoord }[];
+    /** @deprecated Use sentence. */
     reason: string;
+    /** Public wording; optional only for legacy manually constructed candidates. */
+    sentence?: string;
+    caveat?: string;
+    /** Light-bearing endpoints, when a two-visit mover has both. */
+    lightEnds?: { visit: 'earlier' | 'later'; x: number; y: number; radiusPix: number }[];
+    radiusPix?: number;
 }
+export type VisitChangeCandidate = ChangeCandidate & {
+    sentence: string;
+    /** Sign-bearing visit and the reading aperture on the output grid, in pixels. */
+    lightVisit: 'earlier' | 'later'; x: number; y: number; radiusPix: number;
+};
+export type VisitChangeResult = Omit<ChangeResult, 'candidates'> & {
+    candidates: VisitChangeCandidate[];
+    visits: { earlier: { obsIds: string[]; mjd: number }; later: { obsIds: string[]; mjd: number } };
+};
 export interface ChangeResult {
     candidates: ChangeCandidate[];
     rejected: { streaks: number; single: number; edge: number; residual: number };
@@ -56,7 +72,7 @@ export interface ChangeOptions {
 export interface VisitImage { data: Float32Array; lambda: number; mjd: number; obsIds: string[]; variance?: Float32Array; }
 type Image = VisitImage;
 type Settings = Required<ChangeOptions>;
-type Blob = { pix: PixelCoord; snr: number; sign: 1 | -1; area: number; edge: boolean };
+type Blob = { pix: PixelCoord; snr: number; sign: 1 | -1; area: number; edge: boolean; narrow?: boolean; compactUncertain?: boolean };
 type Measurement = { z: Float32Array; background: Float32Array; noise: Float32Array; usedErrorMap: boolean;
     sigma: number; k: number; width: number; height: number };
 const NATIVE = 6.15;
@@ -357,8 +373,34 @@ function difference(earlier: Float32Array, later: Float32Array, grid: OutputGrid
     return out;
 }
 
+// A sampled 12″ Gaussian places approximately 4 pixel areas / (2 pi sigma²) in its four brightest
+// pixels. Require at least three times that share, and 40%, before calling a spot unusually narrow.
+function narrowChange(diff: Float32Array, pix: PixelCoord, sign: 1 | -1, grid: OutputGrid): boolean | undefined
+{
+    const expected = 4 * grid.pixelArcsec ** 2 / (2 * Math.PI * (PSF_FWHM / 2.35482) ** 2);
+    if (3 * expected >= 0.8) { return undefined; }
+    const values: number[] = [], ring: number[] = [];
+    const radius = 24 / grid.pixelArcsec;
+    for (let y = Math.floor(pix.y - radius); y <= Math.ceil(pix.y + radius); y++) {
+        for (let x = Math.floor(pix.x - radius); x <= Math.ceil(pix.x + radius); x++) {
+            const d = Math.hypot(x - pix.x, y - pix.y) * grid.pixelArcsec;
+            if (d > 24) { continue; }
+            if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) { return undefined; }
+            const value = diff[y * grid.width + x]!;
+            if (!Number.isFinite(value)) { return undefined; }
+            if (d <= PSF_FWHM) { values.push(value); }
+            if (d >= 18) { ring.push(value); }
+        }
+    }
+    if (ring.length < 20 || values.length < 5) { return undefined; }
+    const background = median(ring);
+    const weights = values.map((v) => Math.max(0, sign * (v - background))).sort((a, b) => b - a);
+    const total = weights.reduce((a, b) => a + b, 0);
+    return total > 0 && weights.slice(0, 4).reduce((a, b) => a + b, 0) / total > Math.max(0.4, 3 * expected);
+}
+
 function blobs(diff: Float32Array, grid: OutputGrid, opt: Settings, result: ChangeResult, support = 3.75,
-    varSum?: Float32Array): { found: Blob[]; measurement: Measurement }
+    varSum?: Float32Array, allowNarrow = false): { found: Blob[]; measurement: Measurement }
 {
     const m = measure(diff, grid, varSum);
     result.sigma = m.sigma;
@@ -415,11 +457,24 @@ function blobs(diff: Float32Array, grid: OutputGrid, opt: Settings, result: Chan
         if (peak < opt.threshold) {
             continue;
         }
-        if (queue.length < 2 || queue.length * (m.k * grid.pixelArcsec) ** 2 < opt.minAreaArcsec2) {
+        const cx = sx / weight, cy = sy / weight;
+        const area = queue.reduce((sum, p) => sum + Math.min(m.k, grid.width - (p % m.width) * m.k)
+            * Math.min(m.k, grid.height - Math.floor(p / m.width) * m.k), 0) * grid.pixelArcsec ** 2;
+        const small = queue.length < 2 || area < opt.minAreaArcsec2;
+        const shape = allowNarrow && small
+            ? narrowChange(diff, { x: cx * m.k + (m.k - 1) / 2, y: cy * m.k + (m.k - 1) / 2 }, sign, grid) : false;
+        // A one-bin peak alone is common in noise. Retain an unresolved compact source only when its
+        // four surrounding bins support the same sign; a genuinely narrow hit is handled separately.
+        const bx = Math.round(cx), by = Math.round(cy);
+        const neighbours = [[-1, 0], [1, 0], [0, -1], [0, 1]].map(([dx, dy]) =>
+            bx + dx! >= 0 && bx + dx! < m.width && by + dy! >= 0 && by + dy! < m.height
+                ? sign * m.z[(by + dy!) * m.width + bx + dx!]! : NaN);
+        const supported = neighbours.every((z) => z > 0) && neighbours.reduce((a, b) => a + b, 0) >= 1.8 * peak;
+        const narrow = shape === true, compactUncertain = allowNarrow && small && !narrow && (supported || peak >= 10);
+        if (small && !narrow && !compactUncertain) {
             result.rejected.single++;
             continue;
         }
-        const cx = sx / weight, cy = sy / weight;
         let xx = 0, yy = 0, xy = 0;
         for (const p of queue) {
             const dx = p % m.width - cx, dy = Math.floor(p / m.width) - cy, w = Math.abs(m.z[p]!);
@@ -458,7 +513,7 @@ function blobs(diff: Float32Array, grid: OutputGrid, opt: Settings, result: Chan
             }
         }
         out.push({ pix: fullWeight > 0 ? { x: fullX / fullWeight, y: fullY / fullWeight }
-            : { x: cx * m.k + (m.k - 1) / 2, y: cy * m.k + (m.k - 1) / 2 }, snr: peak, sign, area: queue.length, edge: nearEdge });
+            : { x: cx * m.k + (m.k - 1) / 2, y: cy * m.k + (m.k - 1) / 2 }, snr: peak, sign, area: queue.length, edge: nearEdge, narrow, compactUncertain });
     }
     return { found: out, measurement: m };
 }
@@ -495,8 +550,13 @@ function finish(result: ChangeResult, opt: Settings, singleFrame = false): Chang
 {
     result.candidates.sort((a, b) => (singleFrame ? Number(b.gaiaMatch) - Number(a.gaiaMatch) : 0)
         || b.snr - a.snr || a.pix.y - b.pix.y || a.pix.x - b.pix.x);
+    const total = result.candidates.length;
     result.candidates = result.candidates.slice(0, Math.max(0, opt.maxCandidates));
-    result.candidates.forEach((c, i) => { c.id = `c${i + 1}`; });
+    const omitted = total - result.candidates.length;
+    if (omitted > 0) {
+        result.notes.push(`${omitted} additional ${omitted === 1 ? 'candidate' : 'candidates'} not shown because of the candidate limit.`);
+    }
+    result.candidates.forEach((c, i) => { c.id = `c${i + 1}`; c.sentence = c.reason; });
     return result;
 }
 
@@ -511,19 +571,18 @@ function candidate(blob: Blob, grid: OutputGrid, stars: StarPix[], opt: Settings
     const kind: ChangeKind = dist === undefined ? 'unknown' : 'brightness';
     return { id: '', kind, pix: blob.pix, sky: gridPixToSky(grid, blob.pix), snr: blob.snr, sign: blob.sign,
         gaiaMatch: dist !== undefined, ...(dist === undefined ? {} : { gaiaDistArcsec: dist }), frames,
-        reason: kind === 'brightness'
-            ? `A catalogue star here is ${blob.sign === 1 ? 'brighter' : 'fainter'} than in the earlier image, at ${snrText(blob.snr)} (candidate).`
-            : `Changed at ${snrText(blob.snr)} with no catalogue star here (candidate).` };
+        reason: `The two visits differ here (${snrText(blob.snr)}; candidate).` };
 }
 
-function sourceCentroid(data: Float32Array, center: PixelCoord, grid: OutputGrid): PixelCoord | undefined
+function sourceCentroid(data: Float32Array, other: Float32Array, center: PixelCoord, grid: OutputGrid): PixelCoord | undefined
 {
     const radius = 12 / grid.pixelArcsec;
     const ring: number[] = [];
     for (let y = Math.max(0, Math.floor(center.y - 3 * radius)); y <= Math.min(grid.height - 1, Math.ceil(center.y + 3 * radius)); y++) {
         for (let x = Math.max(0, Math.floor(center.x - 3 * radius)); x <= Math.min(grid.width - 1, Math.ceil(center.x + 3 * radius)); x++) {
             const d = Math.hypot(x - center.x, y - center.y), v = data[y * grid.width + x]!;
-            if (d >= 2 * radius && d <= 3 * radius && Number.isFinite(v)) { ring.push(v); }
+            if (d >= 2 * radius && d <= 3 * radius && Number.isFinite(v)
+                && Number.isFinite(other[y * grid.width + x]!)) { ring.push(v); }
         }
     }
     if (ring.length < 20) { return undefined; }
@@ -533,7 +592,9 @@ function sourceCentroid(data: Float32Array, center: PixelCoord, grid: OutputGrid
         for (let x = Math.max(0, Math.floor(center.x - radius)); x <= Math.min(grid.width - 1, Math.ceil(center.x + radius)); x++) {
             if (Math.hypot(x - center.x, y - center.y) > radius) { continue; }
             const value = data[y * grid.width + x]! - background;
-            if (Number.isFinite(value) && value > 0) { sx += x * value; sy += y * value; sum += value; }
+            if (Number.isFinite(value) && Number.isFinite(other[y * grid.width + x]!) && value > 0) {
+                sx += x * value; sy += y * value; sum += value;
+            }
         }
     }
     return sum > 0 ? { x: sx / sum, y: sy / sum } : undefined;
@@ -618,6 +679,20 @@ function fractionalChange(earlier: Float32Array, later: Float32Array, pix: Pixel
     return Number.isFinite(frac) && frac >= -1 ? frac : undefined;
 }
 
+// Compare the fraction of light in the core to that in the wider aperture, propagating both visits' noise.
+function sharpnessChanged(earlier: Float32Array, later: Float32Array, pix: PixelCoord, grid: OutputGrid): boolean | undefined
+{
+    const core = apertureSums(earlier, later, pix, grid, 6);
+    const wide = apertureSums(earlier, later, pix, grid, 18);
+    if (!core || !wide || wide.sumA <= 5 * wide.noiseA || wide.sumB <= 5 * wide.noiseB) { return undefined; }
+    const a = core.sumA / wide.sumA, b = core.sumB / wide.sumB;
+    const error = Math.hypot(core.noiseA / wide.sumA, core.noiseB / wide.sumB,
+        a * wide.noiseA / wide.sumA, b * wide.noiseB / wide.sumB);
+    // A non-significant difference does not establish equal widths; without a bound tight enough to rule out
+    // aperture bias, leave the cause unresolved rather than treating a failed significance test as equality.
+    return Number.isFinite(error) && Math.abs(a - b) > 3 * error ? true : undefined;
+}
+
 // Catmull-Rom bicubic sample of an image at a fractional pixel; NaN outside the grid or next to a non-finite
 // pixel. Bilinear resampling leaves a residual of tens of noise units on a bright star's core (-ba round 8).
 function cubic(data: Float32Array, grid: OutputGrid, sx: number, sy: number): number
@@ -649,7 +724,7 @@ function cubic(data: Float32Array, grid: OutputGrid, sx: number, sy: number): nu
     return out;
 }
 
-function earlierAmplitude(data: Float32Array, a: PixelCoord, grid: OutputGrid): number
+function localBackground(data: Float32Array, a: PixelCoord, grid: OutputGrid): number
 {
     const ring: number[] = [];
     const r0 = 30 / grid.pixelArcsec, r1 = 36 / grid.pixelArcsec;
@@ -661,8 +736,27 @@ function earlierAmplitude(data: Float32Array, a: PixelCoord, grid: OutputGrid): 
             }
         }
     }
+    return median(ring);
+}
+
+function earlierAmplitude(data: Float32Array, a: PixelCoord, grid: OutputGrid): number
+{
     const peak = cubic(data, grid, a.x, a.y);
-    return ring.length && Number.isFinite(peak) ? Math.max(0, peak - median(ring)) : 0;
+    const sky = localBackground(data, a, grid);
+    if (!Number.isFinite(sky)) { return NaN; }
+    if (Number.isFinite(peak)) { return Math.max(0, peak - sky); }
+    // A missing interpolation neighbour does not make a source vanish. Fit the finite samples in the core.
+    const sigma = PSF_FWHM / 2.35482 / grid.pixelArcsec;
+    let sum = 0, weight = 0, count = 0;
+    for (let y = Math.max(0, Math.floor(a.y - sigma)); y <= Math.min(grid.height - 1, Math.ceil(a.y + sigma)); y++) {
+        for (let x = Math.max(0, Math.floor(a.x - sigma)); x <= Math.min(grid.width - 1, Math.ceil(a.x + sigma)); x++) {
+            const value = data[y * grid.width + x]!;
+            if (!Number.isFinite(value)) { continue; }
+            const p = Math.exp(-((x - a.x) ** 2 + (y - a.y) ** 2) / (2 * sigma ** 2));
+            sum += p * (value - sky); weight += p * p; count++;
+        }
+    }
+    return count >= 5 && weight > 0 ? Math.max(0, sum / weight) : NaN;
 }
 
 function anchorAmplitudes(earlier: Float32Array, anchors: PixelCoord[], grid: OutputGrid): number[]
@@ -674,8 +768,8 @@ function anchorAmplitudes(earlier: Float32Array, anchors: PixelCoord[], grid: Ou
     if (anchors.length > 1) {
         const gram = anchors.map(() => anchors.map(() => 0));
         const rhs = anchors.map(() => 0);
-        const sky = median(anchors.map((a, i) => cubic(earlier, grid, a.x, a.y) - amplitudes[i]!)
-            .filter(Number.isFinite));
+        const sky = median(anchors.map((a) => localBackground(earlier, a, grid)).filter(Number.isFinite));
+        if (!Number.isFinite(sky)) { return anchors.map(() => NaN); }
         const radius = 2 * PSF_FWHM / grid.pixelArcsec;
         const loX = Math.max(0, Math.floor(Math.min(...anchors.map((a) => a.x)) - radius));
         const hiX = Math.min(grid.width - 1, Math.ceil(Math.max(...anchors.map((a) => a.x)) + radius));
@@ -755,22 +849,24 @@ function anchorAmplitudes(earlier: Float32Array, anchors: PixelCoord[], grid: Ou
 // so a bright star's residual is not left behind by a 0.25″ search step. (A single warp, one shift per pixel, could
 // not do this: a pixel lit by two stars needs both shifts.)
 function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: PixelCoord[], grid: OutputGrid,
-    opt: Settings, m: Measurement, anchors: PixelCoord[] = [], allowCoreFallback = false): boolean
+    opt: Settings, m: Measurement, anchors: PixelCoord[] = [], allowCoreFallback = false,
+    sourceAnchors: PixelCoord[] = anchors, onFallback?: () => void): boolean
 {
     // Validate the surrounding PSF as well as the spot: fitting one wing must not create a change at the core.
-    const bins: { x: number; y: number; index: number; spot: boolean; core: boolean }[] = [];
+    const bins: { x: number; y: number; index: number; spot: boolean; spotIndices: number[]; core: boolean }[] = [];
     const radius = Math.min(opt.matchArcsec, 2 * PSF_FWHM);
     for (let y = 0; y < m.height; y++) {
         for (let x = 0; x < m.width; x++) {
             const pix = { x: x * m.k + (m.k - 1) / 2, y: y * m.k + (m.k - 1) / 2 };
-            const spot = spots.some((s) => distance(pix, s, grid) <= radius);
+            const spotIndices = spots.flatMap((s, i) => distance(pix, s, grid) <= radius ? [i] : []);
+            const spot = spotIndices.length > 0;
             const valid = m.noise[y * m.width + x]! > 0;
             if (spot && !valid) {
                 return false;
             }
             if (valid && (spots.some((s) => distance(pix, s, grid) <= 2 * PSF_FWHM)
                 || anchors.some((a) => distance(pix, a, grid) <= radius))) {
-                bins.push({ x, y, index: y * m.width + x, spot,
+                bins.push({ x, y, index: y * m.width + x, spot, spotIndices,
                     core: anchors.some((a) => distance(pix, a, grid) <= CORE_ARCSEC) });
             }
         }
@@ -780,6 +876,7 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
     }
     // Translating noise is not evidence for wobble. Require an earlier source close to a measured spot.
     const amplitudes = anchorAmplitudes(earlier, anchors, grid);
+    if (amplitudes.some((amplitude) => !Number.isFinite(amplitude))) { return false; }
     const anchorSource = (a: PixelCoord, i: number, radius: number): boolean => {
         const x = Math.round(a.x / m.k), y = Math.round(a.y / m.k);
         const index = Math.max(0, Math.min(m.height - 1, y)) * m.width + Math.max(0, Math.min(m.width - 1, x));
@@ -788,25 +885,38 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
         return amplitudes[i]! >= 5 * m.noise[index]! / Math.SQRT2
             && spots.some((spot) => distance(spot, a, grid) <= radius);
     };
-    const hasSource = anchors.some((a, i) => anchorSource(a, i, opt.matchArcsec)) || spots.some((spot) => {
+    const sourceAmplitudes = sourceAnchors === anchors ? amplitudes : anchorAmplitudes(earlier, sourceAnchors, grid);
+    const sourceSigma = PSF_FWHM / 2.35482 / grid.pixelArcsec;
+    const residual = (x: number, y: number): number => earlier[y * grid.width + x]!
+        - sourceAnchors.reduce((sum, anchor, i) => sum + sourceAmplitudes[i]!
+            * Math.exp(-((x - anchor.x) ** 2 + (y - anchor.y) ** 2) / (2 * sourceSigma ** 2)), 0);
+    const hasSource = spots.every((spot) => {
+        if (sourceAnchors.some((a, i) => {
+            const x = Math.max(0, Math.min(m.width - 1, Math.round(a.x / m.k)));
+            const y = Math.max(0, Math.min(m.height - 1, Math.round(a.y / m.k)));
+            return sourceAmplitudes[i]! >= 5 * m.noise[y * m.width + x]! / Math.SQRT2
+                && distance(spot, a, grid) <= opt.matchArcsec;
+        })) { return true; }
         const radius = opt.matchArcsec / grid.pixelArcsec;
+        const sky = localBackground(earlier, spot, grid);
         for (let y = Math.max(1, Math.ceil(spot.y - radius)); y <= Math.min(grid.height - 2, Math.floor(spot.y + radius)); y++) {
             for (let x = Math.max(1, Math.ceil(spot.x - radius)); x <= Math.min(grid.width - 2, Math.floor(spot.x + radius)); x++) {
-                const value = earlier[y * grid.width + x]!;
+                const value = sourceAnchors.length ? residual(x, y) : earlier[y * grid.width + x]!;
                 if (!Number.isFinite(value) || Math.hypot(x - spot.x, y - spot.y) > radius) {
                     continue;
                 }
                 let maximum = true;
                 for (let dy = -1; dy <= 1; dy++) {
                     for (let dx = -1; dx <= 1; dx++) {
-                        const neighbour = earlier[(y + dy) * grid.width + x + dx]!;
+                        const neighbour = sourceAnchors.length ? residual(x + dx, y + dy) : earlier[(y + dy) * grid.width + x + dx]!;
                         if (!Number.isFinite(neighbour) || neighbour > value) {
                             maximum = false;
                         }
                     }
                 }
                 const index = Math.floor(y / m.k) * m.width + Math.floor(x / m.k);
-                if (maximum && earlierAmplitude(earlier, { x, y }, grid) >= 5 * m.noise[index]! / Math.SQRT2) {
+                const height = sourceAnchors.length ? value - sky : earlierAmplitude(earlier, { x, y }, grid);
+                if (maximum && height >= 5 * m.noise[index]! / Math.SQRT2) {
                     return true;
                 }
             }
@@ -853,8 +963,13 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
         return result;
     };
     // Worst spot bin and sum of squares over all bins (noise units); with anchors the shifts are fitted on the sum.
-    const peak = (): [number, number, number, number] => {
+    const peak = (): [number, number, number, number, number[], number[]] => {
         let worst = 0, squares = 0, patch = 0, coreSquares = 0, missing = 0, total = 0;
+        const perSpot = spots.map(() => 0);
+        const signed: number[] = [];
+        const record = (bin: typeof bins[number], value: number): void => {
+            for (const i of bin.spotIndices) { perSpot[i] = Math.max(perSpot[i]!, value); }
+        };
         if (fitted) {
             for (let i = 0; i < fitted.length; i++) {
                 let value = fitted[i]!.base;
@@ -862,8 +977,10 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
                     value += commonProfiles[s]![i]! - ownProfiles[s]![i]!;
                 }
                 const z = Math.abs(value);
+                signed.push(value);
                 if (bins[i]!.spot) {
                     worst = Math.max(worst, z);
+                    record(bins[i]!, z);
                 }
                 squares += z * z;
                 if (bins[i]!.core) {
@@ -871,7 +988,7 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
                 }
                 patch = Math.max(patch, z);
             }
-            return [worst, squares, patch, coreSquares];
+            return [worst, squares, patch, coreSquares, perSpot, signed];
         }
         for (let i = 0; i < bins.length; i++) {
             const bin = bins[i]!;
@@ -890,11 +1007,14 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
                 }
             }
             if (!count) {
-                return [Infinity, Infinity, Infinity, Infinity];
+                return [Infinity, Infinity, Infinity, Infinity, spots.map(() => Infinity), []];
             }
-            const z = Math.abs(sum / count - m.background[bin.index]!) / m.noise[bin.index]!;
+            const value = (sum / count - m.background[bin.index]!) / m.noise[bin.index]!;
+            signed.push(value);
+            const z = Math.abs(value);
             if (bin.spot) {
                 worst = Math.max(worst, z);
+                record(bin, z);
             }
             squares += z * z;
             if (bin.core) {
@@ -902,17 +1022,31 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
             }
             patch = Math.max(patch, z);
         }
-        return missing > 0.1 * total ? [Infinity, Infinity, Infinity, Infinity] : [worst, squares, patch, coreSquares];
+        return missing > 0.1 * total ? [Infinity, Infinity, Infinity, Infinity, spots.map(() => Infinity), []]
+            : [worst, squares, patch, coreSquares, perSpot, signed];
     };
     const initial = peak();
     if (!Number.isFinite(initial[0]) || !Number.isFinite(initial[1])) {
         return false;
     }
     const explained = (): boolean => {
-        const [worst, squares, patch, coreSquares] = peak();
+        const [worst, squares, patch, coreSquares, perSpot, signed] = peak();
         if (!(patch < opt.threshold && worst < initial[0] * 0.5 && squares < initial[1])
+            || perSpot.some((value, i) => !(value < opt.threshold / 2 && value < initial[4][i]! * 0.5))
             || (requireCoreImprovement && !(coreSquares < 0.1 * initial[3]))) {
             return false;
+        }
+        if (requireCoreImprovement) {
+            for (let s = 0; s < spots.length; s++) {
+                let best = -1;
+                bins.forEach((bin, i) => {
+                    if (bin.spotIndices.includes(s) && (best < 0 || Math.abs(initial[5][i]!) > Math.abs(initial[5][best]!))) { best = i; }
+                });
+                if (best < 0 || perSpot[s]! >= opt.threshold / 2
+                    || Math.sign(initial[5][best]!) * (initial[5][best]! - signed[best]!) < Math.abs(initial[5][best]!) / 2) {
+                    return false;
+                }
+            }
         }
         return true;
     };
@@ -950,6 +1084,7 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
         own.y = bestY;
     }
     if (explained()) {
+        if (requireCoreImprovement) { onFallback?.(); }
         return true;
     }
     if (anchors.length < 2) {
@@ -1010,6 +1145,7 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
             ownProfiles[s] = profile(s, own);
         }
         if (explained()) {
+            if (requireCoreImprovement) { onFallback?.(); }
             return true;
         }
         if (previous - best <= 1e-6 * Math.max(1, previous)) {
@@ -1019,19 +1155,25 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
     return false;
 }
 
-export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, stars: StarPix[], opts?: ChangeOptions): ChangeResult
+export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, stars: StarPix[], opts?: ChangeOptions): VisitChangeResult
 {
     const opt = settings(opts), result = empty(opt);
+    const visits = { earlier: { obsIds: [...earlier.obsIds], mjd: earlier.mjd },
+        later: { obsIds: [...later.obsIds], mjd: later.mjd } };
     const diff = difference(earlier.data, later.data, grid);
+    const pairedEarlier = diff.some((value) => !Number.isFinite(value))
+        ? earlier.data.map((value, i) => Number.isFinite(diff[i]!) ? value : NaN) : earlier.data;
     const wavelength = (value: number): string => Number.isFinite(value) ? `${value.toFixed(3)} µm` : 'unknown';
     result.notes.push(`Wavelengths: ${wavelength(earlier.lambda)} and ${wavelength(later.lambda)}.`);
     const singleFrame = earlier.obsIds.length === 1 || later.obsIds.length === 1;
-    const warning = 'each visit is one frame; artefacts not ruled out';
-    if (singleFrame) { result.notes.push(warning); }
+    const caveat = earlier.obsIds.length === 1 && later.obsIds.length === 1
+        ? 'Each visit is one frame, so a detector hit cannot be ruled out.'
+        : earlier.obsIds.length === 1 ? 'The earlier visit is one frame, so a detector hit cannot be ruled out.'
+            : later.obsIds.length === 1 ? 'The later visit is one frame, so a detector hit cannot be ruled out.' : undefined;
     if (!wavelengthsMatch(earlier.lambda, later.lambda, opt.maxDeltaLambda)) {
         result.skipped = later.obsIds.map((obsId) => ({ obsId, reason: `No earlier image within ${opt.maxDeltaLambda} µm.` }));
-        result.notes.push(`${later.obsIds.length} frames skipped: no earlier image within ${opt.maxDeltaLambda} µm.`);
-        return result;
+        result.notes.push(`${later.obsIds.length} ${later.obsIds.length === 1 ? 'frame' : 'frames'} skipped: no earlier image within ${opt.maxDeltaLambda} µm.`);
+        return { ...result, visits } as VisitChangeResult;
     }
     let varSum: Float32Array | undefined;
     if ((earlier.variance && earlier.variance.length !== diff.length)
@@ -1045,7 +1187,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             varSum[i] = Number.isFinite(a) && a > 0 && Number.isFinite(b) && b > 0 ? a + b : NaN;
         }
     }
-    const { found, measurement } = blobs(diff, grid, opt, result, 3.75, varSum);
+    const { found, measurement } = blobs(diff, grid, opt, result, 3.75, varSum, true);
     if (measurement.usedErrorMap) {
         result.notes.push('Noise from the frames\' own error maps.');
     } else if (earlier.variance || later.variance) {
@@ -1055,20 +1197,97 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     } else {
         result.notes.push('Noise from the difference image only (no error maps given): a small patch of extra noise can show up as false change candidates.');
     }
-    let smallChanges = 0, wobble = 0, shadows = 0;
+    const center = { x: (grid.width - 1) / 2, y: (grid.height - 1) / 2 };
+    const centerRadius = opt.matchArcsec / grid.pixelArcsec;
+    let centerBlank = true, centerChecked = false;
+    const coverageRadius = centerRadius + 12 / grid.pixelArcsec;
+    for (let y = Math.ceil(center.y - coverageRadius); y <= Math.floor(center.y + coverageRadius) && centerBlank; y++) {
+        for (let x = Math.ceil(center.x - coverageRadius); x <= Math.floor(center.x + coverageRadius); x++) {
+            if (Math.hypot(x - center.x, y - center.y) > coverageRadius) { continue; }
+            if (x < 0 || y < 0 || x >= grid.width || y >= grid.height
+                || !Number.isFinite(earlier.data[y * grid.width + x]!) || !Number.isFinite(later.data[y * grid.width + x]!)) {
+                centerBlank = false;
+                break;
+            }
+        }
+    }
+    for (let y = Math.ceil(center.y - centerRadius); y <= Math.floor(center.y + centerRadius) && centerBlank; y++) {
+        for (let x = Math.ceil(center.x - centerRadius); x <= Math.floor(center.x + centerRadius); x++) {
+            if (Math.hypot(x - center.x, y - center.y) > centerRadius) { continue; }
+            const sums = apertureSums(earlier.data, later.data, { x, y }, grid);
+            if (!sums || !(sums.noiseA > 0) || !(sums.noiseB > 0)
+                || !Number.isFinite(sums.noiseA) || !Number.isFinite(sums.noiseB)) {
+                centerBlank = false;
+                break;
+            }
+            centerChecked = true;
+            if (sums.sumA >= 5 * sums.noiseA || sums.sumB >= 5 * sums.noiseB) {
+                centerBlank = false;
+                break;
+            }
+        }
+    }
+    if (centerChecked && centerBlank) {
+        result.notes.push('Nothing shows at the centre of the view in either visit, so the target itself is not compared here.');
+    }
+    let smallChanges = 0, wobble = 0;
     const used = new Set<number>();
+    found.forEach((blob, i) => {
+        if (blob.edge) {
+            used.add(i);
+            const c = candidate(blob, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
+            c.kind = 'unknown';
+            c.reason = `A change near an image edge or missing data; its cause is uncertain (${snrText(c.snr)}; candidate).`;
+            result.candidates.push(c);
+            return;
+        }
+        let missing = 0;
+        const radius = PSF_FWHM / grid.pixelArcsec;
+        for (let y = Math.max(0, Math.ceil(blob.pix.y - radius)); y <= Math.min(grid.height - 1, Math.floor(blob.pix.y + radius)); y++) {
+            for (let x = Math.max(0, Math.ceil(blob.pix.x - radius)); x <= Math.min(grid.width - 1, Math.floor(blob.pix.x + radius)); x++) {
+                if (Math.hypot(x - blob.pix.x, y - blob.pix.y) <= radius && !Number.isFinite(diff[y * grid.width + x]!)) { missing++; }
+            }
+        }
+        const narrow = blob.narrow || narrowChange(diff, blob.pix, blob.sign, grid) === true;
+        if (!narrow && !blob.compactUncertain && missing < 3) { return; }
+        used.add(i);
+        const c = candidate(blob, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
+        c.kind = 'unknown';
+        c.reason = narrow
+            ? `A very narrow change in one visit, narrower than a star image; could be a single-frame hit (${snrText(c.snr)}; candidate).`
+            : blob.compactUncertain
+                ? `A compact change whose cause is uncertain (${snrText(c.snr)}; candidate).`
+                : `A change near missing image pixels; the missing data make its cause uncertain (${snrText(c.snr)}; candidate).`;
+        result.candidates.push(c);
+    });
     const nearestStar = (p: PixelCoord): StarPix | undefined => stars
         .filter((s) => Number.isFinite(s.x) && Number.isFinite(s.y) && distance(p, s, grid) <= opt.matchArcsec)
         .sort((a, b) => distance(p, a, grid) - distance(p, b, grid))[0];
     const wobbleCache = new Map<string, boolean>();
+    const fallbackSpots = new Set<PixelCoord>();
     const spotKey = (spots: PixelCoord[]): string => spots.map((p) => `${p.x},${p.y}`).sort().join(';');
+    const nearbyAnchors = (spots: PixelCoord[]): StarPix[] => {
+        const unique: StarPix[] = [];
+        for (const star of stars) {
+            if (Number.isFinite(star.x) && Number.isFinite(star.y)
+                && spots.some((p) => distance(p, star, grid) <= opt.matchArcsec + 2 * PSF_FWHM)
+                && !unique.some((other) => sameStar(star, other))) {
+                unique.push(star);
+            }
+        }
+        const sigma = PSF_FWHM / 2.35482;
+        return unique.map((star) => ({ star, influence: earlierAmplitude(pairedEarlier, star, grid)
+            * Math.max(...spots.map((spot) => Math.exp(-(distance(spot, star, grid) ** 2) / (2 * sigma ** 2)))) }))
+            .sort((a, b) => b.influence - a.influence).slice(0, 4).map((a) => a.star);
+    };
     const commonWobble = (spots: PixelCoord[]): boolean => {
         const key = `common:${spotKey(spots)}`;
         const cached = wobbleCache.get(key);
         if (cached !== undefined) {
             return cached;
         }
-        const result = explainedByWobble(earlier.data, later.data, spots, grid, opt, measurement);
+        const result = explainedByWobble(pairedEarlier, later.data, spots, grid, opt, measurement,
+            [], false, nearbyAnchors(spots));
         wobbleCache.set(key, result);
         return result;
     };
@@ -1079,24 +1298,18 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         if (cached !== undefined) {
             return cached;
         }
-        const unique: StarPix[] = [];
-        for (const star of stars) {
-            if (Number.isFinite(star.x) && Number.isFinite(star.y)
-                && spots.some((p) => distance(p, star, grid) <= opt.matchArcsec + 2 * PSF_FWHM)
-                && !unique.some((other) => sameStar(star, other))) {
-                unique.push(star);
-            }
-        }
-        const sigma = PSF_FWHM / 2.35482;
-        const amplitudes = anchorAmplitudes(earlier.data, unique, grid);
-        const anchors = unique.map((star, i) => ({ star, influence: amplitudes[i]!
-            * Math.max(...spots.map((spot) => Math.exp(-(distance(spot, star, grid) ** 2) / (2 * sigma ** 2)))) }))
-            .sort((a, b) => b.influence - a.influence).slice(0, 4).map((a) => a.star);
-        const result = anchors.length > 1 && explainedByWobble(earlier.data, later.data, spots, grid, opt, measurement, anchors, true);
+        const anchors = nearbyAnchors(spots);
+        let fallback = false;
+        const explained = anchors.length > 1 && explainedByWobble(pairedEarlier, later.data, spots, grid, opt,
+            measurement, anchors, true, anchors, () => { fallback = true; });
+        if (fallback) { spots.forEach((spot) => fallbackSpots.add(spot)); }
+        const result = explained && !fallback;
         wobbleCache.set(key, result);
         return result;
     };
-    if (stars.some((s) => s.id === undefined)) {
+    if (stars.some((star, i) => star.id === undefined && Number.isFinite(star.x) && Number.isFinite(star.y)
+        && stars.some((other, j) => j > i && other.id === undefined && Number.isFinite(other.x) && Number.isFinite(other.y)
+            && distance(star, other, grid) <= opt.dipoleArcsec))) {
         result.notes.push('Catalogue stars have no ids: two nearby catalogue stars that change in opposite ways can look like one mover.');
     }
     // Repeated ids must also be close enough for the elapsed time, allowing up to 10.5″ per year.
@@ -1104,7 +1317,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         ? 10.5 * Math.abs(later.mjd - earlier.mjd) / 365.25 : 0);
     const sameStar = (a: StarPix, b: StarPix): boolean => a.id !== undefined || b.id !== undefined
         ? a.id !== undefined && a.id === b.id && distance(a, b, grid) <= sameIdRadius
-        : distance(a, b, grid) <= opt.matchArcsec;
+        : a === b || (a.x === b.x && a.y === b.y);
     // A bright steady neighbour can dominate an unsubtracted aperture without being the changed source.
     // In that case neither its fractional change nor its light centroid describes the spot reliably.
     const brighterNeighbour = (pix: PixelCoord): StarPix | undefined => {
@@ -1114,19 +1327,31 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             return undefined;
         }
         const radius = PSF_FWHM / grid.pixelArcsec, sigma = radius / 2.35482;
-        return stars.find((star) => {
+        const nearby: StarPix[] = [];
+        for (const star of stars) {
+            if (Number.isFinite(star.x) && Number.isFinite(star.y) && distance(pix, star, grid) <= 2 * PSF_FWHM
+                && !nearby.some((other) => sameStar(star, other))) { nearby.push(star); }
+        }
+        const ranked = nearby.filter((star) => !own || !sameStar(star, own))
+            .map((star) => ({ star, peak: earlierAmplitude(pairedEarlier, star, grid) }))
+            .sort((a, b) => b.peak - a.peak || a.star.x - b.star.x || a.star.y - b.star.y);
+        // Include the changed source in the fit even when it has no catalogue entry.
+        const anchors: PixelCoord[] = [own ?? pix, ...ranked.map((entry) => entry.star)];
+        const amplitudes = anchorAmplitudes(pairedEarlier, anchors, grid);
+        const qualified: { star: StarPix; amplitude: number }[] = [];
+        ranked.forEach(({ star }, index) => {
             if (!Number.isFinite(star.x) || !Number.isFinite(star.y) || (own && sameStar(star, own))
                 || distance(pix, star, grid) > 2 * PSF_FWHM) {
-                return false;
+                return;
             }
             const frac = fractionalChange(earlier.data, later.data, star, grid, CORE_ARCSEC);
             if (frac === undefined || Math.abs(frac) >= opt.minFracChange) {
-                return false;
+                return;
             }
             const core = apertureSums(earlier.data, later.data, star, grid, CORE_ARCSEC);
             if (core && Math.abs(core.sumB - core.sumA) > 5 * Math.hypot(core.noiseA, core.noiseB)
                 && found.some((b) => distance(b.pix, star, grid) <= opt.matchArcsec && b.sign === Math.sign(frac))) {
-                return false;
+                return;
             }
             let profile = 0;
             for (let y = Math.ceil(pix.y - radius); y <= Math.floor(pix.y + radius); y++) {
@@ -1136,10 +1361,46 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                     }
                 }
             }
-            return earlierAmplitude(earlier.data, star, grid) * profile > 0.5 * Math.max(sums.sumA, sums.sumB);
+            const amplitude = amplitudes[index + 1]!;
+            if (amplitude * profile > 0.5 * Math.max(sums.sumA, sums.sumB)) { qualified.push({ star, amplitude }); }
         });
+        qualified.sort((a, b) => b.amplitude - a.amplitude || a.star.x - b.star.x || a.star.y - b.star.y);
+        return qualified[0]?.star;
     };
-    const brighter = found.map((b) => brighterNeighbour(b.pix));
+    const crowded = found.map((blob) => {
+        const unique: StarPix[] = [];
+        for (const star of stars) {
+            if (Number.isFinite(star.x) && Number.isFinite(star.y) && distance(blob.pix, star, grid) <= 2 * PSF_FWHM
+                && !unique.some((other) => sameStar(star, other))) {
+                unique.push(star);
+                if (unique.length > 3) { return true; }
+            }
+        }
+        return false;
+    });
+    const brighter = found.map((b, i) => crowded[i] ? undefined : brighterNeighbour(b.pix));
+    const blendedLight = found.map((blob) => {
+        const anchors = nearbyAnchors([blob.pix]).filter((s) => distance(s, blob.pix, grid) <= 2 * PSF_FWHM);
+        if (anchors.length < 2) { return false; }
+        const sums = apertureSums(earlier.data, later.data, blob.pix, grid);
+        if (!sums || sums.sumA <= 0) { return false; }
+        const amplitudes = anchorAmplitudes(pairedEarlier, anchors, grid);
+        const radius = PSF_FWHM / grid.pixelArcsec, sigma = radius / 2.35482;
+        const light = anchors.map((anchor, i) => {
+            let profile = 0;
+            for (let y = Math.ceil(blob.pix.y - radius); y <= Math.floor(blob.pix.y + radius); y++) {
+                for (let x = Math.ceil(blob.pix.x - radius); x <= Math.floor(blob.pix.x + radius); x++) {
+                    if (Math.hypot(x - blob.pix.x, y - blob.pix.y) <= radius) {
+                        profile += Math.exp(-((x - anchor.x) ** 2 + (y - anchor.y) ** 2) / (2 * sigma ** 2));
+                    }
+                }
+            }
+            return amplitudes[i]! * profile;
+        }).filter((value) => Number.isFinite(value) && value > 0);
+        const halfAperture = 0.5 * Math.max(sums.sumA, sums.sumB);
+        return light.length >= 2 && Math.max(...light) <= halfAperture
+            && light.reduce((a, b) => a + b, 0) > halfAperture;
+    });
     // Opposite changes on two catalogue stars within 2 FWHM are ambiguous. Steady neighbours subtract out;
     // a much weaker shadow or an unresolved pair inside one PSF core does not establish this ambiguity.
     // The neighbour counts only when its own core changed by the floor: a common wobble of two steady stars
@@ -1162,6 +1423,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     const floorFrac = (star: StarPix | PixelCoord, isBlended: boolean): number | undefined => isBlended
         ? fractionalChange(earlier.data, later.data, star, grid, CORE_ARCSEC)
         : fractionalChange(earlier.data, later.data, star, grid);
+    const uncertainNeighbour = (star: StarPix | undefined): boolean => star !== undefined && stars.some((other) =>
+        Number.isFinite(other.x) && Number.isFinite(other.y) && !sameStar(star, other)
+        && distance(star, other, grid) <= 2 * PSF_FWHM);
     for (let i = 0; i < found.length; i++) {
         const positive = found[i]!;
         if (positive.sign !== 1 || used.has(i)) {
@@ -1188,7 +1452,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         }
         partners.sort((a, b) => Number(b.same) - Number(a.same) || Number(a.blocked) - Number(b.blocked) || a.d - b.d);
         let ambiguous: { j: number; shift: number } | undefined;
-        for (const { j, blocked: onTwoStars } of partners) {
+        for (const { j, d, blocked: onTwoStars } of partners) {
             const negative = found[j]!;
             if (positive.edge || negative.edge) {
                 continue;
@@ -1196,12 +1460,14 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             const negativeStar = nearestStar(negative.pix);
             // A single star's own dipole may put one lobe just outside the matching radius. Test that pair
             // for wobble/slow-shift ambiguity; other neighbour-dominated spots cannot give reliable centroids.
-            if ((brighter[i] && (!negativeStar || !sameStar(brighter[i]!, negativeStar)))
+            if (crowded[i] || crowded[j] || (brighter[i] && (!negativeStar || !sameStar(brighter[i]!, negativeStar)))
                 || (brighter[j] && (!positiveStar || !sameStar(brighter[j]!, positiveStar)))) {
+                ambiguous ??= { j, shift: d };
                 continue;
             }
             const center = { x: (positive.pix.x + negative.pix.x) / 2, y: (positive.pix.y + negative.pix.y) / 2 };
-            const before = sourceCentroid(earlier.data, center, grid), after = sourceCentroid(later.data, center, grid);
+            const before = sourceCentroid(earlier.data, later.data, center, grid);
+            const after = sourceCentroid(later.data, earlier.data, center, grid);
             const shift = before && after ? distance(before, after, grid) : 0;
             const uncertainty = Math.hypot(PSF_FWHM / (2.35 * positive.snr), PSF_FWHM / (2.35 * negative.snr));
             // Two fixed stars keep the light centre between them, give or take the wobble. A shift beyond that
@@ -1218,10 +1484,18 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 break;
             }
             if (shift < 3 * uncertainty || (onTwoStars && shift < opt.minShiftArcsec)) {
+                const first = positiveStar && floorFrac(positiveStar, true);
+                const second = negativeStar && floorFrac(negativeStar, true);
+                const radialProfile = d < CORE_ARCSEC && positiveStar
+                    && sharpnessChanged(earlier.data, later.data, positiveStar, grid) === true;
+                if (!radialProfile && (!onTwoStars || (first !== undefined && second !== undefined
+                    && Math.abs(first) < opt.minFracChange && Math.abs(second) < opt.minFracChange))) {
+                    ambiguous ??= { j, shift: d };
+                }
                 continue;
             }
             if (!blocked && (shift < opt.minShiftArcsec || shift <= WOBBLE_ARCSEC + 3 * uncertainty)) {
-                ambiguous ??= { j, shift };
+                ambiguous ??= { j, shift: d };
                 continue;
             }
             used.add(i);
@@ -1237,7 +1511,13 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                     + `and the other fainter; these look the same here (${snrText(c.snr)}; candidate).`;
             } else {
                 c.kind = 'mover';
-                c.reason = `Source centroids shifted ${shift.toFixed(1)}″ between visits (${snrText(c.snr)}; candidate).`;
+                c.reason = `The light centre here moved ${shift.toFixed(1)}″ between the visits, as a moving source would (${snrText(c.snr)}; candidate).`;
+                if (before && after) {
+                    c.lightEnds = [
+                        { visit: 'earlier', x: before.x, y: before.y, radiusPix: 12 / grid.pixelArcsec },
+                        { visit: 'later', x: after.x, y: after.y, radiusPix: 12 / grid.pixelArcsec },
+                    ];
+                }
             }
             result.candidates.push(c);
             break;
@@ -1247,7 +1527,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             used.add(ambiguous.j);
             const c = candidate(positive, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
             c.kind = 'unknown';
-            c.reason = `Light moved about ${ambiguous.shift.toFixed(1)}″ between visits; this could be a slow mover or a registration error (${snrText(c.snr)}; candidate).`;
+            c.reason = `Opposite changes are about ${ambiguous.shift.toFixed(1)}″ apart; a slow mover, two changing sources or a registration error could look like this (${snrText(c.snr)}; candidate).`;
             result.candidates.push(c);
         }
     }
@@ -1263,15 +1543,24 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             return;
         }
         // Include the other lobes of this local patch: an earlier core can lie between its wobble lobes.
-        const spots = found.filter((b) => !b.edge && distance(b.pix, blob.pix, grid) <= 2 * PSF_FWHM).map((b) => b.pix);
-        if (commonWobble(spots) || ownWobble(spots)) {
+        const spots = found.filter((b, j) => !used.has(j) && !b.edge && distance(b.pix, blob.pix, grid) <= 2 * PSF_FWHM).map((b) => b.pix);
+        if (commonWobble(spots) || ownWobble(spots)
+            || (spots.length > 1 && (commonWobble([blob.pix]) || ownWobble([blob.pix])))) {
             used.add(i);
             result.rejected.residual++;
             wobble++;
             return;
         }
+        if (fallbackSpots.has(blob.pix)) {
+            used.add(i);
+            const c = candidate(blob, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
+            c.kind = 'unknown';
+            c.reason = `A change beside steady catalogue stars that a small image shift could also cause (${snrText(c.snr)}; candidate).`;
+            result.candidates.push(c);
+            return;
+        }
         const star = nearestStar(blob.pix);
-        if (star && !brighter[i]) {
+        if (star && !brighter[i] && !crowded[i] && !blendedLight[i] && !uncertainNeighbour(star)) {
             const frac = floorFrac(star, blended(blob, star));
             if (frac !== undefined && Math.abs(frac) < opt.minFracChange) {
                 used.add(i); result.rejected.residual++;
@@ -1287,7 +1576,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         }
         const star = nearestStar(b.pix);
         const isBlended = star !== undefined && blended(b, star);
-        const floor = brighter[i] ? undefined : floorFrac(b.pix, isBlended);
+        const floor = brighter[i] || crowded[i] || blendedLight[i] || uncertainNeighbour(star) ? undefined : floorFrac(b.pix, isBlended);
         const mismatch = floor !== undefined && Math.sign(floor) !== b.sign;
         if (floor !== undefined && !mismatch && Math.abs(floor) < opt.minFracChange) {
             used.add(i);
@@ -1295,10 +1584,10 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             smallChanges++;
             return undefined;
         }
-        return { b, star, isBlended, floor, mismatch, brighter: brighter[i] };
+        return { b, star, isBlended, floor, mismatch, brighter: brighter[i], crowded: crowded[i], blendedLight: blendedLight[i] };
     });
-    // Remove shadows before they can lend an opposite-spot or nearby-star explanation to a stronger spot.
-    // Use one snapshot so removing a middle shadow cannot spare a weaker spot beyond the strongest one's radius.
+    // Keep weak changes out of the explanations for stronger ones, but do not assume they are shadows.
+    // Use one snapshot so a middle weak change cannot hide another beyond the strongest one's radius.
     const beforeShadows = kept.slice();
     kept.forEach((k, i) => {
         if (k && (beforeShadows.some((other) => other !== undefined && other !== k && other.b.snr >= 5 * k.b.snr
@@ -1307,15 +1596,17 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 && distance(other.pix, k.b.pix, grid) <= 2 * PSF_FWHM))) {
             kept[i] = undefined;
             used.add(i);
-            result.rejected.residual++;
-            shadows++;
+            const c = candidate(k.b, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
+            c.kind = 'unknown';
+            c.reason = `A weaker change near a stronger change; it may be related or a separate source (${snrText(c.snr)}; candidate).`;
+            result.candidates.push(c);
         }
     });
     kept.forEach((k) => {
         if (!k) {
             return;
         }
-        const { b, star, floor, mismatch, brighter: neighbour } = k;
+        const { b, star, floor, mismatch, brighter: neighbour, crowded: isCrowded, blendedLight: multiBlend } = k;
         const survivors = kept.flatMap((other) => other ? [other.b] : []);
         const isBlended = star !== undefined && blended(b, star, survivors);
         const wing = star === undefined && stars.some((s) => Number.isFinite(s.x) && Number.isFinite(s.y)
@@ -1328,17 +1619,53 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             })()));
         const signMismatch = mismatch && !isBlended;
         const c = candidate(b, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
+        if (isBlended) { c.radiusPix = CORE_ARCSEC / grid.pixelArcsec; }
         const direction = b.sign === 1 ? 'brighter' : 'fainter';
-        if (neighbour) {
+        const sums = !c.gaiaMatch && !wing && !opposite && !isBlended && !signMismatch
+            ? apertureSums(earlier.data, later.data, b.pix, grid) : undefined;
+        const measurable = sums !== undefined && sums.noiseA > 0 && sums.noiseB > 0
+            && Number.isFinite(sums.noiseA) && Number.isFinite(sums.noiseB);
+        const appeared = measurable && Math.abs(sums.sumA) < 2 * sums.noiseA && sums.sumB >= 5 * sums.noiseB;
+        const disappeared = measurable && Math.abs(sums.sumB) < 2 * sums.noiseB && sums.sumA >= 5 * sums.noiseA;
+        if (isCrowded) {
             c.kind = 'unknown';
-            c.reason = `A change near a brighter catalogue star ${distance(b.pix, neighbour, grid).toFixed(1)}″ away; too blended here to say what changed (${snrText(c.snr)}; candidate).`;
+            c.reason = `A change in a crowded field; nearby sources make its cause uncertain (${snrText(c.snr)}; candidate).`;
+        } else if (multiBlend && !isBlended && !opposite) {
+            c.kind = 'unknown';
+            c.reason = `The two visits differ near brighter catalogue stars whose light overlaps here, so this reading may be their light (${snrText(c.snr)}; candidate).`;
+        } else if (neighbour) {
+            c.kind = 'unknown';
+            c.reason = `The two visits differ ${distance(b.pix, neighbour, grid).toFixed(1)}″ from a brighter catalogue star whose light overlaps here, so this reading may be that star's light (${snrText(c.snr)}; candidate).`;
+        } else if (uncertainNeighbour(star) && !isBlended) {
+            c.kind = 'unknown';
+            c.reason = `A change beside catalogue stars that a small image shift could also cause (${snrText(c.snr)}; candidate).`;
         } else if (mismatch && star && !isBlended) {
             c.kind = 'unknown';
-            c.reason = `Changed at ${snrText(c.snr)} (at a catalogue star; candidate).`;
+            c.reason = `The two visits differ here (${snrText(c.snr)}; candidate).`;
+        } else if (b.sign === 1 && appeared) {
+            c.kind = 'unknown';
+            c.reason = `Light here in the later visit that the earlier one does not show (${snrText(c.snr)}; candidate).`;
+        } else if (b.sign === -1 && disappeared) {
+            c.kind = 'unknown';
+            c.reason = `Light here in the earlier visit that the later one does not show (${snrText(c.snr)}; candidate).`;
         } else if (!isBlended && !mismatch && !wing && !opposite && floor !== undefined) {
-            c.reason = c.gaiaMatch
-                ? `A catalogue star here is ${direction} than in the earlier image (${snrText(c.snr)}; candidate).`
-                : `A source here is ${direction} than in the earlier image, with no catalogue star here (${snrText(c.snr)}; candidate).`;
+            const narrow = narrowChange(diff, b.pix, b.sign, grid);
+            const sharpness = sharpnessChanged(earlier.data, later.data, star ?? b.pix, grid);
+            if (sharpness) {
+                c.kind = 'unknown';
+                c.reason = c.gaiaMatch
+                    ? `A catalogue star here reads ${direction} in the later visit; its image profile differs between visits, and a sharper image or a nearby change could also cause this (${snrText(c.snr)}; candidate).`
+                    : `The two visits differ here; the image profile differs between visits, and a sharper image or a nearby change could also cause this (${snrText(c.snr)}; candidate).`;
+            } else if (narrow === undefined || sharpness === undefined) {
+                c.kind = 'unknown';
+                c.reason = c.gaiaMatch
+                    ? `A catalogue star here reads ${direction} in the later visit; a sharper image or a single-frame hit could also cause this (${snrText(c.snr)}; candidate).`
+                    : `The two visits differ here; a sharper image or a single-frame hit could also cause this (${snrText(c.snr)}; candidate).`;
+            } else {
+                c.reason = c.gaiaMatch
+                    ? `A catalogue star here reads ${direction} in the later visit (${snrText(c.snr)}; candidate).`
+                    : `The two visits differ here (${snrText(c.snr)}; candidate).`;
+            }
         } else if (isBlended) {
             c.kind = 'unknown';
             c.reason = `${b.sign === 1 ? 'Brighter' : 'Fainter'} at this catalogue star and the opposite at a nearby one: either both `
@@ -1350,25 +1677,19 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 + `either ${c.gaiaMatch ? 'the star' : 'a source'} changed or a source moved between them (${snrText(c.snr)}; candidate).`;
         } else {
             c.kind = 'unknown';
-            const sums = apertureSums(earlier.data, later.data, b.pix, grid);
-            const appeared = sums !== undefined && sums.noiseA > 0 && sums.noiseB > 0
-                && Number.isFinite(sums.noiseA) && Number.isFinite(sums.noiseB)
-                && Math.abs(sums.sumA) < 2 * sums.noiseA && sums.sumB >= 5 * sums.noiseB;
-            c.reason = b.sign === 1 && !c.gaiaMatch && !signMismatch && !wing && appeared
-                ? `A source appeared here (candidate); ${snrText(c.snr)}.`
-                : `Changed at ${snrText(c.snr)} (${c.gaiaMatch ? 'at a catalogue star; ' : ''}candidate).`;
+            c.reason = `The two visits differ here (${snrText(c.snr)}; candidate).`;
         }
         result.candidates.push(c);
     });
     const candidates = result.candidates;
-    result.candidates = candidates.filter((c) => {
-        if (c.kind !== 'mover' && candidates.some((stronger) => stronger !== c && stronger.snr >= 5 * c.snr
-            && distance(c.pix, stronger.pix, grid) <= 2 * PSF_FWHM)) {
-            result.rejected.residual++;
-            shadows++;
-            return false;
+    candidates.forEach((c) => {
+        if (c.kind !== 'mover' && !c.reason.startsWith('A weaker change near a stronger change')
+            && !c.reason.startsWith('A change near an image edge or missing data')
+            && candidates.some((stronger) => stronger !== c && stronger.snr >= 5 * c.snr
+                && distance(c.pix, stronger.pix, grid) <= 2 * PSF_FWHM)) {
+            c.kind = 'unknown';
+            c.reason = `A weaker change near a stronger change; it may be related or a separate source (${snrText(c.snr)}; candidate).`;
         }
-        return true;
     });
     // A spot with no catalogue star of its own, near a catalogue change or an opposite spot, may be part of
     // that star's residual. Keep it, but describe the measured proximity rather than
@@ -1377,7 +1698,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         if (c.gaiaMatch || c.kind === 'mover') {
             return;
         }
-        if (c.reason.startsWith('A change near a brighter catalogue star')) {
+        if (c.reason.includes('from a brighter catalogue star whose light overlaps here')
+            || c.reason.startsWith('A change near an image edge or missing data')
+            || c.reason.startsWith('A weaker change near a stronger change')) {
             return;
         }
         const star = stars.filter((s) => Number.isFinite(s.x) && Number.isFinite(s.y)
@@ -1387,12 +1710,14 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             return;
         }
         const changed = result.candidates.some((o) => o !== c && o.gaiaMatch && o.kind !== 'mover'
+            && !o.reason.startsWith('A weaker change near a stronger change')
+            && !o.reason.startsWith('A change near an image edge or missing data')
             && distance(o.pix, star, grid) <= opt.matchArcsec);
         const shifted = result.candidates.some((o) => o !== c && o.sign !== c.sign
             && distance(o.pix, star, grid) <= opt.dipoleArcsec);
         if (changed || shifted) {
             c.kind = 'unknown';
-            c.reason = `Changed ${distance(c.pix, star, grid).toFixed(1)}″ from a catalogue star ${changed ? 'that also changed' : 'with an opposite change near that star'}; `
+            c.reason = `The two visits differ ${distance(c.pix, star, grid).toFixed(1)}″ from a catalogue star ${changed ? 'that also changed' : 'with an opposite change near that star'}; `
                 + `it may be part of that star rather than a separate source (${snrText(c.snr)}; candidate).`;
         }
     });
@@ -1401,16 +1726,16 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             : `${smallChanges} small changes on steady sources ignored.`);
     }
     if (wobble > 0) {
-        result.notes.push(`${wobble} spots explained by a shift of up to 1.5″ between visits ignored.`);
-    }
-    if (shadows > 0) {
-        result.notes.push(`${shadows} shadows near stronger changes ignored.`);
+        result.notes.push(`${wobble} ${wobble === 1 ? 'spot' : 'spots'} explained by a shift of up to 1.5″ between visits ignored.`);
     }
     result.candidates.forEach((c) => {
         if (c.snr > 50 && !c.reason.includes('S/N > 50')) { c.reason += ' S/N > 50.'; }
-        if (singleFrame) { c.reason += ` ${warning}.`; }
+        if (caveat) { c.caveat = caveat; }
     });
-    return finish(result, opt, singleFrame);
+    const finished = finish(result, opt, singleFrame);
+    return { ...finished, visits, candidates: finished.candidates.map((c) => ({ ...c, sentence: c.reason,
+        lightVisit: c.sign === 1 ? 'later' as const : 'earlier' as const,
+        x: c.pix.x, y: c.pix.y, radiusPix: c.radiusPix ?? 12 / grid.pixelArcsec })) };
 }
 
 type Point = { mjd: number; blob: Blob; obsId: string; templateId: string };
@@ -1503,7 +1828,7 @@ export function findTracklets(visit: RegriddedFrame[], templates: RegriddedFrame
     }
     result.sigma = median(sigmas);
     if (result.skipped.length) {
-        result.notes.push(`${result.skipped.length} frames skipped: no template at least 5 days away within ${opt.maxDeltaLambda} µm.`);
+        result.notes.push(`${result.skipped.length} ${result.skipped.length === 1 ? 'frame' : 'frames'} skipped: no template at least 5 days away within ${opt.maxDeltaLambda} µm.`);
     }
     // Expected number of 3-frame lines that random spots would make by chance: every pair of spots in two frames
     // that has an allowed speed, times the chance that a spot in a third frame falls within its tolerance of the

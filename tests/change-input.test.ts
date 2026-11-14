@@ -163,11 +163,14 @@ describe('change input', () => {
         const result = sky(frames, [star('g1')]);
         const input = changeInput(result);
         const found = findChanges(result);
-        expect(found.candidates.some((c) => c.kind === 'brightness' && c.gaiaMatch
+        expect(found.candidates.some((c) => c.kind === 'unknown' && c.gaiaMatch
+            && /reads brighter.*sharper image/.test(c.reason)
             && Math.hypot(c.pix.x - 60, c.pix.y - 60) * grid.pixelArcsec < 3)).toBe(true);
         expect(input.notes).not.toHaveLength(0);
         for (const note of input.notes) {
-            expect(found.notes).toContain(note);
+            if (!note.startsWith('No error maps')) { expect(found.notes).toContain(note); }
         }
+        expect(found.notes.filter((note) => /error map|noise from the difference/i.test(note))).toHaveLength(1);
+        expect(found.notes.join(' ')).toMatch(/noise from the difference image.*no error maps/i);
     });
 });

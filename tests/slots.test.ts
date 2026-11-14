@@ -235,7 +235,10 @@ describe('slots for modules still in their lanes', () => {
         expect(FEATURES.changes).toBe(false);
         expect(FEATURES.falseColour).toBe(false);
         expect(FEATURES.halo).toBe(false);
-        const v = view(sky([frame('a')]));
+        const dated = frame('a');
+        dated.frame.tMin = 60000;
+        dated.frame.tMax = 60000.001;
+        const v = view(sky([dated]));
         const el = {} as HTMLElement;
         // The change panel is wired (switch off): one visit shows only the finder's own message.
         const box = {} as HTMLElement;
