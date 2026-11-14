@@ -145,7 +145,8 @@ export interface Curve {
 // Up to MAX_REFS comparison stars for a target at `at` on the grid, as they sat on `mid`, brightest first. Each is a
 // slow-moving Gaia star with room for the aperture, clear of the target and of any catalogued star that would leak
 // into its aperture.
-export function pickRefs(result: SkyResult, at: PixelCoord, mid: number): Ring[]
+// minDist (grid pixels) keeps candidates farther than that from the target, before the brightest are taken.
+export function pickRefs(result: SkyResult, at: PixelCoord, mid: number, minDist = 0): Ring[]
 {
     const { width, height } = result.grid;
     const { radius, annulusOut } = apertureFor(result.grid);
@@ -158,7 +159,7 @@ export function pickRefs(result: SkyResult, at: PixelCoord, mid: number): Ring[]
             const s = stars.get(r.sourceId);
             return s?.pmRa !== undefined && s.pmDec !== undefined && Math.hypot(s.pmRa, s.pmDec) < 50;
         })
-        .filter((r) => Math.hypot(r.pix.x - at.x, r.pix.y - at.y) > annulusOut + radius)
+        .filter((r) => Math.hypot(r.pix.x - at.x, r.pix.y - at.y) > Math.max(annulusOut + radius, minDist))
         .filter((r) => !all.some((o) => o !== r && o.g < r.g + 2.5 && Math.hypot(o.pix.x - r.pix.x, o.pix.y - r.pix.y) < annulusOut))
         .sort((a, b) => a.g - b.g)
         .slice(0, MAX_REFS);

@@ -86,7 +86,8 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
     }
     // A comparison star's own sky ring must sit outside the halo ring, or the halo light leaks into the reference.
     const { annulusOut } = apertureFor(result.grid);
-    const clear = refs.filter((r) => Math.hypot(r.pix.x - centre.pix.x, r.pix.y - centre.pix.y) > ring.ringOut + annulusOut);
+    // Picked again with that clearance, so fainter stars farther out can stand in for bright ones too close.
+    const clear = pickRefs(result, centre.pix, mid, ring.ringOut + annulusOut);
     if (clear.length < 2) {
         return null;
     }

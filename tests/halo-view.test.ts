@@ -182,6 +182,12 @@ describe('haloFor', () => {
         expect(haloFor(r, { ring: () => ({ ringIn: 10, ringOut: 60 }), curve })).toBeNull();
         expect(curve).not.toHaveBeenCalled();
         expect(haloFor(r, { ring, curve })!.refs).toBeGreaterThanOrEqual(2);
+        // Four bright stars too close and two fainter ones far enough out: the fainter two are used.
+        const near = [{ x: 120, y: 80 }, { x: 40, y: 80 }, { x: 80, y: 120 }, { x: 80, y: 40 }]; // 40 px out: past the default cut, inside 20 + sky ring
+        const r2 = result([5000, 5000, 5000]);
+        r2.stars = [...near.map((at, i) => star(`n${i}`, at, 9.5 + i * 0.1)), star('f0', REFS[0]!, 14), star('f1', REFS[3]!, 14.5)];
+        const h2 = haloFor(r2, { ring: () => ({ ringIn: 5, ringOut: 20 }), curve })!;
+        expect(h2.refs).toBe(2);
     });
 
     it('asks for a wider field when the ring does not fit, and hides on other module errors', () => {
