@@ -10,9 +10,11 @@ import { gridPixToSky } from './regrid';
 import type { OutputGrid, SkyCoord } from './types';
 
 const DEFAULT_TIMEOUT_MS = 10000;
+export const MAX_FLAT_SHARE = 0.9;
 
 export interface EpochSource {
     baseUrl: string;
+    /** For a proxy baseUrl, set this to the real tile host or credit names the proxy. */
     server?: string;
     propertiesUrl: string;
     name: string;
@@ -69,10 +71,10 @@ export const EPOCH_NOTE = 'The older picture is a stretched survey image, not a 
 export function epochCredit(source: Pick<EpochSource, 'name' | 'credit' | 'hipsCredit' | 'baseUrl' | 'server'>): string
 {
     const name = source.name === TWO_MASS_K.name ? '2MASS' : source.name;
-    let server = source.server;
-    if (server === undefined) {
+    let server = source.server?.trim();
+    if (!server) {
         try {
-            const host = new URL(source.baseUrl).hostname;
+            const host = new URL(source.baseUrl.startsWith('//') ? `https:${source.baseUrl}` : source.baseUrl).hostname;
             server = host === 'irsa.ipac.caltech.edu' ? 'IRSA' : host;
         } catch {
             server = undefined;
@@ -97,6 +99,7 @@ export interface EpochDecoded {
     width: number;
     height: number;
     // Row-major, top down: one intensity, RGB, or RGBA per pixel. Alpha 0 is empty.
+    // Flat transparent PNG tail rows drop the tile: a cut-off decode can leave them too.
     data: ArrayLike<number>;
 }
 
@@ -119,6 +122,8 @@ export type EpochResult = {
     height: number;
     // NaN means no data; paint it as no data, never as black.
     // JPEG sky outside survey coverage is plain 0 and indistinguishable from dark sky.
+    // A flat final row or over 90% identical pixels is refused as partly drawn,
+    // so a survey gap that fills a tile fails closed.
     pixels: Float32Array;
     band: string;
     order: number;
@@ -281,18 +286,39 @@ function imageTile(image: EpochDecoded, width: number): Float32Array
     if (pixels.every((value) => value === pixels[0] || (Number.isNaN(value) && Number.isNaN(pixels[0])))) {
         throw new Error('Flat image tile');
     }
-    if (width >= 8) {
-        const start = (count - 8 * width) * channels;
-        let identical = true;
-        for (let i = start + channels; i < image.data.length; i++) {
-            if (image.data[i] !== image.data[start + (i - start) % channels]) {
-                identical = false;
-                break;
+    const samePixel = (a: number, b: number) => {
+        for (let channel = 0; channel < channels; channel++) {
+            if (image.data[a * channels + channel] !== image.data[b * channels + channel]) {
+                return false;
             }
         }
-        if (identical) {
-            throw new IncompleteTileError('The tile is only partly drawn');
-        }
+        return true;
+    };
+    const finalRow = count - width;
+    let flatRow = true;
+    for (let i = finalRow + 1; i < count; i++) {
+        if (!samePixel(i, finalRow)) { flatRow = false; break; }
+    }
+    let repeatedRows = width >= 9;
+    for (let i = count - 8 * width; repeatedRows && i < count; i++) {
+        if (!samePixel(i, i - width)) { repeatedRows = false; }
+    }
+    if (flatRow || repeatedRows) {
+        throw new IncompleteTileError('The tile is only partly drawn');
+    }
+    // A value above 90% must be a majority, so find a candidate in constant space.
+    let candidate = 0;
+    let balance = 0;
+    for (let i = 0; i < count; i++) {
+        if (balance === 0) { candidate = i; }
+        balance += samePixel(i, candidate) ? 1 : -1;
+    }
+    let occurrences = 0;
+    for (let i = 0; i < count; i++) {
+        if (samePixel(i, candidate)) { occurrences++; }
+    }
+    if (occurrences > count * MAX_FLAT_SHARE) {
+        throw new IncompleteTileError('The tile is only partly drawn');
     }
     return pixels;
 }

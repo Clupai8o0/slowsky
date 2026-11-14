@@ -565,12 +565,14 @@ describe('older 2MASS epoch', () => {
                 }
                 return decoded;
             };
-            expect(await readEpoch(grid, { ...mock, decode: almostFlat })).toMatchObject({ ok: true, covered: 1 });
+            expect(await readEpoch(grid, { ...mock, decode: almostFlat })).toMatchObject({ ok: false, reason: 'decode',
+                missing: [expect.objectContaining({ detail: 'The tile is only partly drawn' })] });
         });
     }
 
     it('checks JPEG boundaries before decoding, but does not impose them on PNG', async () => {
-        for (const bytes of [[0xff, 0xd8, 1], [1, 0xff, 0xd9], [0xff, 0xd8, 0xff, 0xd9, 0]]) {
+        for (const bytes of [[0xff, 0xd8, 1], [1, 0xff, 0xd9], [0, 0xd8, 0xff, 0xd9],
+            [0xff, 0, 0xff, 0xd9], [0, 0xd8, 1, 0xff, 0xd9], [0xff, 0xd8, 1, 2], [0xff, 0xd8, 0xff, 0xd9, 0]]) {
             const decode = vi.fn(() => ({ width: 512, height: 512, data: Float32Array.from({ length: 512 * 512 }, (_, i) => i % 512) }));
             const fetcher: typeof fetch = async () => new Response(new Uint8Array(bytes));
             expect(await readEpoch(gridAt(), { fetch: fetcher, decode })).toMatchObject({ ok: false, reason: 'decode', missing: expect.arrayContaining([expect.objectContaining({ detail: 'The tile file is incomplete' })]) });
@@ -597,6 +599,94 @@ describe('older 2MASS epoch', () => {
         };
         expect(await readEpoch(gridAt(), { source, ...png, decode: colored(false) })).toMatchObject({ ok: false, reason: 'decode', missing: expect.arrayContaining([expect.objectContaining({ detail: 'The tile is only partly drawn' })]) });
         expect(await readEpoch(gridAt(), { source, ...png, decode: colored(true) })).toMatchObject({ ok: true, covered: 1 });
+    });
+
+    for (const format of ['jpeg', 'png'] as const) {
+        it(`detects flat and repeated tails in ${format} without rejecting varied sky`, async () => {
+            const source: EpochSource = { ...TWO_MASS_K, format };
+            const mock = synthetic(source);
+            const noise = () => Uint8Array.from({ length: 512 * 512 }, (_, i) => (i * 17 + Math.floor(i / 512)) % 251);
+            const check = async (data: Uint8Array, rejected: boolean) => {
+                const result = await readEpoch(gridAt(), { source, ...mock, decode: () => ({ width: 512, height: 512, data }) });
+                expect(result).toMatchObject(rejected
+                    ? { ok: false, reason: 'decode', missing: expect.arrayContaining([expect.objectContaining({ detail: 'The tile is only partly drawn' })]) }
+                    : { ok: true, covered: 1 });
+            };
+            for (let rows = 1; rows <= 7; rows++) {
+                const data = noise();
+                data.fill(128, (512 - rows) * 512);
+                await check(data, true);
+            }
+            const repeated = noise();
+            for (let y = 504; y < 512; y++) {
+                repeated.copyWithin(y * 512, 503 * 512, 504 * 512);
+            }
+            await check(repeated, true);
+            const mostlyFlat = noise();
+            mostlyFlat.fill(128, 0, Math.floor(mostlyFlat.length * 0.95));
+            await check(mostlyFlat, true);
+            const zeros = noise();
+            for (let i = 0; i < zeros.length; i++) {
+                if (i % 100 < 47) { zeros[i] = 0; } else if (zeros[i] === 0) { zeros[i] = 1; }
+            }
+            await check(zeros, false);
+            const lastAlmostFlat = noise();
+            lastAlmostFlat.fill(128, 511 * 512);
+            lastAlmostFlat[lastAlmostFlat.length - 1] = 129;
+            await check(lastAlmostFlat, false);
+            const firstFlat = noise();
+            firstFlat.fill(0, 0, 8 * 512);
+            await check(firstFlat, false);
+        });
+    }
+
+    it('compares complete color pixels when measuring flat share', async () => {
+        const source: EpochSource = { ...TWO_MASS_K, format: 'png' };
+        const data = new Uint8Array(512 * 512 * 3);
+        for (let i = 0; i < 512 * 512; i++) {
+            data.set([0, i % 251, Math.floor(i / 512) % 251], i * 3);
+        }
+        expect(await readEpoch(gridAt(), { source, ...synthetic(source), decode: () => ({ width: 512, height: 512, data }) }))
+            .toMatchObject({ ok: true, covered: 1 });
+    });
+
+    it('refuses only above the flat-share limit', async () => {
+        const mock = synthetic(TWO_MASS_K);
+        for (const above of [false, true]) {
+            const data = Uint8Array.from({ length: 512 * 512 }, (_, i) => (i * 17 + Math.floor(i / 512)) % 251);
+            data.fill(255, 0, Math.floor(data.length * 0.9) + (above ? 1 : 0));
+            const result = await readEpoch(gridAt(), { ...mock, decode: () => ({ width: 512, height: 512, data }) });
+            expect(result).toMatchObject(above
+                ? { ok: false, reason: 'decode', missing: expect.arrayContaining([expect.objectContaining({ detail: 'The tile is only partly drawn' })]) }
+                : { ok: true, covered: 1 });
+        }
+    });
+
+    it('drops transparent PNG tail rows as partly drawn', async () => {
+        const source: EpochSource = { ...TWO_MASS_K, format: 'png' };
+        const data = new Uint8Array(512 * 512 * 4);
+        for (let i = 0; i < 504 * 512; i++) { data.set([i % 251, 5, 6, 255], i * 4); }
+        expect(await readEpoch(gridAt(), { source, ...synthetic(source), decode: () => ({ width: 512, height: 512, data }) }))
+            .toMatchObject({ ok: false, reason: 'decode', missing: expect.arrayContaining([expect.objectContaining({ detail: 'The tile is only partly drawn' })]) });
+    });
+
+    it('treats an all-blank FITS tile as a decode miss by choice', async () => {
+        // An all-blank FITS tile is a decode miss by choice.
+        const source: EpochSource = { ...TWO_MASS_K, format: 'fits' };
+        const fetcher: typeof fetch = async () => new Response(new Uint8Array(fitsBytes(new Float32Array(512 * 512).fill(NaN), 512)));
+        expect(await readEpoch(gridAt(), { source, fetch: fetcher })).toMatchObject({ ok: false, reason: 'decode',
+            missing: expect.arrayContaining([expect.objectContaining({ detail: 'Tile could not be decoded' })]) });
+    });
+
+    it('trims server credit and resolves protocol-relative hosts', () => {
+        const credit = '2MASS: University of Massachusetts & IPAC/Caltech. HiPS tiles: CNRS/Unistra, served by IRSA.';
+        expect(EPOCH_CREDIT).toBe(credit);
+        expect(epochCredit(TWO_MASS_K)).toBe(credit);
+        expect(epochCredit({ ...TWO_MASS_K, server: '  IRSA  ' })).toBe(credit);
+        expect(epochCredit({ ...TWO_MASS_K, server: '   ' })).toBe(credit);
+        expect(epochCredit({ ...TWO_MASS_K, baseUrl: '/proxy', server: '   ' }))
+            .toBe('2MASS: University of Massachusetts & IPAC/Caltech. HiPS tiles: CNRS/Unistra.');
+        expect(epochCredit({ ...TWO_MASS_K, baseUrl: '//irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K' })).toBe(credit);
     });
 
     it('rejects a flat FITS tile even alongside varying tiles', async () => {
@@ -705,7 +795,7 @@ describe('older 2MASS epoch', () => {
         const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
         const centers = [barnardGaia.astrometry, { ra: 0, dec: 0 }, { ra: 360, dec: 0 },
             { ra: 45, dec: 0 }, { ra: 122, dec: 89.9 }, { ra: 312, dec: -89.9 }];
-        const data = Float32Array.from({ length: 512 * 512 }, (_, i) => i % 512);
+        const data = Float32Array.from({ length: 512 * 512 }, (_, i) => (i + Math.floor(i / 512)) % 512);
         const fetcher: typeof fetch = async () => new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
         const decode = () => ({ width: 512, height: 512, data });
         for (let i = 0; i < 41; i++) {
