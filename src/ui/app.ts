@@ -175,7 +175,7 @@ function shell(): string
     <p class="sk-body mute">All of this is infrared. Your eyes stop at 0.70 µm.</p>
     <div class="sk-spec">
       <div class="sk-axis"><i class="vis" style="width:${axisPct(0.7).toFixed(2)}%" title="Visible light"></i>
-        <input class="sk-rng" type="range" data-ref="lam" min="${LAM_MIN}" max="${LAM_MAX}" step="0.01" style="left:${axisPct(LAM_MIN).toFixed(2)}%" aria-label="Wavelength in micrometres"></div>
+        <input class="sk-rng" type="range" data-ref="lam" min="${LAM_MIN}" max="${LAM_MAX}" step="0.01" style="left:${axisPct(LAM_MIN).toFixed(2)}%;width:${(100 - axisPct(LAM_MIN)).toFixed(2)}%" aria-label="Wavelength in micrometres"></div>
       <div class="sk-ticks" aria-hidden="true">${ticks}</div>
       <div class="sk-axl" aria-hidden="true"><span>your eyes</span><span>SPHEREx sees · µm</span></div>
     </div>
@@ -222,7 +222,7 @@ export function mount(root: HTMLElement): void
     let result: SkyResult | null = null;
     let sourceKind: SourceKind = 'live';
     let stretch: ReturnType<typeof sharedStretch> | null = null;
-    let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale; failed?: boolean } = {};
+    let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
     let timer = 0;
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
@@ -400,10 +400,10 @@ export function mount(root: HTMLElement): void
         const regs = result.frames.map((f) => f.frame);
         try {
             // Stack here spans every look, so no clipping: a moving star should smear, not vanish.
-            if (st.mode === 'stack' && !composed.stack && !composed.failed) {
+            if (st.mode === 'stack' && !composed.stack) {
                 composed.stack = stackVisit(regs, { clipSigma: Infinity, background: 'none' }).data;
             }
-            if (st.mode === 'diff' && !composed.diff && !composed.failed) {
+            if (st.mode === 'diff' && !composed.diff) {
                 const first = regs[0];
                 const last = regs[regs.length - 1];
                 if (first && last) {
@@ -415,8 +415,10 @@ export function mount(root: HTMLElement): void
             if (!(e instanceof StackError)) {
                 throw e;
             }
-            composed.failed = true;
-            toast(`These frames can’t be combined, so this shows one frame. ${e.message}`);
+            // Fall back to Blink for real, so the readout, legend and URL match what is drawn.
+            toast(`These frames can’t be combined, so this shows them one by one. ${e.message}`);
+            st.mode = 'blink';
+            writeUrl();
         }
     }
 
@@ -429,22 +431,20 @@ export function mount(root: HTMLElement): void
         if (!f) {
             return;
         }
-        if (st.mode === 'blink') {
+        if (st.mode !== 'blink') {
+            compose();
+        }
+        const data = st.mode === 'stack' ? composed.stack : st.mode === 'diff' ? composed.diff : undefined;
+        if (!data) {
             drawFrame(ctx, f, stretch);
         } else {
-            compose();
-            const data = st.mode === 'stack' ? composed.stack : composed.diff;
-            if (!data) {
-                drawFrame(ctx, f, stretch);
+            const img = ctx.createImageData(result.grid.width, result.grid.height);
+            if (st.mode === 'stack') {
+                renderRgba(data, stretch, img.data);
             } else {
-                const img = ctx.createImageData(result.grid.width, result.grid.height);
-                if (st.mode === 'stack') {
-                    renderRgba(data, stretch, img.data);
-                } else {
-                    renderDiverging(data, composed.scale ?? { floor: 0, limit: 1 }, img.data);
-                }
-                ctx.putImageData(img, 0, 0);
+                renderDiverging(data, composed.scale ?? { floor: 0, limit: 1 }, img.data);
             }
+            ctx.putImageData(img, 0, 0);
         }
         overlay();
         renderText();
