@@ -118,7 +118,6 @@ through the CfA mirror. The full list, with licences and credit lines: [DATA-LIC
 |---|---|---|
 | Claude Code (Claude Opus, Sonnet and Haiku models) | Anthropic | Writing and reviewing code, tests, planning help, page text drafts |
 | Codex | OpenAI | Writing and reviewing code |
-| Gemini (through Antigravity) | Google | Writing and reviewing code |
 | Grok (through Grok Build) | xAI | Writing and reviewing code |
 | ElevenLabs | ElevenLabs | AI voice in the demo video |
 | GPT Image | OpenAI | Decorative images, if used, marked where they appear |
@@ -142,13 +141,18 @@ Sam chose the idea and makes every product decision (see `DECISIONS.md`).
   from just outside it since then has no ring. Live views show rings only within 0.2° of the centre, and skip them
   if the catalogue is slow to answer.
 - The brightness curve (RW Aurigae, Epsilon Indi B, WISE 0855) divides the target by two to four steady Gaia stars
-  in the field and shows how much those stars wobble. It is a rough check, not calibrated photometry.
+  in the field. It appears only when the field holds at least two such stars; in the offline copy that is RW
+  Aurigae only. The shaded band shows how much those steady stars wobble; a faint target can wobble more. It is a
+  rough check, not calibrated photometry.
+- For Barnard's Star the page measures how far the star moved between two frames and shows the distance its
+  catalogue proper motion predicts beside it. The prediction leaves out parallax (the small yearly loop caused by
+  Earth's orbit), and the star's bright core is hard to centre, so the two numbers can differ.
 - The offline copy has only the five preset targets, one detector each, and a field of at most 0.1°.
-- Each view uses one detector. A star found by name is placed at its catalogue position; motion is applied only
-  for the presets.
+- Each view uses one detector. A star found by name is placed at its catalogue position, and its marker moves only
+  for the presets. Gaia rings move in every view.
 - Bad-pixel flags in the files are not read, so hot pixels and cosmic-ray hits show as they are.
-- The brightness scale is for viewing. The page shows no measured brightness. The centres of Barnard's Star and
-  R Draconis are too bright for the camera.
+- The picture's brightness scale is for viewing. The brightness curve is relative to nearby stars, not in physical
+  units. The centres of Barnard's Star and R Draconis are too bright for the camera, so neither gets a curve.
 - Stack is a plain average of all frames. Subtract compares only the first and last frame.
 
 ## Licence
