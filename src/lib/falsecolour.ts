@@ -1,6 +1,6 @@
 // Lane: false colour display helper from two infrared wavelengths.
 // Pure functions only; runs in the page and in Web Workers (no DOM globals).
-import { aperture, centroid } from './photometry';
+import { aperture, centroid, resampleNoiseScale } from './photometry';
 import type { ApertureOptions } from './photometry';
 import { percentile, stretchValue } from './player';
 import type { PixelCoord, Stretch } from './types';
@@ -153,23 +153,36 @@ export function falseColourRgba(
 
 // Measures background-subtracted aperture sums and signal-to-noise at `at`, reporting which pictures see a source
 // at or above `minSnr` (or positive flux on a noise-free background) and a colour ratio only when both see it.
+// The signal-to-noise includes the resampling noise scale for `pixelArcsec` unless `noiseScale` overrides it.
 export function colourAt(
     short: Float32Array,
     long: Float32Array,
     width: number,
     height: number,
     at: PixelCoord,
-    opts?: { radius?: number; annulusIn?: number; annulusOut?: number; minSnr?: number },
+    opts: {
+        pixelArcsec: number;
+        noiseScale?: number;
+        radius?: number;
+        annulusIn?: number;
+        annulusOut?: number;
+        minSnr?: number;
+    },
 ): ColourAt
 {
-    const minSnr = opts?.minSnr ?? 3;
+    if (!Number.isFinite(opts.pixelArcsec) || opts.pixelArcsec <= 0) {
+        throw new FalseColourError('Pixel size must be finite and positive');
+    }
+    const minSnr = opts.minSnr ?? 3;
     if (!Number.isFinite(minSnr) || minSnr < 0) {
         throw new FalseColourError('Minimum signal-to-noise ratio must be zero or positive');
     }
+    const noiseScale = opts.noiseScale ?? resampleNoiseScale(opts.pixelArcsec);
     const apOpts: ApertureOptions = {
-        radius: opts?.radius,
-        annulusIn: opts?.annulusIn,
-        annulusOut: opts?.annulusOut,
+        radius: opts.radius,
+        annulusIn: opts.annulusIn,
+        annulusOut: opts.annulusOut,
+        noiseScale,
     };
     const apShort = aperture(short, width, height, at, apOpts);
     const apLong = aperture(long, width, height, at, apOpts);

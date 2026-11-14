@@ -326,7 +326,7 @@ describe('colourAt', () => {
     it('reports seen neither and invalid unmeasured index on pure noise', () => {
         const short = makeNoisePatch(nSize, 0.5, 1, 701);
         const long = makeNoisePatch(nSize, 1.1, 1, 702);
-        const res: ColourAt = colourAt(short, long, nSize, nSize, spot);
+        const res: ColourAt = colourAt(short, long, nSize, nSize, spot, { pixelArcsec: 6.15 });
 
         expect(res.seen).toBe('neither');
         expect(res.valid).toBe(false);
@@ -339,14 +339,14 @@ describe('colourAt', () => {
         const starShort = makeNoisePatch(nSize, 0.5, 1, 705, [{ ...spot, flux: 2000 }]);
         const starLong = makeNoisePatch(nSize, 1.1, 1, 706, [{ ...spot, flux: 2000 }]);
 
-        const onlyLong = colourAt(noisyShort, starLong, nSize, nSize, spot);
+        const onlyLong = colourAt(noisyShort, starLong, nSize, nSize, spot, { pixelArcsec: 6.15 });
         expect(onlyLong.seen).toBe('long');
         expect(onlyLong.valid).toBe(false);
         expect(onlyLong.index).toBeNaN();
         expect(onlyLong.snrLong).toBeGreaterThanOrEqual(3);
         expect(onlyLong.snrShort).toBeLessThan(3);
 
-        const onlyShort = colourAt(starShort, noisyLong, nSize, nSize, spot);
+        const onlyShort = colourAt(starShort, noisyLong, nSize, nSize, spot, { pixelArcsec: 6.15 });
         expect(onlyShort.seen).toBe('short');
         expect(onlyShort.valid).toBe(false);
         expect(onlyShort.index).toBeNaN();
@@ -357,26 +357,33 @@ describe('colourAt', () => {
     it('returns 0.5 when long is 3x short and 0 when equal on noisy and noise-free backgrounds', () => {
         const shortNoisy = makeNoisePatch(nSize, 0.5, 1, 707, [{ ...spot, flux: 900 }]);
         const long3xNoisy = makeNoisePatch(nSize, 1.1, 1, 708, [{ ...spot, flux: 2700 }]);
-        const ratioNoisy = colourAt(shortNoisy, long3xNoisy, nSize, nSize, spot);
+        const ratioNoisy = colourAt(shortNoisy, long3xNoisy, nSize, nSize, spot, { pixelArcsec: 6.15 });
         expect(ratioNoisy.seen).toBe('both');
         expect(ratioNoisy.valid).toBe(true);
         expect(Math.abs(ratioNoisy.index - 0.5)).toBeLessThanOrEqual(0.03);
 
         const eqShortNoisy = makeNoisePatch(nSize, 0.5, 1, 709, [{ ...spot, flux: 1800 }]);
         const eqLongNoisy = makeNoisePatch(nSize, 1.1, 1, 710, [{ ...spot, flux: 1800 }]);
-        const eqNoisy = colourAt(eqShortNoisy, eqLongNoisy, nSize, nSize, spot);
+        const eqNoisy = colourAt(eqShortNoisy, eqLongNoisy, nSize, nSize, spot, { pixelArcsec: 6.15 });
         expect(eqNoisy.seen).toBe('both');
         expect(eqNoisy.valid).toBe(true);
         expect(Math.abs(eqNoisy.index)).toBeLessThanOrEqual(0.02);
 
         const cleanShort = makePatch([{ ...CENTER, flux: 600 }], 0.5);
         const cleanLong3x = makePatch([{ ...CENTER, flux: 1800 }], 1.25);
-        const cleanRatio = colourAt(cleanShort, cleanLong3x, SIZE, SIZE, CENTER);
+        const cleanRatio = colourAt(cleanShort, cleanLong3x, SIZE, SIZE, CENTER, { pixelArcsec: 6.15 });
         expect(cleanRatio.seen).toBe('both');
         expect(cleanRatio.valid).toBe(true);
         expect(Math.abs(cleanRatio.index - 0.5)).toBeLessThanOrEqual(0.03);
 
-        const cleanEq = colourAt(cleanShort, makePatch([{ ...CENTER, flux: 600 }], 1.25), SIZE, SIZE, CENTER);
+        const cleanEq = colourAt(
+            cleanShort,
+            makePatch([{ ...CENTER, flux: 600 }], 1.25),
+            SIZE,
+            SIZE,
+            CENTER,
+            { pixelArcsec: 6.15 },
+        );
         expect(cleanEq.seen).toBe('both');
         expect(cleanEq.valid).toBe(true);
         expect(Math.abs(cleanEq.index)).toBeLessThanOrEqual(0.02);
@@ -386,19 +393,19 @@ describe('colourAt', () => {
         const faintShort = makeNoisePatch(nSize, 0.5, 1, 711, [{ ...spot, flux: 250 }]);
         const faintLong = makeNoisePatch(nSize, 1.1, 1, 712, [{ ...spot, flux: 250 }]);
 
-        const loose = colourAt(faintShort, faintLong, nSize, nSize, spot, { minSnr: 1 });
+        const loose = colourAt(faintShort, faintLong, nSize, nSize, spot, { pixelArcsec: 6.15, minSnr: 1 });
         expect(loose.seen).toBe('both');
         expect(loose.valid).toBe(true);
         expect(Number.isFinite(loose.index)).toBe(true);
 
-        const strict = colourAt(faintShort, faintLong, nSize, nSize, spot, { minSnr: 50 });
+        const strict = colourAt(faintShort, faintLong, nSize, nSize, spot, { pixelArcsec: 6.15, minSnr: 50 });
         expect(strict.seen).toBe('neither');
         expect(strict.valid).toBe(false);
         expect(strict.index).toBeNaN();
 
         const wideStar = makePatch([{ ...spot, flux: 2000, sigma: 5 }], 0.5, nSize);
-        const r3 = colourAt(wideStar, wideStar, nSize, nSize, spot, { radius: 3 });
-        const r8 = colourAt(wideStar, wideStar, nSize, nSize, spot, { radius: 8 });
+        const r3 = colourAt(wideStar, wideStar, nSize, nSize, spot, { pixelArcsec: 6.15, radius: 3 });
+        const r8 = colourAt(wideStar, wideStar, nSize, nSize, spot, { pixelArcsec: 6.15, radius: 8 });
         expect(r8.short).toBeGreaterThan(r3.short * 2);
         expect(r8.long).toBeGreaterThan(r3.long * 2);
     });
@@ -406,7 +413,7 @@ describe('colourAt', () => {
     it('clamps negative sums to 0, handles invalid apertures, and throws on invalid minSnr', () => {
         const dippedShort = makePatch([{ ...CENTER, flux: -50 }], 0.5);
         const brightLong = makePatch([{ ...CENTER, flux: 1200 }], 0.5);
-        const clamped = colourAt(dippedShort, brightLong, SIZE, SIZE, CENTER);
+        const clamped = colourAt(dippedShort, brightLong, SIZE, SIZE, CENTER, { pixelArcsec: 6.15 });
         expect(clamped.short).toBe(0);
         expect(clamped.seen).toBe('long');
         expect(clamped.valid).toBe(false);
@@ -414,14 +421,14 @@ describe('colourAt', () => {
 
         const withNan = makePatch([{ ...CENTER, flux: 1200 }], 0.5);
         withNan[CENTER.y * SIZE + CENTER.x] = Number.NaN;
-        const badNan = colourAt(withNan, brightLong, SIZE, SIZE, CENTER);
+        const badNan = colourAt(withNan, brightLong, SIZE, SIZE, CENTER, { pixelArcsec: 6.15 });
         expect(badNan.short).toBeNaN();
         expect(badNan.snrShort).toBe(0);
         expect(badNan.seen).toBe('long');
         expect(badNan.valid).toBe(false);
         expect(badNan.index).toBeNaN();
 
-        const nearEdge = colourAt(brightLong, brightLong, SIZE, SIZE, { x: 2, y: 2 });
+        const nearEdge = colourAt(brightLong, brightLong, SIZE, SIZE, { x: 2, y: 2 }, { pixelArcsec: 6.15 });
         expect(nearEdge.seen).toBe('neither');
         expect(nearEdge.snrShort).toBe(0);
         expect(nearEdge.snrLong).toBe(0);
@@ -429,8 +436,58 @@ describe('colourAt', () => {
         expect(nearEdge.index).toBeNaN();
 
         for (const minSnr of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
-            expect(() => colourAt(brightLong, brightLong, SIZE, SIZE, CENTER, { minSnr })).toThrow(FalseColourError);
+            expect(() => colourAt(brightLong, brightLong, SIZE, SIZE, CENTER, { pixelArcsec: 6.15, minSnr })).toThrow(FalseColourError);
         }
+    });
+
+    it('scales snrShort in a 4:1 ratio between 6.15 and 6.15 / 4 arcsec pixels, both below noiseScale 1', () => {
+        const short = makeNoisePatch(nSize, 0.5, 1, 720, [{ ...spot, flux: 1500 }]);
+        const long = makeNoisePatch(nSize, 1.1, 1, 721, [{ ...spot, flux: 1500 }]);
+
+        const unscaled = colourAt(short, long, nSize, nSize, spot, { pixelArcsec: 6.15, noiseScale: 1 });
+        const native = colourAt(short, long, nSize, nSize, spot, { pixelArcsec: 6.15 });
+        const fine = colourAt(short, long, nSize, nSize, spot, { pixelArcsec: 6.15 / 4 });
+
+        expect(fine.snrShort).toBeGreaterThan(0);
+        expect(native.snrShort).toBeLessThan(unscaled.snrShort);
+        expect(fine.snrShort).toBeLessThan(unscaled.snrShort);
+        expect(Math.abs(native.snrShort / fine.snrShort - 4) / 4).toBeLessThanOrEqual(1e-9);
+    });
+
+    it('marks a source with plain snr between 3 and 4 as seen with noiseScale 1 but not at pixelArcsec 6.15', () => {
+        const bSize = 301;
+        const bSpot: PixelCoord = { x: 150, y: 150 };
+        const ap = { radius: 50, annulusIn: 65, annulusOut: 145 };
+        const marginalShort = makeNoisePatch(bSize, 0.5, 1, 730, [{ ...bSpot, flux: 345 }]);
+        const emptyLong = makeNoisePatch(bSize, 1.1, 1, 731);
+
+        const plain = colourAt(marginalShort, emptyLong, bSize, bSize, bSpot, { ...ap, pixelArcsec: 6.15, noiseScale: 1 });
+        expect(plain.snrShort).toBeGreaterThan(3);
+        expect(plain.snrShort).toBeLessThan(4);
+        expect(plain.seen).toBe('short');
+
+        const scaled = colourAt(marginalShort, emptyLong, bSize, bSize, bSpot, { ...ap, pixelArcsec: 6.15 });
+        expect(scaled.snrShort).toBeLessThan(3);
+        expect(scaled.seen).toBe('neither');
+    });
+
+    it('throws FalseColourError when pixelArcsec is zero, negative or non-finite', () => {
+        const pic = makePatch([{ ...CENTER, flux: 1200 }], 0.5);
+        for (const pixelArcsec of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+            expect(() => colourAt(pic, pic, SIZE, SIZE, CENTER, { pixelArcsec })).toThrow(FalseColourError);
+            expect(() => colourAt(pic, pic, SIZE, SIZE, CENTER, { pixelArcsec, noiseScale: 2 })).toThrow(FalseColourError);
+        }
+    });
+
+    it('lets an explicit noiseScale of 2 override the pixelArcsec rule', () => {
+        const short = makeNoisePatch(nSize, 0.5, 1, 740, [{ ...spot, flux: 1500 }]);
+        const long = makeNoisePatch(nSize, 1.1, 1, 741, [{ ...spot, flux: 1800 }]);
+
+        const one = colourAt(short, long, nSize, nSize, spot, { pixelArcsec: 6.15 / 4, noiseScale: 1 });
+        const two = colourAt(short, long, nSize, nSize, spot, { pixelArcsec: 6.15 / 4, noiseScale: 2 });
+
+        expect(two.snrShort).toBeCloseTo(one.snrShort / 2, 9);
+        expect(two.snrLong).toBeCloseTo(one.snrLong / 2, 9);
     });
 });
 
@@ -517,7 +574,8 @@ describe('determinism and string hygiene', () => {
         const rgba2 = falseColourRgba(short, long, ps1.sShort, ps1.sLong);
         expect(rgba1).toEqual(rgba2);
 
-        expect(colourAt(short, long, SIZE, SIZE, CENTER)).toEqual(colourAt(short, long, SIZE, SIZE, CENTER));
+        expect(colourAt(short, long, SIZE, SIZE, CENTER, { pixelArcsec: 6.15 }))
+            .toEqual(colourAt(short, long, SIZE, SIZE, CENTER, { pixelArcsec: 6.15 }));
         expect(centroidOffset(short, long, SIZE, SIZE, CENTER)).toEqual(centroidOffset(short, long, SIZE, SIZE, CENTER));
         expect(falseColourLegend(1.12, 4.42)).toEqual(falseColourLegend(1.12, 4.42));
 
@@ -540,7 +598,8 @@ describe('determinism and string hygiene', () => {
             () => falseColourRgba(new Float32Array(2), new Float32Array(3), { lo: 0, hi: 1, kind: 'linear' }, { lo: 0, hi: 1, kind: 'linear' }),
             () => falseColourRgba(ok, ok, { lo: 5, hi: 5, kind: 'linear' }, { lo: 0, hi: 1, kind: 'linear' }),
             () => falseColourRgba(ok, ok, { lo: 0, hi: 1, kind: 'linear' }, { lo: 0, hi: 1, kind: 'linear' }, new Uint8ClampedArray(4)),
-            () => colourAt(ok, ok, 2, 1, { x: 0, y: 0 }, { minSnr: -1 }),
+            () => colourAt(ok, ok, 2, 1, { x: 0, y: 0 }, { pixelArcsec: 6.15, minSnr: -1 }),
+            () => colourAt(ok, ok, 2, 1, { x: 0, y: 0 }, { pixelArcsec: 0 }),
             () => falseColourLegend(Number.NaN, Number.POSITIVE_INFINITY),
             () => falseColourLegend(4.42, 1.12),
         ];
