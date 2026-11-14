@@ -85,8 +85,9 @@ scripts/.venv/bin/python scripts/targets.py          # refresh positions and pro
 scripts/.venv/bin/python scripts/bake.py --force     # fetch frames and Gaia stars again
 ```
 
-Without `--force`, `bake.py` keeps the targets already baked and only fills in missing files. It stops if the
-snapshot would reach 30 MB. More on the scripts: [scripts/README.md](scripts/README.md).
+Without `--force`, `bake.py` skips any target that already has an `index.json` and bakes only the missing targets.
+To repair a target with a missing frame file, run it with `--force`. It stops if the snapshot would reach 30 MB.
+More on the scripts: [scripts/README.md](scripts/README.md).
 
 ## Tests
 
