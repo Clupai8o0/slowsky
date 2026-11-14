@@ -72,7 +72,7 @@ function close(actual: number, expected: number | null): void
 
 describe('IRSA DR1 cube range reader', () => {
     beforeEach(() => clearCubeCache());
-    it('marks a plane with any missing central pixel as no data', async () => {
+    it('C3 explains missing colours when a central pixel is blank', async () => {
         const spot = fixture.spots[0]!;
         const server = fake(spot, (data, plane) => {
             if (plane === 0) {
@@ -83,7 +83,7 @@ describe('IRSA DR1 cube range reader', () => {
         const result = await readCubeSpectrum(spot.coord, { fetcher: server.fetcher });
         expect(result.surfaceBrightness[0]).toBeNaN();
         expect(result.reasons[0]).toBe('no data');
-        expect(result.notes.join(' ')).toMatch(/planes have no data at the centre/);
+        expect(result.notes).toContain('A colour has no data where the cube is blank in any of the 3 × 3 pixels at the spot, or everywhere in the ring around it.');
         expect(Number.isFinite(result.surfaceBrightness[1])).toBe(true);
     });
 
@@ -122,7 +122,7 @@ describe('IRSA DR1 cube range reader', () => {
         const finite = Array.from(result.surfaceBrightness).filter(Number.isFinite).length;
         expect(finite).toBeGreaterThanOrEqual(90);
         expect(Array.from(result.noise).filter(Number.isFinite).length).toBe(finite);
-        expect(result.notes[0]).toBe(`${102 - finite} planes have no data at the centre`);
+        expect(result.notes.includes('A colour has no data where the cube is blank in any of the 3 × 3 pixels at the spot, or everywhere in the ring around it.')).toBe(finite < 102);
     });
 
     it('requires eight finite background pixels for noise', async () => {
@@ -234,7 +234,7 @@ describe('IRSA DR1 cube range reader', () => {
             }
             expect(server.calls.filter(item => item.plane !== undefined)).toHaveLength(100);
             expect(result.caption).toBe(CUBE_CAPTION);
-            expect(result.notes.some(note => note.includes('clipped'))).toBe(spot.clipped);
+            expect(result.notes.includes('The spot is near the edge of a sky tile, so the background ring around it is cut short.')).toBe(spot.clipped);
         });
     }
 

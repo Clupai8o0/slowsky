@@ -19,8 +19,9 @@ import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
 import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
-import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, renderSpectrum, type LayerState } from './slots';
+import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, type LayerState } from './slots';
 import { mountEpoch } from './epoch-view';
+import { mountSpectrum } from './spectrum-view';
 import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
 
@@ -337,8 +338,23 @@ function shell(): string
     <p class="sk-body mute">All of this is infrared: your eyes stop at 0.70 µm. Drag, then let go to load that colour.</p>
   </section>
   <section class="sk-mod sk-m-spec" aria-labelledby="sk-h8" data-ref="spec" hidden>
-    <h2 class="sk-mh" id="sk-h8"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
-    <div class="sk-slot-spec" data-ref="specBox"></div>
+    <h2 class="sk-mh" id="sk-h8" data-sp="heading"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
+    <div class="sk-sp-body" data-ref="specBox" data-sp="body">
+      <p class="sk-body" data-sp="intro"></p>
+      <div class="sk-sp-result" data-sp="result" hidden>
+        <div class="sk-sp-chart" data-sp="chart"></div>
+        <p class="sk-body" data-sp="summary"></p>
+        <p class="sk-body" data-sp="reference"></p>
+        <p class="sk-body" data-sp="caption"></p>
+        <div class="sk-sp-notes" data-sp="notes"></div>
+        <p class="sk-body" data-sp="facts"></p>
+        <p class="sk-body"><span data-sp="readBytes"></span><a class="sk-sp-link" data-sp="link" target="_blank" rel="noopener"></a><span data-sp="linkEnd"></span></p>
+        <p class="sk-body" data-sp="spot"></p>
+      </div>
+      <p class="sk-body sk-sp-status" data-sp="status" aria-live="polite"></p>
+      <div class="sk-sp-actions"><button type="button" class="sk-btn2" data-sp="read"></button><button type="button" class="sk-btn2" data-sp="stop" hidden></button><button type="button" class="sk-btn2" data-sp="clear" hidden></button></div>
+      <small class="sk-sp-estimate" data-sp="estimate"></small>
+    </div>
   </section>
   <section class="sk-mod sk-m-slot sk-m-changes" aria-labelledby="sk-h9" data-ref="changes" hidden>
     <h2 class="sk-mh" id="sk-h9"><span class="ic">${ICON.diff}</span>Candidate changes</h2>
@@ -386,6 +402,7 @@ export function mount(root: HTMLElement): void
     const aiNote = mountAiNote(ref<HTMLElement>('ai'));
     const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
     const changesSlot = mountChanges(() => renderSlots());
+    const spectrumSlot = mountSpectrum(ref<HTMLElement>('spec'), { enabled: FEATURES.spectrum });
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderText());
     // Older picture (2MASS): off unless FEATURES.epoch; Play, False colour and Flagged pixels switch it off.
     const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),
@@ -1109,8 +1126,7 @@ export function mount(root: HTMLElement): void
             return;
         }
         const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode, source: sourceKind } : null;
-        const spec = ref<HTMLElement>('spec');
-        spec.hidden = !(FEATURES.spectrum && view && renderSpectrum(ref<HTMLElement>('specBox'), view));
+        spectrumSlot.update({ center: st.center, lambda: result?.locked[st.index]?.lambda, source: sourceKind, available: !!view });
         const changes = !!(FEATURES.changes && view && changesSlot.render(ref<HTMLElement>('changesBox'), ref<HTMLElement>('changesMarks'), view));
         ref<HTMLElement>('changes').hidden = !changes;
         ref<HTMLElement>('changesMarks').hidden = !changes;

@@ -161,6 +161,19 @@ button { cursor: pointer; }
 /* Links in the facts are as tall as their hit area, so two links on neighbouring rows never share a tap. */
 .sk-m-details dd a, .sk-m-details dd .sk-src { display: inline-flex; align-items: center; min-height: 32px; }
 .sk-body { margin: 0; font-size: var(--fs-body); line-height: 1.6; color: var(--ink2); text-wrap: pretty; max-width: 64ch; }
+.sk-sp-body, .sk-sp-result { display: flex; flex-direction: column; gap: 12px; }
+.sk-sp-result[hidden] { display: none; }
+.sk-sp-chart { width: 100%; }
+.sk-sp-chart svg { display: block; width: 100%; height: auto; }
+.sk-sp-notes { color: var(--mute); font-size: var(--fs-small); line-height: 1.6; }
+.sk-sp-notes p { margin: 0; }
+.sk-sp-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sk-sp-estimate { color: var(--mute); font-size: var(--fs-small); }
+/* Empty status: out of the layout (no gap) but still in the accessibility tree, so the next text is announced. */
+.sk-sp-status:empty { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); }
+.sk-sp-link { position: relative; color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .3); text-underline-offset: 3px; }
+.sk-sp-link:hover, .sk-sp-link:focus-visible { color: var(--ink); text-decoration-color: currentColor; }
+@media (max-width: 720px) { .sk-sp-actions button { min-height: 44px; } .sk-sp-link::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; margin-top: -22px; } }
 .sk-body.mute { color: var(--mute); }
 
 /* ---------- left: brand, 01 choose, what to look for ---------- */
