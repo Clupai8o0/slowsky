@@ -81,7 +81,7 @@ describe('page change list is the plain list', () => {
         expect(PAGE_CHANGE_OPTIONS).toEqual({ plain: true });
     });
 
-    it('only ever lists kind unknown with reading moreLater or lessLater, on the cases the classifier names', () => {
+    it('only lists plain readings on the cases the classifier names', () => {
         const firstMjd = 60000, lastMjd = firstMjd + 365.25;
         // A Barnard-shaped mover with listed motion (classifier: mover / moved).
         const pos = gridPixToSky(grid, { x: 57, y: 60 });
@@ -101,7 +101,7 @@ describe('page change list is the plain list', () => {
         expect(page.candidates.length).toBeGreaterThanOrEqual(3);
         for (const c of page.candidates) {
             expect(c.kind).toBe('unknown');
-            expect(['moreLater', 'lessLater']).toContain(c.reading);
+            expect(['moreLater', 'lessLater', 'unclear']).toContain(c.reading);
             expect(c.ends).toHaveLength(1);
         }
         // The classifier would have named some of them, so this is the plain path, not a quiet input.

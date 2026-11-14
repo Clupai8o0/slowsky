@@ -383,7 +383,7 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
             const order = frames.flatMap(f => f.context?.flags?.names.map(n => n.name) ?? []);
             const finish = (flags: Map<string, FrameFlags | null>) => {
                 const screened = screen(found.candidates, { earlier, later }, flags, order, saved);
-                resultView = { ...found, candidates: screened.kept, lead: screened.lead,
+                resultView = { ...found, candidates: screened.kept, lead: [...(screened.kept.length ? (found.lead ?? []).filter((s) => s === 'None of these spots has been confirmed as a real change.') : []), ...screened.lead],
                     ran: screened.dropNote && !screened.kept.length ? false : found.ran,
                     notes: [...found.notes, ...(screened.dropNote ? [screened.dropNote] : [])] };
                 done.set(result, resultView);

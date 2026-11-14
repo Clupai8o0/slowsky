@@ -14,6 +14,172 @@ const grid: OutputGrid = { center: { ra: 20, dec: 30 }, fovDeg: 0.1, pixelArcsec
 
 describe('round 11 public readings', () => {
     beforeEach(() => { seed = 918273; });
+    it('plain list makes equal-flux changing image widths unclear in either direction', () => {
+        for (const reverse of [false, true]) {
+            const a = new Float32Array(grid.width * grid.height), b = new Float32Array(a.length);
+            for (let y = 0; y < grid.height; y++) {
+                for (let x = 0; x < grid.width; x++) {
+                    const d2 = ((x - 60) ** 2 + (y - 60) ** 2) * grid.pixelArcsec ** 2;
+                    a[y * grid.width + x] = 3000 * Math.exp(-4 * Math.log(2) * d2 / 12 ** 2);
+                    b[y * grid.width + x] = 3570 * Math.exp(-4 * Math.log(2) * d2 / 11 ** 2);
+                }
+            }
+            const r = compareVisits(mapped(image(reverse ? b : a, 'a')), mapped(image(reverse ? a : b, 'b')), grid, [], { plain: true });
+            const spot = r.candidates.find((c) => Math.hypot(c.pix.x - 60, c.pix.y - 60) < 1)!;
+            expect(spot.reading, JSON.stringify(r.candidates)).toBe('unclear');
+            expect(spot.sentence).toBe('The light here differs between the two visits, and which visit has more is not clear; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate).');
+        }
+    });
+    it('plain list orders mapped spots ahead of stronger unmapped spots before the limit', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 30, 30, 100); point(b, grid, 90, 90, 1000);
+        const va = new Float32Array(a.length).fill(1), vb = new Float32Array(a.length).fill(1);
+        va[90 * grid.width + 90] = NaN;
+        const r = compareVisits({ ...image(a, 'a'), variance: va }, { ...image(b, 'b'), variance: vb }, grid, [], { plain: true, maxCandidates: 1 });
+        expect(r.candidates[0]!.pix.x).toBeLessThan(50);
+        expect(r.candidates[0]!.sentence!.includes('S/N')).toBe(true);
+    });
+    it('plain direction ignores a uniform sky offset and shows a new source', () => {
+        for (const fading of [true, false]) {
+            seed = 918273;
+            const a = noise(grid), b = noise(grid);
+            if (fading) { point(a, grid, 60, 60, 1000); point(b, grid, 60, 60, 300); }
+            else { point(b, grid, 60, 60, 1000); }
+            for (let i = 0; i < b.length; i++) { b[i]! += 50; }
+            const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { plain: true });
+            const c = r.candidates.find((item) => Math.hypot(item.pix.x - 60, item.pix.y - 60) < 3)!;
+            expect(c.reading).toBe(fading ? 'lessLater' : 'moreLater');
+            expect(c.sentence).toBe(`${fading ? 'Less' : 'More'} light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate).`);
+        }
+    });
+    it('plain direction is unclear when finite visit pixels overflow their difference', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 60, 60, 1000);
+        a[60 * grid.width + 66] = -3.4e38;
+        b[60 * grid.width + 66] = 3.4e38;
+        const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { plain: true });
+        const spot = r.candidates.find((c) => Math.hypot(c.pix.x - 60, c.pix.y - 60) < 3)!;
+        expect(spot.reading).toBe('unclear');
+    });
+    it('plain order note accounts for uncovered spots', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 30, 30, 100); point(b, grid, 90, 90, 1000);
+        const va = new Float32Array(a.length).fill(1), vb = new Float32Array(a.length).fill(1);
+        va[90 * grid.width + 90] = NaN;
+        const r = compareVisits({ ...image(a, 'a'), variance: va }, { ...image(b, 'b'), variance: vb }, grid, [], { plain: true });
+        expect(r.candidates[0]!.sentence!.includes('S/N')).toBe(true);
+        expect(r.notes.find((n) => n.startsWith('Listed with'))).toBe('Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise; spots with no S/N figure come after those with one.');
+        expect(r.notes[0]).toBe('None of these spots has been confirmed as a real change.');
+    });
+    it('plain star facts extend to 15 arcseconds without changing grouping', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 60, 60, 1000);
+        const bare = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { plain: true }).candidates[0]!;
+        for (const d of [0.99, 1, 6.5]) {
+            const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [{ x: bare.pix.x + (d + 1e-10) / grid.pixelArcsec, y: bare.pix.y }], { plain: true });
+            const c = r.candidates.find((item) => Math.hypot(item.pix.x - 60, item.pix.y - 60) < 3)!;
+            expect(c.nearCatalogue).toBe(d <= 6);
+            expect(c.sentence).toBe(`More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). A catalogue star lies ${d < 1 ? 'less than 1″' : `${d.toFixed(1)}″`} away.`);
+        }
+        const far = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid,
+            [{ x: bare.pix.x + 16 / grid.pixelArcsec, y: bare.pix.y }], { plain: true, matchArcsec: 20 });
+        expect(far.candidates[0]!.nearCatalogue).toBe(true);
+        expect(far.candidates[0]!.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate).');
+    });
+    it('plain wavelengths use displayed precision and explain incompatible visits', () => {
+        const a = noise(grid), b = noise(grid);
+        const same = compareVisits(image(a, 'a', 60000, 4.5941), image(b, 'b', 60010, 4.5944), grid, [], { plain: true });
+        expect(same.notes[0]).toBe('Earlier visit at 4.594 µm, later at 4.594 µm.');
+        const apart = compareVisits(image(a, 'a', 60000, 2), image(b, 'b', 60010, 2.03), grid, [], { plain: true });
+        expect(apart.notes[1]).toBe('The two visits were not compared: their wavelengths differ by more than 0.02 µm.');
+        const different = compareVisits(image(a, 'a', 60000, 2), image(b, 'b', 60010, 2.01), grid, [], { plain: true });
+        expect(different.notes[0]).toBe('Earlier visit at 2.000 µm, later at 2.010 µm. A source can read differently at different wavelengths.');
+        expect(same.notes.some((n) => n.startsWith('Listed with'))).toBe(false);
+    });
+    it('plain notes use the requested small-change and shift wording', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 200); point(b, grid, 60, 60, 210);
+        const small = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60 }], { plain: true, minFracChange: 0.07 });
+        expect(small.notes.find((n) => n.startsWith('1 small difference'))).toBe('1 small difference at a catalogue star is not listed.');
+        seed = 918273;
+        const c = noise(grid), d = noise(grid), p = grid.pixelArcsec;
+        const x1 = 60 - 2 / p, x2 = 60 + 2 / p;
+        point(c, grid, x1, 60, 1000); point(c, grid, x2, 60, 100);
+        point(d, grid, x1 + 1.4 / p, 60, 1000); point(d, grid, x2 + 1.4 / p, 60, 100);
+        const shift = compareVisits(image(c, 'a'), image(d, 'b'), grid, [{ x: x1, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }], { plain: true, minShiftArcsec: 0.1 });
+        expect(shift.notes.find((n) => n.startsWith('2 spots'))).toBe('2 spots that a shift of up to 1.5″ between the two pictures can explain are not listed.');
+    });
+    it('plain note uses the singular shift wording', () => {
+        const a = noise(grid), b = noise(grid), x = 60.3, y = 60.2, p = grid.pixelArcsec;
+        const second = x + 7 / p;
+        point(a, grid, x, y, 100); point(a, grid, second, y, 70);
+        point(b, grid, x + 0.8 / p, y, 100); point(b, grid, second, y, 70);
+        a[60 * grid.width + Math.floor(x) + 1] = NaN;
+        a[60 * grid.width + Math.floor(second) + 1] = NaN;
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x, y, id: 'a' }, { x: second, y, id: 'b' }], { plain: true });
+        expect(r.notes.find((n) => n.startsWith('1 spot that'))).toBe('1 spot that a shift of up to 1.5″ between the two pictures can explain is not listed.');
+    });
+    it('plain note uses the plural catalogue small-change wording', () => {
+        const a = noise(grid), b = noise(grid);
+        for (const x of [30, 90]) { point(a, grid, x, 60, 200); point(b, grid, x, 60, 210); }
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 30, y: 60 }, { x: 90, y: 60 }], { plain: true, minFracChange: 0.07 });
+        expect(r.notes.find((n) => n.startsWith('2 small differences'))).toBe('2 small differences at catalogue stars are not listed.');
+    });
+    it('plain list retains the finder caution for a nearby block of missing pixels', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 60, 60, 1000);
+        for (let y = 54; y <= 66; y++) { for (let x = 70; x <= 77; x++) { a[y * grid.width + x] = NaN; } }
+        const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { plain: true });
+        const c = r.candidates.find((item) => Math.hypot(item.pix.x - 60, item.pix.y - 60) < 3)!;
+        expect(c).toMatchObject({ nearGap: true, nearEdge: false, nearMissing: false });
+        expect(c.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). It is close to missing pixels or the edge of the picture.');
+    });
+    it('plain list marks bottom and right picture edges', () => {
+        for (const [x, y] of [[60, 116], [116, 60]]) {
+            seed = 918273;
+            const a = noise(grid), b = noise(grid);
+            point(b, grid, x!, y!, 1000);
+            const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { plain: true });
+            const c = r.candidates.find((item) => Math.hypot(item.pix.x - x!, item.pix.y - y!) < 4)!;
+            expect(c.nearEdge).toBe(true);
+            expect(c.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). It is near the edge of the picture.');
+        }
+    });
+    it('plain list omits S/N for a map hole beyond the source aperture', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 60, 60, 1000);
+        const va = new Float32Array(a.length).fill(1), vb = new Float32Array(a.length).fill(1);
+        va[60 * grid.width + 69] = NaN;
+        const r = compareVisits({ ...image(a, 'a'), variance: va }, { ...image(b, 'b'), variance: vb }, grid, [], { plain: true });
+        const c = r.candidates.find((item) => Math.hypot(item.pix.x - 60, item.pix.y - 60) < 3)!;
+        expect(c.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (candidate).');
+        expect(c.neutral).toBe('The light here differs between the two visits, and which visit has more is not clear; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (candidate).');
+    });
+    it('plain pair ends retain their own different S/N figures', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 50, 60, 120); point(b, grid, 50 + 8 / grid.pixelArcsec, 60, 35);
+        const full = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, []);
+        const r = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { plain: true });
+        expect(full.candidates.some((c) => c.ends.length === 2)).toBe(true);
+        expect(r.candidates).toHaveLength(2);
+        expect(Math.abs(r.candidates[0]!.snr - r.candidates[1]!.snr)).toBeGreaterThan(1);
+        expect(snrText(r.candidates[0]!.snr)).not.toBe(snrText(r.candidates[1]!.snr));
+        for (const c of r.candidates) {
+            expect(c.sentence).toBe(`${c.reading === 'moreLater' ? 'More' : c.reading === 'lessLater' ? 'Less' : 'The light'}${c.reading === 'unclear' ? ' here differs between the two visits, and which visit has more is not clear' : ' light here in the later visit than in the earlier one'}; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(c.snr)}; candidate).`);
+        }
+    });
+    it('plain list prints a spot shared by two classifier candidates once', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 1000);
+        point(b, grid, 48, 60, 700); point(b, grid, 72, 60, 700);
+        const opts = { dipoleArcsec: 1, minFracChange: 0 };
+        const full = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], opts);
+        const ends = full.candidates.flatMap((c) => c.ends.map((e) => `${e.x},${e.y}`));
+        expect(new Set(ends).size).toBeLessThan(ends.length);
+        const plain = compareVisits(mapped(image(a, 'a')), mapped(image(b, 'b')), grid, [], { ...opts, plain: true });
+        expect(plain.candidates.length).toBe(new Set(ends).size);
+        expect(new Set(plain.candidates.map((c) => `${c.pix.x},${c.pix.y}`)).size).toBe(plain.candidates.length);
+    });
     it('keeps uncatalogued opposite brightness swaps as pairs', () => {
         for (const separation of [6, 9, 12]) {
             seed = 918273;
@@ -190,13 +356,13 @@ describe('round 11 public readings', () => {
             expect(c.ends[0]).toMatchObject({ visit: c.reading === 'moreLater' ? 'later' : 'earlier', x: c.pix.x, y: c.pix.y });
             expect(c.lightVisit).toBe(c.ends[0]!.visit);
             expect(c.sentence).toBe(`${c.reading === 'moreLater' ? 'More' : 'Less'} light here in the later visit than in the earlier one; `
-                + `a real change, a moving source, a detector hit or a small shift between the two pictures could cause this (S/N > 50; candidate).`);
+                + `a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate).`);
             expect(c.reason).toBe(c.sentence);
             expect(c).toMatchObject({ nearCatalogue: false, nearEdge: false, nearMissing: false });
         }
         expect(new Set(r.candidates.map((c) => `${c.pix.x},${c.pix.y}`)).size).toBe(r.candidates.length);
         expect(r.notes.join(' ')).not.toContain('Catalogue stars have no ids');
-        expect(r.notes).toContain('Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.');
+        expect(r.notes.find((n) => n.startsWith('Listed with'))).toBe('Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.');
     });
     it('plain list: visit-matched catalogue lookup, order and the no-map order note', () => {
         const a = noise(grid), b = noise(grid);
@@ -215,7 +381,7 @@ describe('round 11 public readings', () => {
         const order = r.candidates.map((c) => c.nearCatalogue);
         expect(order).toEqual([...order].sort((x, y) => Number(x) - Number(y)));
         expect(r.candidates.indexOf(at(90, 90)!)).toBeLessThan(r.candidates.indexOf(at(30, 30)!));
-        expect(r.notes.join(' ')).toContain('from the difference image; that figure is used only for this order.');
+        expect(r.notes.find((n) => n.startsWith('Listed with'))).toBe('Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise estimated from the difference image; that figure is used only for this order.');
         for (const c of r.candidates) {
             expect(c.sentence).not.toMatch(/S\/N/);
         }
@@ -229,9 +395,9 @@ describe('round 11 public readings', () => {
         const edge = r.candidates.find((c) => c.pix.x < 12);
         const hole = r.candidates.find((c) => Math.hypot(c.pix.x - 60, c.pix.y - 60) < 3);
         expect(edge).toMatchObject({ nearEdge: true });
-        expect(edge!.sentence).toContain(' It is near the edge of the picture.');
+        expect(edge!.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). It is near the edge of the picture.');
         expect(hole).toMatchObject({ nearMissing: true, nearEdge: false });
-        expect(hole!.sentence).toContain(' Pixels near it are missing in at least one visit.');
+        expect(hole!.sentence).toBe('More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N > 50; candidate). Pixels at or near it are missing in at least one visit.');
     });
     it('prints S/N only where both error maps cover the spot (Opus r11), in plain and full mode', () => {
         for (const plain of [false, true]) {
@@ -1700,7 +1866,8 @@ describe('round 8 measurement guards', () => {
         // Every reason and note is a literal in changes.ts, so check the source as well as the outputs above.
         const source = readFileSync(`${process.cwd()}/src/lib/changes.ts`, 'utf8');
         const literals = source.match(/'[^'\n]*'|`[^`]*`/g) ?? [];
-        expect(literals.filter((s: string) => /detected a|confirmed|proves|discovery|%/i.test(s))).toEqual([]);
+        expect(literals.filter((s: string) => /detected a|confirmed|proves|discovery|%/i.test(s)
+            && s !== "'None of these spots has been confirmed as a real change.'")).toEqual([]);
     });
 
     it('hedges a catalogue brightening beside an uncatalogued fade (Codex 3)', () => {

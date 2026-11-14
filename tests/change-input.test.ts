@@ -178,8 +178,16 @@ describe('change input', () => {
     });
 
     it('notes when no catalogue stars are available', () => {
-        expect(changeInput(sky([...visit('a', 60000), ...visit('b', 60030)])).notes.join(' '))
-            .toContain('No catalogue stars');
+        expect(changeInput(sky([...visit('a', 60000), ...visit('b', 60030)])).notes[0])
+            .toBe('No catalogue stars for this view: every spot is listed without a catalogue match.');
+    });
+
+    it('does not claim noise was estimated when wavelengths prevent comparison', () => {
+        const result = sky([frame('a', 60000, 2), frame('b', 60030, 2.1)]);
+        const found = findChanges(result, {}, { plain: true });
+        expect(found.notes[1]).toBe('The two visits were not compared: their wavelengths differ by more than 0.02 µm.');
+        expect(found.notes.some((n) => n.startsWith('No error maps'))).toBe(false);
+        expect(Number.isFinite(found.sigma)).toBe(false);
     });
 
     it('finds a catalogue-matched brightening and preserves input notes', () => {

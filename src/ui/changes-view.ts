@@ -63,7 +63,7 @@ export function orderNote(candidates: (PanelCandidate & { line?: string })[]): s
 // and adds no order sentence of its own.
 export function isPlain(candidates: PanelCandidate[]): boolean
 {
-    return candidates.length > 0 && candidates.every((c) => c.reading === 'moreLater' || c.reading === 'lessLater');
+    return candidates.length > 0 && candidates.every((c) => c.reading === 'moreLater' || c.reading === 'lessLater' || c.reading === 'unclear');
 }
 
 function listed<T>(v: { candidates: T[] }, all: boolean): T[]
@@ -83,11 +83,12 @@ export function changesView(found: ChangeResult | { error: string }): ChangesVie
     const placed = (found.candidates as PanelCandidate[]).filter((c) => Number.isFinite(c.pix.x) && Number.isFinite(c.pix.y))
         .map((c) => ({ ...c, line: c.sentence ?? c.reason }));
     const candidates = isPlain(placed) ? placed : placed.sort((a, b) => groupOf(a) - groupOf(b) || strength(b) - strength(a));
-    const lead = withCaveats(candidates);
+    const plainLead = isPlain(candidates) && found.notes[0] === 'None of these spots has been confirmed as a real change.' ? [found.notes[0]] : [];
+    const lead = [...plainLead, ...withCaveats(candidates)];
     const visits = (found as ChangeResult & { visits?: FinderVisits }).visits;
     return {
         candidates,
-        notes: found.notes,
+        notes: plainLead.length ? found.notes.slice(1) : found.notes,
         ...(lead.length ? { lead } : {}),
         ...(visits ? { visits } : {}),
         // The finder sets sigma to NaN when it measured nothing (no frames within its colour window); then

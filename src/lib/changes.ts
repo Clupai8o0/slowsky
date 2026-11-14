@@ -8,7 +8,7 @@ import type { OutputGrid, PixelCoord, RegriddedFrame, SkyCoord } from './types';
 export type ChangeKind = 'mover' | 'brightness' | 'unknown';
 // 'moreLater' / 'lessLater' are the plain list's readings (ChangeOptions.plain): only the sign of the difference.
 export type ChangeReading = 'brighter' | 'fainter' | 'laterOnly' | 'earlierOnly' | 'moved' | 'pair' | 'differs'
-    | 'moreLater' | 'lessLater';
+    | 'moreLater' | 'lessLater' | 'unclear';
 /** A light-bearing location in output-grid pixels, for checking the corresponding visit. */
 export type ChangeEnd = { visit: 'earlier' | 'later'; x: number; y: number; radiusPix: number };
 export const MIN_CLIPPED_FRAMES = 3;
@@ -50,6 +50,8 @@ export interface ChangeCandidate {
     nearEdge?: boolean;
     /** Plain list only: a pixel within one image width (12″) is missing in at least one visit. */
     nearMissing?: boolean;
+    nearGap?: boolean;
+    neutral?: string;
 }
 export type VisitChangeCandidate = ChangeCandidate & {
     sentence: string;
@@ -106,6 +108,7 @@ type Measurement = { z: Float32Array; background: Float32Array; noise: Float32Ar
     sigma: number; k: number; width: number; height: number };
 const NATIVE = 6.15;
 const PSF_FWHM = 12; // arcsec
+const PLAIN_STAR_FACT_ARCSEC = 15;
 const CORE_ARCSEC = PSF_FWHM / 2;
 // Registration wobble between visits: the reviews' sweeps go up to 1.4″; it moves a steady pair's light centre too.
 const WOBBLE_ARCSEC = 1.5;
@@ -583,8 +586,10 @@ function empty(opt: Settings): ChangeResult
 function finish(result: ChangeResult, opt: Settings, singleFrame = false,
     showSnr: boolean | ((c: ChangeCandidate) => boolean) = true, plainOrder = false): ChangeResult
 {
+    const shown = new Map(result.candidates.map((c) => [c, typeof showSnr === 'function' ? showSnr(c) : showSnr]));
     result.candidates.sort((a, b) => (plainOrder ? Number(Boolean(a.nearCatalogue)) - Number(Boolean(b.nearCatalogue))
         : singleFrame ? Number(b.gaiaMatch) - Number(a.gaiaMatch) : 0)
+        || (plainOrder ? Number(shown.get(b)) - Number(shown.get(a)) : 0)
         || b.snr - a.snr || a.pix.y - b.pix.y || a.pix.x - b.pix.x);
     const total = result.candidates.length;
     result.candidates = result.candidates.slice(0, Math.max(0, opt.maxCandidates));
@@ -594,8 +599,9 @@ function finish(result: ChangeResult, opt: Settings, singleFrame = false,
     }
     result.candidates.forEach((c, i) => {
         c.id = `c${i + 1}`;
-        const show = typeof showSnr === 'function' ? showSnr(c) : showSnr;
+        const show = shown.get(c);
         c.sentence = show ? c.reason : c.reason.replace(SNR_IN_TEXT, '(candidate)');
+        if (c.neutral && !show) { c.neutral = c.neutral.replace(SNR_IN_TEXT, '(candidate)'); }
         c.reason = c.sentence;
     });
     return result;
@@ -1204,7 +1210,7 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
 // could do it, and plain lookups (catalogue distance, edge, missing pixels). Pairs are split into their ends, and a
 // spot shared by two candidates is listed once.
 function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image, later: Image, grid: OutputGrid,
-    stars: StarPix[], opt: Settings): ChangeCandidate[]
+    stars: StarPix[], opt: Settings, diff: Float32Array, measurement: Measurement): ChangeCandidate[]
 {
     const out: ChangeCandidate[] = [], seen = new Set<string>();
     const radiusPix = PSF_FWHM / grid.pixelArcsec, edgePix = opt.edgeArcsec / grid.pixelArcsec;
@@ -1220,13 +1226,14 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
             const blob = found.find((b) => b.pix.x === end.x && b.pix.y === end.y);
             const sign: 1 | -1 = end.visit === 'later' ? 1 : -1;
             const snr = blob?.snr ?? c.snr;
-            let catalogueArcsec: number | undefined;
+            let starDistance: number | undefined;
             for (const star of stars) {
                 if (Number.isFinite(star.x) && Number.isFinite(star.y) && (star.visit === undefined || star.visit === end.visit)) {
                     const d = distance(pix, star, grid);
-                    if (d <= opt.matchArcsec && (catalogueArcsec === undefined || d < catalogueArcsec)) { catalogueArcsec = d; }
+                    if (starDistance === undefined || d < starDistance) { starDistance = d; }
                 }
             }
+            const catalogueArcsec = starDistance !== undefined && starDistance <= opt.matchArcsec ? starDistance : undefined;
             const nearEdge = pix.x < edgePix || pix.y < edgePix || pix.x > grid.width - 1 - edgePix || pix.y > grid.height - 1 - edgePix;
             let nearMissing = false;
             const r = Math.ceil(radiusPix);
@@ -1239,15 +1246,37 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                     if (!Number.isFinite(earlier.data[i]!) || !Number.isFinite(later.data[i]!)) { nearMissing = true; break; }
                 }
             }
-            const facts = (catalogueArcsec !== undefined ? ` A catalogue star lies ${catalogueArcsec < 1 ? 'less than 1″' : `${catalogueArcsec.toFixed(1)}″`} away.` : '')
+            const nearGap = Boolean(blob?.edge && !nearEdge && !nearMissing);
+            const facts = (starDistance !== undefined && starDistance <= PLAIN_STAR_FACT_ARCSEC ? ` A catalogue star lies ${starDistance < 1 ? 'less than 1″' : `${starDistance.toFixed(1)}″`} away.` : '')
                 + (nearEdge ? ' It is near the edge of the picture.' : '')
-                + (nearMissing ? ' Pixels near it are missing in at least one visit.' : '');
+                + (nearMissing ? ' Pixels at or near it are missing in at least one visit.' : '')
+                + (nearGap ? ' It is close to missing pixels or the edge of the picture.' : '');
+            const corrected = (x: number, y: number): number => {
+                const index = y * grid.width + x;
+                const bin = Math.floor(y / measurement.k) * measurement.width + Math.floor(x / measurement.k);
+                return diff[index]! - measurement.background[bin]!;
+            };
+            const cx = Math.round(pix.x), cy = Math.round(pix.y);
+            const center = cx >= 0 && cy >= 0 && cx < grid.width && cy < grid.height ? corrected(cx, cy) : NaN;
+            let sum = 0;
+            for (let y = Math.max(0, Math.ceil(pix.y - radiusPix)); y <= Math.min(grid.height - 1, Math.floor(pix.y + radiusPix)); y++) {
+                for (let x = Math.max(0, Math.ceil(pix.x - radiusPix)); x <= Math.min(grid.width - 1, Math.floor(pix.x + radiusPix)); x++) {
+                    if (Math.hypot(x - pix.x, y - pix.y) <= radiusPix) {
+                        const i = y * grid.width + x;
+                        if (Number.isFinite(earlier.data[i]!) && Number.isFinite(later.data[i]!)) {
+                            sum += corrected(x, y);
+                        }
+                    }
+                }
+            }
+            const clear = Number.isFinite(center) && Number.isFinite(sum) && sign * center > 0 && sign * sum > 0;
+            const ending = `a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}`;
+            const neutral = `The light here differs between the two visits, and which visit has more is not clear; ${ending}`;
             out.push({ id: '', kind: 'unknown', pix, sky: gridPixToSky(grid, pix), snr, sign,
                 gaiaMatch: catalogueArcsec !== undefined, ...(catalogueArcsec === undefined ? {} : { gaiaDistArcsec: catalogueArcsec, catalogueArcsec }),
-                frames: c.frames, reading: sign === 1 ? 'moreLater' : 'lessLater', ends: [{ ...end }], nearCatalogue: catalogueArcsec !== undefined,
-                nearEdge, nearMissing, radiusPix: end.radiusPix,
-                reason: `${sign === 1 ? 'More' : 'Less'} light here in the later visit than in the earlier one; a real change, a moving source, `
-                    + `a detector hit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}` });
+                frames: c.frames, reading: clear ? (sign === 1 ? 'moreLater' : 'lessLater') : 'unclear', ends: [{ ...end }], nearCatalogue: catalogueArcsec !== undefined,
+                nearEdge, nearMissing, nearGap, radiusPix: end.radiusPix, neutral,
+                reason: clear ? `${sign === 1 ? 'More' : 'Less'} light here in the later visit than in the earlier one; ${ending}` : neutral });
         }
     }
     return out;
@@ -1263,7 +1292,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         ? earlier.data.map((value, i) => Number.isFinite(diff[i]!) ? value : NaN) : earlier.data;
     const wavelength = (value: number): string => Number.isFinite(value) ? `${value.toFixed(3)} µm` : 'unknown';
     result.notes.push(`Earlier visit at ${wavelength(earlier.lambda)}, later at ${wavelength(later.lambda)}.`
-        + (Number.isFinite(earlier.lambda) && Number.isFinite(later.lambda) && earlier.lambda !== later.lambda
+        + (Number.isFinite(earlier.lambda) && Number.isFinite(later.lambda) && earlier.lambda.toFixed(3) !== later.lambda.toFixed(3)
             ? ' A source can read differently at different wavelengths.' : ''));
     const singleFrame = earlier.obsIds.length === 1 || later.obsIds.length === 1;
     const earlierUnclipped = earlier.obsIds.length < MIN_CLIPPED_FRAMES;
@@ -1278,7 +1307,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     }
     if (!wavelengthsMatch(earlier.lambda, later.lambda, opt.maxDeltaLambda)) {
         result.skipped = later.obsIds.map((obsId) => ({ obsId, reason: `No earlier image within ${opt.maxDeltaLambda} µm.` }));
-        result.notes.push(`${later.obsIds.length} ${later.obsIds.length === 1 ? 'frame' : 'frames'} skipped: no earlier image within ${opt.maxDeltaLambda} µm.`);
+        result.notes.push(`The two visits were not compared: their wavelengths differ by more than ${opt.maxDeltaLambda} µm.`);
         return { ...result, visits } as VisitChangeResult;
     }
     let varSum: Float32Array | undefined;
@@ -1891,20 +1920,17 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         }
     });
     if (smallChanges > 0) {
-        result.notes.push(`${smallChanges} small ${smallChanges === 1 ? 'difference' : 'differences'} at catalogue stars ${smallChanges === 1 ? 'is' : 'are'} not listed.`);
+        result.notes.push(opt.plain ? `${smallChanges} small ${smallChanges === 1 ? 'difference at a catalogue star is' : 'differences at catalogue stars are'} not listed.` : `${smallChanges} small ${smallChanges === 1 ? 'difference' : 'differences'} at catalogue stars ${smallChanges === 1 ? 'is' : 'are'} not listed.`);
     }
     if (smallUncatalogued > 0) {
         result.notes.push(`${smallUncatalogued} small ${smallUncatalogued === 1 ? 'difference is' : 'differences are'} not listed.`);
     }
     if (wobble > 0) {
-        result.notes.push(`${wobble} ${wobble === 1 ? 'spot' : 'spots'} consistent with a shift of up to 1.5″ between visits not listed.`);
+        result.notes.push(opt.plain ? `${wobble} ${wobble === 1 ? 'spot that a shift of up to 1.5″ between the two pictures can explain is' : 'spots that a shift of up to 1.5″ between the two pictures can explain are'} not listed.` : `${wobble} ${wobble === 1 ? 'spot' : 'spots'} consistent with a shift of up to 1.5″ between visits not listed.`);
     }
     if (opt.plain) {
-        result.candidates = plainList(result.candidates, found, earlier, later, grid, stars, opt);
+        result.candidates = plainList(result.candidates, found, earlier, later, grid, stars, opt, diff, measurement);
         result.notes = result.notes.filter((note) => !note.startsWith('Catalogue stars have no ids'));
-        result.notes.push(measurement.usedErrorMap
-            ? `Listed with spots that have no catalogue star within ${opt.matchArcsec}″ first, then by how far each stands out from the noise.`
-            : `Listed with spots that have no catalogue star within ${opt.matchArcsec}″ first, then by how far each stands out from the noise estimated from the difference image; that figure is used only for this order.`);
     }
     result.candidates.forEach((c) => {
         if (caveat) { c.caveat = caveat; }
@@ -1936,15 +1962,15 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         }
         return true;
     };
-    let unmapped = 0;
-    const finished = finish(result, opt, singleFrame, (c) => {
-        if (!measurement.usedErrorMap) {
-            return false;
-        }
-        const ok = (c.ends ?? [c.pix]).every(mappedAt);
-        if (!ok) { unmapped++; }
-        return ok;
-    }, opt.plain);
+    const showsSnr = (c: ChangeCandidate) => measurement.usedErrorMap && (c.ends ?? [c.pix]).every(mappedAt);
+    const finished = finish(result, opt, singleFrame, showsSnr, opt.plain);
+    const unmapped = measurement.usedErrorMap ? finished.candidates.filter((c) => !showsSnr(c)).length : 0;
+    if (opt.plain && finished.candidates.length) {
+        finished.notes.unshift('None of these spots has been confirmed as a real change.');
+        finished.notes.push(measurement.usedErrorMap
+            ? `Listed with spots that have no catalogue star within ${opt.matchArcsec}″ first, then by how far each stands out from the noise${unmapped ? '; spots with no S/N figure come after those with one' : ''}.`
+            : `Listed with spots that have no catalogue star within ${opt.matchArcsec}″ first, then by how far each stands out from the noise estimated from the difference image; that figure is used only for this order.`);
+    }
     if (unmapped > 0) {
         finished.notes.push(`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`);
     }
