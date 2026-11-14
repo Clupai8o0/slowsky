@@ -56,13 +56,31 @@ def is_fits_url(url):
 
 def has_error_text(text):
     # "error bar" is the brightness curve's own wording, not a failure.
-    return bool(re.search(r"failed to fetch|couldn['’]t|\berror\b(?!\s+bars?\b)", text, re.IGNORECASE))
+    return bool(re.search(r"failed to fetch|couldn['’]t|could not|unavailable|timed out|bad gateway|\berror\b(?!\s+bars?\b)", text, re.IGNORECASE))
 
 
-def live_proof(status, s3_ok, sia_ok, frames, error):
+def response_proof(url, status):
+    try:
+        path = urlsplit(url).path
+        fits = path.rsplit("/", 1)[-1] if status in (200, 206, 304) and is_fits_url(url) else ""
+        return fits, status in (200, 304) and path == "/api/sia"
+    except ValueError:
+        return "", False
+
+
+def is_archive_url(url):
+    try:
+        parsed = urlsplit(url)
+        return parsed.hostname in {"nasa-irsa-spherex.s3.us-east-1.amazonaws.com",
+                                   "nasa-irsa-spherex.s3.amazonaws.com"} or parsed.path == "/api/sia"
+    except ValueError:
+        return False
+
+
+def live_proof(status, s3_ok, sia_ok, frames, error, fits_files):
     if error:
         return "live view error: " + error[:140]
-    if not status.startswith("Live"):
+    if not status.startswith("Live:"):
         return "live status missing"
     if not s3_ok:
         return "no successful SPHEREx S3 response after Go live"
@@ -72,6 +90,8 @@ def live_proof(status, s3_ok, sia_ok, frames, error):
         return "live view has no frames"
     if not is_fits_url(frames["url"]):
         return "details panel has no FITS link on nasa-irsa-spherex"
+    if urlsplit(frames["url"]).path.rsplit("/", 1)[-1] not in fits_files:
+        return "the FITS link shown was not read live"
     return ""
 
 
@@ -87,13 +107,34 @@ def self_test():
         ("couldn't", lambda: has_error_text("Couldn't load frame")),
         ("error", lambda: has_error_text("Live: ERROR loading frame")),
         ("error bars are not an error", lambda: not has_error_text("Each point has its own error bar. Error bars show noise.")),
-        ("live proof accepts one frame", lambda: not live_proof("Live: ready", True, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "")),
-        ("live proof requires status", lambda: bool(live_proof("Saved copy", True, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, ""))),
-        ("live proof requires S3", lambda: bool(live_proof("Live", False, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, ""))),
-        ("live proof requires SIA", lambda: bool(live_proof("Live", True, False, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, ""))),
-        ("live proof requires frames", lambda: bool(live_proof("Live", True, True, {"count": 0, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, ""))),
-        ("live proof requires FITS", lambda: bool(live_proof("Live", True, True, {"count": 1, "url": "https://evil.example/a.fits"}, ""))),
-        ("live proof rejects errors", lambda: bool(live_proof("Live", True, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "error"))),
+        ("could not", lambda: has_error_text("COULD NOT load")),
+        ("unavailable", lambda: has_error_text("Unavailable")),
+        ("timed out", lambda: has_error_text("Timed Out")),
+        ("bad gateway", lambda: has_error_text("Bad Gateway")),
+        ("fallback is not an error", lambda: not has_error_text("Saved copy (the live archive did not answer).")),
+        ("FITS 304", lambda: response_proof("https://nasa-irsa-spherex.s3.amazonaws.com/a.fits?x=1", 304) == ("a.fits", False)),
+        ("FITS 200", lambda: response_proof("https://nasa-irsa-spherex.s3.amazonaws.com/a.fits", 200) == ("a.fits", False)),
+        ("FITS 206", lambda: response_proof("https://nasa-irsa-spherex.s3.amazonaws.com/a.fits", 206) == ("a.fits", False)),
+        ("SIA 304", lambda: response_proof("https://example.org/api/sia?x=1", 304) == ("", True)),
+        ("SIA 200", lambda: response_proof("https://example.org/api/sia", 200) == ("", True)),
+        ("SIA 206 rejected", lambda: response_proof("https://example.org/api/sia", 206) == ("", False)),
+        ("SIA prefix rejected", lambda: response_proof("https://example.org/api/sia-extra", 200) == ("", False)),
+        ("S3 non-FITS rejected", lambda: response_proof("https://nasa-irsa-spherex.s3.amazonaws.com/a.txt", 200) == ("", False)),
+        ("bad response rejected", lambda: response_proof("https://nasa-irsa-spherex.s3.amazonaws.com/a.fits", 500) == ("", False)),
+        ("archive host", lambda: is_archive_url("https://nasa-irsa-spherex.s3.amazonaws.com/a.txt")),
+        ("archive SIA", lambda: is_archive_url("https://example.org/api/sia?x=1")),
+        ("archive prefix rejected", lambda: not is_archive_url("https://example.org/api/sia-other")),
+        ("archive wrong host", lambda: not is_archive_url("https://nasa-irsa-spherex.evil.example/a.fits")),
+        ("live prefix needs colon", lambda: live_proof("Lively", True, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "", {"a.fits"}) == "live status missing"),
+        ("shown FITS was fetched", lambda: not live_proof("Live: ready", True, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "", {"a.fits"})),
+        ("shown FITS was not fetched", lambda: live_proof("Live: ready", True, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "", {"b.fits"}) == "the FITS link shown was not read live"),
+        ("live proof accepts one frame", lambda: not live_proof("Live: ready", True, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "", {"a.fits"})),
+        ("live proof requires status", lambda: live_proof("Saved copy", True, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "", {"a.fits"}) == "live status missing"),
+        ("live proof requires S3", lambda: live_proof("Live:", False, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "", set()) == "no successful SPHEREx S3 response after Go live"),
+        ("live proof requires SIA", lambda: live_proof("Live:", True, False, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "", {"a.fits"}) == "no successful /api/sia response after Go live"),
+        ("live proof requires frames", lambda: live_proof("Live:", True, True, {"count": 0, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "", {"a.fits"}) == "live view has no frames"),
+        ("live proof requires FITS", lambda: live_proof("Live:", True, True, {"count": 1, "url": "https://evil.example/a.fits"}, "", {"a.fits"}) == "details panel has no FITS link on nasa-irsa-spherex"),
+        ("live proof rejects errors", lambda: live_proof("Live:", True, True, {"count": 1, "url": "https://nasa-irsa-spherex.s3.amazonaws.com/a.fits"}, "error", {"a.fits"}) == "live view error: error"),
     ]
     failed = 0
     for name, check in cases:
@@ -266,64 +307,71 @@ def go_live(pg, fails, live_timeout, allow_fallback):
     if btn.is_hidden():
         fails.append("Go live button is not shown on the saved copy")
         return ""
-    responses = {"s3": False, "sia": False}
+    responses = {"fits": set(), "sia": False}
 
     def on_response(response):
-        if response.status not in (200, 206):
-            return
-        try:
-            url = urlsplit(response.url)
-            if url.hostname in {"nasa-irsa-spherex.s3.us-east-1.amazonaws.com",
-                                "nasa-irsa-spherex.s3.amazonaws.com"}:
-                responses["s3"] = True
-            if url.path.startswith("/api/sia"):
-                responses["sia"] = True
-        except ValueError:
-            pass
+        fits, sia = response_proof(response.url, response.status)
+        if fits:
+            responses["fits"].add(fits)
+        if sia:
+            responses["sia"] = True
+
+    def read_live():
+        t0 = time.time()
+        btn.click()
+        status = ""
+        while time.time() - t0 < live_timeout:
+            time.sleep(0.5)
+            status = pg.evaluate("document.querySelector('[data-bind=\"status\"]')?.textContent || ''").strip()
+            if status.startswith("Saved copy") and "did not answer" in status:
+                if allow_fallback:
+                    return "live archive down, fell back to the saved copy (allowed): %s" % status[:100]
+                break
+            err = visible_error(pg)
+            if err:
+                fails.append("live view error: " + err[:140])
+                return ""
+            if status.startswith("Live:") and frame_now(pg) and responses["fits"] and responses["sia"]:
+                break
+        secs = time.time() - t0
+        if not status.startswith("Live:"):
+            fails.append("live read failed: %s" % (status[:140] or "no live status within %gs" % live_timeout))
+            return ""
+        now = frame_now(pg)
+        if error := visible_error(pg):
+            fails.append("live view error: " + error)
+            return ""
+        if not now or now[1] < 1:
+            fails.append("live view has no frames")
+            return ""
+        live = pause_first_frame(pg)
+        for _ in range(20):
+            pix = pg.evaluate(PIXELS_JS)
+            if pix and pix["distinct"] > 20 and pix["topShare"] < 0.95:
+                break
+            time.sleep(0.5)
+        else:
+            fails.append("live canvas is blank")
+            return ""
+        hrefs = pg.evaluate("[...document.querySelectorAll('[data-ref=\"dl\"] a')].map(a => a.href)")
+        fits_url = next((href for href in hrefs if is_fits_url(href)), "")
+        status = pg.evaluate("document.querySelector('[data-bind=\"status\"]')?.textContent || ''")
+        reason = live_proof(status, bool(responses["fits"]), responses["sia"],
+                            {"count": live["count"], "url": fits_url}, visible_error(pg), responses["fits"])
+        if reason:
+            fails.append(reason)
+            return ""
+        if saved["dates"] == live["dates"] and saved["file"] == live["file"]:
+            comparison = "same frames as the saved copy"
+        else:
+            comparison = "%d frames, saved copy had %d" % (live["count"], saved["count"])
+        return "live read %.0fs, %s" % (secs, comparison)
 
     pg.on("response", on_response)
-    t0 = time.time()
-    btn.click()
-    status = ""
-    while time.time() - t0 < live_timeout:
-        time.sleep(0.5)
-        status = pg.evaluate("document.querySelector('[data-bind=\"status\"]')?.textContent || ''")
-        err = visible_error(pg)
-        if err:
-            fails.append("live view error: " + err[:140])
-            return ""
-        if status.startswith("Live") and frame_now(pg) and responses["s3"] and responses["sia"]:
-            break
-        if "did not answer" in status:
-            status = status.strip()
-            break
-    secs = time.time() - t0
-    if not status.startswith("Live"):
-        if allow_fallback:
-            return "live archive down, fell back to the saved copy (allowed): %s" % status[:100]
-        fails.append("live read failed: %s" % (status[:140] or "no live status within %gs" % live_timeout))
-        return ""
-    now = frame_now(pg)
-    if error := visible_error(pg):
-        fails.append("live view error: " + error)
-        return ""
-    if not now or now[1] < 1:
-        fails.append("live view has no frames")
-        return ""
-    live = pause_first_frame(pg)
-    hrefs = pg.evaluate("[...document.querySelectorAll('[data-ref=\"dl\"] a')].map(a => a.href)")
-    fits_url = next((href for href in hrefs if is_fits_url(href)), "")
-    status = pg.evaluate("document.querySelector('[data-bind=\"status\"]')?.textContent || ''")
-    reason = live_proof(status, responses["s3"], responses["sia"],
-                        {"count": live["count"], "url": fits_url}, visible_error(pg))
-    if reason:
-        fails.append(reason)
-        return ""
-    if saved["dates"] == live["dates"] and saved["file"] == live["file"]:
-        comparison = "same frames as the saved copy"
-    else:
-        comparison = "%d frames, saved copy had %d" % (live["count"], saved["count"])
-    return "live read %.0fs, %s" % (secs, comparison)
+    try:
+        return read_live()
+    finally:
+        pg.remove_listener("response", on_response)
 
 
 def run_target(browser, base, tid, label, click, mode, timeout, out, brk, live_timeout=90, allow_fallback=False):
@@ -331,7 +379,7 @@ def run_target(browser, base, tid, label, click, mode, timeout, out, brk, live_t
     pg = ctx.new_page()
     errs = []
     aborted = set()  # URLs this script aborted on purpose
-    pg.on("pageerror", lambda e: errs.append("pageerror: " + str(e)[:200]))
+    pg.on("pageerror", lambda e: errs.append(("pageerror: " + str(e)[:200], "")))
 
     def on_console(m):
         if m.type != "error":
@@ -341,12 +389,14 @@ def run_target(browser, base, tid, label, click, mode, timeout, out, brk, live_t
             return
         if not url and mode == "offline" and re.search(r"amazonaws\.com|/api/", m.text):
             return  # app-level log of a fetch we aborted (no URL attached)
-        errs.append("console: " + m.text[:150] + (" (" + url[:100] + ")" if url else ""))
+        urls = [url] + re.findall(r"https?://[^\s\"'<>]+", m.text)
+        archive_url = next((candidate for candidate in urls if is_archive_url(candidate)), "")
+        errs.append(("console: " + m.text[:150] + (" (" + url[:100] + ")" if url else ""), archive_url))
     pg.on("console", on_console)
 
     def on_failed(r):
         if r.url not in aborted and not (mode == "live" and "ERR_ABORTED" in str(r.failure)):  # the page cancelling its own reads
-            errs.append("request failed: ..." + r.url[-50:] + " " + str(r.failure))
+            errs.append(("request failed: ..." + r.url[-50:] + " " + str(r.failure), r.url))
     pg.on("requestfailed", on_failed)
 
     def abort(r):
@@ -415,8 +465,10 @@ def run_target(browser, base, tid, label, click, mode, timeout, out, brk, live_t
             current = frame_now(pg)
             if not fails and current and current[1] >= 2:
                 pause_and_step(pg, fails)
-        if errs:
-            fails.append("; ".join(errs[:3]))
+        fallback = mode == "live" and allow_fallback and note.startswith("live archive down, fell back")
+        remaining = [message for message, url in errs if not (fallback and is_archive_url(url))]
+        if remaining:
+            fails.append("; ".join(remaining[:3]))
     except Exception as e:
         fails.append("exception: " + str(e).splitlines()[0][:200])
     try:
