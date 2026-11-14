@@ -6,7 +6,7 @@ import { gridPixToSky } from './regrid';
 import type { OutputGrid, PixelCoord, RegriddedFrame, SkyCoord } from './types';
 
 export type ChangeKind = 'mover' | 'brightness' | 'unknown';
-// 'moreLater' / 'lessLater' are the plain list's readings (ChangeOptions.plain): only the sign of the difference.
+// 'moreLater' / 'lessLater' compare the plain list's core against its surrounding sky in each visit.
 export type ChangeReading = 'brighter' | 'fainter' | 'laterOnly' | 'earlierOnly' | 'moved' | 'pair' | 'differs'
     | 'moreLater' | 'lessLater' | 'unclear';
 /** A light-bearing location in output-grid pixels, for checking the corresponding visit. */
@@ -115,8 +115,12 @@ const PSF_FWHM = 12; // arcsec
 const PLAIN_RING_INNER = 18;
 // Outer radius of the local background ring, in arcseconds.
 const PLAIN_RING_OUTER = 30;
-// Require at least half the core signal to remain within the full aperture.
+// Require half the tile-corrected core signal in both the 12″ sum and the local core-minus-ring mean.
 const PLAIN_CORE_RETAINED = 0.5;
+// Require the core's own excess over its ring to stand above the ring noise.
+const PLAIN_CORE_SIGMA = 5;
+// Bound uneven sky in the ring relative to the local core-minus-ring reading.
+const PLAIN_RING_SPREAD = 0.5;
 export const PLAIN_LEAD = 'Every spot listed is a candidate only; this page cannot tell which, if any, are real changes in the sky.';
 const PLAIN_STAR_FACT_ARCSEC = 15;
 const CORE_ARCSEC = PSF_FWHM / 2;
@@ -632,9 +636,9 @@ export function plainListNotes(candidates: { line?: string; sentence?: string; r
     const base = `Listed with spots that have no catalogue star within ${matchArcsec}″ first, then by how far each stands out from the noise`;
     // An overflow can hide a mapped S/N even though the ordering still used the error maps.
     const hiddenMapped = usedErrorMap && candidates.some(c => !c.snrMapMissing && !hasSnrFigure(c.line ?? c.sentence ?? c.reason));
-    const order = !shown && hiddenMapped ? undefined : !shown ? `${base} estimated from the difference image; that figure is used only for this order.`
+    const order = !shown && hiddenMapped ? `${base}.` : !shown ? `${base} estimated from the difference image; that figure is used only for this order.`
         : `${base}${shown < candidates.length ? '; spots with no S/N figure come after those with one' : ''}.`;
-    return [...(order ? [order] : []), ...(unmapped ? [`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`] : [])];
+    return [order, ...(unmapped ? [`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`] : [])];
 }
 export function hasSnrFigure(text: string): boolean
 {
@@ -1238,7 +1242,7 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
     return false;
 }
 
-// The plain list: one candidate per kept spot, saying only which visit has more light there, with the causes that
+// The plain list: one candidate per kept spot, comparing each visit's light against its surrounding sky, with causes that
 // could do it, and plain lookups (catalogue distance, edge, missing pixels). Pairs are split into their ends, and a
 // spot shared by two candidates is listed once.
 function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image, later: Image, grid: OutputGrid,
@@ -1246,6 +1250,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
 {
     const out: ChangeCandidate[] = [], seen = new Set<string>();
     const radiusPix = PSF_FWHM / grid.pixelArcsec, edgePix = opt.edgeArcsec / grid.pixelArcsec;
+    const coreArcsec = Math.max(CORE_ARCSEC, grid.pixelArcsec);
     for (const c of candidates) {
         const ends = c.ends ?? [{ visit: c.sign === 1 ? 'later' as const : 'earlier' as const, x: c.pix.x, y: c.pix.y, radiusPix }];
         for (const end of ends) {
@@ -1279,7 +1284,9 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                 }
             }
             const nearGap = Boolean(blob?.edge && !nearEdge && !nearMissing);
-            const displayDistance = starDistance !== undefined && starDistance > opt.matchArcsec ? Math.ceil(starDistance * 10) / 10 : starDistance;
+            const roundedDistance = starDistance === undefined ? undefined : Number(starDistance.toFixed(1));
+            const displayDistance = starDistance !== undefined && starDistance > opt.matchArcsec && roundedDistance! <= opt.matchArcsec
+                ? Math.ceil(starDistance * 10) / 10 : roundedDistance;
             const facts = (starDistance !== undefined && starDistance <= PLAIN_STAR_FACT_ARCSEC ? ` A catalogue star lies ${starDistance < 1 ? 'less than 1″' : `${displayDistance!.toFixed(1)}″`} away.` : '')
                 + (nearEdge ? ' It is near the edge of the picture.' : '')
                 + (nearMissing ? ' Pixels at or near it are missing in at least one visit.' : '')
@@ -1299,7 +1306,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                         if (Number.isFinite(earlier.data[i]!) && Number.isFinite(later.data[i]!)) {
                             const value = corrected(x, y);
                             sum += value;
-                            if (Math.hypot(x - pix.x, y - pix.y) <= radiusPix / 2) { core += value; coreCount++; }
+                            if (Math.hypot(x - pix.x, y - pix.y) * grid.pixelArcsec <= coreArcsec) { core += value; coreCount++; }
                         }
                     }
                 }
@@ -1313,31 +1320,36 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                     const i = y * grid.width + x;
                     if (!Number.isFinite(earlier.data[i]!) || !Number.isFinite(later.data[i]!)) { continue; }
                     const value = later.data[i]! - earlier.data[i]!;
-                    if (d <= CORE_ARCSEC) { localCore += value; localCount++; }
+                    if (d <= coreArcsec) { localCore += value; localCount++; }
                     if (d >= PLAIN_RING_INNER && d <= PLAIN_RING_OUTER) {
                         ring.push(value);
                         ringSides[(x >= pix.x ? 1 : 0) + (y >= pix.y ? 2 : 0)]!.push(value);
                     }
                 }
             }
-            const local = localCount && ring.length >= 20 ? localCore / localCount - median(ring) : NaN;
+            const quadrantFloor = Math.max(5, Math.floor(ring.length / 8));
+            const sideMedians = ringSides.map(side => side.length >= quadrantFloor ? median(side) : NaN);
+            const ringLevel = sideMedians.reduce((sum, value) => sum + value, 0) / 4;
+            const local = localCount && ring.length >= 20 ? localCore / localCount - ringLevel : NaN;
+            const scatter = 1.4826 * median(ring.map(value => Math.abs(value - ringLevel)));
+            const ringNoise = Number.isFinite(measurement.sigma) ? Math.max(scatter, measurement.sigma) : scatter;
             // An uneven ring can itself be lifted by a nearby patch; do not use it to claim a direction.
-            const sideMedians = ringSides.map(side => side.length >= 5 ? median(side) : NaN);
             const evenRing = sideMedians.every(Number.isFinite)
-                && Math.max(...sideMedians) - Math.min(...sideMedians) <= 3 * measurement.sigma;
+                && Math.max(...sideMedians) - Math.min(...sideMedians) <= PLAIN_RING_SPREAD * Math.abs(local);
             // The local reading (the core against its own ring, with no background tiles) must keep at least half of
             // what the tile-corrected core shows. A bare sign test passes half the time on noise alone, which is
             // exactly where the tiles are wrong: a spot that did not change inside a patch of sky that did.
             const clear = !nearMissing && evenRing && Number.isFinite(center) && Number.isFinite(core) && Number.isFinite(sum)
                 && sign * center > 0 && sign * core > 0 && sign * sum >= PLAIN_CORE_RETAINED * sign * core
-                && Number.isFinite(local) && sign * local >= PLAIN_CORE_RETAINED * sign * core / coreCount;
-            const ending = `a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}`;
+                && Number.isFinite(local) && sign * local >= PLAIN_CORE_RETAINED * sign * core / coreCount
+                && Number.isFinite(ringNoise) && sign * local >= PLAIN_CORE_SIGMA * ringNoise / Math.sqrt(localCount);
+            const ending = `a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}`;
             const neutral = `The light here differs between the two visits, and which visit has more is not clear; ${ending}`;
             out.push({ id: '', kind: 'unknown', pix, sky: gridPixToSky(grid, pix), snr, sign,
                 gaiaMatch: catalogueArcsec !== undefined, ...(catalogueArcsec === undefined ? {} : { gaiaDistArcsec: catalogueArcsec, catalogueArcsec }),
                 frames: c.frames, reading: clear ? (sign === 1 ? 'moreLater' : 'lessLater') : 'unclear', ends: [{ ...end }], nearCatalogue: catalogueArcsec !== undefined,
                 nearEdge, nearMissing, nearGap, radiusPix: end.radiusPix, neutral,
-                reason: clear ? `${sign === 1 ? 'More' : 'Less'} light here in the later visit than in the earlier one; ${ending}` : neutral });
+                reason: clear ? `Compared with the sky around it, there is ${sign === 1 ? 'more' : 'less'} light here in the later visit than in the earlier one; ${ending}` : neutral });
         }
     }
     return out;

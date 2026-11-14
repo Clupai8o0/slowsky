@@ -182,8 +182,8 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
                 line = `${line} ${flagged}; an overflowing pixel can make the reading here unreliable.`;
             }
         }
-        // When no frame of an end's own visit was read, the drop check never ran for it: unread in full, even if
-        // the other frames read fine (or that visit has no frames here at all).
+        // Plain comparisons check both visits: any readable frame gives a partial check; neither gives no check.
+        // Classifier ends require a readable frame in their own light visit to count as checked at all.
         const endUnread = plain ? !checked.some(o => o.names.some(n => n !== null)) : own.some(o => !o.names.some(n => n !== null));
         const missing = checked.some(o => o.names.some(n => n === null));
         kept.push({ ...c, kind, reading, line, unread: endUnread ? 'all' : missing ? 'some' : 'none' });
