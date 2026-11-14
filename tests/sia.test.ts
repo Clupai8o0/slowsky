@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fixture from './fixtures/sia/rwaur_dr1.xml?raw';
 import { buildUpstreamUrl, GET, OPTIONS, parseParams } from '../api/sia';
-import { parseSiaXml, queryStatus, rowToFrame, searchFrames } from '../src/lib/sia';
+import { DETECTOR_BAND_UM, parseSiaXml, queryStatus, rowToFrame, searchFrames, SIA_TIME_SPLITS, timeWindows } from '../src/lib/sia';
 
 const valid = 'POS=CIRCLE+76.956+30.401+0.01';
 const req = (query = valid) => new Request(`https://example.test/api/sia?${query}`);
@@ -128,22 +128,61 @@ describe('SIA rows', () => {
         const deduped = await searchFrames(q, undefined, vi.fn(async () => new Response(dup)) as unknown as typeof fetch);
         expect(deduped.length).toBe(frames.length);
     });
-    it('sends MAXREC and surfaces QUERY_STATUS ERROR and OVERFLOW', async () => {
+    const withStatus = (status: string) => fixture.replace(/<(\w*:?)RESOURCE\b([^>]*)>/, `<$1RESOURCE$2><$1INFO name="QUERY_STATUS" value="${status}"/>`);
+    it('sends MAXREC and surfaces QUERY_STATUS ERROR', async () => {
         const fetcher = mockFetch();
         await searchFrames(q, undefined, fetcher);
         expect(String(vi.mocked(fetcher).mock.calls[0]![0])).toContain('MAXREC=2000');
-        for (const status of ['OVERFLOW', 'ERROR']) {
-            const xml = fixture.replace(/<(\w*:?)RESOURCE\b([^>]*)>/, `<$1RESOURCE$2><$1INFO name="QUERY_STATUS" value="${status}"/>`);
-            expect(queryStatus(xml)?.status).toBe(status);
-            await expect(searchFrames(q, undefined, vi.fn(async () => new Response(xml)) as unknown as typeof fetch)).rejects.toThrow(status);
-        }
+        const xml = withStatus('ERROR');
+        expect(queryStatus(xml)?.status).toBe('ERROR');
+        await expect(searchFrames(q, undefined, vi.fn(async () => new Response(xml)) as unknown as typeof fetch)).rejects.toThrow('ERROR');
         expect(queryStatus(fixture)?.status).not.toMatch(/ERROR|OVERFLOW/);
     });
-    it('rejects a trailing QUERY_STATUS OVERFLOW after an OK fixture', async () => {
+    it('retries an OVERFLOW as time windows over the whole mission and merges them', async () => {
+        const overflow = withStatus('OVERFLOW');
+        const fetcher = vi.fn(async (input: string) => new Response(String(input).includes('TIME=') ? fixture : overflow)) as unknown as typeof fetch;
+        const all = await searchFrames(q, undefined, mockFetch());
+        const frames = await searchFrames(q, undefined, fetcher);
+        const urls = vi.mocked(fetcher).mock.calls.map((call) => new URL(String(call[0]), 'http://x').searchParams);
+        expect(urls).toHaveLength(1 + SIA_TIME_SPLITS);
+        expect(urls[0]!.has('TIME')).toBe(false);
+        const windows = urls.slice(1).map((p) => p.get('TIME')!.split(' ').map(Number));
+        expect(windows[0]![0]).toBe(60740);
+        expect(windows[windows.length - 1]![1]).toBeGreaterThan(Date.now() / 86_400_000 + 40587);
+        for (let i = 1; i < windows.length; i++) {
+            expect(windows[i]![0]).toBe(windows[i - 1]![1]);
+        }
+        expect(frames.length).toBe(all.length);
+        expect(frames.truncated).toBeUndefined();
+    });
+    it('marks the list truncated when a time window overflows again, and keeps a given time range', async () => {
         const xml = fixture.replace('</ns0:TABLE>', '</ns0:TABLE><INFO name="QUERY_STATUS" value="OVERFLOW"/>');
         expect(queryStatus(xml)?.status).toBe('OVERFLOW');
-        const fetcher: typeof fetch = async () => new Response(xml);
-        await expect(searchFrames(q, undefined, fetcher)).rejects.toThrow('QUERY_STATUS=OVERFLOW');
+        const fetcher = vi.fn(async () => new Response(xml)) as unknown as typeof fetch;
+        const frames = await searchFrames({ ...q, timeRange: [61000, 61100] }, undefined, fetcher);
+        expect(frames.length).toBeGreaterThan(0);
+        expect(frames.truncated).toBe(true);
+        const times = vi.mocked(fetcher).mock.calls.map((call) => new URL(String(call[0]), 'http://x').searchParams.get('TIME'));
+        expect(times).toEqual(['61000 61100', '61000 61025', '61025 61050', '61050 61075', '61075 61100']);
+    });
+    it('narrows the query by BAND: the wanted wavelength, else the detector band centre', async () => {
+        const band = async (extra: object) => {
+            const fetcher = mockFetch();
+            await searchFrames({ ...q, ...extra }, undefined, fetcher);
+            return new URL(String(vi.mocked(fetcher).mock.calls[0]![0]), 'http://x').searchParams.get('BAND');
+        };
+        expect(await band({})).toBeNull();
+        expect(Number(await band({ detector: 3 }))).toBeCloseTo(DETECTOR_BAND_UM[3] * 1e-6, 12);
+        expect(Number(await band({ detector: 3, lambda: 1.9 }))).toBeCloseTo(1.9e-6, 12);
+        const ranges: Record<number, [number, number]> = { 1: [0.746, 1.117], 3: [1.630, 2.435], 4: [2.403, 3.847], 6: [4.412, 5.010] };
+        for (const [d, mid] of Object.entries(DETECTOR_BAND_UM)) {
+            for (const [other, [lo, hi]] of Object.entries(ranges)) {
+                expect(mid >= lo && mid <= hi, `D${d} centre ${mid} vs D${other}`).toBe(d === other);
+            }
+        }
+    });
+    it('splits a time range into contiguous windows', () => {
+        expect(timeWindows(0, 10, 4)).toEqual([[0, 2.5], [2.5, 5], [5, 7.5], [7.5, 10]]);
     });
     it.each([
         ['OK', 'OVERFLOW', 'ERROR'],
