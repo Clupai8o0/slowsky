@@ -874,8 +874,8 @@ export function mount(root: HTMLElement): void
             bind('pm', m.text);
         }
         bind('headline', copy ? copy.headline : CUSTOM_COPY.headline);
-        bind('show', copy ? copy.show : CUSTOM_COPY.show);
         const card = cardFacts();
+        bind('show', card.show ?? (copy ? copy.show : CUSTOM_COPY.show));
         bind('not', card.not ?? (copy ? copy.not : CUSTOM_COPY.not));
         bind('fact', card.fact ?? '');
         ref<HTMLElement>('fact').hidden = !card.fact;
@@ -1017,7 +1017,7 @@ export function mount(root: HTMLElement): void
     }
 
     // The card's measured lines. Every number comes from the frames on screen, never from notes.
-    function cardFacts(): { fact?: string; not?: string }
+    function cardFacts(): { fact?: string; not?: string; show?: string }
     {
         const kind = st.target ? COPY[st.target].kind : 'field';
         if (!result || !st.target) {
@@ -1051,11 +1051,15 @@ export function mount(root: HTMLElement): void
         }
         if (kind === 'cold') {
             const visits = visitsOf(result).map((v) => `${v.n} in ${monthYear(v.mjd)}`);
+            // Expected from its spectrum, not measured here, so it sits in the description, not under "Measured here".
             const colour = st.detector <= 4
-                ? `At this colour (detector ${st.detector} of 6) the light at its spot is a background star.`
-                : st.detector === 5 ? 'At this colour the background star and WISE 0855 both add light.'
-                    : 'At this colour (detector 6 of 6) WISE 0855 takes over.';
-            return { fact: `${colour} This view has ${n} look${n === 1 ? '' : 's'}${visits.length > 1 ? `: ${visits.join(', ')}` : ''}.` };
+                ? `At this colour (detector ${st.detector} of 6) expect the light at its spot to be a background star.`
+                : st.detector === 5 ? 'At this colour expect the background star and WISE 0855 both to add light.'
+                    : 'At this colour (detector 6 of 6) WISE 0855 should outshine the background star.';
+            return {
+                show: `${COPY[st.target].show} ${colour}`,
+                fact: `This view has ${n} look${n === 1 ? '' : 's'}${visits.length > 1 ? `: ${visits.join(', ')}` : ''}.`,
+            };
         }
         return {};
     }

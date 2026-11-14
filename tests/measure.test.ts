@@ -295,16 +295,22 @@ describe('shiftFor', () => {
 });
 
 describe('coreBlank', () => {
-    it('counts frames with no value at the target centre', () => {
-        const r = result([100, 100, 100]);
+    it('counts frames with no value at a bright target centre', () => {
+        const r = result([5000, 5000, 5000]);
         r.frames[0]!.frame.data[TARGET.y * N + TARGET.x] = NaN;
         r.frames[2]!.frame.data[TARGET.y * N + TARGET.x + 1] = Infinity;
         expect(coreBlank(r)).toEqual({ blank: 2, of: 3 });
     });
 
     it('ignores blank pixels away from the centre', () => {
-        const r = result([100, 100]);
+        const r = result([5000, 5000]);
         r.frames[0]!.frame.data[(TARGET.y + 10) * N + TARGET.x] = NaN;
+        expect(coreBlank(r)).toEqual({ blank: 0, of: 2 });
+    });
+
+    it('does not call a blank centre in dark sky saturated', () => {
+        const r = result([0, 0]);
+        r.frames[0]!.frame.data[TARGET.y * N + TARGET.x] = NaN;
         expect(coreBlank(r)).toEqual({ blank: 0, of: 2 });
     });
 

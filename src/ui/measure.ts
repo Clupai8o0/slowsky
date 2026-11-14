@@ -335,34 +335,55 @@ export function shiftFor(result: SkyResult, a: Astrometry): Shift | null
     return shift;
 }
 
-// How many frames have no value at the target's centre: the camera saturated there (R Dra, Barnard's Star).
-// The centre is the track position at each frame's date; a blank pixel within half a detector pixel counts.
+// How many frames show a saturated centre: no value within half a detector pixel of the target's track
+// position, with a bright ring around it (its median above the frame's 99th percentile). Blank pixels in dark
+// sky (no coverage, an edge) do not count. R Dra and Barnard's Star saturate.
 export function coreBlank(result: SkyResult): { blank: number; of: number } | null
 {
     if (!result.track || result.track.length === 0 || result.frames.length === 0) {
         return null;
     }
     const { width, height } = result.grid;
-    const reach = Math.max(1, NATIVE_ARCSEC / result.grid.pixelArcsec / 2);
+    const native = NATIVE_ARCSEC / result.grid.pixelArcsec;
+    const reach = Math.max(Math.SQRT1_2, native / 2); // at least the nearest pixel
+    const ringOut = Math.max(3, native * 1.5);
     let blank = 0;
     for (const { frame: f } of result.frames) {
         const at = trackNear(result.track, frameMjd(f))!.pix;
-        let hit = false;
-        const r = Math.ceil(reach);
-        for (let dy = -r; dy <= r && !hit; dy++) {
+        let hole = false;
+        const ring: number[] = [];
+        const r = Math.ceil(ringOut);
+        for (let dy = -r; dy <= r; dy++) {
             for (let dx = -r; dx <= r; dx++) {
-                const x = Math.round(at.x + dx);
-                const y = Math.round(at.y + dy);
-                if (Math.hypot(x - at.x, y - at.y) > reach || x < 0 || y < 0 || x >= width || y >= height) {
+                const x = Math.round(at.x) + dx;
+                const y = Math.round(at.y) + dy;
+                const d = Math.hypot(x - at.x, y - at.y);
+                if (d > ringOut || x < 0 || y < 0 || x >= width || y >= height) {
                     continue;
                 }
-                if (!Number.isFinite(f.data[y * width + x] as number)) {
-                    hit = true;
-                    break;
+                const v = f.data[y * width + x] as number;
+                if (!Number.isFinite(v)) {
+                    hole ||= d <= reach;
+                } else if (d > reach) {
+                    ring.push(v);
                 }
             }
         }
-        blank += hit ? 1 : 0;
+        if (!hole || ring.length === 0) {
+            continue;
+        }
+        const sample: number[] = [];
+        for (let i = 0; i < f.data.length; i += 7) {
+            const v = f.data[i] as number;
+            if (Number.isFinite(v)) {
+                sample.push(v);
+            }
+        }
+        sample.sort((a, b) => a - b);
+        const p99 = sample[Math.floor(sample.length * 0.99)];
+        if (p99 !== undefined && median(ring) > p99) {
+            blank++;
+        }
     }
     return { blank, of: result.frames.length };
 }
