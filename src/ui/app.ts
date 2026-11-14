@@ -18,6 +18,8 @@ import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
 import { coreBlank, curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
+import { mountAiNote } from './ai-note';
+import { FEATURES, renderFlags, renderSpectrum } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -60,6 +62,7 @@ const ICON = {
     panelL: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/></svg>',
     panelR: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/></svg>',
     focus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/></svg>',
+    note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 4.5h13v15h-13z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg>',
     link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.1-1.1"/></svg>',
 };
 
@@ -256,6 +259,7 @@ function shell(): string
       <canvas class="sk-glow" data-ref="glow" width="24" height="24" aria-hidden="true"></canvas>
       <canvas class="sk-img" data-ref="canvas" role="img" aria-label="Sky image"></canvas>
       <svg class="sk-ov" data-ref="ov" aria-hidden="true" preserveAspectRatio="none"></svg>
+      <div class="sk-slot-flags" data-ref="flags" hidden></div>
       <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
       <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
       <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
@@ -265,6 +269,7 @@ function shell(): string
     <div class="sk-legrow">
       <div class="sk-leg">
         <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
+        <button type="button" class="sk-key f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i>Flags</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
@@ -300,6 +305,21 @@ function shell(): string
     </div>
     <p class="sk-body mute">All of this is infrared: your eyes stop at 0.70 µm. Drag, then let go to load that colour.</p>
   </section>
+  <section class="sk-mod sk-m-spec" aria-labelledby="sk-h8" data-ref="spec" hidden>
+    <h2 class="sk-mh" id="sk-h8"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
+    <div class="sk-slot-spec" data-ref="specBox"></div>
+  </section>
+  <section class="sk-mod sk-m-ai" aria-labelledby="sk-h7" data-ref="ai" data-ai-generated="true" hidden>
+    <h2 class="sk-mh" id="sk-h7" tabindex="-1"><span class="ic">${ICON.note}</span>AI note<span class="sk-ai-tag">AI-written</span></h2>
+    <p class="sk-body mute">A short reading of this view by a language model, from the numbers this page measured.</p>
+    <form class="sk-ai-lock" data-ai="lock" hidden><label><span>Passcode</span><input type="password" autocomplete="off" data-ai="pass" aria-label="AI note passcode"></label><button type="submit" class="sk-btn2">Unlock</button></form>
+    <button type="button" class="sk-btn2 sk-ai-go" data-ai="go" hidden>Write an AI note</button>
+    <p class="sk-ai-msg sk-sr" data-ai="msg" role="status"></p>
+    <div class="sk-ai-out" data-ai="out" aria-live="polite"></div>
+    <details class="sk-ai-given" data-ai="given" hidden><summary>What the AI was given</summary><ul data-ai="givenList"></ul></details>
+    <p class="sk-ai-disc" data-ai="disc"></p>
+    <p class="sk-ai-left" data-ai="left" hidden></p>
+  </section>
   <section class="sk-mod sk-m-curve" aria-labelledby="sk-h6" data-ref="curve" hidden>
     <h2 class="sk-mh" id="sk-h6"><span class="ic">${ICON.curve}</span>Brightness over time</h2>
     <div class="sk-lc" data-ref="lcwrap"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
@@ -324,6 +344,7 @@ export function mount(root: HTMLElement): void
     const q = <T extends Element>(sel: string) => root.querySelector(sel) as T;
     const qa = <T extends Element>(sel: string) => [...root.querySelectorAll(sel)] as T[];
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
+    const aiNote = mountAiNote(ref<HTMLElement>('ai'));
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const glow = ref<HTMLCanvasElement>('glow');
@@ -360,6 +381,7 @@ export function mount(root: HTMLElement): void
     let timer = 0;
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
+    let flagsOn = false; // the Flags layer over the sky (slot, off until its lane lands)
     let lookup: AbortController | null = null; // pending name lookup; any newer navigation cancels it
 
     function bind(key: string, text: string): void
@@ -850,6 +872,34 @@ export function mount(root: HTMLElement): void
         bind('bar', `${bar / 60}′`);
     }
 
+    // The mover's first-to-last shift, worked out once per result, for the AI note's facts.
+    function noteShift(): ReturnType<typeof shiftFor> | undefined
+    {
+        const t = st.target ? targetById(st.target) : undefined;
+        if (!result || !t || COPY[t.id].kind !== 'mover' || result.frames.length < 2) {
+            return undefined;
+        }
+        if (shift === undefined) {
+            shift = shiftFor(result, t.astrometry);
+        }
+        return shift;
+    }
+
+    // Feature-flagged slots (src/ui/slots.ts): hidden unless the flag is on and the module has something to show.
+    function renderSlots(): void
+    {
+        const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode } : null;
+        const spec = ref<HTMLElement>('spec');
+        spec.hidden = !(FEATURES.spectrum && view && renderSpectrum(ref<HTMLElement>('specBox'), view));
+        // The layer is filled even when switched off, so the key shows only when there is a mask to show.
+        const layer = ref<HTMLElement>('flags');
+        const hasFlags = Boolean(FEATURES.flags && view && renderFlags(layer, view));
+        const key = ref<HTMLButtonElement>('flagsKey');
+        key.hidden = !hasFlags;
+        key.setAttribute('aria-pressed', String(flagsOn));
+        layer.hidden = !(hasFlags && flagsOn);
+    }
+
     function renderText(): void
     {
         root.dataset.mode = st.mode;
@@ -857,6 +907,8 @@ export function mount(root: HTMLElement): void
         root.dataset.source = sourceKind;
         ref<HTMLElement>('sim').hidden = !(result && sourceKind === 'demo');
         ref<HTMLElement>('golive').hidden = !(result && sourceKind === 'snapshot' && st.target);
+        aiNote.update(result && sourceKind !== 'demo' ? { result, targetId: st.target, center: st.center, curve, shift: noteShift() } : null);
+        renderSlots();
         const copy = st.target ? COPY[st.target] : null;
         bind('name', copy ? copy.display : st.label);
         const coordsA = ref<HTMLAnchorElement>('coords');
@@ -1212,6 +1264,9 @@ export function mount(root: HTMLElement): void
             play(!st.playing);
         } else if (b.dataset.act === 'prev' || b.dataset.act === 'next') {
             step(b.dataset.act === 'next' ? 1 : -1);
+        } else if (b.dataset.act === 'flags') {
+            flagsOn = !flagsOn;
+            renderSlots();
         } else if (b.dataset.act === 'gaia') {
             st.gaia = !st.gaia;
             overlay();

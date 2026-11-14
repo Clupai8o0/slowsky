@@ -2,7 +2,7 @@
    The sky floats in a deep-space void with a glow taken from the image itself. Three steps read left to right
    (01 choose, 02 watch, 03 colour); their tops line up with the top of the sky, and the notes sit at the bottom.
    Modules are separated by space and alignment, not boxes. Colour is kept for the data.
-   No pills anywhere (Sam's rule): corners are 0 to 4 px. */
+   House rule: no capsule shapes. Corners are 0 to 4 px. */
 html, body { margin: 0; background: #03050b; }
 *, *::before, *::after { box-sizing: border-box; }
 button, input, select { font: inherit; color: inherit; }
@@ -223,6 +223,7 @@ button { cursor: pointer; }
     filter: blur(56px) sepia(1) hue-rotate(180deg) saturate(2.4); opacity: .4;
     -webkit-mask-image: radial-gradient(closest-side, #000 35%, transparent); mask-image: radial-gradient(closest-side, #000 35%, transparent); }
 .sk-img, .sk-ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.sk-slot-flags { position: absolute; inset: 0; pointer-events: none; }
 .sk-img { image-rendering: pixelated; image-rendering: crisp-edges; transition: opacity 240ms var(--ease), filter 240ms var(--ease); }
 .sk[data-loading] .sk-img { opacity: .25; filter: blur(2px); }
 .sk-ov circle, .sk-ov path { stroke-width: 1.5; }
@@ -413,6 +414,29 @@ button { cursor: pointer; }
 }
 
 /* ---------- phone and narrow: one column, same order ---------- */
+/* AI note: its own framed panel, in body type (never the mono numerals of a measurement), with the
+   disclaimer always in view. Square corners, no badge: the "AI-written" tag is plain small text. */
+.sk-m-ai { margin-top: 36px; gap: 12px; flex: none; padding: 16px; border: 1px solid var(--hair2); border-radius: 3px; background: rgba(255, 255, 255, .025); }
+.sk-ai-tag { margin-left: auto; font-size: 10.5px; letter-spacing: .1em; color: var(--faint); }
+.sk-m-ai .sk-body { margin: 0; }
+.sk-ai-go { align-self: flex-start; }
+.sk-ai-go:disabled { cursor: progress; color: var(--faint); }
+.sk-ai-lock { display: flex; gap: 8px; align-items: stretch; margin: 0; }
+.sk-ai-lock label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--hair2); border-radius: 3px; font-size: 12px; color: var(--faint); }
+.sk-ai-lock label:focus-within { border-color: rgba(255, 255, 255, .5); outline: 2px solid rgba(255, 255, 255, .85); outline-offset: 2px; }
+/* The ring is drawn on the framed label around the field (above), so the field itself needs none. */
+.sk-ai-lock input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font-size: 13.5px; }
+.sk-ai-msg { margin: 0; font-size: 12.5px; color: var(--ink2); }
+.sk-ai-out { display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.55; color: var(--ink2); }
+.sk-ai-out p { margin: 0; }
+.sk-ai-out b { font-weight: 500; color: var(--ink); }
+.sk-ai-out:empty { display: none; }
+.sk-ai-out:not(:empty) { animation: sk-rise 320ms var(--ease) both; }
+.sk-ai-given { font-size: 12px; color: var(--mute); }
+.sk-ai-given summary { cursor: pointer; width: fit-content; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .28); text-underline-offset: 3px; }
+.sk-ai-given summary:hover { color: var(--ink2); }
+.sk-ai-given ul { margin: 8px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; line-height: 1.45; }
+.sk-ai-disc, .sk-ai-left { margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--faint); }
 @media (max-width: 1080px) {
     .sk { display: flex; flex-direction: column; height: auto; min-height: 100dvh; padding: 0 0 40px;
         background: radial-gradient(120% 50% at 50% 34%, rgba(40, 70, 160, .26), transparent 70%), var(--void); }
@@ -428,6 +452,7 @@ button { cursor: pointer; }
     .sk-status p { margin: 0; }
     .sk-m-about { order: 4; margin-top: 36px; padding-top: 0; }
     .sk-m-colour { order: 5; margin-top: 40px; }
+    .sk-m-ai { order: 5; margin-top: 32px; width: calc(100% - 36px); max-width: 644px; padding: 16px; align-self: center; }
     .sk-m-curve { order: 6; margin-top: 40px; }
     .sk-m-details { order: 6; margin-top: 40px; }
     .sk-credit { order: 7; margin-top: 36px; padding-top: 0; }
@@ -460,6 +485,9 @@ button { cursor: pointer; }
     .sk-seg, .sk-seg button { min-height: 40px; }
     .sk-rng { height: 40px; top: -6px; } /* same centre line as the 28 px desktop slider */
     .sk-search input { min-height: 40px; }
+    .sk-ai-lock label { height: 40px; }
+    .sk-ai-given summary { padding: 11px 0; }
+    .sk-ai-tag, .sk-ai-disc, .sk-ai-left { font-size: 12px; }
     .sk-m-details dd a { display: inline-flex; align-items: center; min-height: 40px; }
     .sk-mh, .sk-fov, .sk-bar b, .sk-strip small, .sk-readout > span, .sk-ticks, .sk-axl, .sk-sim { font-size: 12px; }
     .sk-coord, .sk-read, .sk-m-details dl, .sk-credit, .sk-gk .sk-src, .sk-fig figcaption, .sk-lcy span, .sk-lcx { font-size: 12px; }
