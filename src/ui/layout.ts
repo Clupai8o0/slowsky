@@ -9,7 +9,11 @@ const MIN_W = 220;
 const MAX_W = 420;
 const MIN_CENTRE = 460;
 const STEP = 16;
-const FOLDED_W = 40; // matches --lcol and --rcol for a folded rail in styles.css
+const FOLDED_W = 0; // a folded rail and its gutter take no width (--lcol, --lg in styles.css)
+// Side by side (styles.css, .sk[data-side]): the controls column and the gap beside the sky.
+const CTRL_W = 340;
+const CTRL_GAP = 40;
+const ANIM_MS = 320; // a little over the 280 ms grid transition
 
 function read(): Saved
 {
@@ -42,6 +46,8 @@ export function initLayout(root: HTMLElement): Layout
     const folded: Record<Side, boolean> = { left: saved.left === true, right: saved.right === true };
     const split = (s: Side) => root.querySelector(`.sk-split[data-side="${s}"]`) as HTMLElement;
     const focusBtn = root.querySelector('[data-act="focus"]') as HTMLButtonElement;
+    const sky = root.querySelector('.sk-sky') as HTMLElement | null;
+    let animTimer = 0;
 
     function num(v: unknown): number | undefined
     {
@@ -111,6 +117,51 @@ export function initLayout(root: HTMLElement): Layout
         const focus = folded.left && folded.right;
         focusBtn.setAttribute('aria-pressed', String(focus));
         focusBtn.lastChild!.textContent = focus ? 'Show panels' : 'Focus';
+        arrange();
+    }
+
+    // Put the controls beside the sky when that gives a clearly bigger sky than stacking them under it. Worked out
+    // from where the columns will end up, not where they are mid-animation, so the centre changes shape once.
+    function arrange(): void
+    {
+        if (!wide.matches || !sky) {
+            delete root.dataset.side;
+            root.style.removeProperty('--sky');
+            return;
+        }
+        const vw = innerWidth;
+        const vh = innerHeight;
+        const cs = getComputedStyle(root);
+        const inner = root.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        const gutter = vw <= 1280 ? 32 : Math.min(64, Math.max(32, vw * 0.04)); // --cg
+        const midW = Math.max(360, inner
+            - (folded.left ? 0 : gutter + current('left'))
+            - (folded.right ? 0 : gutter + current('right')));
+        const short = vh <= 820;
+        const focus = folded.left && folded.right;
+        // Mirrors --w in styles.css: the sky's size when the controls sit under it.
+        const floor = short ? 320 : 360;
+        const under = short ? (focus ? 374 : 404) : (focus ? 362 : 398);
+        const stacked = Math.min(midW, Math.max(floor, vh - under));
+        const top = sky.getBoundingClientRect().top - root.getBoundingClientRect().top;
+        const side = Math.floor(Math.min(vh - parseFloat(cs.paddingBottom) - top, midW - CTRL_W - CTRL_GAP));
+        if (side >= Math.max(floor, stacked + 48)) {
+            root.dataset.side = '';
+            root.style.setProperty('--sky', `${side}px`);
+        } else {
+            delete root.dataset.side;
+            root.style.removeProperty('--sky');
+        }
+    }
+
+    // While a rail opens or shuts, its content keeps its width (styles.css [data-anim]) instead of rewrapping.
+    function animate(): void
+    {
+        root.dataset.anim = '';
+        clearTimeout(animTimer);
+        animTimer = window.setTimeout(() => {
+            delete root.dataset.anim;
+        }, ANIM_MS);
     }
 
     function save(): void
@@ -120,6 +171,7 @@ export function initLayout(root: HTMLElement): Layout
 
     function fold(s: Side, v: boolean): void
     {
+        animate();
         folded[s] = v;
         fit();
         apply();
@@ -129,6 +181,7 @@ export function initLayout(root: HTMLElement): Layout
     function toggleFocus(): void
     {
         const on = !(folded.left && folded.right);
+        animate();
         folded.left = on;
         folded.right = on;
         fit();
@@ -204,14 +257,11 @@ export function initLayout(root: HTMLElement): Layout
     }
 
     root.addEventListener('click', (e) => {
-        const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act^="fold-"], [data-act="focus"], [data-act="mini-search"]');
+        const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act^="fold-"], [data-act="focus"]');
         if (!b) {
             return;
         }
-        if (b.dataset.act === 'mini-search') {
-            fold('left', false);
-            root.querySelector<HTMLInputElement>('.sk-search input')?.focus();
-        } else if (b.dataset.act === 'focus') {
+        if (b.dataset.act === 'focus') {
             toggleFocus();
         } else {
             const s = b.dataset.act === 'fold-left' ? 'left' : 'right';

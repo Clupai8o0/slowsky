@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { centreNear, curveFor, frameMjd, middleMjd, ringsOn, shiftFor } from '../src/ui/measure';
 import { gridPixToSky } from '../src/lib/regrid';
+import { separationDeg } from '../src/lib/coords';
+import { GaiaError, shiftReadout } from '../src/lib/gaia';
+import { positionAt } from '../src/lib/targets';
 import type { GaiaStar, SkyResult, TrackPoint } from '../src/lib/source';
 import type { Astrometry, FrameRecord, OutputGrid, PixelCoord, RegriddedFrame } from '../src/lib/types';
 
@@ -32,7 +35,7 @@ function frame(k: number, stars: { at: PixelCoord; flux: number }[], nanAt?: Pix
 function star(id: string, at: PixelCoord, g: number): GaiaStar
 {
     const c = gridPixToSky(grid, at);
-    return { sourceId: id, ra: c.ra, dec: c.dec, g, epochJyear: 2016, pix: at };
+    return { sourceId: id, ra: c.ra, dec: c.dec, g, epochJyear: 2016, pmRa: 0, pmDec: 0, pix: at };
 }
 
 const TARGET = { x: 80, y: 80 };
@@ -97,6 +100,41 @@ describe('curveFor', () => {
         r.stars = [];
         expect(curveFor(r)).toBeNull();
     });
+
+    it.each([
+        { pmRa: 200, pmDec: 0 },
+        { pmRa: 30, pmDec: 40 },
+        { pmRa: undefined, pmDec: 0 },
+        { pmRa: 0, pmDec: undefined },
+        { pmRa: NaN, pmDec: 0 },
+    ])('excludes a reference with unsafe motion %j', (motion) => {
+        const r = result([100, 100, 100]);
+        Object.assign(r.stars[0]!, motion);
+        expect(curveFor(r)?.refs).toBe(3);
+    });
+
+    it('needs at least two references with known slow motion', () => {
+        const r = result([100, 100, 100]);
+        r.stars = r.stars.slice(0, 2);
+        r.stars[0]!.pmRa = 200;
+        expect(curveFor(r)).toBeNull();
+    });
+
+    it.each([3, 4])('drops a variable reference from %i refs and recomputes', (count) => {
+        const r = result([100, 100, 100]);
+        r.stars = r.stars.slice(0, count);
+        r.frames = [200, 500, 200].map((flux, k) => ({
+            frame: frame(k, [{ at: TARGET, flux: 100 }, ...REFS.slice(0, count).map((at, i) => ({ at, flux: i === count - 1 ? flux : 200 }))]),
+            label: '',
+        }));
+        const c = curveFor(r);
+        expect(c?.refs).toBe(count - 1);
+        expect(c?.lc.refScatter).toHaveLength(count - 1);
+        for (const p of c!.lc.points) {
+            expect(p.valid).toBe(true);
+            expect(p.relative).toBeCloseTo(1, 6);
+        }
+    });
 });
 
 describe('shiftFor', () => {
@@ -104,7 +142,41 @@ describe('shiftFor', () => {
         const a: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 0 };
         expect(shiftFor(result([100]), a, 0)).toBeNull();
         const s = shiftFor(result([100, 100, 100]), a, 0);
+        expect(s?.from).toBe(0);
         expect(s?.to).toBe(2);
-        expect(s?.measuredArcsec).toBeLessThan(0.2);
+        expect(s?.predictedArcsec).toBe(0);
+        expect(s?.measured?.measuredArcsec).toBeLessThan(0.2);
+    });
+
+    it.each([0, 2])('rejects a distant centre in frame %i and preserves the catalogue prediction', (index) => {
+        const r = result([100, 100, 100]);
+        const a: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 10000 };
+        const p = r.track![index]!;
+        p.pix = { x: TARGET.x + 10, y: TARGET.y };
+        const c = centreNear(r.frames[index]!.frame, p.pix);
+        expect(c).toBeDefined();
+        expect(Math.hypot(c!.x - p.pix.x, c!.y - p.pix.y)).toBeGreaterThan(1.5 * 6.15 / grid.pixelArcsec);
+        const s = shiftFor(r, a, 0);
+        expect(s?.measured).toBeNull();
+        const predicted = separationDeg(positionAt(a, frameMjd(r.frames[0]!.frame)), positionAt(a, frameMjd(r.frames[2]!.frame))) * 3600;
+        expect(predicted).toBeGreaterThan(5);
+        expect(s?.predictedArcsec).toBeCloseTo(predicted, 8);
+    });
+
+    it('preserves the prediction when no centre can be found', () => {
+        const r = result([100, 100]);
+        r.frames[1]!.frame.data.fill(1);
+        const a: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 0 };
+        expect(shiftFor(r, a, 1)).toEqual({ from: 0, to: 1, predictedArcsec: 0, measured: null });
+        expect(shiftFor(result([100, 100], false), a, 1)).toBeNull();
+    });
+
+    it('returns no measurement when Gaia cannot compare a stale target with the grid', () => {
+        const r = result([100, 100]);
+        const a: Astrometry = { ra: 190, dec: -20, epochJyear: 2016, pmRa: 0, pmDec: 0 };
+        expect(() => shiftReadout(a, grid,
+            { mjd: frameMjd(r.frames[0]!.frame), pix: TARGET },
+            { mjd: frameMjd(r.frames[1]!.frame), pix: TARGET })).toThrow(GaiaError);
+        expect(shiftFor(r, a, 1)).toEqual({ from: 0, to: 1, predictedArcsec: 0, measured: null });
     });
 });
