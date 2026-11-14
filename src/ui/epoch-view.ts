@@ -1,7 +1,7 @@
 // "Older picture": the 2MASS K survey (1997 to 2001) on the page's own grid, flipped against the SPHEREx frame.
 // The logic (createEpoch) takes its page hooks as arguments so tests run without a DOM; mountEpoch wires it to the
 // page's elements. Rules kept here (reviews of src/lib/epoch.ts, rounds 3 and 4):
-// - offered only in Blink, on the 0.1 and 0.25 degree fields, with real frames on screen; 'too-large' hides the key;
+// - offered only in Blink, on the 0.1 and 0.25 degree fields, with real frames on screen;
 // - nothing is read before the first press; a new result (target, field, colour) aborts and drops the picture;
 // - display values are drawn straight to grey, never through the SPHEREx stretch; NaN is hatched, never black;
 // - no number from the result (pixelArcsec, order, covered) is printed;
@@ -26,6 +26,7 @@ export const EPOCH_TEXT = Object.freeze({
     showNow: 'Show now',
     showThen: 'Show then',
     stop: 'Stop the flip',
+    tooLarge: 'The older picture is too large to read for this view. The SPHEREx frames are not affected.',
     bracket: 'Where its catalogue motion puts it between June 1997 and February 2001',
 });
 
@@ -43,8 +44,7 @@ export type NotePart = string | { text: string; href: string };
 
 type EpochOk = Extract<EpochResult, { ok: true }>;
 
-// The note under the legend while the picture is showing, in parts so the page can link "2MASS". The credit is
-// built from the source that was actually read.
+// The 2MASS K note under the legend, in parts so the page can link its credit when available.
 export function epochNoteParts(res: Pick<EpochOk, 'epoch' | 'source'>, lambda: number): NotePart[]
 {
     const lead = `${res.epoch.label}. ${EPOCH_NOTE} It comes from a different telescope at a different wavelength `
@@ -94,11 +94,11 @@ export function epochRgba(pixels: Float32Array, width: number, height: number): 
 }
 
 export interface EpochBracket {
-    from: { x: number; y: number }; // grid pixels (0-based), June 1997
-    to: { x: number; y: number }; // February 2001
+    from: { x: number; y: number }; // grid pixels (0-based), start of survey span
+    to: { x: number; y: number }; // end of survey span
 }
 
-// MJD of the first day of each survey month; they equal the HiPS properties' t_min (50600) and t_max (51941).
+// MJD of the first day of a survey month.
 function monthMjd(month: string): number
 {
     const [y, m] = month.split('-').map(Number);
@@ -106,7 +106,8 @@ function monthMjd(month: string): number
 }
 
 // The target's catalogue path across the survey months, for a target the page draws a track ring for.
-export function epochBracket(result: SkyResult, targetId: string | undefined): EpochBracket | null
+export function epochBracket(result: SkyResult, targetId: string | undefined,
+    epoch: Pick<EpochOk['epoch'], 'fromMonth' | 'toMonth'> = TWO_MASS_K): EpochBracket | null
 {
     if (!targetId || !Object.hasOwn(COPY, targetId) || !result.track?.length) {
         return null;
@@ -117,11 +118,18 @@ export function epochBracket(result: SkyResult, targetId: string | undefined): E
         return null;
     }
     const at = (month: string) => gridSkyToPix(result.grid, positionAt(astro, monthMjd(month)));
-    const from = at(TWO_MASS_K.fromMonth);
-    const to = at(TWO_MASS_K.toMonth);
+    const from = at(epoch.fromMonth);
+    const to = at(epoch.toMonth);
     const inside = (p: { x: number; y: number }) => p.x >= -0.5 && p.y >= -0.5
         && p.x <= result.grid.width - 0.5 && p.y <= result.grid.height - 0.5;
-    return inside(from) && inside(to) ? { from, to } : null;
+    return inside(from) && inside(to) && Math.hypot(to.x - from.x, to.y - from.y) >= 1 ? { from, to } : null;
+}
+
+function bracketLegend(epoch: EpochOk['epoch']): string
+{
+    const month = (value: string) => new Date((monthMjd(value) - 40587) * 86400000)
+        .toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    return `Where its catalogue motion puts it between ${month(epoch.fromMonth)} and ${month(epoch.toMonth)}`;
 }
 
 // ---------- the decoder the page supplies ----------
@@ -196,7 +204,7 @@ export interface EpochOut {
     legend: string; // the bracket's legend line, '' when there is none
     picture: { rgba: Uint8ClampedArray; width: number; height: number } | null;
     then: boolean; // the older picture covers the sky
-    tag: { label: string; action: string | null } | null; // action set when the tag flips by hand
+    tag: { label: string; action: string | null } | null; // null action means pressing stops automatic flipping
     bracket: EpochBracket | null; // drawn only during Then
 }
 
@@ -226,7 +234,7 @@ export interface EpochSlot {
 type Status =
     | { s: 'idle' }
     | { s: 'loading' }
-    | { s: 'failed'; detail: string }
+    | { s: 'failed'; message: string }
     | { s: 'ready'; res: EpochOk; rgba: Uint8ClampedArray; bracket: EpochBracket | null };
 
 export const HIDDEN_OUT: Readonly<EpochOut> = Object.freeze({ key: false, pressed: false, note: [], legend: '',
@@ -250,7 +258,7 @@ export function createEpoch(deps: EpochDeps): EpochSlot
 
     function offered(v: EpochSlotView | null): v is EpochSlotView
     {
-        return !!v && !tooLarge && v.source !== 'demo' && v.mode === 'blink' && v.result.frames.length > 0
+        return !!v && v.source !== 'demo' && v.mode === 'blink' && v.result.frames.length > 0
             && !!v.result.frames[v.index] && EPOCH_FOVS.some((f) => Math.abs(v.result.grid.fovDeg - f) < 1e-6);
     }
 
@@ -293,18 +301,18 @@ export function createEpoch(deps: EpochDeps): EpochSlot
             return HIDDEN_OUT;
         }
         const base = { ...HIDDEN_OUT, key: true, pressed: on };
+        if (status.s === 'failed') {
+            return { ...base, note: [status.message] };
+        }
         if (!on) {
             return base;
         }
         if (status.s === 'loading' || status.s === 'idle') {
             return { ...base, note: [EPOCH_TEXT.loading] };
         }
-        if (status.s === 'failed') {
-            return { ...base, note: [epochFailText(status.detail)] };
-        }
         const then = phase === 'then';
         const label = then ? EPOCH_TEXT.then : epochNowLabel(view.when);
-        return { ...base, note: epochNoteParts(status.res, view.result.lambda), legend: status.bracket ? EPOCH_TEXT.bracket : '',
+        return { ...base, note: epochNoteParts(status.res, view.result.lambda), legend: status.bracket ? bracketLegend(status.res.epoch) : '',
             picture: { rgba: status.rgba, width: status.res.width, height: status.res.height }, then,
             tag: { label, action: hand ? (then ? EPOCH_TEXT.showNow : EPOCH_TEXT.showThen) : null },
             bracket: then ? status.bracket : null };
@@ -338,7 +346,7 @@ export function createEpoch(deps: EpochDeps): EpochSlot
             }
             if (r.ok && r.values === 'display' && r.width === result.grid.width && r.height === result.grid.height) {
                 status = { s: 'ready', res: r, rgba: epochRgba(r.pixels, r.width, r.height),
-                    bracket: epochBracket(result, view?.targetId) };
+                    bracket: epochBracket(result, view?.targetId, r.epoch) };
                 phase = 'then';
                 hand = deps.reducedMotion;
                 runTimer();
@@ -357,8 +365,10 @@ export function createEpoch(deps: EpochDeps): EpochSlot
             } else if (!r.ok && r.reason === 'too-large') {
                 stop();
                 tooLarge = true;
+                status = { s: 'failed', message: EPOCH_TEXT.tooLarge };
             } else {
-                status = { s: 'failed', detail: r.ok ? 'The picture does not match this view' : r.detail };
+                on = false;
+                status = { s: 'failed', message: epochFailText(r.ok ? 'The picture does not match this view' : r.detail) };
             }
             render();
         });
@@ -374,6 +384,8 @@ export function createEpoch(deps: EpochDeps): EpochSlot
                 stop();
                 current = v?.result ?? null;
                 tooLarge = false;
+            } else if (status.s === 'failed' && (v?.index !== view?.index || v?.mode !== view?.mode || v?.source !== view?.source)) {
+                stop();
             }
             view = v;
             if (on && (!offered(v) || (anchor !== null && v.index !== anchor))) {
@@ -388,6 +400,8 @@ export function createEpoch(deps: EpochDeps): EpochSlot
             }
             if (on) {
                 stop();
+            } else if (tooLarge) {
+                status = { s: 'failed', message: EPOCH_TEXT.tooLarge };
             } else {
                 start(view);
             }
@@ -408,7 +422,7 @@ export function createEpoch(deps: EpochDeps): EpochSlot
         },
         off(): void
         {
-            if (on) {
+            if (on || status.s === 'failed') {
                 stop();
                 render();
             }
@@ -427,7 +441,7 @@ export interface EpochElements {
     layer: HTMLElement; // over the picture, under the rings
     tag: HTMLButtonElement; // a corner of the sky
     note: HTMLElement; // the line under the legend
-    thenHides?: HTMLElement[]; // SPHEREx-only layers (flagged pixels) hidden while the older picture shows
+    thenHides?: HTMLElement[]; // layers hidden while the older picture shows
 }
 
 function drawInto(els: EpochElements): (o: EpochOut) => void
@@ -436,8 +450,11 @@ function drawInto(els: EpochElements): (o: EpochOut) => void
     const svgNs = 'http://www.w3.org/2000/svg';
     let painted: Uint8ClampedArray | null = null;
     let noteKey = '';
-    let tagKey = '';
     let bracketKey = '';
+    const label = doc.createElement('span');
+    const act = doc.createElement('span');
+    act.className = 'a';
+    els.tag.replaceChildren(label, ' ', act);
     return (o: EpochOut) => {
         els.key.hidden = !o.key;
         els.key.setAttribute('aria-pressed', String(o.pressed));
@@ -477,25 +494,13 @@ function drawInto(els: EpochElements): (o: EpochOut) => void
         for (const el of els.thenHides ?? []) {
             el.style.visibility = o.then ? 'hidden' : '';
         }
-        const tk = o.tag ? `${o.tag.label}\u0000${o.tag.action ?? ''}` : '';
-        if (tk !== tagKey) {
-            tagKey = tk;
-            els.tag.replaceChildren();
-            if (o.tag) {
-                const label = doc.createElement('span');
+        if (o.tag) {
+            if (label.textContent !== o.tag.label) {
                 label.textContent = o.tag.label;
-                els.tag.append(label);
-                if (o.tag.action) {
-                    const act = doc.createElement('span');
-                    act.className = 'a';
-                    act.textContent = o.tag.action;
-                    els.tag.append(act);
-                    els.tag.removeAttribute('aria-label');
-                    els.tag.removeAttribute('title');
-                } else {
-                    els.tag.setAttribute('aria-label', `${o.tag.label}. ${EPOCH_TEXT.stop}`);
-                    els.tag.title = EPOCH_TEXT.stop;
-                }
+            }
+            const action = o.tag.action ?? EPOCH_TEXT.stop;
+            if (act.textContent !== action) {
+                act.textContent = action;
             }
         }
         els.tag.hidden = !o.tag;

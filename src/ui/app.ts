@@ -300,7 +300,7 @@ function shell(): string
     </div>
     <p class="sk-flagnote" data-ref="flagsNote" hidden></p>
     <p class="sk-flagnote" data-ref="fcNote" hidden></p>
-    <p class="sk-flagnote sk-ep-note" data-ref="epochNote" hidden></p>
+    <p class="sk-flagnote sk-ep-note" data-ref="epochNote" role="status" hidden></p>
     <div class="sk-player">
       <div class="sk-tr">
         <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
@@ -389,7 +389,7 @@ export function mount(root: HTMLElement): void
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderSlots());
     // Older picture (2MASS): off unless FEATURES.epoch; the logic lives in epoch-view.ts. Play switches it off.
     const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),
-        note: ref<HTMLElement>('epochNote'), thenHides: [ref<HTMLElement>('flags')] }, { enabled: FEATURES.epoch, pause: () => play(false) });
+        note: ref<HTMLElement>('epochNote'), thenHides: [ref<HTMLElement>('flags'), ref<HTMLElement>('changesMarks')] }, { enabled: FEATURES.epoch, pause: () => play(false) });
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const glow = ref<HTMLCanvasElement>('glow');
@@ -1572,13 +1572,24 @@ export function mount(root: HTMLElement): void
         } else if (b.dataset.act === 'prev' || b.dataset.act === 'next') {
             step(b.dataset.act === 'next' ? 1 : -1);
         } else if (b.dataset.act === 'flags') {
+            if (FEATURES.epoch) {
+                epochSlot.off();
+            }
             flagsOn = !flagsOn;
             renderSlots();
         } else if (b.dataset.act === 'falsecolour') {
+            if (FEATURES.epoch) {
+                epochSlot.off();
+            }
             fcOn = !fcOn;
             renderSlots();
         } else if (b.dataset.act === 'epoch' || b.dataset.act === 'epoch-tag') {
             if (b.dataset.act === 'epoch') {
+                if (FEATURES.epoch && !epochSlot.on && (fcOn || flagsOn)) {
+                    fcOn = false;
+                    flagsOn = false;
+                    renderSlots();
+                }
                 epochSlot.press();
             } else {
                 epochSlot.tagPress();

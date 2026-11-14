@@ -9,6 +9,7 @@ import { renderRgba } from '../src/lib/player';
 import { positionAt, targetById } from '../src/lib/targets';
 import type { SkyResult } from '../src/lib/source';
 import type { OutputGrid } from '../src/lib/types';
+import page from '../src/ui/app.ts?raw';
 
 const W = 40;
 const H = 40;
@@ -163,15 +164,27 @@ describe('older picture: when the key is offered', () => {
         expect(r.last()).toMatchObject({ key: true, pressed: false, picture: null, then: false, tag: null });
     });
 
-    it('treats too-large as not offered, with no message', async () => {
+    it('keeps the key visible and remembers too-large without another read', async () => {
         const r = rig();
         const s = sky();
         r.slot.update(view(s));
         r.slot.press();
         r.resolve({ ok: false, reason: 'too-large', detail: 'This view is too large for the older picture', missing: [] });
         await settle();
-        expect(r.last()).toMatchObject({ key: false, note: [], picture: null });
+        const message = 'The older picture is too large to read for this view. The SPHEREx frames are not affected.';
+        expect(r.last()).toMatchObject({ key: true, pressed: false, note: [message], picture: null });
         expect(r.slot.on).toBe(false);
+        r.slot.press();
+        expect(r.read).toHaveBeenCalledTimes(1);
+        expect(r.last()).toMatchObject({ key: true, pressed: false, note: [message] });
+        r.slot.update(view(s, { index: 1 }));
+        expect(r.last().note).toEqual([]);
+        r.slot.press();
+        expect(r.last().note).toEqual([message]);
+        expect(r.read).toHaveBeenCalledTimes(1);
+        r.slot.update(view(sky()));
+        r.slot.press();
+        expect(r.read).toHaveBeenCalledTimes(2);
     });
 });
 
@@ -297,8 +310,13 @@ describe('older picture: pressing it', () => {
         await settle();
         expect(noteText(r.last().note)).toBe('The older picture could not be read for this view (Some tiles are missing). The SPHEREx frames are not affected.');
         expect(r.last()).toMatchObject({ picture: null, then: false, tag: null });
+        expect(r.last().pressed).toBe(false);
+        expect(r.slot.on).toBe(false);
         expect(vi.getTimerCount()).toBe(0);
         expect(r.pause).toHaveBeenCalledTimes(1);
+        r.slot.press();
+        expect(r.read).toHaveBeenCalledTimes(2);
+        expect(r.last()).toMatchObject({ pressed: true, note: [EPOCH_TEXT.loading] });
     });
 });
 
@@ -382,6 +400,116 @@ describe('older picture: drawing', () => {
         expect(epochBracket(wide, 'rwaur')).toBeNull();
         expect(epochBracket(wide, undefined)).toBeNull();
         expect(EPOCH_TEXT.bracket).toBe('Where its catalogue motion puts it between June 1997 and February 2001');
+    });
+
+    it('omits subpixel brackets and uses the returned survey months', async () => {
+        const barnard = targetById('barnard')!;
+        const centre = positionAt(barnard.astrometry, 61041);
+        const g: OutputGrid = { center: centre, fovDeg: 0.25, pixelArcsec: 22.5, width: 40, height: 40 };
+        const track = [{ mjd: 61041, ra: centre.ra, dec: centre.dec, pix: { x: 0, y: 0 } }];
+        const s = sky(0.25, { grid: g, track });
+        const r = rig({ reduced: true });
+        r.slot.update(view(s, { targetId: 'barnard' }));
+        r.slot.press();
+        const result = okResult(g) as Extract<EpochResult, { ok: true }>;
+        result.epoch = { ...result.epoch, fromMonth: '2000-01', toMonth: '2000-02' };
+        r.resolve(result);
+        await settle();
+        expect(r.last()).toMatchObject({ bracket: null, legend: '' });
+        expect(epochBracket(s, 'barnard')).not.toBeNull();
+        const coarse = { ...g, width: 20, height: 20, pixelArcsec: 45 };
+        expect(epochBracket(sky(0.25, { grid: coarse, track }), 'barnard')).toBeNull();
+        r.slot.off();
+        r.slot.press();
+        result.epoch = { ...result.epoch, fromMonth: '1996-01', toMonth: '2001-02' };
+        r.resolve(result);
+        await settle();
+        expect(r.last().bracket).not.toBeNull();
+        expect(r.last().legend).toBe('Where its catalogue motion puts it between January 1996 and February 2001');
+    });
+});
+
+describe('older picture: page wiring', () => {
+    it('keeps tag spans in place with a spaced, visible action while flipping', async () => {
+        vi.useFakeTimers();
+        class Element {
+            children: (Element | string)[] = [];
+            textContent = '';
+            className = '';
+            hidden = false;
+            style = { visibility: '' };
+            attrs: Record<string, string> = {};
+            ownerDocument = doc;
+            append(...items: (Element | string)[]) { this.children.push(...items); }
+            prepend(item: Element) { this.children.unshift(item); }
+            replaceChildren(...items: (Element | string)[]) { this.children = items; }
+            setAttribute(name: string, value: string) { this.attrs[name] = value; }
+            removeAttribute(name: string) { delete this.attrs[name]; }
+            querySelector() { return null; }
+            getContext() { return { putImageData: () => {} }; }
+        }
+        const doc = { defaultView: { matchMedia: () => ({ matches: false }) }, hidden: false,
+            createElement: () => new Element(), createElementNS: () => new Element(),
+            addEventListener: () => {}, removeEventListener: () => {} };
+        vi.stubGlobal('ImageData', class { constructor(..._args: unknown[]) {} });
+        const key = new Element(), layer = new Element(), tag = new Element(), note = new Element(), marks = new Element();
+        const s = sky();
+        const slot = mountEpoch({ key, layer, tag, note, thenHides: [marks] } as unknown as EpochElements,
+            { enabled: true, pause: () => {}, read: vi.fn(async () => okResult(s.grid)) as unknown as typeof import('../src/lib/epoch').readEpoch });
+        slot.update(view(s));
+        slot.press();
+        await settle();
+        const [label, space, action] = tag.children;
+        expect((label as Element).textContent).toBe(EPOCH_TEXT.then);
+        expect(space).toBe(' ');
+        expect((action as Element).textContent).toBe('Stop the flip');
+        expect(tag.attrs['aria-label']).toBeUndefined();
+        expect(marks.style.visibility).toBe('hidden');
+        vi.advanceTimersByTime(EPOCH_FLIP_MS);
+        expect(tag.children[0]).toBe(label);
+        expect(tag.children[2]).toBe(action);
+        expect(marks.style.visibility).toBe('');
+        slot.tagPress();
+        expect((action as Element).textContent).toBe('Show then');
+        slot.off();
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+    });
+
+    it('announces the note and hides SPHEREx change marks during Then', () => {
+        expect(page).toMatch(/data-ref="epochNote"[^>]*role="status"|role="status"[^>]*data-ref="epochNote"/);
+        expect(page).toMatch(/thenHides:\s*\[[^\]]*ref<HTMLElement>\('changesMarks'\)/);
+    });
+
+    it('switches the competing keys off before starting, and Play switches it off', () => {
+        const start = page.indexOf("        } else if (b.dataset.act === 'flags') {");
+        const end = page.indexOf("        } else if (b.dataset.act === 'gaia') {", start);
+        const handlers = page.slice(start, end).replace(/^        } else if/, 'if') + '\n}';
+        expect(start).toBeGreaterThan(0);
+        const run = new Function('b', 'epochSlot', 'renderSlots', 'FEATURES', 'state', `
+            let fcOn = state.fcOn, flagsOn = state.flagsOn;
+            ${handlers}
+            return { fcOn, flagsOn };
+        `);
+        let epochOn = false;
+        let state = { fcOn: true, flagsOn: true };
+        const epochSlot = { get on() { return epochOn; }, off: () => { epochOn = false; },
+            press: () => { expect(state.fcOn || state.flagsOn).toBe(false); epochOn = !epochOn; }, tagPress: () => {} };
+        const renderSlots = () => { state = { fcOn: false, flagsOn: false }; };
+        state = run({ dataset: { act: 'epoch' } }, epochSlot, renderSlots, { epoch: true }, state);
+        expect(state).toEqual({ fcOn: false, flagsOn: false });
+        expect(epochOn).toBe(true);
+        state = run({ dataset: { act: 'falsecolour' } }, epochSlot, () => {}, { epoch: true }, state);
+        expect(epochOn).toBe(false);
+        expect(state.fcOn).toBe(true);
+        epochOn = true;
+        state = run({ dataset: { act: 'flags' } }, epochSlot, () => {}, { epoch: true }, { fcOn: false, flagsOn: false });
+        expect(epochOn).toBe(false);
+        expect(state.flagsOn).toBe(true);
+        epochOn = false;
+        state = run({ dataset: { act: 'epoch' } }, { on: false, press: () => {} }, () => {}, { epoch: false }, { fcOn: true, flagsOn: true });
+        expect(state).toEqual({ fcOn: true, flagsOn: true });
+        expect(page.slice(page.indexOf('    function play('), page.indexOf('    function play(') + 400)).toContain('epochSlot.off()');
     });
 });
 
