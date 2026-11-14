@@ -181,7 +181,7 @@ export function haloHtml(h: HaloView, name: string, on: number): string
     const x = (t: number) => (6 + ((t - t0) / (t1 - t0 || 1)) * (W - 12)).toFixed(1);
     const y = (v: number) => (((hi - v) / (hi - lo)) * H).toFixed(1);
     const ys = pts.map((p) => p.relative);
-    const label = `Light in the ring over ${pts.length} looks, from ${pct(Math.min(...ys))} to ${pct(Math.max(...ys))} of the median.`;
+    const label = `Light in the ring over ${pts.length} looks, from ${pct(Math.min(...ys))} to ${pct(Math.max(...ys))} relative to the median.`;
     const svg = `<svg role="img" aria-label="${esc(label)}" preserveAspectRatio="none" viewBox="0 0 ${W} ${H}">`
         + `<path d="M0 ${y(1)}H${W}" class="base" vector-effect="non-scaling-stroke"/>`
         + `<polyline points="${pts.map((p) => `${x(p.mjd)},${y(p.relative)}`).join(' ')}" class="line" vector-effect="non-scaling-stroke"/>`
