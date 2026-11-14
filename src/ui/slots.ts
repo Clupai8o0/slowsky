@@ -58,15 +58,6 @@ export interface SlotView {
     source: 'live' | 'snapshot' | 'demo';
 }
 
-// Called on every render (each frame while playing): cache by `view.result` and return quickly.
-// Fill `box` with textContent or trusted SVG only. Return true when there is something to show.
-export function renderSpectrum(box: HTMLElement, view: SlotView): boolean
-{
-    void box;
-    void view;
-    return false;
-}
-
 // Flag names (from the file's own MSKN cards) the layer leaves out, per the Explanatory Supplement, Table 16:
 // FULLSAMPLE is "purely informational", GHOST_FPA is "currently unused", and SOURCE marks pixels "mapped to a
 // known source", so it sits on the stars themselves and drawing it would hide the picture.
