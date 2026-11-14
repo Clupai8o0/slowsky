@@ -281,6 +281,10 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
     let controller = new AbortController();
     // Finished panels by result, so coming back to a result does not read the archive again.
     const done = new WeakMap<SkyResult, ChangesView | null>();
+    // Results whose full list is open ("Show N more"), and the boxes that already listen for that button.
+    const open = new WeakSet<SkyResult>();
+    const wired = new WeakSet<HTMLElement>();
+    let last: [HTMLElement, HTMLElement, SlotView] | null = null;
 
     function start(result: SkyResult, source: SlotView['source']): void
     {
@@ -360,12 +364,31 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         if (!v) {
             return false;
         }
-        const html = changesHtml(v);
+        last = [box, marks, view];
+        if (!wired.has(box) && typeof box.addEventListener === 'function') {
+            wired.add(box);
+            box.addEventListener('click', (event) => {
+                const target = event.target as Element | null;
+                if (!target?.closest?.('[data-chg-more]') || !current || !last) {
+                    return;
+                }
+                if (open.has(current)) {
+                    open.delete(current);
+                } else {
+                    open.add(current);
+                }
+                render(...last);
+                // The button is drawn again, so keep the keyboard focus on it.
+                (last[0].querySelector('[data-chg-more]') as HTMLElement | null)?.focus();
+            });
+        }
+        const all = open.has(view.result);
+        const html = changesHtml(v, all);
         if (shown.get(box) !== html) {
             box.innerHTML = html;
             shown.set(box, html);
         }
-        const svg = changesMarks(v, view.result.grid.width, view.result.grid.height);
+        const svg = changesMarks(v, view.result.grid.width, view.result.grid.height, all);
         if (shown.get(marks) !== svg) {
             marks.innerHTML = svg;
             shown.set(marks, svg);

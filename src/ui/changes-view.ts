@@ -8,7 +8,14 @@ import type { ChangeCandidate, ChangeResult } from '../lib/changes';
 // Fields the finder is adding (lane/changes r10b): `sentence` (the reason without its caveat), `caveat` (a full
 // sentence, absent when both visits have 2+ frames) and `lightVisit`; `reason` stays as an alias of `sentence`.
 // Until they land, `reason` and the candidate's sign are used.
-export type PanelCandidate = ChangeCandidate & { sentence?: string; caveat?: string; lightVisit?: 'earlier' | 'later' };
+// Round 11 adds `reading` (what the sentence reads from the two visits) and `ends` (every lobe: one for a single
+// spot, two for a pair or mover); `lightEnds` stays as an alias of `ends` for movers.
+export type Reading = 'brighter' | 'fainter' | 'laterOnly' | 'earlierOnly' | 'moved' | 'pair' | 'differs';
+export interface CandidateEnd { visit: 'earlier' | 'later'; x: number; y: number; radiusPix?: number }
+export type PanelCandidate = Omit<ChangeCandidate, 'lightEnds'> & {
+    sentence?: string; caveat?: string; lightVisit?: 'earlier' | 'later'; x?: number; y?: number;
+    reading?: Reading; ends?: CandidateEnd[]; lightEnds?: CandidateEnd[];
+};
 export interface FinderVisits { earlier: { obsIds: string[] }; later: { obsIds: string[] } }
 
 export interface ChangesView {
@@ -22,6 +29,14 @@ export interface ChangesView {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 
 export const EMPTY_LEAD = 'The change finder lists no candidates between the first and last visit.';
+// How many candidates show before "Show N more"; the list is ordered by S/N, so these are the strongest.
+export const LIST_CAP = 8;
+export const ORDER_NOTE = 'Listed by S/N, highest first.';
+
+function listed<T>(v: { candidates: T[] }, all: boolean): T[]
+{
+    return all ? v.candidates : v.candidates.slice(0, LIST_CAP);
+}
 
 // From what findChanges returns, or the message of the error it threw (for example "needs two visits").
 export function changesView(found: ChangeResult | { error: string }): ChangesView
@@ -29,8 +44,11 @@ export function changesView(found: ChangeResult | { error: string }): ChangesVie
     if ('error' in found) {
         return { candidates: [], notes: [found.error], ran: false };
     }
+    // Strongest first (stable; an S/N that is not a number goes last), so a capped list keeps the strongest.
+    const strength = (c: PanelCandidate) => (Number.isFinite(c.snr) ? c.snr : -Infinity);
     const candidates = (found.candidates as PanelCandidate[]).filter((c) => Number.isFinite(c.pix.x) && Number.isFinite(c.pix.y))
-        .map((c) => ({ ...c, line: c.sentence ?? c.reason }));
+        .map((c) => ({ ...c, line: c.sentence ?? c.reason }))
+        .sort((a, b) => strength(b) - strength(a));
     const lead = withCaveats(candidates);
     const visits = (found as ChangeResult & { visits?: FinderVisits }).visits;
     return {
@@ -60,24 +78,29 @@ export function withCaveats(candidates: { caveat?: string; line: string }[]): st
 }
 
 // The panel body. Text flows in plain blocks, so a reworded sentence or an extra note needs no layout change.
-export function changesHtml(v: ChangesView): string
+// `all` shows every candidate; otherwise the first LIST_CAP and a text button for the rest.
+export function changesHtml(v: ChangesView, all = false): string
 {
     const lead = (v.lead ?? []).map(s => `<p class="sk-chg-lead">${esc(s)}</p>`).join('');
+    const rest = v.candidates.length - LIST_CAP;
+    const more = rest > 0
+        ? `<p class="sk-chg-more-row">${ORDER_NOTE} <button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? 'Show fewer' : `Show ${rest} more`}</button></p>`
+        : '';
     const list = v.candidates.length
-        ? `<ol class="sk-chg">${v.candidates.map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(c.line)}</li>`).join('')}</ol>`
+        ? `<ol class="sk-chg">${listed(v, all).map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(c.line)}</li>`).join('')}</ol>${more}`
         : v.ran ? `<p class="sk-chg-lead">${EMPTY_LEAD}</p>` : '';
     const notes = v.notes.length ? `<ul class="sk-chg-notes">${v.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
     return lead + list + notes;
 }
 
-// Numbered rings over the sky, on the picture's own pixel grid.
-export function changesMarks(v: ChangesView, width: number, height: number): string
+// Numbered rings over the sky, on the picture's own pixel grid, for the listed candidates only.
+export function changesMarks(v: ChangesView, width: number, height: number, all = false): string
 {
     if (!v.candidates.length || !(width > 0) || !(height > 0)) {
         return '';
     }
     const r = Math.max(5, Math.min(width, height) / 40);
-    const rings = v.candidates.map((c, i) => {
+    const rings = listed(v, all).map((c, i) => {
         const x = c.pix.x.toFixed(1);
         const y = c.pix.y.toFixed(1);
         const below = c.pix.y - r * 2.2 < 0;

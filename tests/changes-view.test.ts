@@ -79,3 +79,26 @@ describe('Candidate changes panel', () => {
         expect(DEFAULT_FEATURES.changes).toBe(false);
     });
 });
+
+describe('round 11: list cap', () => {
+    const many = (n: number) => found(Array.from({ length: n }, (_, i) => ({ ...cand(`c${i}`, 10 + i, 10, `Spot ${i} (candidate).`), snr: 5 + i })), []);
+
+    it('shows the strongest 8 first, by S/N, with a text button for the rest', () => {
+        const v = changesView(many(11));
+        expect(v.candidates[0]!.snr).toBe(15);
+        const html = changesHtml(v);
+        expect(html.match(/<li><b>Candidate \d+<\/b>/g)).toHaveLength(8);
+        expect(html).toContain('Spot 10 (candidate).');
+        expect(html).not.toContain('Spot 2 (candidate).');
+        expect(html).toContain('<p class="sk-chg-more-row">Listed by S/N, highest first. <button type="button" class="sk-chg-more" data-chg-more aria-expanded="false">Show 3 more</button></p>');
+        expect(changesMarks(v, 200, 100).match(/<circle/g)).toHaveLength(8);
+        const all = changesHtml(v, true);
+        expect(all.match(/<li><b>Candidate \d+<\/b>/g)).toHaveLength(11);
+        expect(all).toContain('aria-expanded="true">Show fewer</button>');
+        expect(changesMarks(v, 200, 100, true).match(/<circle/g)).toHaveLength(11);
+    });
+
+    it('has no button at 8 or fewer', () => {
+        expect(changesHtml(changesView(many(8)))).not.toContain('data-chg-more');
+    });
+});
