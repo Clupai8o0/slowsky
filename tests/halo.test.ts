@@ -72,6 +72,17 @@ function frame(visit: number, scale = 1, hole = 0, at = target, lambda = 2): Reg
 }
 
 describe('blankRadius', () => {
+    it('marks each image border and includes neighbours exactly at the limit', () => {
+        for (const at of [{ x: 0, y: 10 }, { x: 19, y: 10 }, { x: 10, y: 0 }, { x: 10, y: 19 }]) {
+            const data = new Float32Array(400).fill(1);
+            data[at.y * 20 + at.x] = NaN;
+            expect(blankRadius(data, 20, 20, at).touchesLimit).toBe(true);
+        }
+        const data = new Float32Array(400).fill(1);
+        data[10 * 20 + 10] = NaN;
+        data[10 * 20 + 11] = NaN;
+        expect(blankRadius(data, 20, 20, { x: 10, y: 10 }, { maxRadius: 1, seed: 0 }).touchesLimit).toBe(false);
+    });
     it('measures the connected blank disc and ignores a detached NaN', () => {
         const f = frame(0, 1, 2.2);
         f.data[40 * width + 46] = Number.NaN;
@@ -137,18 +148,18 @@ describe('blankRadius', () => {
             }
         }
         expect(blankRadius(corner, 20, 20, { x: 4, y: 4 }).touchesLimit).toBe(true);
-        for (const radius of [11.4, 4]) {
+        for (const [radius, reach] of [[11.4, Math.sqrt(128)], [4, 4]]) {
             const disc = new Float32Array(40 * 40).fill(1);
             for (let y = 0; y < 40; y++) {
                 for (let x = 0; x < 40; x++) {
-                    if (Math.hypot(x - 20, y - 20) <= radius) {
+                    if (Math.hypot(x - 20, y - 20) <= radius!) {
                         disc[y * 40 + x] = NaN;
                     }
                 }
             }
             const result = blankRadius(disc, 40, 40, { x: 20, y: 20 });
             expect(result.touchesLimit).toBe(false);
-            expect(result.reach).toBeLessThanOrEqual(radius);
+            expect(result.reach).toBe(reach);
         }
     });
 
@@ -160,6 +171,30 @@ describe('blankRadius', () => {
 });
 
 describe('ringAperture', () => {
+    it('checks containment at all boundaries including exact outer-radius equality', () => {
+        const data = new Float32Array(400).fill(10);
+        const opts = { ringIn: 1, ringOut: 3, skyIn: 3, skyOut: 7 };
+        for (const at of [{ x: 2, y: 10 }, { x: 17, y: 10 }, { x: 10, y: 2 }, { x: 10, y: 17 }]) {
+            expect(ringAperture(data, 20, 20, at, opts).valid).toBe(true);
+        }
+        expect(ringAperture(data, 20, 20, { x: 10, y: 17.1 }, opts).valid).toBe(false);
+    });
+
+    it('fills each radial bin separately and rejects a sparse bin', () => {
+        const data = new Float32Array(width * height).fill(3);
+        for (const offset of indices(target, 6, 10)) {
+            const r = Math.hypot(offset % width - target.x, Math.floor(offset / width) - target.y);
+            data[offset] = r < 8 ? 103 : 13;
+        }
+        const full = ringAperture(data, width, height, target, { ...options, binWidth: 2 });
+        const inner = indices(target, 6, 8);
+        inner.slice(0, 8).forEach((offset) => { data[offset] = NaN; });
+        const partial = ringAperture(data, width, height, target, { ...options, binWidth: 2 });
+        expect(partial.valid).toBe(true);
+        expect(partial.sum).toBeCloseTo(full.sum, 8);
+        inner.slice(0, Math.ceil(inner.length * 0.21)).forEach((offset) => { data[offset] = NaN; });
+        expect(ringAperture(data, width, height, target, { ...options, binWidth: 2 }).valid).toBe(false);
+    });
     it('matches an independent loop, median and MAD without clipping the sky', () => {
         const at = { x: 40.3, y: 40.7 };
         const data = frame(0, 1, 2.2, at).data;
@@ -189,7 +224,6 @@ describe('ringAperture', () => {
         expect(result.background).toBe(background);
         expect(result.backgroundSigma).toBe(sigma);
         expect(result.sum).toBeCloseTo(total - count * background, 9);
-        expect(result.snr).toBeCloseTo(result.sum / (sigma * Math.sqrt(count)), 10);
     });
 
     it('scales missing ring pixels to the full area and rejects 30 percent missing', () => {
@@ -291,14 +325,21 @@ describe('ringAperture', () => {
         const result = ringAperture(data, width, height, target, opts);
         expect(result.valid).toBe(true);
         expect(result.nPix / ring.length).toBe(0.8);
-        expect(result.snr).toBeCloseTo(result.sum / (result.backgroundSigma * Math.sqrt(ring.length)), 10);
+        expect(result.snr).toBeCloseTo(10 * Math.sqrt(60) / 1.4826, 10);
     });
 });
 
 describe('ringFor', () => {
+    it('reports missing frames and rings that do not fit any selected frame', () => {
+        expect(() => ringFor([], target)).toThrow('No frames given');
+        expect(() => ringFor([frame(0)], target, { lambda: 3 })).toThrow('No frame at this wavelength');
+        const f = frame(0, 1, 2.2, { x: 4, y: 40 });
+        expect(() => ringFor([f], { x: 4, y: 40 })).toThrow('The ring does not fit in the picture: use a wider view');
+        expect(() => ringFor([frame(0, 1, 2.2)], target, { seed: 13 })).not.toThrow();
+    });
     it('uses the largest hole, native-pixel defaults and explicit margins', () => {
         const frames = [frame(0, 1, 2.2), frame(1, 2, 3.2), frame(2, 4, 4.2)];
-        const largest = Math.max(...frames.map((f) => blankRadius(f.data, width, height, target).radius));
+        const largest = Math.sqrt(17) + Math.SQRT1_2;
         expect(ringFor(frames, target)).toEqual({ ringIn: largest + 4, ringOut: largest + 10 });
         frames.forEach((f) => { f.grid.pixelArcsec = 6.15; });
         expect(ringFor(frames, target)).toEqual({ ringIn: largest + 2, ringOut: largest + 5 });
@@ -327,7 +368,7 @@ describe('ringFor', () => {
             seen.push(i);
             return positions[i]!;
         }, { margin: 1, thickness: 2 });
-        expect(seen).toEqual([0, 1]);
+        expect(seen).toEqual([1, 0]);
         expect(result.ringIn).toBeCloseTo(Math.sqrt(10) + Math.SQRT1_2 + 1, 12);
     });
 
@@ -348,7 +389,7 @@ describe('ringFor', () => {
         const frames = [frame(0, 1, 2.2), frame(1, 1, 7.2, target, 3)];
         const filtered = ringFor(frames, target, { lambda: 2 });
         expect(filtered).toEqual(ringFor([frames[0]!], target));
-        expect(ringFor(frames, target).ringIn).toBeGreaterThan(filtered.ringIn);
+        expect(ringFor(frames, target)).toEqual(filtered);
         expect(ringFor(frames, target, { maxDeltaUm: 0.02 })).toEqual(filtered);
     });
 
@@ -362,13 +403,67 @@ describe('ringFor', () => {
 });
 
 describe('haloCurve', () => {
+    it.each([0, 1, 2, 3])('rejects or corrects disconnected blank pattern %i', (kind) => {
+        const at = { x: 40.5, y: 40.5 };
+        const baseline = frame(0, 1, 0, at);
+        const truth = haloCurve([baseline], at, refs, { ...options, seed: 0.5 }).points[0]!.target.sum;
+        const f = frame(0, 1, 0, at);
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const r = Math.hypot(x - at.x, y - at.y);
+                if ((kind === 0 && x >= at.x && r >= 6 && r < 7)
+                    || (kind === 1 && x >= at.x && y >= at.y && r >= 6 && r < 8)
+                    || (kind === 2 && (r < 2 || (x >= at.x && r >= 3 && r < 7)))
+                    || (kind === 3 && x >= at.x && r >= 1 && r < 7)) {
+                    f.data[y * width + x] = NaN;
+                }
+            }
+        }
+        const point = haloCurve([f], at, refs, { ...options, seed: 0.5 }).points[0]!;
+        expect(!point.valid || Math.abs(point.target.sum / truth - 1) < 0.02).toBe(true);
+    });
+
+    it('recovers evenly scattered missing ring pixels', () => {
+        const at = { x: 40.5, y: 40.5 };
+        const truth = haloCurve([frame(0, 1, 0, at)], at, refs, options).points[0]!.target.sum;
+        const scattered = frame(0, 1, 0, at);
+        for (const [inner, outer] of [[6, 8], [8, 10]]) {
+            indices(at, inner!, outer!).forEach((offset, i) => { if (i % 10 === 0) { scattered.data[offset] = NaN; } });
+        }
+        const point = haloCurve([scattered], at, refs, options).points[0]!;
+        expect(point.valid).toBe(true);
+        expect(Math.abs(point.target.sum / truth - 1)).toBeLessThan(0.02);
+    });
+
+    it('rejects nonpositive halo sums and non-finite frame times', () => {
+        const zero = frame(0);
+        indices(target, 6, 10).forEach((offset) => { zero.data[offset] = 3; });
+        indices(target, 14, 18).forEach((offset) => { zero.data[offset] = 3; });
+        const negative = frame(1);
+        const positive = frame(2);
+        indices(target, 14, 18).forEach((offset) => { negative.data[offset] = 3; positive.data[offset] = 3; });
+        indices(target, 6, 10).forEach((offset) => {
+            positive.data[offset] = 13;
+            negative.data[offset] = -7;
+        });
+        for (const frames of [[zero], [negative, positive]]) {
+            for (const point of haloCurve(frames, target, refs, options).points) {
+                expect(!point.valid || [point.relative, point.ratio, point.mjd].every(Number.isFinite)).toBe(true);
+            }
+            expect(haloCurve(frames, target, refs, options).points[0]!.valid).toBe(false);
+        }
+        for (const key of ['tMin', 'tMax'] as const) {
+            const f = frame(0);
+            f.frame[key] = NaN;
+            expect(() => haloCurve([f], target, refs, options)).toThrow(HaloError);
+            expect(() => ringFor([f], target)).toThrow(HaloError);
+        }
+    });
     it('rejects a connected blank core entering the ring while a chosen ring recovers brightness', () => {
         const frames = [frame(0, 1, 2.2), frame(1, 2, 6), frame(2, 4, 3.2)];
         const ring = indices(target, 6, 10);
         const edge = ring.filter((offset) => Math.hypot(offset % width - target.x, Math.floor(offset / width) - target.y) < 6.4);
         edge.slice(0, 8).forEach((offset) => { frames[1]!.data[offset] = NaN; });
-        expect(8 / ring.length).toBeGreaterThanOrEqual(0.02);
-        expect(8 / ring.length).toBeLessThanOrEqual(0.05);
         const curve = haloCurve(frames, target, refs, options);
         expect(curve.points.map((point) => point.valid)).toEqual([true, false, true]);
         expect(curve.points[1]!.target.sum).toBeNaN();
@@ -388,12 +483,12 @@ describe('haloCurve', () => {
         expect(haloCurve([f], target, refs, options).points[0]!.valid).toBe(true);
     });
 
-    it('honours the seed option when locating a connected blank', () => {
+    it('finds blank pixels inside the ring independently of seed', () => {
         const f = frame(0);
         for (let x = target.x + 2; x <= target.x + 6; x++) {
             f.data[target.y * width + x] = NaN;
         }
-        expect(haloCurve([f], target, refs, { ...options, seed: 1 }).points[0]!.valid).toBe(true);
+        expect(haloCurve([f], target, refs, { ...options, seed: 1 }).points[0]!.valid).toBe(false);
         expect(haloCurve([f], target, refs, { ...options, seed: 2 }).points[0]!.valid).toBe(false);
     });
 

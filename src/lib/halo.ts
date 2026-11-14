@@ -2,6 +2,8 @@ import type { PixelCoord, RegriddedFrame } from './types';
 import { aperture } from './photometry';
 import type { ApertureOptions, ApertureResult, LightCurve, LightCurvePoint } from './photometry';
 
+const NATIVE_PIXEL_ARCSEC = 6.15;
+
 export class HaloError extends Error {
     constructor(message: string)
     {
@@ -16,6 +18,7 @@ export interface RingOptions {
     skyIn?: number;
     skyOut?: number;
     minFraction?: number;
+    binWidth?: number;
 }
 
 interface BlankOptions {
@@ -49,6 +52,14 @@ export function blankRadius(
     opts: BlankOptions = {},
 ): { radius: number; reach: number; pixels: number; touchesLimit: boolean }
 {
+    return blankSearch(data, width, height, at, opts, false);
+}
+
+function blankSearch(
+    data: Float32Array, width: number, height: number, at: PixelCoord,
+    opts: BlankOptions, exclusiveSeed: boolean,
+): { radius: number; reach: number; pixels: number; touchesLimit: boolean }
+{
     checkImage(data, width, height);
     const { seed, maxRadius } = checkBlankOptions(opts);
     if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) {
@@ -80,7 +91,8 @@ export function blankRadius(
     }
     for (let y = Math.max(yMin, Math.ceil(at.y - seed)); y <= Math.min(yMax, Math.floor(at.y + seed)); y++) {
         for (let x = Math.max(xMin, Math.ceil(at.x - seed)); x <= Math.min(xMax, Math.floor(at.x + seed)); x++) {
-            if (Math.hypot(x - at.x, y - at.y) <= seed) {
+            const distance = Math.hypot(x - at.x, y - at.y);
+            if (exclusiveSeed ? distance < seed : distance <= seed) {
                 enqueue(x, y);
             }
         }
@@ -160,12 +172,27 @@ function checkRingOptions(opts: RingOptions): Required<RingOptions>
     const skyIn = opts.skyIn ?? ringOut + 2;
     const skyOut = opts.skyOut ?? skyIn + 4;
     const minFraction = opts.minFraction ?? 0.8;
+    const binWidth = opts.binWidth ?? ringOut - ringIn;
     if (!Number.isFinite(ringIn) || ringIn <= 0 || !Number.isFinite(ringOut) || ringOut <= ringIn
         || !Number.isFinite(skyIn) || skyIn < ringOut || !Number.isFinite(skyOut) || skyOut <= skyIn
-        || !Number.isFinite(minFraction) || minFraction <= 0 || minFraction > 1) {
+        || !Number.isFinite(minFraction) || minFraction <= 0 || minFraction > 1
+        || !Number.isFinite(binWidth) || binWidth <= 0) {
         throw new HaloError('Require finite ordered ring/sky radii and 0 < minFraction <= 1');
     }
-    return { ringIn, ringOut, skyIn, skyOut, minFraction };
+    return { ringIn, ringOut, skyIn, skyOut, minFraction, binWidth };
+}
+
+function ringContained(width: number, height: number, at: PixelCoord, ringOut: number): boolean
+{
+    if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) {
+        return false;
+    }
+    const nearestX = Math.round(at.x);
+    const nearestY = Math.round(at.y);
+    return Math.hypot(Math.min(-1, nearestX) - at.x, nearestY - at.y) >= ringOut
+        && Math.hypot(Math.max(width, nearestX) - at.x, nearestY - at.y) >= ringOut
+        && Math.hypot(nearestX - at.x, Math.min(-1, nearestY) - at.y) >= ringOut
+        && Math.hypot(nearestX - at.x, Math.max(height, nearestY) - at.y) >= ringOut;
 }
 
 // Measures the ring alone; haloCurve checks whether the blank middle reaches it.
@@ -177,7 +204,7 @@ export function ringAperture(
     opts: RingOptions,
 ): ApertureResult
 {
-    const { ringIn, ringOut, skyIn, skyOut, minFraction } = checkRingOptions(opts);
+    const { ringIn, ringOut, skyIn, skyOut, minFraction, binWidth } = checkRingOptions(opts);
     checkImage(data, width, height);
     if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) {
         return {
@@ -187,7 +214,7 @@ export function ringAperture(
     }
     let allRing = 0;
     let nPix = 0;
-    let total = 0;
+    const bins = new Map<number, { all: number; finite: number; total: number }>();
     const sky: number[] = [];
     const xMin = Math.max(0, Math.ceil(at.x - skyOut));
     const xMax = Math.min(width - 1, Math.floor(at.x + skyOut));
@@ -199,10 +226,15 @@ export function ringAperture(
             const value = data[y * width + x]!;
             if (distance >= ringIn && distance < ringOut) {
                 allRing++;
+                const binIndex = Math.floor((distance - ringIn) / binWidth);
+                const bin = bins.get(binIndex) ?? { all: 0, finite: 0, total: 0 };
+                bin.all++;
                 if (Number.isFinite(value)) {
-                    total += value;
+                    bin.total += value;
+                    bin.finite++;
                     nPix++;
                 }
+                bins.set(binIndex, bin);
             } else if (distance >= skyIn && distance < skyOut && Number.isFinite(value)) {
                 sky.push(value);
             }
@@ -210,14 +242,10 @@ export function ringAperture(
     }
     const background = median(sky);
     const backgroundSigma = 1.4826 * median(sky.map((value) => Math.abs(value - background)));
-    const nearestX = Math.round(at.x);
-    const nearestY = Math.round(at.y);
-    const contained = Math.hypot(Math.min(-1, nearestX) - at.x, nearestY - at.y) >= ringOut
-        && Math.hypot(Math.max(width, nearestX) - at.x, nearestY - at.y) >= ringOut
-        && Math.hypot(nearestX - at.x, Math.min(-1, nearestY) - at.y) >= ringOut
-        && Math.hypot(nearestX - at.x, Math.max(height, nearestY) - at.y) >= ringOut;
-    const valid = contained && allRing > 0 && nPix / allRing >= minFraction && sky.length >= 8;
-    const sum = valid ? (total / nPix - background) * allRing : Number.NaN;
+    const valid = ringContained(width, height, at, ringOut) && allRing > 0 && sky.length >= 8
+        && [...bins.values()].every((bin) => bin.finite / bin.all >= minFraction);
+    const sum = valid ? [...bins.values()].reduce((total, bin) => total + bin.total / bin.finite * bin.all, 0)
+        - background * allRing : Number.NaN;
     const snr = valid && backgroundSigma > 0 ? sum / (backgroundSigma * Math.sqrt(allRing)) : 0;
     return { valid, sum, background, backgroundSigma, nPix, nSky: sky.length, snr };
 }
@@ -249,6 +277,9 @@ function checkFrames(frames: RegriddedFrame[]): void
             throw new HaloError('All frames must have matching width, height and pixelArcsec');
         }
         checkImage(f.data, f.grid.width, f.grid.height);
+        if (!Number.isFinite(f.frame.tMin) || !Number.isFinite(f.frame.tMax)) {
+            throw new HaloError('Frame times must be finite');
+        }
     }
 }
 
@@ -259,23 +290,30 @@ export function ringFor(
 ): { ringIn: number; ringOut: number }
 {
     checkFrames(frames);
+    if (frames.length === 0) {
+        throw new HaloError('No frames given');
+    }
     const pixelArcsec = frames[0]?.grid.pixelArcsec;
     if (pixelArcsec === undefined || !Number.isFinite(pixelArcsec) || pixelArcsec <= 0) {
         throw new HaloError('Require frames with a positive finite pixel scale');
     }
-    const native = 6.15 / pixelArcsec;
+    const native = NATIVE_PIXEL_ARCSEC / pixelArcsec;
     const margin = opts.margin ?? 2 * native;
     const thickness = opts.thickness ?? 3 * native;
-    const blankOpts = { seed: opts.seed, maxRadius: opts.maxRadius ?? 6 * native };
+    const blankOpts = { seed: opts.seed, maxRadius: opts.maxRadius ?? Math.max(opts.seed ?? 1.5, 6 * native) };
     checkBlankOptions(blankOpts);
     if (!Number.isFinite(margin) || margin < 0 || !Number.isFinite(thickness) || thickness <= 0) {
         throw new HaloError('Require a finite nonnegative margin and positive thickness');
     }
     let largest = 0;
-    const selected = opts.lambda !== undefined || opts.maxDeltaUm !== undefined
-        ? selectFrames(frames, opts).kept : frames.map((frame, index) => ({ frame, index }));
+    const selected = selectFrames(frames, opts).kept;
+    if (selected.length === 0) {
+        throw new HaloError('No frame at this wavelength');
+    }
+    const locations: { frame: RegriddedFrame; at: PixelCoord }[] = [];
     selected.forEach(({ frame: f, index: i }) => {
         const at = typeof target === 'function' ? target(f, i) : target;
+        locations.push({ frame: f, at });
         const blank = blankRadius(f.data, f.grid.width, f.grid.height, at, blankOpts);
         if (blank.touchesLimit) {
             throw new HaloError('Blank region reaches the search limit');
@@ -288,6 +326,9 @@ export function ringFor(
     const ringIn = largest + margin;
     const ringOut = ringIn + thickness;
     checkRingOptions({ ringIn, ringOut });
+    if (!locations.some(({ frame, at }) => ringContained(frame.grid.width, frame.grid.height, at, ringOut))) {
+        throw new HaloError('The ring does not fit in the picture: use a wider view');
+    }
     return { ringIn, ringOut };
 }
 
@@ -320,10 +361,12 @@ export function haloCurve(
     const refRatios: number[][] = refs.length >= 2 ? refs.map(() => []) : [];
     for (const { frame: f, index } of kept) {
         const at = typeof target === 'function' ? target(f, index) : target;
-        const measured = ringAperture(f.data, f.grid.width, f.grid.height, at, opts);
+        const measured = ringAperture(f.data, f.grid.width, f.grid.height, at,
+            { ...opts, binWidth: NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec });
         if (Number.isFinite(at.x) && Number.isFinite(at.y)) {
-            const blank = blankRadius(f.data, f.grid.width, f.grid.height, at, { seed: opts.seed, maxRadius: opts.ringOut });
-            if (blank.touchesLimit || blank.reach >= opts.ringIn) {
+            const blank = blankSearch(f.data, f.grid.width, f.grid.height, at,
+                { seed: opts.ringIn, maxRadius: opts.ringOut }, true);
+            if (blank.touchesLimit || (blank.pixels > 0 && blank.reach + Math.SQRT1_2 >= opts.ringIn)) {
                 measured.valid = false;
                 measured.sum = Number.NaN;
                 measured.snr = 0;
@@ -331,10 +374,13 @@ export function haloCurve(
         }
         const referenceResults = refs.map((ref) => aperture(f.data, f.grid.width, f.grid.height, ref, opts));
         const refSum = referenceResults.reduce((sum, ref) => sum + ref.sum, 0);
-        const valid = measured.valid && referenceResults.every((ref) => ref.valid) && refSum > 0;
+        const ratio = measured.sum / refSum;
+        const mjd = f.frame.tMin / 2 + f.frame.tMax / 2;
+        const valid = measured.valid && measured.sum > 0 && referenceResults.every((ref) => ref.valid)
+            && refSum > 0 && Number.isFinite(ratio) && Number.isFinite(mjd);
         points.push({
-            mjd: (f.frame.tMin + f.frame.tMax) / 2, lambda: f.lambdaAtCenter, target: measured,
-            refSum, ratio: valid ? measured.sum / refSum : Number.NaN, relative: Number.NaN, valid,
+            mjd, lambda: f.lambdaAtCenter, target: measured,
+            refSum, ratio: valid ? ratio : Number.NaN, relative: Number.NaN, valid,
         });
         if (valid) {
             for (let i = 0; i < refRatios.length; i++) {
@@ -355,6 +401,11 @@ export function haloCurve(
     for (const point of points) {
         if (point.valid && Number.isFinite(medianRatio) && medianRatio !== 0) {
             point.relative = point.ratio / medianRatio;
+            if (!Number.isFinite(point.relative)) {
+                point.valid = false;
+            }
+        } else {
+            point.valid = false;
         }
     }
     const refScatter = refRatios.map((ratios) => {
