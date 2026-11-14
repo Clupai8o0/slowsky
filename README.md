@@ -169,6 +169,7 @@ Star rings use ESA's Gaia DR3 (credit: ESA, Gaia DPAC), read through STScI's Gai
 VizieR mirror as a fallback. Names and target positions come from the SIMBAD database through the CfA mirror.
 The older picture is from the Two Micron All Sky Survey (2MASS; University of Massachusetts and IPAC/Caltech,
 funded by NASA and the National Science Foundation), as image tiles made by CDS (CNRS/Unistra) and served by IRSA.
+The comet card (switched off) uses IRSA's Moving Object Search Tool for the comet's frames and positions.
 The full list, with licences and credit lines: [DATA-LICENSES.md](DATA-LICENSES.md).
 Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md).
 
@@ -265,6 +266,9 @@ behind its switch (`mlHint`) and stays off; the reason is given below.
   whether anything can be seen there. The sums run in the browser (`src/lib/uptonight.ts`), ask the visitor for
   nothing, and are checked against astropy 8.0.2 (`tests/fixtures/uptonight-astropy.json`, made by
   `scripts/uptonight_fixture.py`).
+- A "Comet 3I/ATLAS in CO₂ light" card at the foot of the left panel (`comet`): twelve small pictures of the
+  interstellar comet from SPHEREx frames taken on 14 Dec 2025, and a chart of its core's brightness by wavelength.
+  It is switched off. While it is off the page adds nothing and does not fetch its file. See "Comet card" below.
 
 **The change sort hint.** A small neural network (`public/models/change-classifier.json`, run by
 `src/lib/classify.ts`). Its card is `public/models/change-classifier.card.json`; its test results are in `models/`.
@@ -296,6 +300,19 @@ behind its switch (`mlHint`) and stays off; the reason is given below.
   common grid, and every square is scaled by one noise figure for the whole view (`found.sigma` in
   `src/lib/change-hints.ts`). Two AI reviews of this code (Gemini and Claude Opus) said its lines could mislead on
   such squares and that it should not be switched on, so it was not.
+
+**Comet card.** `scripts/bake_comet.py` asks IRSA's Moving Object Search Tool which SPHEREx frames hold comet
+3I/ATLAS (C/2025 N1) and where it should be in each. It takes the twelve detector-5 DR1 frames from three visits on
+14 Dec 2025, which step from 3.96 to 4.36 µm, and reads by byte range only the rows it needs from each file (about
+4.9 MB in all). It writes `public/comet/3i-atlas.json`: a 41 × 41 pixel cut-out around the predicted spot, the mean
+of the 3 × 3 pixels there, and the median of the cut-out's 5-pixel border. The card draws the cut-outs on one shared
+linear scale and charts core minus border against wavelength (`src/lib/comet.ts`, `src/ui/comet-view.ts`).
+- What the numbers are: raw L2 image values in MJy/sr, with nothing subtracted except that border median.
+- What they are not: a calibrated measurement of the comet. The 3 × 3 box is not an aperture, the border still holds
+  coma light, and the frames were taken over about 3.3 hours, each at a different wavelength.
+- The core is about 40 times brighter at 4.25 µm than at 3.96 to 4.18 µm, where carbon dioxide gas glows. The
+  SPHEREx team reported the comet's carbon dioxide coma (Lisse et al. 2025, RNAAS 9, 242, arXiv:2508.15469; Lisse
+  et al. 2026, RNAAS 10, 26, arXiv:2601.06759). The card shows their public frames and claims nothing new.
 
 ## Licence
 
