@@ -28,7 +28,7 @@ function selectedMask(bits: number[]): number
     return mask;
 }
 
-export function regridFlags(flags: Int32Array, box: PixelBox, wcs: Wcs, grid: OutputGrid, bits: number[]): Uint8Array
+export function regridFlags(flags: Int32Array, box: PixelBox, wcs: Wcs, grid: OutputGrid, bits: number[], used?: Uint8Array): Uint8Array
 {
     const mask = selectedMask(bits);
     const boxWidth = box.x1 - box.x0;
@@ -37,9 +37,20 @@ export function regridFlags(flags: Int32Array, box: PixelBox, wcs: Wcs, grid: Ou
         || boxWidth < 0 || boxHeight < 0 || flags.length !== boxWidth * boxHeight) {
         throw new FlagsViewError('FLAGS length does not match the detector box');
     }
+    if (used && used.length !== flags.length) {
+        throw new FlagsViewError('Used buffer length does not match FLAGS');
+    }
+    used?.fill(0);
     const { width, height } = grid;
+    if (!Number.isSafeInteger(width) || width < 0 || !Number.isSafeInteger(height) || height < 0) {
+        throw new FlagsViewError('Invalid grid dimensions');
+    }
     const result = new Uint8Array(width * height);
     if (width === 0 || height === 0) {
+        return result;
+    }
+    if (boxWidth < 2 || boxHeight < 2) {
+        result.fill(NO_COVERAGE);
         return result;
     }
 
@@ -91,6 +102,9 @@ export function regridFlags(flags: Int32Array, box: PixelBox, wcs: Wcs, grid: Ou
             if (!(px >= 0 && py >= 0 && px <= boxWidth - 1 && py <= boxHeight - 1)) {
                 result[index] = NO_COVERAGE;
             } else {
+                if (used) {
+                    used[Math.round(py) * boxWidth + Math.round(px)] = 1;
+                }
                 const value = flags[Math.round(py) * boxWidth + Math.round(px)]!;
                 result[index] = (value & mask) !== 0 ? 1 : 0;
             }
@@ -99,10 +113,17 @@ export function regridFlags(flags: Int32Array, box: PixelBox, wcs: Wcs, grid: Ou
     return result;
 }
 
-export function flagCounts(flags: Int32Array, names: { bit: number; name: string }[]): FlagCount[]
+export function flagCounts(flags: Int32Array, names: { bit: number; name: string }[], used?: Uint8Array): FlagCount[]
 {
+    if (used && used.length !== flags.length) {
+        throw new FlagsViewError('Used buffer length does not match FLAGS');
+    }
     const counts = new Uint32Array(32);
-    for (const value of flags) {
+    for (let i = 0; i < flags.length; i++) {
+        if (used && used[i] !== 1) {
+            continue;
+        }
+        const value = flags[i]!;
         for (let bit = 0; bit < 32; bit++) {
             if (((value >>> bit) & 1) !== 0) {
                 counts[bit]!++;
@@ -125,34 +146,49 @@ function formatNumber(value: number): string
     return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
-export function summariseFlags(flags: Int32Array, names: { bit: number; name: string }[], bits: number[]): FlagsSummary
+export function summariseFlags(flags: Int32Array, names: { bit: number; name: string }[], bits: number[], used?: Uint8Array): FlagsSummary
 {
     const mask = selectedMask(bits);
-    const counts = flagCounts(flags, names);
+    const counts = flagCounts(flags, names, used);
     let flagged = 0;
-    for (const value of flags) {
+    let total = 0;
+    for (let i = 0; i < flags.length; i++) {
+        if (used && used[i] !== 1) {
+            continue;
+        }
+        total++;
+        const value = flags[i]!;
         if ((value & mask) !== 0) {
             flagged++;
         }
     }
-    const total = flags.length;
+    const location = used ? 'in this view' : 'in the loaded detector area';
     let sentence: string;
     if (total === 0) {
-        sentence = 'No detector pixels in this view.';
+        sentence = `No detector pixels ${location}.`;
     } else if (flagged === 0) {
-        sentence = 'No pixel in this view is flagged.';
+        sentence = `No pixel ${location} is flagged.`;
     } else {
         const common = counts.filter(count => (mask & (1 << count.bit)) !== 0).slice(0, 3)
             .map(count => `${count.name || `bit ${count.bit}`} (${formatNumber(count.pixels)})`).join(', ');
-        sentence = `${formatNumber(flagged)} of ${formatNumber(total)} detector pixels in this view are flagged `
-            + `(${(flagged / total * 100).toFixed(1)}%). Most common: ${common}.`;
+        const percentage = flagged / total * 100;
+        const percentText = percentage < 0.05 ? 'under 0.1%'
+            : flagged < total && percentage >= 99.95 ? 'over 99.9%' : `${percentage.toFixed(1)}%`;
+        const noun = total === 1 ? 'pixel' : 'pixels';
+        const verb = flagged === 1 ? 'is' : 'are';
+        sentence = `${formatNumber(flagged)} of ${formatNumber(total)} detector ${noun} ${location} ${verb} flagged `
+            + `(${percentText}). Most common: ${common}.`;
     }
     return { total, flagged, counts, sentence };
 }
 
-export function flagsRgba(mask: Uint8Array, color: [number, number, number], alpha: number): Uint8ClampedArray
+export function flagsRgba(mask: Uint8Array, color: [number, number, number], alpha: number, out?: Uint8ClampedArray): Uint8ClampedArray
 {
-    const result = new Uint8ClampedArray(mask.length * 4);
+    if (out && out.length !== mask.length * 4) {
+        throw new FlagsViewError('RGBA buffer length does not match mask');
+    }
+    const result = out ?? new Uint8ClampedArray(mask.length * 4);
+    result.fill(0);
     for (let i = 0; i < mask.length; i++) {
         if (mask[i] === 1) {
             result[i * 4] = color[0];
