@@ -20,6 +20,9 @@ import type { RegriddedFrame, TargetId } from '../lib/types';
 import { COPY } from './copy';
 import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
 import { ChangeInputError, findChanges } from '../lib/change-input';
+import { hintsFor } from '../lib/change-hints';
+import { tryLoadClassifier, type ClassifierModel } from '../lib/classify';
+import type { VisitChangeResult } from '../lib/changes';
 import { PLAIN_LEAD, hasSnrFigure, plainListNotes, isSnrNote } from '../lib/changes';
 import { changesHtml, changesMarks, changesView, type ChangesView } from './changes-view';
 import { createRangeReader } from '../lib/fits';
@@ -274,6 +277,7 @@ export interface ChangesDeps {
     find?: typeof findChanges;
     variance?: (frame: RegriddedFrame, signal: AbortSignal) => Promise<Float32Array | null>;
     savedList?: boolean; // tests only: list candidates from a saved view too (the site never does)
+    hint?: boolean;
 }
 
 // A saved view is not checked against the archive's error maps or flags, so the site lists nothing from it.
@@ -292,10 +296,40 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
     // its own store: a list worked out from a live read must never show on a saved copy of the same result.
     const doneLive = new WeakMap<SkyResult, ChangesView | null>();
     const doneSaved = new WeakMap<SkyResult, ChangesView | null>();
+    const hintInputs = new WeakMap<SkyResult, { result: SkyResult; found: VisitChangeResult }>();
+    let model: ClassifierModel | null | undefined;
     // Results whose full list is open ("Show N more"), and the boxes that already listen for that button.
     const open = new WeakSet<SkyResult>();
     const wired = new WeakSet<HTMLElement>();
     let last: [HTMLElement, HTMLElement, SlotView] | null = null;
+
+    async function addHints(result: SkyResult, view: ChangesView, signal: AbortSignal): Promise<void>
+    {
+        const input = hintInputs.get(result);
+        if (!(deps.hint ?? FEATURES.mlHint) || !input || !view.candidates.length || view.candidates[0]?.hint || model === null) {
+            return;
+        }
+        try {
+            let loaded = model;
+            if (!loaded) {
+                const response = await (deps.fetcher ?? fetch)(`${import.meta.env.BASE_URL}models/change-classifier.json`, { signal });
+                if (!response.ok) {
+                    if (!signal.aborted) { model = null; }
+                    return;
+                }
+                loaded = tryLoadClassifier(await response.json());
+                if (signal.aborted) { return; }
+                model = loaded ?? null;
+            }
+            if (!loaded || signal.aborted) { return; }
+            const hints = hintsFor(input.result, input.found, view.candidates, loaded);
+            if (signal.aborted) { return; }
+            view.candidates = view.candidates.map((candidate, i) => ({ ...candidate, hint: hints[i]! }));
+            onChange();
+        } catch {
+            if (!signal.aborted) { model = null; }
+        }
+    }
 
     // One frame at a time, each with its own deadline; null when a new result takes over. A read that fails or
     // runs out of time counts as null for that frame.
@@ -347,9 +381,17 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         const done = saved ? doneSaved : doneLive;
         if (done.has(result)) {
             resultView = done.get(result) ?? null;
+            if (!saved && resultView) { void addHints(result, resultView, reset); }
             return;
         }
-        const first = changesFor(result, deps.find);
+        let raw: VisitChangeResult | undefined;
+        const run = (sky: SkyResult): ChangesView | null => changesFor(sky, (value, opts, changeOpts) => {
+            const found = (deps.find ?? findChanges)(value, opts, changeOpts);
+            raw = found;
+            return found;
+        });
+        const first = run(result);
+        let hintResult = result, hintFound = raw;
         resultView = first;
         if (!first?.ran) {
             done.set(result, first);
@@ -377,7 +419,10 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
                     return variance ? { ...p, frame: { ...p.frame, variance } } : p;
                 });
                 const missing = firstFrames.filter(f => !got.get(f.frame.obsId)).length;
-                const again = missing === firstFrames.length ? first : changesFor({ ...result, frames }, deps.find) ?? first;
+                const mapped = { ...result, frames };
+                const rerun = missing === firstFrames.length ? null : run(mapped);
+                const again = rerun ?? first;
+                if (rerun && raw) { hintResult = mapped; hintFound = raw; }
                 found = missing ? { ...again, notes: [...again.notes, `Error maps could not be read for ${missing} ${missing === 1 ? 'frame' : 'frames'}.`] } : again;
             }
             if (!found.candidates.length) {
@@ -407,6 +452,10 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
                     ran: screened.dropNote && !screened.kept.length ? false : found.ran,
                     notes: [...notes, ...(screened.dropNote ? [screened.dropNote] : [])] };
                 done.set(result, resultView);
+                if (!saved && hintFound && (deps.hint ?? FEATURES.mlHint)) {
+                    hintInputs.set(result, { result: hintResult, found: hintFound });
+                    void addHints(result, resultView, reset);
+                }
             };
             if (saved || !frames.some(f => f.context?.flags)) {
                 finish(new Map());

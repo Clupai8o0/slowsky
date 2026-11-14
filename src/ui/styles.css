@@ -520,6 +520,8 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 /* Candidate changes (FEATURES.changes): the finder's own sentences, then its notes. */
 .sk-chg { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; font-size: var(--fs-small); line-height: 1.55; color: var(--ink2); }
 .sk-chg b { display: block; font: 500 var(--fs-label)/1.6 var(--mono); color: var(--mute); }
+.sk-hintml { margin: 6px 0 0; font-size: var(--fs-small); }
+.sk-hintml small { display: block; color: var(--mute); }
 .sk-chg-lead { margin: 0; font-size: var(--fs-small); line-height: 1.55; color: var(--ink2); }
 .sk-chg-lead + .sk-chg, .sk-chg-lead + .sk-chg-lead { margin-top: 12px; }
 .sk-chg-more-row { margin: 12px 0 0; font-size: var(--fs-small); line-height: 1.55; color: var(--mute); }

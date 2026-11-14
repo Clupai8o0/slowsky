@@ -4,6 +4,8 @@
 // sky carry the same N. The finder's counts, noise and threshold are not shown. Pure string builders, no DOM.
 
 import { isSnrNote, PLAIN_CAUSES, PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
+import { HELPER_LABEL, type Classification } from '../lib/classify';
+import { hintHtml } from './ml-hint';
 
 // Fields the finder is adding (lane/changes r10b): `sentence` (the reason without its caveat), `caveat` (a full
 // sentence, absent when both visits have 2+ frames) and `lightVisit`; `reason` stays as an alias of `sentence`.
@@ -16,7 +18,7 @@ export type Reading = ChangeReading | 'moreLater' | 'lessLater';
 export type CandidateEnd = Omit<ChangeEnd, 'radiusPix'> & { radiusPix?: number };
 export type PanelCandidate = Omit<ChangeCandidate, 'lightEnds' | 'ends' | 'reading'> & {
     sentence?: string; caveat?: string; lightVisit?: 'earlier' | 'later'; x?: number; y?: number;
-    reading?: Reading; ends?: CandidateEnd[]; lightEnds?: CandidateEnd[]; nearCatalogue?: boolean;
+    reading?: Reading; ends?: CandidateEnd[]; lightEnds?: CandidateEnd[]; nearCatalogue?: boolean; hint?: Classification;
 };
 export interface FinderVisits { earlier: { obsIds: string[] }; later: { obsIds: string[] } }
 
@@ -141,7 +143,7 @@ export function changesHtml(v: ChangesView, all = false): string
         const button = closed.length ? `Show ${hidden.length} more` : hidden.length === 1 ? 'Show it' : 'Show them';
         const more = hidden.length ? `<p class="sk-chg-more-row">${all ? '' : esc(hiddenText) + ' '}<button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? (closed.length ? 'Show fewer' : hidden.length === 1 ? 'Hide it' : 'Hide them') : button}</button></p>` : '';
         const items = listed(v, all);
-        const list = items.length ? `<ol class="sk-chg">${items.map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(shared ? c.line.replace(clause, ' (') : c.line)}</li>`).join('')}</ol>`
+        const list = items.length ? `<ol class="sk-chg">${items.map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(shared ? c.line.replace(clause, ' (') : c.line)}${c.hint ? hintHtml(c.hint, HELPER_LABEL) : ''}</li>`).join('')}</ol>`
             : '';
         const visibleNotes = !all && !items.length ? v.notes.filter(n => !n.startsWith('Listed with spots that have no catalogue star within ') && !isSnrNote(n)) : v.notes;
         const notes = visibleNotes.length ? `<ul class="sk-chg-notes">${visibleNotes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
@@ -155,7 +157,7 @@ export function changesHtml(v: ChangesView, all = false): string
     // Grouped lists show their order here; the plain list receives its order note from the finder.
     const more = button || order.startsWith('Listed in groups') ? `<p class="sk-chg-more-row">${`${order}${button}`.trim()}</p>` : '';
     const list = v.candidates.length
-        ? `<ol class="sk-chg">${listed(v, all).map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(shared ? c.line.replace(clause, ' (') : c.line)}</li>`).join('')}</ol>${more}`
+        ? `<ol class="sk-chg">${listed(v, all).map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(shared ? c.line.replace(clause, ' (') : c.line)}${c.hint ? hintHtml(c.hint, HELPER_LABEL) : ''}</li>`).join('')}</ol>${more}`
         : v.ran ? `<p class="sk-chg-lead">${EMPTY_LEAD}</p>` : '';
     const notes = v.notes.length ? `<ul class="sk-chg-notes">${v.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
     return lead + list + notes;
