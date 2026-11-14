@@ -13,6 +13,7 @@ at 4.67 micron.
 You get a fact sheet. Every line on it was measured by the tool's own code.
 
 Rules:
+- Write every number in digits, exactly as it appears on the sheet, with the sheet's unit.
 - Use numbers only from the fact sheet or from the text above, written exactly as they appear there. Never work
   out a new number, and never quote a distance, age, mass, date or catalogue value from memory.
 - You may say in words what is widely known about a named target, with no numbers, and say that it is background

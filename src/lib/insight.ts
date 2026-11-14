@@ -105,6 +105,22 @@ export function factSheet(f: InsightFacts): string[]
 export function checkNote(text: string, sheet: string[]): { text: string; dropped: number }
 {
     const allowed = new Set([...CONSTANTS, ...sheet.flatMap((line) => (line.match(/\d+(?:\.\d+)?/g) ?? []).map(Number))]);
+    const unitPattern = /(\d+(?:\.\d+)?)\s*(percent\b|times\b|sigma\b|x\b|%|×|σ)/gi;
+    function unitKey(value: string, unit: string): string
+    {
+        const kind = unit.toLowerCase();
+        return `${Number(value)}:${kind === '%' ? 'percent' : kind === 'x' || kind === '×' ? 'times' : kind === 'σ' ? 'sigma' : kind}`;
+    }
+    const units = new Set(sheet.flatMap((line) => Array.from(line.matchAll(unitPattern), (match) => unitKey(match[1]!, match[2]!))));
+    function invalid(value: string): boolean
+    {
+        return /discover/i.test(value)
+            || Array.from(value).some((char) => /\p{Nd}/u.test(char) && !/[0-9]/.test(char))
+            || /(?<![0-9])\.\d/.test(value)
+            || /\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|dozen|half|twice|double|triple)\b/i.test(value)
+            || (value.match(/\d+(?:\.\d+)?/g) ?? []).some((n) => !allowed.has(Number(n)))
+            || Array.from(value.matchAll(unitPattern)).some((match) => !units.has(unitKey(match[1]!, match[2]!)));
+    }
     let dropped = 0;
     let count = 0;
     const paragraphs: string[] = [];
@@ -115,12 +131,12 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
         const label = colon >= 0 && colon < 30 ? line.slice(0, colon + 1) : '';
         const body = line.slice(label.length).trim();
         const sentences = body.match(/.*?(?:[.!?](?=\s|$)|$)/g)?.map((s) => s.trim()).filter(Boolean) ?? [];
-        if (/discover/i.test(label) || (label.match(/\d+(?:\.\d+)?/g) ?? []).some((n) => !allowed.has(Number(n)))) {
+        if (invalid(label)) {
             dropped += sentences.length;
             continue;
         }
         const kept = sentences.filter((sentence) => {
-            if (/discover/i.test(sentence) || (sentence.match(/\d+(?:\.\d+)?/g) ?? []).some((n) => !allowed.has(Number(n)))) {
+            if (invalid(sentence)) {
                 dropped++;
                 return false;
             }
@@ -157,7 +173,7 @@ export async function fetchInsight(facts: InsightFacts, opts: { signal?: AbortSi
 {
     const clean = validateFacts(facts);
     const key = JSON.stringify(clean);
-    const hit = opts.passcode === undefined ? cache.get(key) : undefined;
+    const hit = cache.get(key);
     if (hit) { return { ...hit, cached: true }; }
     try {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -175,7 +191,7 @@ export async function fetchInsight(facts: InsightFacts, opts: { signal?: AbortSi
         if (!data || typeof data !== 'object' || typeof (data as InsightNote).text !== 'string' || typeof (data as InsightNote).model !== 'string' || typeof (data as InsightNote).dropped !== 'number') { throw new InsightError('failed'); }
         const note: InsightNote = { text: (data as InsightNote).text, model: (data as InsightNote).model, dropped: (data as InsightNote).dropped, cached: (data as InsightNote).cached === true, ...(typeof (data as InsightNote).remaining === 'number' ? { remaining: (data as InsightNote).remaining } : {}) };
         if (cache.size >= 50) { cache.delete(cache.keys().next().value!); }
-        if (opts.passcode === undefined) { cache.set(key, note); }
+        cache.set(key, note);
         return { ...note };
     } catch (error) {
         if (opts.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) { throw error; }

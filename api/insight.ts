@@ -5,28 +5,40 @@ import { SYSTEM_PROMPT, userMessage } from '../src/lib/insight-prompt';
 
 declare const process: { env: Record<string, string | undefined> };
 
-export interface Completion { text: string; refused: boolean; model: string }
+export interface Completion { text: string; refused: boolean; model: string; stopReason?: string | null }
+const MAX_GUESSES = 10;
+const MAX_ATTEMPTS = 60;
+const MAX_KEYS = 20000;
 export interface LimitStore {
     hit(key: string, windowMs: number, now: number): Promise<number>;
     count(key: string, windowMs: number, now: number): Promise<number>;
 }
 export function memoryStore(): LimitStore
 {
-    const entries = new Map<string, { count: number; end: number }>();
-    function lookup(key: string, windowMs: number, now: number): string {
-        for (const [name, entry] of entries) { if (entry.end <= now) { entries.delete(name); } }
+    const guesses = new Map<string, { count: number; end: number }>();
+    const notes = new Map<string, { count: number; end: number }>();
+    function entriesFor(key: string): typeof guesses
+    {
+        return key.startsWith('try:') || key.startsWith('bad:') ? guesses : notes;
+    }
+    function lookup(key: string, windowMs: number, now: number): string
+    {
         return `${key}:${Math.floor(now / windowMs)}`;
     }
     return {
         async hit(key, windowMs, now) {
             const name = lookup(key, windowMs, now);
+            const entries = entriesFor(key);
             const entry = entries.get(name);
-            if (!entry && entries.size >= 20000) { return Infinity; }
+            if (!entry && entries.size >= MAX_KEYS) {
+                for (const [oldName, old] of entries) { if (old.end <= now) { entries.delete(oldName); } }
+                if (entries.size >= MAX_KEYS) { entries.delete(entries.keys().next().value!); }
+            }
             const count = (entry?.count ?? 0) + 1;
             entries.set(name, { count, end: (Math.floor(now / windowMs) + 1) * windowMs });
             return count;
         },
-        async count(key, windowMs, now) { return entries.get(lookup(key, windowMs, now))?.count ?? 0; },
+        async count(key, windowMs, now) { return entriesFor(key).get(lookup(key, windowMs, now))?.count ?? 0; },
     };
 }
 export function upstashStore(url: string, token: string, fetcher: typeof fetch = fetch): LimitStore
@@ -74,9 +86,9 @@ export interface InsightDeps {
 }
 type Answer = { text: string; model: string; dropped: number };
 const answers = new Map<string, Answer>();
-const fallbackStore = memoryStore();
 const envUrl = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? process.env.UPSTASH_REDIS_REST_URL : process.env.KV_REST_API_URL;
 const envToken = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? process.env.UPSTASH_REDIS_REST_TOKEN : process.env.KV_REST_API_TOKEN;
+// In-memory limits are per server instance and reset on a cold start.
 const serverStore = envUrl && envToken ? upstashStore(envUrl, envToken) : memoryStore();
 const limit = 4096;
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response
@@ -117,22 +129,42 @@ function setting(name: string, fallback: number): number
     const value = Number(process.env[name]);
     return Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
+function networkAddress(ip: string): string
+{
+    if (!ip.includes(':')) { return ip; }
+    try {
+        const normalized = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+        const halves = normalized.split('::');
+        const left = halves[0] ? halves[0].split(':') : [];
+        const right = halves[1] ? halves[1].split(':') : [];
+        const parts = halves.length === 2 ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right] : left;
+        const words = parts.map((part) => parseInt(part, 16));
+        if (words.length !== 8) { return ip; }
+        if (words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff) {
+            return `${words[6]! >> 8}.${words[6]! & 255}.${words[7]! >> 8}.${words[7]! & 255}`;
+        }
+        return words.slice(0, 4).map((word) => word.toString(16)).join(':');
+    } catch { return ip; }
+}
+class StoreFailure extends Error {}
 export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Response>; POST(r: Request): Promise<Response> }
 {
     const minute = 60000, hour = 3600000, day = 86400000, guessWindow = 900000;
     const enabled = Boolean(deps.apiKey && (deps.passcode || deps.open));
     async function counter(method: 'hit' | 'count', key: string, window: number, now: number): Promise<number> {
-        try { return await deps.store[method](key, window, now); } catch { return fallbackStore[method](key, window, now); }
+        try { return await deps.store[method](key, window, now); } catch { throw new StoreFailure(); }
     }
     function retry(window: number, now: number): number { return Math.max(1, Math.ceil(((Math.floor(now / window) + 1) * window - now) / 1000)); }
     async function visitor(request: Request): Promise<string> {
         const ip = request.headers.get('x-real-ip')?.trim() || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-        return (await hash(`${ip}|${deps.passcode ?? ''}`)).slice(0, 16);
+        return (await hash(`${networkAddress(ip)}|${deps.passcode ?? ''}`)).slice(0, 16);
     }
     async function access(request: Request, id: string, now: number): Promise<'ok' | 'locked' | 'busy'> {
         if (!deps.passcode) { return 'ok'; }
-        if (await counter('count', `bad:${id}`, guessWindow, now) >= 5) { return 'busy'; }
         const supplied = request.headers.get('x-insight-passcode') ?? '';
+        if (!supplied && request.method === 'GET') { return 'locked'; }
+        if (await counter('hit', `try:${id}`, guessWindow, now) > MAX_ATTEMPTS) { return 'busy'; }
+        if (await counter('count', `bad:${id}`, guessWindow, now) >= MAX_GUESSES) { return 'busy'; }
         const [a, b] = await Promise.all([crypto.subtle.digest('SHA-256', new TextEncoder().encode(supplied)), crypto.subtle.digest('SHA-256', new TextEncoder().encode(deps.passcode))]);
         let diff = 0;
         const x = new Uint8Array(a), y = new Uint8Array(b);
@@ -141,7 +173,7 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
         if (supplied) { await counter('hit', `bad:${id}`, guessWindow, now); }
         return 'locked';
     }
-    return {
+    const handlers = {
         async GET(request: Request): Promise<Response> {
             if (!enabled) { return json({ enabled: false, locked: false, unlocked: false, model: deps.model }); }
             const now = deps.now(), id = await visitor(request), state = await access(request, id, now);
@@ -177,15 +209,13 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
                 { key: 'global-hour', window: hour, max: deps.maxPerHour },
                 { key: 'global-day', window: day, max: deps.maxPerDay },
             ];
-            const counts = await Promise.all(limits.map((item) => counter('count', item.key, item.window, now)));
-            const full = limits.filter((item, i) => counts[i]! >= item.max);
-            if (full.length) {
-                return json({ error: 'busy', ...(counts[1]! >= deps.maxPerUserDay ? { reason: 'daily' } : {}) }, 429, { 'Retry-After': String(Math.max(...full.map((item) => retry(item.window, now)))) });
-            }
-            const hits = await Promise.all(limits.map((item) => counter('hit', item.key, item.window, now)));
-            if (hits.some((count, i) => count > limits[i]!.max)) {
-                const over = limits.filter((item, i) => hits[i]! > item.max);
-                return json({ error: 'busy', ...(hits[1]! > deps.maxPerUserDay ? { reason: 'daily' } : {}) }, 429, { 'Retry-After': String(Math.max(...over.map((item) => retry(item.window, now)))) });
+            const hits: number[] = [];
+            for (const [i, item] of limits.entries()) {
+                const count = await counter('hit', item.key, item.window, now);
+                hits.push(count);
+                if (count > item.max) {
+                    return json({ error: 'busy', ...(i === 1 || i === 3 ? { reason: 'daily' } : {}) }, 429, { 'Retry-After': String(retry(item.window, now)) });
+                }
             }
             const sheet = factSheet(facts);
             const controller = new AbortController();
@@ -196,7 +226,9 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
                 });
                 const completion = await Promise.race([deps.complete(SYSTEM_PROMPT, userMessage(sheet), controller.signal), timeout]);
                 if (completion.refused) { return failure(502, 'no_note'); }
-                const checked = checkNote(completion.text, sheet);
+                const endings = completion.stopReason === 'max_tokens' ? [...completion.text.matchAll(/[.!?](?=\s|$)/g)] : [];
+                const text = completion.stopReason === 'max_tokens' ? completion.text.slice(0, (endings.at(-1)?.index ?? -1) + 1).trimEnd() : completion.text;
+                const checked = checkNote(text, sheet);
                 const answer = { ...checked, model: completion.model };
                 if (answers.size >= 200) { answers.delete(answers.keys().next().value!); }
                 answers.set(key, answer);
@@ -207,6 +239,15 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
             } finally { if (timer !== undefined) { clearTimeout(timer); } }
         },
     };
+    async function safe(run: () => Promise<Response>): Promise<Response>
+    {
+        try { return await run(); } catch (error) {
+            if (!(error instanceof StoreFailure)) { throw error; }
+            console.warn('Insight limit store unavailable');
+            return failure(503, 'busy', { 'Retry-After': '60' });
+        }
+    }
+    return { GET: (request) => safe(() => handlers.GET(request)), POST: (request) => safe(() => handlers.POST(request)) };
 }
 export function anthropicComplete(apiKey: string, model: string): InsightDeps['complete']
 {
@@ -216,7 +257,7 @@ export function anthropicComplete(apiKey: string, model: string): InsightDeps['c
             const opus = model === 'claude-opus-5-5';
             const stream = client.beta.messages.stream({ model, max_tokens: 1500, output_config: { effort: 'low' }, system, messages: [{ role: 'user', content: user }], ...(opus ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}) }, { signal });
             const message = await stream.finalMessage();
-            return { text: message.content.filter((block) => block.type === 'text').map((block) => block.text).join(''), refused: message.stop_reason === 'refusal', model: message.model };
+            return { text: message.content.filter((block) => block.type === 'text').map((block) => block.text).join(''), refused: message.stop_reason === 'refusal', model: message.model, stopReason: message.stop_reason };
         } catch (error) {
             if (error instanceof Anthropic.APIError) { throw new Error('upstream failure'); }
             throw error;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHandlers as createServerHandlers, memoryStore, upstashStore, type InsightDeps } from '../api/insight';
+import { createHandlers as createServerHandlers, memoryStore, upstashStore, type InsightDeps, type LimitStore } from '../api/insight';
 import { checkNote, factSheet, fetchInsight, insightEnabled, insightStatus, validateFacts, type InsightFacts } from '../src/lib/insight';
 import { TARGETS } from '../src/lib/targets';
 
@@ -15,6 +15,83 @@ function request(value: unknown, headers: Record<string, string> = {}): Request
     return new Request('https://example.test/api/insight', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(value) });
 }
 describe('insight access and allowances', () => {
+    it.each([false, true])('bounds parallel guesses, delayed store: %s', async (delayed) => {
+        const inner = memoryStore();
+        const store: LimitStore = delayed ? {
+            hit: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.hit(...args); },
+            count: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.count(...args); },
+        } : inner;
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: vi.fn(), now: () => 0, passcode: 'secret', store });
+        const send = () => handler.POST(request({ facts }, { 'x-real-ip': 'guess-parallel', 'x-insight-passcode': 'bad' }));
+        const replies = await Promise.all(Array.from({ length: 200 }, send));
+        expect(replies.filter((r) => r.status === 401).length).toBeLessThanOrEqual(60);
+        expect(replies.every((r) => r.status === 401 || r.status === 429)).toBe(true);
+        const serial = createHandlers({ apiKey: 'key', model: 'fake', complete: vi.fn(), now: () => 0, passcode: 'secret' });
+        for (let i = 0; i < 10; i++) { expect((await serial.POST(request({ facts }, { 'x-insight-passcode': 'bad' }))).status).toBe(401); }
+        expect((await serial.POST(request({ facts }, { 'x-insight-passcode': 'bad' }))).status).toBe(429);
+    });
+    it('charges shared counters only after visitor counters pass under concurrency', async () => {
+        const complete = vi.fn(async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }));
+        const inner = memoryStore();
+        const store: LimitStore = { hit: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.hit(...args); }, count: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.count(...args); } };
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => 18000000, passcode: 'secret', maxPerHour: 7, maxPerDay: 7, store });
+        const replies = await Promise.all(Array.from({ length: 300 }, (_, i) => handler.POST(request({ facts: { ...facts, ra: i / 10 } }, { 'x-real-ip': 'parallel-right', 'x-insight-passcode': 'secret' }))));
+        expect(replies.filter((r) => r.status === 200).length).toBeLessThanOrEqual(6);
+        expect(complete.mock.calls.length).toBeLessThanOrEqual(6);
+        expect((await handler.POST(request({ facts: { ...facts, ra: 80 } }, { 'x-real-ip': 'another-visitor', 'x-insight-passcode': 'secret' }))).status).toBe(200);
+    });
+    it('fails closed on store errors without leaking details', async () => {
+        const complete = vi.fn();
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.test');
+        vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'secret');
+        try {
+            const store = { hit: async () => { throw new Error('secret'); }, count: async () => { throw new Error('secret'); } };
+            const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => 0, store });
+            const response = await handler.POST(request({ facts: { ...facts, ra: 81 } }));
+            expect(response.status).toBe(503);
+            expect(await response.json()).toEqual({ error: 'busy' });
+            expect(response.headers.get('retry-after')).toBe('60');
+            expect(complete).not.toHaveBeenCalled();
+            expect(warn).toHaveBeenCalledWith('Insight limit store unavailable');
+        } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
+    });
+    it.each([
+        ['user-minute:', 7, false], ['user-day:', 21, true], ['global-hour', 121, false], ['global-day', 301, true],
+    ])('stops after the %s counter exceeds its limit', async (key, count, daily) => {
+        const touched: string[] = [];
+        const complete = vi.fn();
+        const store: LimitStore = { hit: async (name) => { touched.push(name); return name.startsWith(key) ? count : 1; }, count: async () => 0 };
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => 0, store });
+        const response = await handler.POST(request({ facts: { ...facts, ra: 90 } }));
+        expect(response.status).toBe(429);
+        expect(await response.json()).toEqual({ error: 'busy', ...(daily ? { reason: 'daily' } : {}) });
+        expect(touched.at(-1)).toMatch(new RegExp(`^${key}`));
+        expect(complete).not.toHaveBeenCalled();
+    });
+    it('keeps note counters usable after 25000 distinct guessers', async () => {
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => 0, passcode: 'secret' });
+        for (let i = 0; i < 25000; i++) {
+            const response = await handler.POST(request({ facts }, { 'x-real-ip': `visitor-${i}`, 'x-insight-passcode': 'bad' }));
+            expect(response.status).toBe(401);
+        }
+        const response = await handler.POST(request({ facts: { ...facts, ra: 82 } }, { 'x-real-ip': 'known', 'x-insight-passcode': 'secret' }));
+        expect(response.status).toBe(200);
+    }, 60000);
+    it('groups IPv6 by /64 and IPv4 mapped addresses by IPv4', async () => {
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => 0, maxPerUserDay: 1 });
+        const send = (ip: string, ra: number) => handler.POST(request({ facts: { ...facts, ra } }, { 'x-real-ip': ip }));
+        expect((await send('2001:db8:1:2:aaaa::1', 83)).status).toBe(200);
+        expect((await send('2001:db8:1:2:bbbb::9', 84)).status).toBe(429);
+        expect((await send('2001:db8:1:3::1', 85)).status).toBe(200);
+        expect((await send('::ffff:1.2.3.4', 86)).status).toBe(200);
+        expect((await send('1.2.3.4', 87)).status).toBe(429);
+    });
+    it('reports whether access is locked', async () => {
+        const base = { apiKey: 'key', model: 'fake', complete: vi.fn(), now: () => 0 };
+        expect(await (await createHandlers({ ...base, passcode: 'secret' }).GET(new Request('https://example.test'))).json()).toMatchObject({ locked: true });
+        expect(await (await createHandlers({ ...base, open: true }).GET(new Request('https://example.test'))).json()).toMatchObject({ locked: false });
+    });
     it('fails closed, locks guesses, and unlocks after the window', async () => {
         let now = 0;
         const complete = vi.fn(async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }));
@@ -24,7 +101,7 @@ describe('insight access and allowances', () => {
         const handler = createHandlers({ ...base, passcode: 'secret' });
         const headers = { 'x-real-ip': '192.0.2.40' };
         expect((await handler.POST(request({ facts }, headers))).status).toBe(401);
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 10; i++) {
             expect((await handler.POST(request({ facts }, { ...headers, 'x-insight-passcode': 'wrong' }))).status).toBe(401);
         }
         expect(complete).not.toHaveBeenCalled();
@@ -48,13 +125,13 @@ describe('insight access and allowances', () => {
         const refused = await handler.POST(request({ facts: { ...facts, ra: 313 } }, headers));
         expect(await refused.json()).toEqual({ error: 'busy', reason: 'daily' });
         const userDayKey = keys.find((key) => key.startsWith('user-day:'))!;
-        expect(await inner.count(userDayKey, 86400000, now)).toBe(3);
+        expect(await inner.count(userDayKey, 86400000, now)).toBe(4);
         expect(await (await handler.POST(request({ facts: { ...facts, ra: 310 } }, headers))).json()).toMatchObject({ cached: true });
         expect(await (await handler.GET(new Request('https://example.test', { headers }))).json()).toMatchObject({ remaining: 0, unlocked: true });
         const wrong = await (await handler.GET(new Request('https://example.test', { headers: { ...headers, 'x-insight-passcode': 'bad' } }))).json();
         expect(wrong).toMatchObject({ unlocked: false });
         expect(wrong).not.toHaveProperty('remaining');
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < 9; i++) {
             await handler.GET(new Request('https://example.test', { headers: { ...headers, 'x-insight-passcode': 'bad' } }));
         }
         expect((await handler.GET(new Request('https://example.test', { headers }))).status).toBe(429);
@@ -72,14 +149,12 @@ describe('insight access and allowances', () => {
         expect((await handler.POST(request({ facts: { ...facts, ra: 340 } }, headers))).status).toBe(200);
         expect((await handler.POST(request({ facts: { ...facts, ra: 341 } }, { ...headers, 'x-forwarded-for': 'forwarded-b' }))).status).toBe(429);
     });
-    it('enforces the global daily cap and falls back on store errors', async () => {
+    it('enforces the global daily cap', async () => {
         const base = { apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => 180000000, maxPerDay: 2 };
         const handler = createHandlers(base);
         for (let i = 0; i < 3; i++) {
             expect((await handler.POST(request({ facts: { ...facts, ra: 320 + i } }, { 'x-real-ip': `test-${i}` }))).status).toBe(i < 2 ? 200 : 429);
         }
-        const broken = { hit: async () => { throw new Error(); }, count: async () => { throw new Error(); } };
-        expect((await createHandlers({ ...base, store: broken }).POST(request({ facts: { ...facts, ra: 324 } }))).status).toBe(200);
     });
     it('uses the Upstash REST protocol and rejects failures', async () => {
         const fetcher = vi.fn().mockResolvedValueOnce(Response.json([{ result: 4 }, { result: 1 }])).mockResolvedValueOnce(Response.json({ result: null })).mockResolvedValueOnce(new Response('', { status: 500 }));
@@ -103,6 +178,12 @@ describe('insight access and allowances', () => {
     });
 });
 describe('insight facts and guard', () => {
+    it.each(['Value １０.', 'Value .5.', 'There are twenty frames.', 'Value 10 percent.', 'Value 10 times.', 'Value 10x.', 'Value 10×.', 'Value 10 sigma.', 'Value 10σ.', 'Value 10%.'])('drops unsupported numeric form: %s', (bad) => {
+        expect(checkNote(`${bad} Safe sentence. Another safe sentence.`, ['Value 10 days.', 'Value 0.5.'])).toEqual({ text: 'Safe sentence. Another safe sentence.', dropped: 1 });
+    });
+    it('keeps matching units, pronouns, and allowed constants', () => {
+        expect(checkNote('The star dimmed by 10 percent. No one frame stands out. Helium is at 1.083.', ['Change: 10 percent.'])).toEqual({ text: 'The star dimmed by 10 percent. No one frame stands out. Helium is at 1.083.', dropped: 0 });
+    });
     it('validates clean copies and rejects invalid shapes and values', () => {
         expect(validateFacts(facts)).toEqual(facts);
         for (const bad of [null, { ...facts, extra: 1 }, { ...facts, lightCurve: { ...facts.lightCurve, extra: 1 } }, { ...facts, targetId: 'unknown' }, { ...facts, ra: 400 }, { ...facts, ra: NaN }, { ...facts, visits: Array(13).fill(facts.visits[0]) }, { ...facts, lightCurve: { ...facts.lightCurve, points: Array(61).fill(facts.lightCurve!.points[0]) } }, { ...facts, dec: '1' }]) {
@@ -127,6 +208,12 @@ describe('insight facts and guard', () => {
     });
 });
 describe('insight handler', () => {
+    it('drops a truncated final fragment', async () => {
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: 'First sentence. Second sentence. Unfinished value 1.083', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
+        expect(await (await handler.POST(request({ facts: { ...facts, ra: 88 } }))).json()).toMatchObject({ text: 'First sentence. Second sentence.' });
+        const empty = createHandlers({ apiKey: 'key', model: 'fake', now: () => 0, complete: async () => ({ text: 'Unfinished value 1.083', refused: false, model: 'fake', stopReason: 'max_tokens' }) });
+        expect((await empty.POST(request({ facts: { ...facts, ra: 91 } }))).status).toBe(422);
+    });
     it('checks access and input, filters and caches results', async () => {
         const complete = vi.fn(async (_s: string, _u: string, _signal: AbortSignal) => ({ text: note, refused: false, model: 'fake' }));
         const off = createHandlers({ apiKey: undefined, model: 'fake', complete, now: () => 0 });
@@ -193,6 +280,13 @@ describe('insight handler', () => {
     });
 });
 describe('browser client', () => {
+    it('caches notes even when a passcode is sent', async () => {
+        const fetcher = vi.fn(async () => Response.json({ text: note, model: 'fake', dropped: 0 })) as unknown as typeof fetch;
+        const input = { ...facts, ra: 89 };
+        await fetchInsight(input, { passcode: 'secret', fetcher });
+        expect((await fetchInsight(input, { passcode: 'secret', fetcher })).cached).toBe(true);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+    });
     it('handles availability and caches notes', async () => {
         expect(await insightEnabled(vi.fn(async () => new Response('', { status: 500 })) as typeof fetch)).toBe(false);
         expect(await insightEnabled(vi.fn(async () => { throw new Error(); }) as typeof fetch)).toBe(false);
