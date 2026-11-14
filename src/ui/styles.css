@@ -169,7 +169,9 @@ button { cursor: pointer; }
 .sk-sp-notes p { margin: 0; }
 .sk-sp-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .sk-sp-estimate { color: var(--mute); font-size: var(--fs-small); }
-@media (max-width: 720px) { .sk-sp-actions button { min-height: 44px; } }
+.sk-sp-link { position: relative; color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .3); text-underline-offset: 3px; }
+.sk-sp-link:hover, .sk-sp-link:focus-visible { color: var(--ink); text-decoration-color: currentColor; }
+@media (max-width: 720px) { .sk-sp-actions button { min-height: 44px; } .sk-sp-link::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; margin-top: -22px; } }
 .sk-body.mute { color: var(--mute); }
 
 /* ---------- left: brand, 01 choose, what to look for ---------- */

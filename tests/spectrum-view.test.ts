@@ -61,6 +61,98 @@ function domRig()
 }
 
 describe('spectrum panel', () => {
+    it('P1 places the label explanation immediately after the summary', () => {
+        const names = ['chart', 'summary', 'reference', 'caption', 'notes', 'facts', 'readBytes', 'spot'];
+        const positions = names.map(name => page.indexOf(`data-sp="${name}"`));
+        expect(positions.every(i => i >= 0)).toBe(true);
+        expect(positions).toEqual([...positions].sort((x, y) => x - y));
+    });
+
+    it('P2 uses exact centres and clear forgets the current cached read', async () => {
+        const h = rig();
+        const first = { ra: 10.000046, dec: 20 }, second = { ra: 10.000054, dec: 20 };
+        h.slot.update(view(first)); h.slot.press(); h.calls[0]!.resolve(spectrum()); await settle();
+        h.slot.update(view(second)); expect(h.out().state).toBe('idle');
+        h.slot.update(view(first)); expect(h.out().state).toBe('ready');
+        h.slot.clear(); h.slot.update(view(second)); h.slot.update(view(first));
+        expect(h.out().state).toBe('idle'); h.slot.press(); expect(h.read).toHaveBeenCalledTimes(2);
+    });
+
+    it('P3 performs zero DOM writes across 50 unchanged updates', async () => {
+        const h = domRig(); h.slot.update(view()); h.slot.press(); h.calls[0]!.resolve(spectrum()); await settle();
+        let writes = 0;
+        for (const el of [h.section, ...Object.values(h.els)]) {
+            for (const prop of ['hidden', 'disabled', 'textContent', 'innerHTML', 'href'] as const) {
+                let value = el[prop];
+                Object.defineProperty(el, prop, { configurable: true, get: () => value, set: next => { writes++; value = next; } });
+            }
+            const original = el.replaceChildren.bind(el);
+            el.replaceChildren = (...children) => { writes++; original(...children); };
+        }
+        for (let i = 0; i < 50; i++) { h.slot.update(view()); }
+        expect(writes).toBe(0);
+    });
+
+    it('P4 shows estimate only while idle and hides empty status', async () => {
+        const h = domRig(); h.slot.update(view());
+        expect(h.els.status!.hidden).toBe(true); expect(h.els.estimate!.hidden).toBe(false);
+        expect(h.els.estimate!.textContent).toBe('A live read from the public archive: about 2 MB. It can take half a minute.');
+        h.slot.press(); expect(h.els.estimate!.hidden).toBe(true); expect(h.els.status!.hidden).toBe(false);
+        h.calls[0]!.reject(); await settle(); expect(h.els.estimate!.hidden).toBe(true);
+        h.slot.press(); h.calls[1]!.resolve(spectrum()); await settle();
+        expect(h.els.estimate!.hidden).toBe(true); expect(h.els.status!.hidden).toBe(true);
+    });
+
+    it('P6 wraps coordinates and selects bytes after rounding', async () => {
+        for (const [ra, dec, bytes, facts, read] of [
+            [359.99999, -0.00004, 999996, 'RA 0.0000°, Dec 0.0000°', 'Read 1 MB from '],
+            [-0.1, -1, 0, 'RA 359.9000°, Dec -1.0000°', 'Read 0 kB from '],
+        ] as const) {
+            const h = rig(); h.slot.update(view({ ra, dec })); h.slot.press();
+            const spec = spectrum(); spec.bytesRead = bytes; h.calls[0]!.resolve(spec); await settle();
+            expect(h.out().facts).toContain(facts); expect(h.out().read).toBe(read);
+        }
+    });
+
+    it('P5 moves Read to Stop', () => {
+        const h = domRig(); h.slot.update(view()); h.els.read!.focus(); h.slot.press();
+        expect(h.doc.activeElement).toBe(h.els.stop);
+    });
+    it('P5 moves Stop to Read after stopping', () => {
+        const h = domRig(); h.slot.update(view()); h.slot.press(); h.els.stop!.focus(); h.slot.stop();
+        expect(h.doc.activeElement).toBe(h.els.read);
+    });
+    it('P5 moves Stop to Clear when ready', async () => {
+        const h = domRig(); h.slot.update(view()); h.slot.press(); h.els.stop!.focus();
+        h.calls[0]!.resolve(spectrum()); await settle(); expect(h.doc.activeElement).toBe(h.els.clear);
+    });
+    it('P5 moves Read to Clear when ready', async () => {
+        const h = domRig(); h.slot.update(view()); h.slot.press(); h.els.read!.focus();
+        h.calls[0]!.resolve(spectrum()); await settle(); expect(h.doc.activeElement).toBe(h.els.clear);
+    });
+    it('P5 moves Clear to Read', async () => {
+        const h = domRig(); h.slot.update(view()); h.slot.press(); h.calls[0]!.resolve(spectrum()); await settle();
+        h.els.clear!.focus(); h.slot.clear(); expect(h.doc.activeElement).toBe(h.els.read);
+    });
+    it('P5 moves Try again to Stop', async () => {
+        const h = domRig(); h.slot.update(view()); h.slot.press(); h.calls[0]!.reject(); await settle();
+        h.els.read!.focus(); h.slot.press(); expect(h.doc.activeElement).toBe(h.els.stop);
+    });
+    it('P5 does not focus a hidden panel or steal outside focus', () => {
+        const h = domRig(); h.slot.update(view()); h.els.read!.focus();
+        const spy = vi.spyOn(h.els.stop!, 'focus'); h.slot.update({ ...view(), available: false });
+        expect(spy).not.toHaveBeenCalled();
+        h.doc.activeElement = null; h.slot.update(view()); h.slot.press(); expect(h.doc.activeElement).toBeNull();
+    });
+
+    it('P7 applies the spectrum link class and mobile hit area', async () => {
+        const fs = (globalThis as any).process.getBuiltinModule('node:fs');
+        const css = fs.readFileSync('src/ui/styles.css', 'utf8');
+        expect(page).toMatch(/class="sk-sp-link"[^>]*data-sp="link"/);
+        expect(css).toMatch(/\.sk-sp-link\s*\{[^}]*color:\s*inherit;[^}]*text-decoration:\s*underline;/);
+        expect(css).toMatch(/\.sk-sp-link:hover,\s*\.sk-sp-link:focus-visible/);
+        expect(css).toMatch(/@media \(max-width: 720px\)[\s\S]*?\.sk-sp-link[^}]*\{[^}]*44px/);
+    });
     it('is off by default and adds no listener or read when disabled', () => {
         expect(DEFAULT_FEATURES.spectrum).toBe(false);
         expect(featuresFrom('spectrum').spectrum).toBe(true);
@@ -150,13 +242,13 @@ describe('spectrum panel', () => {
         expect(h.els.estimate!.textContent).toBe(SPECTRUM_TEXT.estimate);
         expect(h.read).not.toHaveBeenCalled();
         h.els.read!.focus(); h.els.read!.click(); h.els.read!.click();
-        expect(h.doc.activeElement).toBe(h.els.heading);
+        expect(h.doc.activeElement).toBe(h.els.stop);
         expect(h.els.read!.disabled).toBe(true);
         expect(h.els.status!.textContent).toBe(SPECTRUM_TEXT.reading);
         expect(h.calls).toHaveLength(1);
         h.els.stop!.focus();
         h.calls[0]!.resolve(spectrum()); await settle();
-        expect(h.doc.activeElement).toBe(h.els.heading);
+        expect(h.doc.activeElement).toBe(h.els.clear);
         expect(h.els.chart!.innerHTML).toContain('<svg');
         expect(h.els.summary!.textContent).toBe(spectrumChartText(spectrum()).summary);
         expect(h.els.caption!.textContent).toBe('test caption');
@@ -167,7 +259,7 @@ describe('spectrum panel', () => {
         expect(h.els.link!.textContent).toBe('the cube tile');
         expect(page).toContain('target="_blank" rel="noopener"');
         h.els.clear!.focus(); h.els.clear!.click();
-        expect(h.doc.activeElement).toBe(h.els.heading);
+        expect(h.doc.activeElement).toBe(h.els.read);
         expect(h.els.intro!.hidden).toBe(false);
         h.els.read!.click(); h.els.stop!.click();
         expect(h.calls[1]!.signal.aborted).toBe(true);
@@ -183,12 +275,13 @@ describe('spectrum panel', () => {
     });
 
     it('omits the reference explanation when no reference ticks are drawn', async () => {
-        const h = rig(); h.slot.update(view()); h.slot.press();
+        const h = domRig(); h.slot.update(view()); h.slot.press();
         const spec = spectrum();
         spec.lambda = Float64Array.from([0.8, 0.9, 1]);
         h.calls[0]!.resolve(spec); await settle();
-        expect(h.out().svg).not.toContain('data-feature-tick');
-        expect(h.out().reference).toBe('');
+        expect(h.els.chart!.innerHTML).not.toContain('data-feature-label');
+        expect(h.els.reference!.textContent).toBe('');
+        expect(h.els.reference!.hidden).toBe(true);
     });
 
     it('keeps an in-flight read during a same-centre reload, and evicts the oldest of four', async () => {

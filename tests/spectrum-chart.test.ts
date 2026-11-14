@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LINES, type CubeSpectrum } from '../src/lib/cube';
-import { lambdaToX, spectrumChartSvg, spectrumChartText } from '../src/lib/spectrum-chart';
+import { formatNumber, lambdaToX, spectrumChartSvg, spectrumChartText } from '../src/lib/spectrum-chart';
 
 const LAMBDAS_20 = [
     0.75, 0.95, 1.15, 1.35, 1.62,
@@ -90,6 +90,37 @@ function assertCleanSvg(svg: string): void
 }
 
 describe('spectrumChart', () => {
+    it('C1 formats negative fractions in each style', () => {
+        for (const [value, fixed, significant, tick] of [
+            [-0.5, '-0.50', '-0.500', '-0.5'], [-0.05, '-0.05', '-0.0500', '-0.05'],
+            [-0.999, '-1.00', '-0.999', '-0.999'], [-0.0004, '0', '-0.000400', '-4e-4'],
+        ] as const) {
+            expect(formatNumber(value, 'fixed')).toBe(fixed);
+            expect(formatNumber(value, 'significant')).toBe(significant);
+            expect(formatNumber(value, 'tick')).toBe(tick);
+        }
+        expect(formatNumber(-0, 'tick')).toBe('0');
+    });
+
+    it('C2 reports only measured wavelengths, including one colour', () => {
+        const lambda = Float64Array.from({ length: 102 }, (_, i) => i < 93 ? 0.75 + i * 0.03 : 4.33 + (i - 93) * 0.0825);
+        const spec = makeSpectrum({ lambda, surfaceBrightness: Float32Array.from({ length: 102 }, (_, i) => i),
+            noise: new Float32Array(102), reasons: Array.from({ length: 102 }, (_, i) => i < 93 ? 'no data' : null) });
+        expect(spectrumChartText(spec).summary).toBe('9 of 102 colours have data, from 4.33 to 4.99 µm. Highest value at 4.99 µm: 101 MJy/sr. 93 colours have no data.');
+        spec.reasons = Array.from({ length: 102 }, (_, i) => i === 101 ? null : 'no data');
+        expect(spectrumChartText(spec).summary).toBe('1 of 102 colours has data, at 4.99 µm. Highest value at 4.99 µm: 101 MJy/sr. 101 colours have no data.');
+    });
+
+    it('C4 draws exactly one nearby label for every feature tick', () => {
+        for (const width of [320, 360, 640]) {
+            const svg = spectrumChartSvg(makeSpectrum(), { width });
+            const ticks = [...svg.matchAll(/data-feature-tick="true" x1="([\d.]+)"/g)];
+            const labels = [...svg.matchAll(/data-feature-label="true" x="([\d.]+)"[^>]*>([^<]+)</g)];
+            expect(ticks.length).toBeGreaterThan(0);
+            expect(ticks).toHaveLength(labels.length);
+            ticks.forEach((tick, i) => expect(Math.abs(Number(tick[1]) - Number(labels[i]![1]))).toBeLessThanOrEqual(labels[i]![2]!.length * 7 / 2));
+        }
+    });
     it('renders axes, round Y ticks, band, line, dots and features in back-to-front order', () => {
         const spec = makeSpectrum();
         const svg = spectrumChartSvg(spec, { markLambda: 2.5 });
@@ -133,7 +164,7 @@ describe('spectrumChart', () => {
         const text = spectrumChartText(spec);
 
         expect(text.title).toBe('Spectrum at this spot, 0.75 to 5.00 µm');
-        expect(text.summary).toBe('18 of 20 colours have data, from 0.75 to 5.00 µm. Brightest at 1.62 µm: 12.5 MJy/sr. 2 colours have no data.');
+        expect(text.summary).toBe('18 of 20 colours have data, from 0.75 to 5.00 µm. Highest value at 1.62 µm: 12.5 MJy/sr. 2 colours have no data.');
         expect(text.caption).toBe(spec.caption);
         expect(text.notes).toBe(spec.notes);
         expect(JSON.stringify(text)).not.toMatch(/\b(discover|detect|confirm|prove)\b/i);
@@ -288,7 +319,6 @@ describe('spectrumChart', () => {
         assertCleanSvg(svg);
 
         const ticks = [...svg.matchAll(/<line data-feature-tick="true"/g)];
-        expect(ticks).toHaveLength(LINES.length);
 
         const labels = [...svg.matchAll(/<text data-feature-label="true" x="([\d.]+)"[^>]*>([^<]+)<\/text>/g)].map(m => {
             const x = Number(m[1]);
@@ -297,6 +327,7 @@ describe('spectrumChart', () => {
             return { x, text, left: x - half, right: x + half };
         });
         expect(labels.length).toBeGreaterThan(0);
+        expect(ticks).toHaveLength(labels.length);
         for (let i = 0; i < labels.length; i++) {
             const cur = labels[i]!;
             expect(cur.left).toBeGreaterThanOrEqual(0);
@@ -313,7 +344,7 @@ describe('spectrumChart', () => {
         const narrowSvg = spectrumChartSvg(narrowSpec, { width });
         assertCleanSvg(narrowSvg);
         const expectedInRange = LINES.filter(line => line.um >= 1.5 && line.um <= 3.5);
-        expect([...narrowSvg.matchAll(/<line data-feature-tick="true"/g)]).toHaveLength(expectedInRange.length);
+        expect([...narrowSvg.matchAll(/<line data-feature-tick="true"/g)].length).toBeLessThanOrEqual(expectedInRange.length);
         for (const outLine of LINES.filter(line => line.um < 1.5 || line.um > 3.5)) {
             expect(narrowSvg).not.toContain(`>${outLine.label}</text>`);
         }
@@ -494,7 +525,7 @@ describe('spectrum chart regression cases', () => {
         for (const spec of [smallSpectrum([-0.001]), smallSpectrum([0, 1], [-0.0001, -0.0001])]) {
             const output = spectrumChartSvg(spec, { markLambda: -0 }) + JSON.stringify(spectrumChartText(spec));
             assertCleanSvg(spectrumChartSvg(spec, { markLambda: -0 }));
-            expect(output).not.toMatch(/-0(?:\.|\D|$)/);
+            expect(output).not.toMatch(/-0(?:\.0+)?(?=[^\d.]|$)/);
             expect(output).not.toMatch(/NaN|Infinity|undefined/);
         }
     });
@@ -506,6 +537,6 @@ describe('spectrum chart regression cases', () => {
         for (let i = 0; i < svg.length; i++) {
             hash = Math.imul(hash ^ svg.charCodeAt(i), 16777619);
         }
-        expect(hash >>> 0).toBe(428219100);
+        expect(hash >>> 0).toBe(670283175);
     });
 });

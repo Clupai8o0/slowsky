@@ -90,8 +90,9 @@ function spotIdPrefix(spot: CubeSpectrum['spot']): string
     return `spectrum-${encode(typeof spot?.tile === 'string' ? spot.tile : '')}-${encode(coord(spot?.x))}-${encode(coord(spot?.y))}`;
 }
 
-function formatNumber(value: number, style: 'fixed' | 'significant' | 'tick'): string
+export function formatNumber(value: number, style: 'fixed' | 'significant' | 'tick'): string
 {
+    if (Object.is(value, -0)) { return '0'; }
     let result: string;
     if (style === 'fixed') {
         result = value.toFixed(2);
@@ -104,10 +105,7 @@ function formatNumber(value: number, style: 'fixed' | 'significant' | 'tick'): s
         result = String(Number(value.toPrecision(10)));
     }
     if (Number(result) === 0 && result.startsWith('-')) {
-        return result.slice(1);
-    }
-    if (result.startsWith('-0.')) {
-        return style === 'significant' ? value.toExponential(2) : value.toExponential();
+        return '0';
     }
     return result;
 }
@@ -154,7 +152,7 @@ function xTicks(min: number, max: number, width: number): number[]
                 const tick = Number(((first + i) * step).toPrecision(15));
                 const previous = ticks[ticks.length - 1];
                 if (previous !== undefined) {
-                    // Two ticks that print the same label would mislead; such a range gets no ticks at all.
+                    // Reject duplicate labels and try a coarser step.
                     if (tick <= previous || formatTickLabel(tick) === formatTickLabel(previous)) {
                         fits = false;
                         break;
@@ -422,8 +420,11 @@ export function spectrumChartText(spec: CubeSpectrum): {
     const noDataCount = totalCount - validCount;
     const unitRaw = typeof spec.unit === 'string' ? spec.unit.trim() : '';
     const unitPart = unitRaw.length > 0 ? ` ${unitRaw}` : '';
-    const countPhrase = `${validCount} of ${totalCount} ${totalCount === 1 ? 'colour has' : 'colours have'} data, from ${formatNumber(lambdaRange[0], 'fixed')} to ${formatNumber(lambdaRange[1], 'fixed')} µm.`;
-    const brightestPhrase = `Brightest at ${formatNumber(brightest.lambda, 'fixed')} µm: ${formatSigFigs3(brightest.value)}${unitPart}.`;
+    const first = Math.min(...valid.map(channel => channel.lambda));
+    const last = Math.max(...valid.map(channel => channel.lambda));
+    const range = validCount === 1 ? `at ${formatNumber(first, 'fixed')}` : `from ${formatNumber(first, 'fixed')} to ${formatNumber(last, 'fixed')}`;
+    const countPhrase = `${validCount} of ${totalCount} ${totalCount === 1 ? 'colour' : 'colours'} ${validCount === 1 ? 'has' : 'have'} data, ${range} µm.`;
+    const brightestPhrase = `Highest value at ${formatNumber(brightest.lambda, 'fixed')} µm: ${formatSigFigs3(brightest.value)}${unitPart}.`;
     const noDataPhrase = noDataCount > 0
         ? ` ${noDataCount} ${noDataCount === 1 ? 'colour has' : 'colours have'} no data.`
         : '';
@@ -548,7 +549,6 @@ export function spectrumChartSvg(spec: CubeSpectrum, opts: SpectrumChartOptions 
     for (const feature of LINES) {
         if (feature.um >= xMin && feature.um <= xMax) {
             const tickX = round1(lambdaToX(feature.um, plotLeft, plotWidth, lambdaRange));
-            featureParts.push(`<line data-feature-tick="true" x1="${fmt(tickX)}" y1="${fmt(plotTop - 5)}" x2="${fmt(tickX)}" y2="${fmt(plotTop)}" stroke="${MUTE}" stroke-width="1"/>`);
             const estWidth = feature.label.length * CHAR_WIDTH_PX;
             const minCenter = estWidth / 2 + 2;
             const maxCenter = width - estWidth / 2 - 2;
@@ -557,6 +557,7 @@ export function spectrumChartSvg(spec: CubeSpectrum, opts: SpectrumChartOptions 
                 const leftEdge = labelX - estWidth / 2;
                 const rightEdge = labelX + estWidth / 2;
                 if (leftEdge >= 0 && rightEdge <= width && leftEdge >= lastFeatureRight + LABEL_GAP_PX) {
+                    featureParts.push(`<line data-feature-tick="true" x1="${fmt(tickX)}" y1="${fmt(plotTop - 5)}" x2="${fmt(tickX)}" y2="${fmt(plotTop)}" stroke="${MUTE}" stroke-width="1"/>`);
                     featureParts.push(`<text data-feature-label="true" x="${fmt(labelX)}" y="${fmt(plotTop - 8)}" text-anchor="middle" fill="${MUTE}" font-size="11" font-family="inherit">${escapeXml(feature.label)}</text>`);
                     lastFeatureRight = rightEdge;
                 }

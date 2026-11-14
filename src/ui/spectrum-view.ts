@@ -5,7 +5,7 @@ import type { SkyCoord } from '../lib/types';
 export const SPECTRUM_TEXT = Object.freeze({
     idle: 'Read the light of the spot at the centre of the view, colour by colour, from the SPHEREx all-sky cube.',
     read: 'Read the spectrum here',
-    estimate: 'A live read from the public archive: about 2 MB, about 20 seconds.',
+    estimate: 'A live read from the public archive: about 2 MB. It can take half a minute.',
     reading: 'Reading the spectrum…',
     stop: 'Stop',
     failure: 'The spectrum could not be read from the archive. Try again.',
@@ -50,7 +50,7 @@ interface SpectrumDeps {
 type Entry = { spec: CubeSpectrum; center: SkyCoord };
 function key(c: SkyCoord): string
 {
-    return `${c.ra.toFixed(5)},${c.dec.toFixed(5)}`;
+    return `${c.ra},${c.dec}`;
 }
 function same(a: SkyCoord | undefined, b: SkyCoord | undefined): boolean
 {
@@ -58,8 +58,17 @@ function same(a: SkyCoord | undefined, b: SkyCoord | undefined): boolean
 }
 function bytes(n: number): string
 {
-    const mb = n >= 1000000;
+    const mb = Number((n / 1000).toFixed(2)) >= 1000;
     return `${Number((n / (mb ? 1000000 : 1000)).toFixed(2))} ${mb ? 'MB' : 'kB'}`;
+}
+function coordinate(n: number, wrap = false): string
+{
+    if (wrap) {
+        n %= 360;
+        if (n < 0) { n += 360; }
+    }
+    const rounded = n.toFixed(4);
+    return Number(rounded) === 0 || (wrap && Number(rounded) === 360) ? '0.0000' : rounded;
 }
 export function createSpectrum(deps: SpectrumDeps): SpectrumSlot
 {
@@ -89,9 +98,9 @@ export function createSpectrum(deps: SpectrumDeps): SpectrumSlot
         const svg = spectrumChartSvg(spec, { width, markLambda: view.lambda });
         const text = spectrumChartText(spec);
         deps.draw({ visible, state, svg, summary: text.summary, caption: text.caption, notes: text.notes,
-            facts: `Spot: RA ${center.ra.toFixed(4)}°, Dec ${center.dec.toFixed(4)}° · ${CUBE_QUANTITY} · ${spec.unit}`,
+            facts: `Spot: RA ${coordinate(center.ra, true)}°, Dec ${coordinate(center.dec)}° · ${CUBE_QUANTITY} · ${spec.unit}`,
             read: `Read ${bytes(spec.bytesRead)} from `, url: spec.spot.url,
-            reference: svg.includes('data-feature-tick="true"') ? SPECTRUM_TEXT.reference : '' });
+            reference: svg.includes('data-feature-label="true"') ? SPECTRUM_TEXT.reference : '' });
     }
     return {
         update(next): void
@@ -151,7 +160,7 @@ export function createSpectrum(deps: SpectrumDeps): SpectrumSlot
             });
         },
         stop(): void { abort(); state = 'idle'; entry = null; draw(); },
-        clear(): void { abort(); state = 'idle'; entry = null; draw(); },
+        clear(): void { if (view) { cache.delete(key(view.center)); } abort(); state = 'idle'; entry = null; draw(); },
         resize(next): void {
             const w = Math.max(320, Number.isFinite(next) ? Math.round(next) : 320);
             if (width !== w) { width = w; if (deps.enabled) { draw(); } }
@@ -166,7 +175,6 @@ export function mountSpectrum(section: HTMLElement, deps: { enabled: boolean; re
         return createSpectrum({ ...deps, draw: () => {} });
     }
     const q = <T extends HTMLElement>(name: string) => section.querySelector(`[data-sp="${name}"]`) as T;
-    const heading = q<HTMLElement>('heading');
     const button = q<HTMLButtonElement>('read');
     const stop = q<HTMLButtonElement>('stop');
     const clear = q<HTMLButtonElement>('clear');
@@ -175,39 +183,50 @@ export function mountSpectrum(section: HTMLElement, deps: { enabled: boolean; re
     const link = q<HTMLAnchorElement>('link');
     const doc = section.ownerDocument;
     let lastSvg = '';
+    let lastNotes: string | undefined;
+    const text = (node: HTMLElement, value: string) => { if (node.textContent !== value) { node.textContent = value; } };
+    const hidden = (node: HTMLElement, value: boolean) => { if (node.hidden !== value) { node.hidden = value; } };
     const slot = createSpectrum({ ...deps, draw: out => {
-        section.hidden = !out.visible;
+        hidden(section, !out.visible);
         const ready = out.state === 'ready';
         const reading = out.state === 'reading';
-        if ((doc.activeElement === button && (reading || ready || !out.visible))
-            || (doc.activeElement === stop && !reading) || (doc.activeElement === clear && !ready)) {
-            heading.focus();
-        }
-        q<HTMLElement>('intro').hidden = ready || reading || out.state === 'failed';
-        q<HTMLElement>('intro').textContent = SPECTRUM_TEXT.idle;
-        q<HTMLElement>('estimate').hidden = ready || reading;
-        q<HTMLElement>('estimate').textContent = SPECTRUM_TEXT.estimate;
-        button.hidden = ready;
-        button.disabled = reading;
-        button.textContent = reading ? SPECTRUM_TEXT.reading : out.state === 'failed' ? SPECTRUM_TEXT.retry : SPECTRUM_TEXT.read;
-        stop.hidden = !reading;
-        stop.textContent = SPECTRUM_TEXT.stop;
-        clear.hidden = !ready;
-        clear.textContent = SPECTRUM_TEXT.clear;
-        q<HTMLElement>('status').textContent = reading ? SPECTRUM_TEXT.reading : out.state === 'failed' ? SPECTRUM_TEXT.failure : '';
-        q<HTMLElement>('result').hidden = !ready;
+        const active = doc.activeElement;
+        const focus = out.visible && ((active === button && (reading || ready)) || (active === stop && !reading) || (active === clear && !ready))
+            ? (reading ? stop : ready ? clear : button) : null;
+        hidden(q<HTMLElement>('intro'), ready || reading || out.state === 'failed');
+        text(q<HTMLElement>('intro'), SPECTRUM_TEXT.idle);
+        hidden(q<HTMLElement>('estimate'), out.state !== 'idle');
+        text(q<HTMLElement>('estimate'), SPECTRUM_TEXT.estimate);
+        hidden(button, ready || reading);
+        if (button.disabled !== reading) { button.disabled = reading; }
+        text(button, reading ? SPECTRUM_TEXT.reading : out.state === 'failed' ? SPECTRUM_TEXT.retry : SPECTRUM_TEXT.read);
+        hidden(stop, !reading);
+        text(stop, SPECTRUM_TEXT.stop);
+        hidden(clear, !ready);
+        text(clear, SPECTRUM_TEXT.clear);
+        const status = q<HTMLElement>('status');
+        const statusText = reading ? SPECTRUM_TEXT.reading : out.state === 'failed' ? SPECTRUM_TEXT.failure : '';
+        text(status, statusText);
+        hidden(status, !statusText);
+        hidden(q<HTMLElement>('result'), !ready);
+        focus?.focus();
         if (!ready) { return; }
         if (out.svg !== lastSvg) { chart.innerHTML = out.svg ?? ''; lastSvg = out.svg ?? ''; }
-        q<HTMLElement>('summary').textContent = out.summary ?? '';
-        q<HTMLElement>('caption').textContent = out.caption ?? '';
-        notes.replaceChildren(...(out.notes ?? []).map(note => { const p = doc.createElement('p'); p.textContent = note; return p; }));
-        q<HTMLElement>('facts').textContent = out.facts ?? '';
-        q<HTMLElement>('readBytes').textContent = out.read ?? '';
-        link.textContent = SPECTRUM_TEXT.link;
-        link.href = out.url ?? '';
-        q<HTMLElement>('linkEnd').textContent = SPECTRUM_TEXT.linkEnd;
-        q<HTMLElement>('spot').textContent = SPECTRUM_TEXT.spot;
-        q<HTMLElement>('reference').textContent = out.reference ?? '';
+        text(q<HTMLElement>('summary'), out.summary ?? '');
+        text(q<HTMLElement>('caption'), out.caption ?? '');
+        const notesKey = JSON.stringify(out.notes ?? []);
+        if (notesKey !== lastNotes) {
+            notes.replaceChildren(...(out.notes ?? []).map(note => { const p = doc.createElement('p'); p.textContent = note; return p; }));
+            lastNotes = notesKey;
+        }
+        text(q<HTMLElement>('facts'), out.facts ?? '');
+        text(q<HTMLElement>('readBytes'), out.read ?? '');
+        text(link, SPECTRUM_TEXT.link);
+        if (link.href !== (out.url ?? '')) { link.href = out.url ?? ''; }
+        text(q<HTMLElement>('linkEnd'), SPECTRUM_TEXT.linkEnd);
+        text(q<HTMLElement>('spot'), SPECTRUM_TEXT.spot);
+        text(q<HTMLElement>('reference'), out.reference ?? '');
+        hidden(q<HTMLElement>('reference'), !out.reference);
     } });
     button.addEventListener('click', () => slot.press());
     stop.addEventListener('click', () => slot.stop());

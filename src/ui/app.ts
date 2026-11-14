@@ -338,18 +338,18 @@ function shell(): string
     <p class="sk-body mute">All of this is infrared: your eyes stop at 0.70 µm. Drag, then let go to load that colour.</p>
   </section>
   <section class="sk-mod sk-m-spec" aria-labelledby="sk-h8" data-ref="spec" hidden>
-    <h2 class="sk-mh" id="sk-h8" data-sp="heading" tabindex="-1"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
+    <h2 class="sk-mh" id="sk-h8" data-sp="heading"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
     <div class="sk-sp-body" data-ref="specBox" data-sp="body">
       <p class="sk-body" data-sp="intro"></p>
       <div class="sk-sp-result" data-sp="result" hidden>
         <div class="sk-sp-chart" data-sp="chart"></div>
         <p class="sk-body" data-sp="summary"></p>
+        <p class="sk-body" data-sp="reference"></p>
         <p class="sk-body" data-sp="caption"></p>
         <div class="sk-sp-notes" data-sp="notes"></div>
         <p class="sk-body" data-sp="facts"></p>
-        <p class="sk-body"><span data-sp="readBytes"></span><a data-sp="link" target="_blank" rel="noopener"></a><span data-sp="linkEnd"></span></p>
+        <p class="sk-body"><span data-sp="readBytes"></span><a class="sk-sp-link" data-sp="link" target="_blank" rel="noopener"></a><span data-sp="linkEnd"></span></p>
         <p class="sk-body" data-sp="spot"></p>
-        <p class="sk-body" data-sp="reference"></p>
       </div>
       <p class="sk-body" data-sp="status" aria-live="polite"></p>
       <div class="sk-sp-actions"><button type="button" class="sk-btn2" data-sp="read"></button><button type="button" class="sk-btn2" data-sp="stop" hidden></button><button type="button" class="sk-btn2" data-sp="clear" hidden></button></div>
