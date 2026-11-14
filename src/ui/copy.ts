@@ -30,7 +30,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         kind: 'variable',
         headline: 'RW Aurigae, changing its light',
         show: 'A young star. Compare it with its neighbours: the curve measures it against them, look by look.',
-        not: 'Every frame is matched closely in colour, so a change here is mostly brightness, not colour.',
+        not: 'Frames are matched closely in colour to keep colour shifts small. The band shows how much the comparison stars wobble, so a change inside it may be noise.',
     },
     epsindb: {
         display: 'Epsilon Indi B',
@@ -38,7 +38,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         kind: 'spectrum',
         headline: 'Epsilon Indi B, missing colours',
         show: 'Two brown dwarfs, too cold to be stars. Change the colour: they fade where methane and water soak up light.',
-        not: 'No brightness curve is drawn for it here. Blinking it shows movement, not flicker.',
+        not: 'No brightness curve is drawn for it here. Blinking shows how it moves; it does not test whether its brightness changes.',
     },
     wise0855: {
         display: 'WISE 0855−0714',
@@ -46,7 +46,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         kind: 'cold',
         headline: 'WISE 0855, the coldest neighbour',
         show: 'The coldest brown dwarf known. It gives almost no light at short colours: slide to the longest colours to see it appear.',
-        not: 'The colour note above comes from earlier telescopes, not from these frames.',
+        not: 'What it gives off at each colour comes from earlier telescopes, not from these frames.',
     },
     rdra: {
         display: 'R Draconis',
@@ -60,7 +60,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
 
 export const CUSTOM_COPY = {
     headline: 'A patch of sky you chose',
-    show: 'Every SPHEREx look at this spot, matched closely in colour, in date order. Anything that moves or changes will jump out when it blinks.',
+    show: 'SPHEREx looks at this spot, matched closely in colour, in date order. Anything that moves or changes will jump out when it blinks.',
     not: 'Nothing is known about this spot here. A change can be noise, a satellite trail or a camera artefact.',
 };
 

@@ -317,7 +317,7 @@ function shell(): string
     <button type="button" class="sk-btn2 sk-ai-go" data-ai="go" hidden>Write an AI note</button>
     <p class="sk-ai-msg sk-sr" data-ai="msg" role="status"></p>
     <div class="sk-ai-out" data-ai="out" aria-live="polite"></div>
-    <details class="sk-ai-given" data-ai="given" hidden><summary>The measurements the AI was given</summary><ul data-ai="givenList"></ul></details>
+    <details class="sk-ai-given" data-ai="given" hidden><summary>What this page told the AI</summary><ul data-ai="givenList"></ul></details>
     <p class="sk-ai-disc" data-ai="disc"></p>
     <p class="sk-ai-left" data-ai="left" hidden></p>
   </section>
@@ -695,16 +695,16 @@ export function mount(root: HTMLElement): void
         const H = 100;
         const noise = Number.isFinite(c.noise) ? c.noise : 0;
         const name = st.target ? COPY[st.target].display : 'the target';
-        // A catalogued star inside the measuring circle mixes its light in. For a cold brown dwarf the chart stays
-        // hidden below 4.4 µm, where it gives almost no light (Luhman 2014, arXiv:1404.6501, Table 1); for other
-        // targets the note just says so. Nothing here measures which of the two is brighter.
+        // A catalogued star inside the measuring circle mixes its light in. For a cold brown dwarf with such a star
+        // in the circle the chart stays hidden below 4.4 µm, where the brown dwarf is faint (Luhman 2014,
+        // arXiv:1404.6501, Table 1); for other targets the note just says so. Nothing here measures which is brighter.
         const blendAt = c.blend ? `A Gaia star (G ${c.blend.g.toFixed(1)}) sits ${(c.blend.px * result.grid.pixelArcsec).toFixed(1)}″ from ${name}` : '';
         const cold = st.target ? COPY[st.target].kind === 'cold' : false;
         const hideChart = c.blend !== null && cold && c.lc.lambda < 4.4;
         ref<HTMLElement>('lcwrap').hidden = hideChart;
         ref<HTMLElement>('lcx').hidden = hideChart;
         if (hideChart) {
-            bind('lcNote', `${blendAt}, inside the measuring circle, so its light mixes in. No curve is drawn below 4.4 µm; try 4.4 µm or longer.`);
+            bind('lcNote', `${blendAt}, inside the measuring circle, so its light mixes in. No curve is drawn below 4.4 µm; slide the colour to 4.4 µm or longer.`);
             return;
         }
         const ys = pts.map((o) => o.p.relative);
@@ -1160,11 +1160,9 @@ export function mount(root: HTMLElement): void
         if (kind === 'cold') {
             const visits = visitsOf(result).map((v) => `${v.n} in ${monthYear(v.mjd)}`);
             // From earlier telescopes, not measured here, so it sits in the description, not under "Measured here".
-            // Luhman 2014 (arXiv:1404.6501, Table 1): undetected at J, Ks and W1 (3.4 µm); W2 (4.6 µm) 13.89 mag.
-            // Detector 6 covers 4.42 to 5.00 µm; detector 5 has no such measurement, so it gets no sentence.
-            const colour = st.detector <= 4
-                ? ` At this colour (detector ${st.detector} of 6) it gives almost no light.`
-                : st.detector === 6 ? ' WISE detected it at 4.6 µm, inside this detector’s range (detector 6 of 6).' : '';
+            // Luhman 2014 (arXiv:1404.6501, Table 1): W2 (4.6 µm) 13.89 mag. Detector 6 covers 4.42 to 5.00 µm.
+            // Other detectors get no sentence: the table's other bands do not cover them closely enough to say more.
+            const colour = st.detector === 6 ? ' WISE detected it at 4.6 µm, inside this detector’s range (detector 6 of 6).' : '';
             return {
                 show: `${COPY[st.target].show}${colour}`,
                 fact: `This view has ${n} look${n === 1 ? '' : 's'}${visits.length > 1 ? `: ${visits.join(', ')}` : ''}.`,
