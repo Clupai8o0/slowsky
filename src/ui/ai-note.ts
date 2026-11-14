@@ -213,6 +213,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     let ctrl: AbortController | null = null;
     let memPass: string | undefined; // used only when sessionStorage is unavailable
     let tries = 0; // status answers: only the latest one counts
+    let inflight = 0; // status checks still out
     let notice = ''; // a busy reply that came before any view: shown with the first view, then dropped
 
     function passcode(): string | undefined
@@ -241,6 +242,16 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     // insightStatus reads a network failure as "off". Watch the wire so a blip is not taken for the route
     // being switched off.
     async function check(code?: string): Promise<{ s: InsightStatus; reached: boolean }>
+    {
+        inflight++;
+        try {
+            return await checkOnce(code);
+        } finally {
+            inflight--;
+        }
+    }
+
+    async function checkOnce(code?: string): Promise<{ s: InsightStatus; reached: boolean }>
     {
         let reached = true;
         const watched: typeof fetch = async (input, init) => {
@@ -469,23 +480,20 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         }
     });
 
-    // The first status check. If it never reaches the server the panel stays hidden, and update() tries again
-    // later (RECHECK_MS apart) so one blip at page load does not hide it for the whole visit.
-    let firstBusy = false;
+    // The first status check. If it never reaches the server the panel stays hidden, and a later view change
+    // tries again (RECHECK_MS apart, never while another check is out) so one blip at page load does not hide
+    // it for the whole visit. It takes no turn of its own: any Unlock or re-check started meanwhile wins.
     let firstFailedAt = -Infinity;
     function firstCheck(): void
     {
-        firstBusy = true;
         const first = passcode();
-        const mine = ++tries;
+        const mine = tries;
         void check(first).then(({ s, reached }) => {
-            firstBusy = false;
-            if (mine !== tries) {
-                return; // an Unlock answered first and is newer
-            }
             if (!reached) {
                 firstFailedAt = now();
-                return; // the panel was never on: stay hidden rather than guess
+            }
+            if (mine !== tries || !reached) {
+                return; // a newer check answers, or the panel was never on: stay hidden rather than guess
             }
             onFirst(first, s);
         });
@@ -513,11 +521,11 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     return {
         update(v: NoteView | null): void
         {
-            if (!st && !firstBusy && v && now() - firstFailedAt >= RECHECK_MS) {
-                firstCheck();
-            }
             const next = v ? [v.result, v.targetId, v.center.ra, v.center.dec, v.curve, v.shift] : [];
             const changed = next.length !== sig.length || next.some((x, i) => !Object.is(x, sig[i]));
+            if (changed && v && !st && inflight === 0 && now() - firstFailedAt >= RECHECK_MS) {
+                firstCheck();
+            }
             view = v;
             if (changed) {
                 sig = next;

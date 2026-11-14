@@ -720,5 +720,60 @@ describe('mountAiNote, review round 2', () => {
         expect(doc.el('go').disabled).toBe(false);
         expect(doc.panel.hidden).toBe(false);
     });
-});
 
+    it('re-checks only on a new view, never while an Unlock is out, and lets the Unlock answer', async () => {
+        const doc = new FakeDoc();
+        let clock = 0;
+        let down = true;
+        let calls = 0;
+        const gate = deferred<void>();
+        const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+            status: async (o) => {
+                calls++;
+                try {
+                    await o!.fetcher!('/api/insight');
+                } catch {
+                    return { enabled: false, locked: false, unlocked: false };
+                }
+                if (o?.passcode === 'moon') {
+                    await gate.promise;
+                    return { enabled: true, locked: true, unlocked: true };
+                }
+                return LOCKED;
+            },
+            fetcher: async () => {
+                if (down) {
+                    throw new TypeError('network');
+                }
+                return new Response('{}', { status: 200 });
+            },
+            storage: new MemStore(),
+            doc: doc as never,
+            now: () => clock,
+        });
+        await flush();
+        const v = noteView();
+        ai.update(v);
+        clock += RECHECK_MS * 3;
+        ai.update(v);
+        ai.update({ ...v });
+        await flush();
+        expect(calls).toBe(1); // the same view never polls
+        down = false;
+        ai.update(noteView());
+        await flush();
+        expect(calls).toBe(2);
+        expect(doc.el('lock').hidden).toBe(false);
+        doc.el('pass').value = 'moon';
+        const pending = doc.el('lock').fire('submit');
+        await flush();
+        clock += RECHECK_MS;
+        ai.update(noteView());
+        await flush();
+        expect(calls).toBe(3); // the panel is on, so no re-check joins the Unlock
+        gate.resolve();
+        await pending;
+        expect(doc.el('lock').hidden).toBe(true);
+        expect(doc.el('go').hidden).toBe(false);
+    });
+});
