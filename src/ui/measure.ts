@@ -142,6 +142,64 @@ export interface Curve {
     noise: number;
 }
 
+// Up to MAX_REFS comparison stars for a target at `at` on the grid, as they sat on `mid`, brightest first. Each is a
+// slow-moving Gaia star with room for the aperture, clear of the target and of any catalogued star that would leak
+// into its aperture.
+export function pickRefs(result: SkyResult, at: PixelCoord, mid: number): Ring[]
+{
+    const { width, height } = result.grid;
+    const { radius, annulusOut } = apertureFor(result.grid);
+    const inside = (p: PixelCoord) => p.x >= annulusOut && p.y >= annulusOut && p.x <= width - 1 - annulusOut && p.y <= height - 1 - annulusOut;
+    const all = ringsAt(result.stars, result.grid, mid);
+    const stars = new Map(result.stars.map((s) => [s.sourceId, s]));
+    return all
+        .filter((r) => r.g >= REF_G_MIN && r.g <= REF_G_MAX && inside(r.pix))
+        .filter((r) => {
+            const s = stars.get(r.sourceId);
+            return s?.pmRa !== undefined && s.pmDec !== undefined && Math.hypot(s.pmRa, s.pmDec) < 50;
+        })
+        .filter((r) => Math.hypot(r.pix.x - at.x, r.pix.y - at.y) > annulusOut + radius)
+        .filter((r) => !all.some((o) => o !== r && o.g < r.g + 2.5 && Math.hypot(o.pix.x - r.pix.x, o.pix.y - r.pix.y) < annulusOut))
+        .sort((a, b) => a.g - b.g)
+        .slice(0, MAX_REFS);
+}
+
+// The frames with each one's wavelength set to where the source locked it at the target, and a cut that keeps
+// them all. The source already locked every frame at the target, each to within half its own channel
+// (result.locked, same order), so a curve keeps exactly the frames the player shows: the view-centre value
+// (lambdaAtCenter) differs from the target's when the target is off centre, and a fixed cut dropped detector 4
+// frames (R 35).
+export function lockedFrames(result: SkyResult): { frames: RegriddedFrame[]; maxDeltaUm: number }
+{
+    const frames = result.frames.map((p) => p.frame);
+    const lockedLam = result.locked.length === frames.length ? result.locked.map((l) => l.lambda) : [];
+    const onTarget = lockedLam.length === frames.length && lockedLam.every((l) => Number.isFinite(l));
+    return {
+        frames: onTarget ? frames.map((f, i) => ({ ...f, lambdaAtCenter: lockedLam[i]! })) : frames,
+        maxDeltaUm: onTarget ? Math.max(0, ...lockedLam.map((l) => Math.abs(l - result.lambda))) : 0.05,
+    };
+}
+
+// Measures with `refs`, then drops the comparison star that wobbles most while it wobbles over three times the
+// median of the others, keeping at least two. Removes the dropped stars from `refs` in place.
+export function steadyRefs<C extends { refScatter: number[] }>(refs: Ring[], measure: (pix: PixelCoord[]) => C): C
+{
+    let lc = measure(refs.map((r) => r.pix));
+    while (refs.length > 2) {
+        const worst = lc.refScatter.reduce((best, scatter, i) => scatter > (lc.refScatter[best] ?? -Infinity) ? i : best, -1);
+        if (worst < 0) {
+            break;
+        }
+        const others = lc.refScatter.filter((_, i) => i !== worst);
+        if (!(lc.refScatter[worst]! > 3 * median(others))) {
+            break;
+        }
+        refs.splice(worst, 1);
+        lc = measure(refs.map((r) => r.pix));
+    }
+    return lc;
+}
+
 // The target's brightness in each frame divided by the summed brightness of a few steady Gaia stars, so
 // changes in the instrument cancel. Null when there is no track, too few frames or too few usable stars.
 // `self` is the target's catalogue motion: a Gaia star moving like it is the target itself, not a blend.
@@ -153,26 +211,14 @@ export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
     }
     const { width, height } = result.grid;
     const options = apertureFor(result.grid);
-    const { radius, annulusOut } = options;
+    const { radius } = options;
     const mid = middleMjd(result);
     const target = trackNear(result.track, mid);
     if (!target) {
         return null;
     }
-    const inside = (p: PixelCoord) => p.x >= annulusOut && p.y >= annulusOut && p.x <= width - 1 - annulusOut && p.y <= height - 1 - annulusOut;
-    const all = ringsAt(result.stars, result.grid, mid);
     const stars = new Map(result.stars.map((s) => [s.sourceId, s]));
-    // A reference must be clear of the target and of any other catalogued star that would leak into its aperture.
-    const refs = all
-        .filter((r) => r.g >= REF_G_MIN && r.g <= REF_G_MAX && inside(r.pix))
-        .filter((r) => {
-            const s = stars.get(r.sourceId);
-            return s?.pmRa !== undefined && s.pmDec !== undefined && Math.hypot(s.pmRa, s.pmDec) < 50;
-        })
-        .filter((r) => Math.hypot(r.pix.x - target.pix.x, r.pix.y - target.pix.y) > annulusOut + radius)
-        .filter((r) => !all.some((o) => o !== r && o.g < r.g + 2.5 && Math.hypot(o.pix.x - r.pix.x, o.pix.y - r.pix.y) < annulusOut))
-        .sort((a, b) => a.g - b.g)
-        .slice(0, MAX_REFS);
+    const refs = pickRefs(result, target.pix, mid);
     if (refs.length < 2) {
         return null;
     }
@@ -182,37 +228,17 @@ export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
         // Trust the measured centre only when it agrees with the predicted one to within a few pixels.
         return c && Math.hypot(c.x - p.x, c.y - p.y) < 3 ? c : p;
     };
-    // lightCurve cuts on each frame's wavelength. The source already locked every frame at the target, each to
-    // within half its own channel (result.locked, same order). Hand lightCurve those values and a cut that keeps
-    // them all, so the curve keeps exactly the frames the player shows: the view-centre value (lambdaAtCenter)
-    // differs from the target's when the target is off centre, and a fixed cut dropped detector 4 frames (R 35).
-    const lockedLam = result.locked.length === frames.length ? result.locked.map((l) => l.lambda) : [];
-    const onTarget = lockedLam.length === frames.length && lockedLam.every((l) => Number.isFinite(l));
-    const curveFrames = onTarget ? frames.map((f, i) => ({ ...f, lambdaAtCenter: lockedLam[i]! })) : frames;
-    const maxDeltaUm = onTarget ? Math.max(0, ...lockedLam.map((l) => Math.abs(l - result.lambda))) : 0.05;
+    const { frames: curveFrames, maxDeltaUm } = lockedFrames(result);
     let lc: LightCurve;
     let order: number[] = []; // lightCurve asks for the target once per kept frame, in point order
     try {
-        const measure = () => {
+        lc = steadyRefs(refs, (pix) => {
             order = [];
             return lightCurve(curveFrames, (f, i) => {
                 order.push(i);
                 return where(f);
-            }, refs.map((r) => r.pix), { ...options, lambda: result.lambda, maxDeltaUm });
-        };
-        lc = measure();
-        while (refs.length > 2) {
-            const worst = lc.refScatter.reduce((best, scatter, i) => scatter > (lc.refScatter[best] ?? -Infinity) ? i : best, -1);
-            if (worst < 0) {
-                break;
-            }
-            const others = lc.refScatter.filter((_, i) => i !== worst);
-            if (!(lc.refScatter[worst]! > 3 * median(others))) {
-                break;
-            }
-            refs.splice(worst, 1);
-            lc = measure();
-        }
+            }, pix, { ...options, lambda: result.lambda, maxDeltaUm });
+        });
     } catch (e) {
         if (e instanceof PhotometryError) {
             return null;

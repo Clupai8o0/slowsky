@@ -1314,7 +1314,9 @@ export function mount(root: HTMLElement): void
         }
     });
 
-    ref<SVGSVGElement>('lc').addEventListener('click', (e) => {
+    // A dot on a curve (brightness, halo) shows that look in Blink.
+    function pickDot(e: Event): void
+    {
         const dot = (e.target as Element).closest('[data-k]');
         const k = dot ? Number(dot.getAttribute('data-k')) : NaN;
         if (!result || !Number.isInteger(k) || k < 0 || !result.frames[k]) {
@@ -1325,7 +1327,9 @@ export function mount(root: HTMLElement): void
         st.index = k;
         draw();
         writeUrl();
-    });
+    }
+    ref<SVGSVGElement>('lc').addEventListener('click', pickDot);
+    ref<HTMLElement>('haloBox').addEventListener('click', pickDot);
 
     lamInput.addEventListener('input', () => {
         lamDraft = Number(lamInput.value);

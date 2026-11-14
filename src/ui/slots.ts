@@ -15,6 +15,8 @@ import { createLiveSource, type SkyResult, type SkySource } from '../lib/source'
 import { ColourGridError, falseColourView } from '../lib/falsecolour-view';
 import { apertureFor } from './measure';
 import type { RegriddedFrame, TargetId } from '../lib/types';
+import { COPY } from './copy';
+import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
 
 export const FEATURES = Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
 
@@ -344,9 +346,28 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
 }
 
 // R Draconis halo curve. `box` is the panel body under "Brightness over time". Same rules as renderSpectrum.
-export function renderHalo(box: HTMLElement, view: SlotView): boolean
+// Measured once per result (src/ui/halo-view.ts); the simulated sky never gets a curve.
+const haloCache = new WeakMap<SkyResult, HaloView | null>();
+const haloShown = new WeakMap<HTMLElement, string>();
+
+export function renderHalo(box: HTMLElement, view: SlotView, deps: HaloDeps = {}): boolean
 {
-    void box;
-    void view;
-    return false;
+    if (view.source === 'demo') {
+        return false;
+    }
+    let h = haloCache.get(view.result);
+    if (h === undefined) {
+        h = haloFor(view.result, deps);
+        haloCache.set(view.result, h);
+    }
+    if (!h) {
+        return false;
+    }
+    const name = view.targetId && view.targetId in COPY ? COPY[view.targetId as TargetId].display : 'the star';
+    const html = haloHtml(h, name, view.mode === 'blink' ? view.index : -1);
+    if (haloShown.get(box) !== html) {
+        box.innerHTML = html;
+        haloShown.set(box, html);
+    }
+    return true;
 }
