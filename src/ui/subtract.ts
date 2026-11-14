@@ -6,7 +6,8 @@ import { frameMjd } from './measure';
 
 export interface Visit {
     ks: number[];
-    mjd: number;
+    mjd: number; // first look
+    end: number; // last look
     n: number;
 }
 
@@ -18,6 +19,18 @@ function utcDate(mjd: number): string
 {
     const d = new Date((mjd - 40587) * 86400000);
     return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+// The UTC dates a visit covers: "9 Jul 2026", "30 Apr – 8 May 2026", "28 Dec 2025 – 3 Jan 2026".
+export function visitDates(v: Visit): string
+{
+    const a = new Date((v.mjd - 40587) * 86400000);
+    const b = new Date((v.end - 40587) * 86400000);
+    const sameYear = a.getUTCFullYear() === b.getUTCFullYear();
+    if (sameYear && a.getUTCMonth() === b.getUTCMonth()) {
+        return a.getUTCDate() === b.getUTCDate() ? utcDate(v.mjd) : `${a.getUTCDate()}–${utcDate(v.end)}`;
+    }
+    return sameYear ? `${a.getUTCDate()} ${MONTHS[a.getUTCMonth()]} – ${utcDate(v.end)}` : `${utcDate(v.mjd)} – ${utcDate(v.end)}`;
 }
 
 function looksText(n: number): string
@@ -39,8 +52,9 @@ export function visitGroups(result: SkyResult, gapDays = 10): Visit[]
         if (last && mjd - prev < gapDays) {
             last.ks.push(k);
             last.n = last.ks.length;
+            last.end = mjd;
         } else {
-            out.push({ ks: [k], mjd, n: 1 });
+            out.push({ ks: [k], mjd, end: mjd, n: 1 });
         }
         prev = mjd;
     }
@@ -93,17 +107,19 @@ export function defaultPicks(visits: Visit[]): { a: number; b: number } | null
 
 export function subtractText(a: Visit, b: Visit, op: SubOp): string
 {
-    const dateA = utcDate(a.mjd);
-    const dateB = utcDate(b.mjd);
+    const dateA = visitDates(a);
+    const dateB = visitDates(b);
     const looksA = looksText(a.n);
     const looksB = looksText(b.n);
+    // A plain average keeps a spot that was in only one of its looks, at a fraction of its level.
+    const avg = a.n > 1 || b.n > 1 ? ' An averaged visit can show a spot that was in only one of its looks.' : '';
     if (op === 'diff') {
-        return `Later minus earlier: ${dateB} (${looksB}) minus ${dateA} (${looksA}). Blue was there on the earlier date, orange on the later one.`;
+        return `Later minus earlier: ${dateB} (${looksB}) minus ${dateA} (${looksA}). Blue marks more light in the earlier visit, orange more in the later one.${avg}`;
     }
-    return `Sum of the two visits, ${dateA} (${looksA}) plus ${dateB} (${looksB}): what is in both adds up, and anything in only one shows at its own level. Pixels blank in either visit show black.`;
+    return `Sum of the two visits, ${dateA} (${looksA}) plus ${dateB} (${looksB}): the pictures are added pixel by pixel, so light in both visits adds up and light in only one counts once. Pixels blank in either visit show black.${avg}`;
 }
 
 export function visitLabel(v: Visit): string
 {
-    return `${utcDate(v.mjd)} · ${v.n === 1 ? '1 look' : `${v.n} looks`}`;
+    return `${visitDates(v)} · ${v.n === 1 ? '1 look' : `${v.n} looks`}`;
 }

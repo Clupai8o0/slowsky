@@ -21,7 +21,7 @@ import { coreBlank, curveFor, frameMjd, ringsOn, shiftFor, visitsOf, type Curve 
 import { mountAiNote } from './ai-note';
 import { FEATURES, mountFalseColour, mountFlags, renderChanges, renderHalo, renderSpectrum, type LayerState } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
-import { combineVisits, defaultPicks, subtractText, visitGroups, visitImage, visitLabel, type SubOp, type Visit } from './subtract';
+import { combineVisits, defaultPicks, subtractText, visitDates, visitGroups, visitImage, visitLabel, type SubOp, type Visit } from './subtract';
 
 type Mode = 'blink' | 'stack' | 'diff';
 type SourceKind = 'live' | 'snapshot' | 'demo';
@@ -288,7 +288,7 @@ function shell(): string
         <button type="button" class="sk-key g f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Flagged pixels</button>
         <button type="button" class="sk-key g c" data-act="falsecolour" data-ref="fcKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>False colour</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
-        <span class="sk-key d"><i class="b"></i>earlier<i class="o"></i>later</span>
+        <span class="sk-key d"><i class="b"></i>more light earlier<i class="o"></i>more light later</span>
       </div>
       <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
     </div>
@@ -771,7 +771,9 @@ export function mount(root: HTMLElement): void
             const useStretch = st.mode === 'diff' && pair && st.subOp === 'sum' ? (composed.sumStretch ?? stretch) : stretch;
             renderRgba(pix, useStretch, img.data);
             // A star too bright for the camera has blank pixels at its core: paint them white, not black.
-            cored = fillCores(pix, width, height, img.data) > 0;
+            // Not in A + B, whose sentence says blank pixels show black.
+            const sum = st.mode === 'diff' && pair && st.subOp === 'sum';
+            cored = !sum && fillCores(pix, width, height, img.data) > 0;
         }
         ctx.putImageData(img, 0, 0);
         paintGlow();
@@ -1162,9 +1164,10 @@ export function mount(root: HTMLElement): void
             bind('when', `${monthYear(first.tMin)} – ${monthYear(last.tMin)}`);
         } else if (st.mode === 'diff' && pair) {
             bind('frame', st.subOp === 'sum' ? 'A + B' : 'B − A');
-            bind('when', st.subOp === 'sum'
-                ? `${monthYear(pair.a.mjd)} + ${monthYear(pair.b.mjd)}`
-                : `${monthYear(pair.b.mjd)} − ${monthYear(pair.a.mjd)}`);
+            // Months, or days when both visits fall in one month.
+            const same = monthYear(pair.a.mjd) === monthYear(pair.b.mjd);
+            const [da, db] = [pair.a, pair.b].map((v) => same ? visitDates({ ...v, end: v.mjd }) : monthYear(v.mjd));
+            bind('when', st.subOp === 'sum' ? `${da} + ${db}` : `${db} − ${da}`);
         } else if (first && last) {
             bind('frame', 'Last − first');
             bind('when', `${monthYear(last.tMin)} − ${monthYear(first.tMin)}`);

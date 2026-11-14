@@ -3,7 +3,7 @@ import { StackError, stackVisit, subtract } from '../src/lib/stack';
 import type { SkyResult } from '../src/lib/source';
 import type { FrameRecord, OutputGrid, RegriddedFrame } from '../src/lib/types';
 import { frameMjd, visitsOf } from '../src/ui/measure';
-import { combineVisits, defaultPicks, subtractText, visitGroups, visitImage, visitLabel, type Visit } from '../src/ui/subtract';
+import { combineVisits, defaultPicks, subtractText, visitDates, visitGroups, visitImage, visitLabel, type Visit } from '../src/ui/subtract';
 
 const W = 4;
 const grid: OutputGrid = { center: { ra: 10, dec: 20 }, fovDeg: 0.1, pixelArcsec: 6.15, width: W, height: W };
@@ -64,9 +64,9 @@ describe('visitGroups', () => {
         const r = makeResult(frames);
         const groups = visitGroups(r);
         expect(groups).toEqual([
-            { ks: [4, 2, 5], mjd: frameMjd(frames[4]!), n: 3 },
-            { ks: [6], mjd: frameMjd(frames[6]!), n: 1 },
-            { ks: [3, 0], mjd: frameMjd(frames[3]!), n: 2 },
+            { ks: [4, 2, 5], mjd: frameMjd(frames[4]!), end: frameMjd(frames[5]!), n: 3 },
+            { ks: [6], mjd: frameMjd(frames[6]!), end: frameMjd(frames[6]!), n: 1 },
+            { ks: [3, 0], mjd: frameMjd(frames[3]!), end: frameMjd(frames[0]!), n: 2 },
         ]);
         expect(groups.map((v) => ({ mjd: v.mjd, n: v.n }))).toEqual(visitsOf(r));
         expect(visitGroups(makeResult([]))).toEqual([]);
@@ -84,7 +84,7 @@ describe('visitImage', () => {
         const single = makeFrame(0, 61000, [3, 7, NaN, 11]);
         single.grid = { ...grid, pixelArcsec: 0 };
         const r = makeResult([single]);
-        const v: Visit = { ks: [0], mjd: frameMjd(single), n: 1 };
+        const v: Visit = { ks: [0], mjd: frameMjd(single), end: frameMjd(single), n: 1 };
         const img = visitImage(r, v);
         expect(img).toBe(single.data);
     });
@@ -142,7 +142,7 @@ describe('combineVisits', () => {
 
 describe('defaultPicks', () => {
     it('returns null under 2 visits and first/last otherwise', () => {
-        const v = (mjd: number): Visit => ({ ks: [0], mjd, n: 1 });
+        const v = (mjd: number): Visit => ({ ks: [0], mjd, end: mjd, n: 1 });
         expect(defaultPicks([])).toBeNull();
         expect(defaultPicks([v(61000)])).toBeNull();
         expect(defaultPicks([v(61000), v(61100)])).toEqual({ a: 0, b: 1 });
@@ -151,33 +151,48 @@ describe('defaultPicks', () => {
 });
 
 describe('subtractText and visitLabel', () => {
-    const visitA1: Visit = { ks: [0], mjd: mjdUtc(2025, 7, 18, 0.25), n: 1 };
-    const visitB3: Visit = { ks: [1, 2, 3], mjd: mjdUtc(2026, 7, 9, 0.75), n: 3 };
-    const visitA2: Visit = { ks: [0, 1], mjd: mjdUtc(2025, 1, 5, 0.1), n: 2 };
-    const visitB1: Visit = { ks: [2], mjd: mjdUtc(2026, 11, 20, 0.9), n: 1 };
+    const at = (y: number, m: number, d: number, f = 0) => mjdUtc(y, m, d, f);
+    const visitA1: Visit = { ks: [0], mjd: at(2025, 7, 18, 0.25), end: at(2025, 7, 18, 0.25), n: 1 };
+    const visitB3: Visit = { ks: [1, 2, 3], mjd: at(2026, 7, 9, 0.75), end: at(2026, 7, 14, 0.2), n: 3 };
+    const visitA2: Visit = { ks: [0, 1], mjd: at(2024, 12, 28, 0.1), end: at(2025, 1, 3, 0.1), n: 2 };
+    const visitB1: Visit = { ks: [2], mjd: at(2026, 11, 20, 0.9), end: at(2026, 11, 20, 0.9), n: 1 };
+    const visitC2: Visit = { ks: [3, 4], mjd: at(2026, 4, 30, 0.8), end: at(2026, 5, 8, 0.1), n: 2 };
+    const visitD2: Visit = { ks: [5, 6], mjd: at(2026, 6, 1, 0.1), end: at(2026, 6, 1, 0.3), n: 2 };
+    const AVG = ' An averaged visit can show a spot that was in only one of its looks.';
 
-    it('formats option labels in UTC with singular and plural look counts', () => {
-        expect(visitLabel(visitA1)).toBe('18 Jul 2025 · 1 look');
-        expect(visitLabel(visitB3)).toBe('9 Jul 2026 · 3 looks');
+    it('writes the dates a visit covers, in UTC', () => {
+        expect(visitDates(visitA1)).toBe('18 Jul 2025');
+        expect(visitDates(visitB3)).toBe('9–14 Jul 2026');
+        expect(visitDates(visitA2)).toBe('28 Dec 2024 – 3 Jan 2025');
+        expect(visitDates(visitC2)).toBe('30 Apr – 8 May 2026');
+        expect(visitDates(visitD2)).toBe('1 Jun 2026');
     });
 
-    it('formats both diff and sum sentences exactly for singular and plural look counts', () => {
+    it('formats option labels with singular and plural look counts', () => {
+        expect(visitLabel(visitA1)).toBe('18 Jul 2025 · 1 look');
+        expect(visitLabel(visitB3)).toBe('9–14 Jul 2026 · 3 looks');
+    });
+
+    it('formats both diff and sum sentences exactly', () => {
         expect(subtractText(visitA1, visitB3, 'diff')).toBe(
-            'Later minus earlier: 9 Jul 2026 (3 looks, averaged) minus 18 Jul 2025 (1 look). Blue was there on the earlier date, orange on the later one.',
+            `Later minus earlier: 9–14 Jul 2026 (3 looks, averaged) minus 18 Jul 2025 (1 look). Blue marks more light in the earlier visit, orange more in the later one.${AVG}`,
         );
         expect(subtractText(visitA2, visitB1, 'diff')).toBe(
-            'Later minus earlier: 20 Nov 2026 (1 look) minus 5 Jan 2025 (2 looks, averaged). Blue was there on the earlier date, orange on the later one.',
+            `Later minus earlier: 20 Nov 2026 (1 look) minus 28 Dec 2024 – 3 Jan 2025 (2 looks, averaged). Blue marks more light in the earlier visit, orange more in the later one.${AVG}`,
+        );
+        expect(subtractText(visitA1, visitB1, 'diff')).toBe(
+            'Later minus earlier: 20 Nov 2026 (1 look) minus 18 Jul 2025 (1 look). Blue marks more light in the earlier visit, orange more in the later one.',
         );
         expect(subtractText(visitA1, visitB3, 'sum')).toBe(
-            'Sum of the two visits, 18 Jul 2025 (1 look) plus 9 Jul 2026 (3 looks, averaged): what is in both adds up, and anything in only one shows at its own level. Pixels blank in either visit show black.',
+            `Sum of the two visits, 18 Jul 2025 (1 look) plus 9–14 Jul 2026 (3 looks, averaged): the pictures are added pixel by pixel, so light in both visits adds up and light in only one counts once. Pixels blank in either visit show black.${AVG}`,
         );
-        expect(subtractText(visitA2, visitB1, 'sum')).toBe(
-            'Sum of the two visits, 5 Jan 2025 (2 looks, averaged) plus 20 Nov 2026 (1 look): what is in both adds up, and anything in only one shows at its own level. Pixels blank in either visit show black.',
+        expect(subtractText(visitA1, visitB1, 'sum')).toBe(
+            'Sum of the two visits, 18 Jul 2025 (1 look) plus 20 Nov 2026 (1 look): the pictures are added pixel by pixel, so light in both visits adds up and light in only one counts once. Pixels blank in either visit show black.',
         );
     });
 
     it('uses no banned words in any sentence or label', () => {
-        for (const [a, b] of [[visitA1, visitB3], [visitA2, visitB1]] as const) {
+        for (const [a, b] of [[visitA1, visitB3], [visitA2, visitB1], [visitC2, visitD2]] as const) {
             expect(visitLabel(a)).not.toMatch(BANNED);
             expect(visitLabel(b)).not.toMatch(BANNED);
             expect(subtractText(a, b, 'diff')).not.toMatch(BANNED);
