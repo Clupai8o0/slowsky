@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { aperture, centroid, lightCurve, PhotometryError, toJy } from '../src/lib/photometry';
+import {
+    aperture, centroid, lightCurve, PhotometryError, RESAMPLE_NOISE_FACTOR, resampleNoiseScale, toJy,
+} from '../src/lib/photometry';
 import type { ApertureOptions } from '../src/lib/photometry';
 import type { OutputGrid, PixelCoord, RegriddedFrame } from '../src/lib/types';
 
@@ -181,6 +183,16 @@ describe('aperture', () => {
         expect(scaled.noise).toBeCloseTo(2.8 * plain.noise, 12);
         expect(scaled.snr).toBeCloseTo(plain.snr / 2.8, 9);
         expect(Number.isNaN(aperture(data, width, height, { x: Number.NaN, y: 0 }).noise)).toBe(true);
+    });
+
+    it('gives the noise scale for a pixel size: 1.4 at the camera pixel or coarser, more when finer', () => {
+        expect(resampleNoiseScale(6.15)).toBeCloseTo(RESAMPLE_NOISE_FACTOR, 12);
+        expect(resampleNoiseScale(12.3)).toBeCloseTo(RESAMPLE_NOISE_FACTOR, 12);
+        expect(resampleNoiseScale(6.15 / 4)).toBeCloseTo(4 * RESAMPLE_NOISE_FACTOR, 12);
+        expect(resampleNoiseScale(2.5)).toBeCloseTo(RESAMPLE_NOISE_FACTOR * 6.15 / 2.5, 12);
+        for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+            expect(() => resampleNoiseScale(bad)).toThrow(PhotometryError);
+        }
     });
 
     it('counts fractional-centre pixels and includes both ring boundaries', () => {

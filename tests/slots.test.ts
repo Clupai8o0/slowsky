@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FEATURES, FLAGS_TEXT, mountFlags, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
+import { FEATURES, FLAGS_TEXT, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
 import { makeWcs } from '../src/lib/wcs';
 import type { FlagsLayout } from '../src/lib/flags';
 import type { SkyResult } from '../src/lib/source';
@@ -63,9 +63,10 @@ const flush = () => new Promise(r => setTimeout(r, 0));
 const view = (result: SkyResult, index = 0, over: Partial<SlotView> = {}): SlotView => ({ result, index, mode: 'blink', source: 'live', ...over });
 
 describe('flags slot', () => {
-    it('ships switched off', () => {
-        expect(FEATURES.flags).toBe(false);
-        const { slot, calls } = harness({ enabled: undefined });
+    it('ships switched on (spectrum stays off); switched off it shows nothing and reads nothing', () => {
+        expect(FEATURES.flags).toBe(true);
+        expect(FEATURES.spectrum).toBe(false);
+        const { slot, calls } = harness({ enabled: false });
         expect(slot.update(view(sky([frame('a')])), true)).toEqual({ key: false, layer: false, note: '' });
         expect(calls).toHaveLength(0);
     });
@@ -152,5 +153,21 @@ describe('flags slot', () => {
         calls[1]!.resolve();
         await flush();
         expect(slot.update(view(r2), true).layer).toBe(true);
+    });
+});
+
+describe('slots for modules still in their lanes', () => {
+    it('ship switched off and show nothing until a module fills them', () => {
+        expect(FEATURES.changes).toBe(false);
+        expect(FEATURES.falseColour).toBe(false);
+        expect(FEATURES.halo).toBe(false);
+        const v = view(sky([frame('a')]));
+        const el = {} as HTMLElement;
+        expect(renderChanges(el, el, v)).toBe(false);
+        expect(renderHalo(el, v)).toBe(false);
+        const none = { key: false, layer: false, note: '' };
+        expect(mountFalseColour(el, () => {}).update(v, true)).toEqual(none);
+        expect(mountFalseColour(el, () => {}, { enabled: true }).update(v, true)).toEqual(none);
+        expect(mountFalseColour(el, () => {}, { enabled: true }).update(null, true)).toEqual(none);
     });
 });

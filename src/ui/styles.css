@@ -225,6 +225,10 @@ button { cursor: pointer; }
     -webkit-mask-image: radial-gradient(closest-side, #000 35%, transparent); mask-image: radial-gradient(closest-side, #000 35%, transparent); }
 .sk-img, .sk-ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .sk-slot-flags { position: absolute; inset: 0; pointer-events: none; }
+/* Empty layers over the sky for modules from other lanes (src/ui/slots.ts): same box as the picture. */
+.sk-slot-layer { position: absolute; inset: 0; pointer-events: none; }
+.sk-slot-layer > canvas, .sk-slot-layer > svg { display: block; width: 100%; height: 100%; }
+.sk-slot-fc > canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
 .sk-slot-flags canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
 .sk-img { image-rendering: pixelated; image-rendering: crisp-edges; transition: opacity 240ms var(--ease), filter 240ms var(--ease); }
 .sk[data-loading] .sk-img { opacity: .25; filter: blur(2px); }
@@ -259,6 +263,8 @@ button { cursor: pointer; }
 .sk-key.g[aria-pressed=false] { color: var(--mute); }
 .sk-key.f .sw { width: 10px; height: 10px; border-radius: 1px; background: rgb(255, 79, 216); }
 .sk-key.f[aria-pressed=false] .sw { opacity: .5; }
+.sk-key.c .sw { width: 10px; height: 10px; border-radius: 1px; background: linear-gradient(90deg, #4f8bff, #ff7a45); }
+.sk-key.c[aria-pressed=false] .sw { opacity: .5; }
 .sk-flagnote { margin: 2px 0 6px; font-size: 12px; line-height: 1.5; color: var(--ink2); }
 .sk-key .ring, .sk-key.t::before { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--gold); }
 .sk-key.t { align-items: flex-start; color: var(--ink2); }
@@ -345,6 +351,7 @@ button { cursor: pointer; }
 .sk-rng::-webkit-slider-thumb { -webkit-appearance: none; width: 3px; height: 26px; margin-top: -10px; background: #fff; border: 0; border-radius: 1px; box-shadow: 0 0 0 3px var(--void), 0 0 14px 2px rgba(255, 255, 255, .55); }
 .sk-rng::-moz-range-thumb { width: 3px; height: 26px; background: #fff; border: 0; border-radius: 1px; box-shadow: 0 0 0 3px var(--void), 0 0 14px 2px rgba(255, 255, 255, .55); }
 .sk-rng:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--void), 0 0 0 5px rgba(255, 255, 255, .6); }
+.sk-rng:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--void), 0 0 0 5px rgba(255, 255, 255, .6); }
 .sk-rng:disabled { opacity: .45; cursor: default; }
 .sk-ticks { position: relative; height: 16px; margin-top: 4px; font: 10.5px var(--mono); color: var(--mute); }
 .sk-ticks span { position: absolute; top: 0; transform: translateX(-50%); }
@@ -355,6 +362,7 @@ button { cursor: pointer; }
 /* Brightness over time: a small framed plot. Dots are zero-length round-capped strokes, so they stay round
    while the plot stretches to the rail's width. */
 .sk-m-curve { margin-top: 44px; gap: 12px; flex: none; }
+.sk-m-slot { margin-top: 44px; gap: 12px; flex: none; }
 .sk-lc { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: stretch; }
 .sk-lc svg { width: 100%; height: 104px; display: block; overflow: visible; }
 .sk-lc .band { fill: rgba(255, 255, 255, .07); }
@@ -398,7 +406,7 @@ button { cursor: pointer; }
 /* When the sky is small, the player tightens so both groups stay on one row. */
 @media (max-width: 1280px), (max-height: 820px) {
     .sk-player { column-gap: 8px; }
-    .sk-tr .sk-btn { width: 40px; }
+    .sk-tr .sk-btn { width: 44px; }
     .sk-tr .sk-btn.go { width: 54px; }
     .sk-seg { flex: 1; min-width: 0; }
     .sk-seg button { flex: 1; min-width: 0; padding: 0 6px; }
@@ -458,8 +466,10 @@ button { cursor: pointer; }
     .sk-status p { margin: 0; }
     .sk-m-about { order: 4; margin-top: 36px; padding-top: 0; }
     .sk-m-colour { order: 5; margin-top: 40px; }
+    .sk-m-spec, .sk-m-changes { order: 5; margin-top: 40px; }
     .sk-m-ai { order: 5; margin-top: 32px; width: calc(100% - 36px); max-width: 644px; padding: 16px; align-self: center; }
     .sk-m-curve { order: 6; margin-top: 40px; }
+    .sk-m-halo { order: 6; margin-top: 40px; }
     .sk-m-details { order: 6; margin-top: 40px; }
     .sk-credit { order: 7; margin-top: 36px; padding-top: 0; }
     .sk-tg { flex-direction: row; overflow-x: auto; margin: 14px -18px 0; padding: 0 18px; gap: 6px; scrollbar-width: none; }
@@ -475,35 +485,37 @@ button { cursor: pointer; }
     .sk-legrow { flex-wrap: wrap; }
     .sk-sky { box-shadow: none; }
     .sk-player { gap: 10px; }
-    .sk-tr .sk-btn { width: 40px; }
+    .sk-tr .sk-btn { width: 44px; }
     .sk-tr .sk-btn.go { width: 54px; }
     .sk-seg { flex: 1; min-width: 0; }
     .sk-seg button { flex: 1; min-width: 0; padding: 0 4px; font-size: 13px; }
     .sk-coord span:first-child { display: inline; color: var(--mute); }
     .sk-body { max-width: none; }
 }
-/* Phones: every control is at least 40 px tall to tap, and no label is under 12 px. */
+/* Phones: every control is at least 44 px tall to tap, and no label is under 12 px. */
 @media (max-width: 1080px) {
-    .sk-fov select { min-height: 40px; padding: 0 6px; }
-    .sk-key.g { min-height: 40px; }
-    .sk-gk .sk-src { line-height: 40px; padding: 0 4px; }
-    .sk-btn2 { min-height: 40px; }
-    .sk-seg, .sk-seg button { min-height: 40px; }
-    .sk-rng { height: 40px; top: -6px; } /* same centre line as the 28 px desktop slider */
-    .sk-search input { min-height: 40px; }
-    .sk-ai-lock label { height: 40px; }
-    .sk-ai-given summary { padding: 11px 0; }
+    .sk-fov select { min-height: 44px; padding: 0 6px; }
+    .sk-key.g { min-height: 44px; }
+    .sk-gk .sk-src { line-height: 44px; padding: 0 4px; }
+    .sk-btn2 { min-height: 44px; }
+    .sk-seg, .sk-seg button { min-height: 44px; }
+    .sk-rng { height: 44px; top: -8px; } /* same centre line as the 28 px desktop slider */
+    .sk-search input { min-height: 44px; }
+    .sk-ai-lock label { height: 44px; }
+    .sk-ai-given summary { padding: 13px 0; }
     .sk-ai-tag, .sk-ai-disc, .sk-ai-left { font-size: 12px; }
-    .sk-m-details dd a { display: inline-flex; align-items: center; min-height: 40px; }
+    .sk-m-details dd a { display: inline-flex; align-items: center; min-height: 44px; }
     .sk-mh, .sk-fov, .sk-bar b, .sk-strip small, .sk-readout > span, .sk-ticks, .sk-axl, .sk-sim { font-size: 12px; }
     .sk-coord, .sk-read, .sk-m-details dl, .sk-credit, .sk-gk .sk-src, .sk-fig figcaption, .sk-lcy span, .sk-lcx { font-size: 12px; }
     .sk-mh { letter-spacing: .1em; }
     .sk-key, .sk-key.g { font-size: 12px; }
-    .sk-key.g { min-height: 40px; height: auto; }
-    .sk-tr .sk-btn { height: 44px; }
-    .sk-strip button { min-height: 40px; }
-    .sk-coord .sk-src { display: inline-flex; align-items: center; min-height: 40px; }
-    .sk-focus { min-height: 40px; } /* hidden on phones today; sized in case it shows */
+    .sk-key.g { min-height: 44px; height: auto; }
+    .sk-tr .sk-btn { height: 44px; min-width: 44px; }
+    .sk-tg button { min-height: 44px; }
+    .sk-strip button { min-height: 44px; }
+    .sk-coord .sk-src { display: inline-flex; align-items: center; min-height: 44px; }
+    .sk-focus { min-height: 44px; } /* hidden on phones today; sized in case it shows */
+    .sk-skip { padding: 12px 14px; }
 }
 /* Small phones: the view buttons get their own row so "Subtract" never spills out. */
 @media (max-width: 380px) {

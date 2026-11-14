@@ -125,7 +125,7 @@ def query(target):
 
 
 def gaia_write(path, stars):
-    path.write_text(json.dumps({'credit': 'ESA/Gaia/DPAC, CC BY-NC 3.0 IGO', 'sources': stars}, allow_nan=False))
+    path.write_text(json.dumps({'credit': 'ESA, Gaia DPAC; CC BY-NC 3.0 IGO', 'sources': stars}, allow_nan=False))
 
 
 def num(value):

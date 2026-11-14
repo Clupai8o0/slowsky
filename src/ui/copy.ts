@@ -34,10 +34,10 @@ export const COPY: Record<TargetId, TargetCopy> = {
     },
     epsindb: {
         display: 'Epsilon Indi B',
-        short: 'Fades at some colours',
+        short: 'Dim at some colours',
         kind: 'spectrum',
         headline: 'Epsilon Indi B, missing colours',
-        show: 'Two brown dwarfs, too cold to be stars. Change the colour: they fade where methane and water soak up light.',
+        show: 'Two brown dwarfs: heavier than planets, too light to shine like stars. Change the colour: they are dim where methane and water soak up light.',
         not: 'No brightness curve is drawn for it here. Blinking shows how it moves; it does not test whether its brightness changes.',
     },
     wise0855: {
@@ -50,11 +50,11 @@ export const COPY: Record<TargetId, TargetCopy> = {
     },
     rdra: {
         display: 'R Draconis',
-        short: 'Too bright to measure',
+        short: 'Centre too bright to measure',
         kind: 'saturated',
-        headline: 'R Draconis, too bright to measure',
+        headline: 'R Draconis, too bright at the centre',
         show: 'A giant star that swells and shrinks. Look at the glow around it, not the centre.',
-        not: 'Its centre is too bright for the camera in every frame, so the centre cannot be measured.',
+        not: 'Its centre is too bright for the camera in every saved frame, so the centre cannot be measured.',
     },
 };
 
@@ -65,13 +65,13 @@ export const CUSTOM_COPY = {
 };
 
 export const MODE_HINT = {
-    blink: 'Blink flips between dates. Anything that moves or changes jumps out.',
+    blink: 'Blink flips between dates. Things that move or change are easier to spot.',
     stack: 'Stack averages every frame. Faint things appear; moving things smear.',
     diff: 'Subtract: last look minus first. Blue was there then, orange is there now.',
 } as const;
 
 export const STAGE_TEXT = {
-    search: 'Asking NASA’s archive for every look at this spot',
+    search: 'Asking NASA’s archive for its looks at this spot',
     headers: 'Reading the files',
     pixels: 'Fetching the pixels',
     regrid: 'Lining the frames up',

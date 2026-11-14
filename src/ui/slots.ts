@@ -1,15 +1,20 @@
 // Empty, feature-flagged slots for modules built in their own lanes, so those lanes edit this file and never
-// the shared UI. Both are off by default: a slot shows only when its flag is on AND it has something to show.
+// the shared UI. A slot shows only when its flag is on AND it has something to show. Flags is on; the rest are off.
 // - spectrum: a panel under the colour step, for src/lib/spectrum-chart.ts. Ships only once the owner logs it
 //   in DECISIONS.md.
-// - flags: a "Flags" toggle in the sky legend, a layer over the sky and a line under the legend, from
+// - flags: a "Flagged pixels" toggle in the sky legend, a layer over the sky and a line under the legend, from
 //   src/lib/flags.ts (read) and src/lib/flags-view.ts (mask on the picture's grid, counts, sentence).
+// - changes: a "Candidate changes" panel in the right rail and a marks layer over the sky, for the change finder
+//   (lane/changes): where, what kind and how far above the noise, each a candidate, never a percentage.
+// - falseColour: a "False colour" toggle in the sky legend, a layer over the sky and a line under the legend, for
+//   lane/falsecolour (falseColourRgba for the layer, colourAt for the line).
+// - halo: a panel under "Brightness over time", for the R Draconis halo curve (lane/halo3).
 import { readFlags } from '../lib/flags';
 import { flagsRgba, regridFlags, summariseFlags } from '../lib/flags-view';
 import type { SkyResult } from '../lib/source';
 import type { RegriddedFrame } from '../lib/types';
 
-export const FEATURES = Object.freeze({ spectrum: false, flags: false });
+export const FEATURES = Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
 
 export interface SlotView {
     result: SkyResult;
@@ -28,9 +33,9 @@ export function renderSpectrum(box: HTMLElement, view: SlotView): boolean
     return false;
 }
 
-// Flag names (from the file's own MSKN cards) the layer leaves out. FULLSAMPLE is information only and GHOST_FPA
-// is unused (Explanatory Supplement v2.1, Table 16). SOURCE marks every pixel of a catalogue star, which covers
-// up to 75% of a crowded field (research/12), so drawing it would hide the picture.
+// Flag names (from the file's own MSKN cards) the layer leaves out, per the Explanatory Supplement, Table 16:
+// FULLSAMPLE is "purely informational", GHOST_FPA is "currently unused", and SOURCE marks pixels "mapped to a
+// known source", so it sits on the stars themselves and drawing it would hide the picture.
 export const FLAGS_LEFT_OUT: ReadonlySet<string> = new Set(['SOURCE', 'FULLSAMPLE', 'GHOST_FPA']);
 export const FLAGS_COLOR: [number, number, number] = [255, 79, 216];
 export const FLAGS_ALPHA = 170;
@@ -46,11 +51,14 @@ export function shownBits(names: { bit: number; name: string }[]): number[]
     return names.filter(n => !FLAGS_LEFT_OUT.has(n.name.toUpperCase())).map(n => n.bit);
 }
 
-export interface FlagsState {
-    key: boolean; // show the Flags key
+// What a legend toggle with a layer over the sky shows: the key, the layer, and a line under the legend.
+export interface LayerState {
+    key: boolean; // show the key in the sky legend
     layer: boolean; // show the layer over the sky
     note: string; // the line under the legend ('' hides it)
 }
+
+export type FlagsState = LayerState;
 
 type Entry =
     | { status: 'loading' }
@@ -186,4 +194,48 @@ export function mountFlags(layer: HTMLElement, onChange: () => void, deps: Flags
     }
 
     return { update };
+}
+
+// Change finder. `box` is the panel body in the right rail; `marks` is an empty layer over the sky (same box as
+// the picture, pointer-events off) for rings or labels at each candidate. Called on every render: cache by
+// `view.result` and return quickly. Fill both with textContent or trusted SVG only. Return true when there is
+// something to show; false hides the panel and the layer.
+export function renderChanges(box: HTMLElement, marks: HTMLElement, view: SlotView): boolean
+{
+    void box;
+    void marks;
+    void view;
+    return false;
+}
+
+// False colour. `layer` is an empty layer over the sky (same box as the picture, under the Gaia rings) for a
+// canvas from falseColourRgba. `update` runs on every render with whether the key is switched on, and returns
+// what to show; key false hides the toggle. `onChange` asks for a render (e.g. when a read ends).
+export interface FalseColourSlot {
+    update(view: SlotView | null, on: boolean): LayerState;
+}
+
+export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps: { enabled?: boolean } = {}): FalseColourSlot
+{
+    const enabled = deps.enabled ?? FEATURES.falseColour;
+    void layer;
+    void onChange;
+    return {
+        update(view: SlotView | null, on: boolean): LayerState
+        {
+            void on;
+            if (!enabled || !view) {
+                return { key: false, layer: false, note: '' };
+            }
+            return { key: false, layer: false, note: '' };
+        },
+    };
+}
+
+// R Draconis halo curve. `box` is the panel body under "Brightness over time". Same rules as renderSpectrum.
+export function renderHalo(box: HTMLElement, view: SlotView): boolean
+{
+    void box;
+    void view;
+    return false;
 }

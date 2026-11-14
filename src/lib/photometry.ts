@@ -227,6 +227,18 @@ const NATIVE_PIXEL_ARCSEC = 6.15;
 // On a coarser grid the factor would be too large, which errs on the careful side.
 export const RESAMPLE_NOISE_FACTOR = 1.4;
 
+/**
+ * The `noiseScale` to pass to `aperture()` on a regridded picture with square pixels of `pixelArcsec`.
+ * Without it the plain formula treats every output pixel as independent and reads the noise too low.
+ */
+export function resampleNoiseScale(pixelArcsec: number): number
+{
+    if (!Number.isFinite(pixelArcsec) || pixelArcsec <= 0) {
+        throw new PhotometryError('Pixel size must be finite and positive');
+    }
+    return RESAMPLE_NOISE_FACTOR * Math.max(1, NATIVE_PIXEL_ARCSEC / pixelArcsec);
+}
+
 /** Moving targets receive the index in the original input, before filtering/sorting. */
 export function lightCurve(
     frames: RegriddedFrame[],
@@ -267,7 +279,7 @@ export function lightCurve(
     const refRatios: number[][] = refs.length >= 2 ? refs.map(() => []) : [];
     for (const { frame: f, index } of kept) {
         const at = typeof target === 'function' ? target(f, index) : target;
-        const apertureOpts = { ...opts, noiseScale: opts.noiseScale ?? RESAMPLE_NOISE_FACTOR * Math.max(1, NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec) };
+        const apertureOpts = { ...opts, noiseScale: opts.noiseScale ?? resampleNoiseScale(f.grid.pixelArcsec) };
         const measured = aperture(f.data, f.grid.width, f.grid.height, at, apertureOpts);
         const referenceResults = refs.map((ref) => aperture(f.data, f.grid.width, f.grid.height, ref, apertureOpts));
         const refSum = referenceResults.reduce((sum, ref) => sum + ref.sum, 0);
