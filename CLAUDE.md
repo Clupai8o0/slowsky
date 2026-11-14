@@ -6,8 +6,11 @@ Product repo, started 14 Nov 2026 at kick-off. Plan and research live in
 ## Rules
 
 - **Nothing from the workspace's `research/` is copied in** (code, data, previews, numbers). Write fresh, download fresh.
-- **AI tools:** only Claude and Codex write or review code here (folder treated as confidential; the Terms ban
-  Chinese-owned entities). Never DeepSeek, Kimi, Qwen, GLM or MiniMax. Every tool used is named in `README.md`.
+- **AI tools:** Claude, Codex, Gemini and Grok write or review code here (Sam, 14 Nov: Gemini and Grok added, on
+  the condition that `README.md` names them first). The Terms ban Chinese-owned entities: never DeepSeek, Kimi,
+  Qwen, GLM or MiniMax. Cursor is held: its Composer 2.5 model is built on Moonshot's Kimi K2.5 (Cursor's own
+  page, checked 14 Nov), so no `cursor:composer-*` or `cursor:auto` here (Sam, 14 Nov: keep it held). Every tool
+  used is named in `README.md`.
 - `DECISIONS.md` is Sam's, in his own words. AI never fills it in.
 - Every number on a target card comes from code or bakes run in this repo.
 - Repo and deploys are **private until Sam says go public**: GitHub repo private; Vercel deploys by CLI as preview
