@@ -83,7 +83,9 @@ export function factSheet(f: InsightFacts): string[]
 {
     const name = TARGETS.find((t) => t.id === f.targetId)?.name;
     const times = f.visits.map((v) => v.mjd);
-    const lines = [`Target: ${name ?? 'a position typed in by the visitor'}.`, `Position: RA ${f.ra.toFixed(4)} deg, Dec ${f.dec.toFixed(4)} deg.`, `Wavelength: ${f.lambdaUm.toFixed(3)} micron.`, `Visits: ${f.visits.length}. Frames in each visit: ${f.visits.map((v) => v.frames).join(', ')}. Time from first to last visit: ${(Math.max(...times) - Math.min(...times)).toFixed(1)} days.`];
+    const match = name?.match(/^(\w+) J(\d{4}\d*(?:\.\d+)?)([-+−])(\d{4}\d*(?:\.\d+)?)$/i);
+    const short = match ? `, also written ${match[1]} ${match[2]!.slice(0, 4)}${match[3]}${match[4]!.slice(0, 4)}` : '';
+    const lines = [`Target: ${name ?? 'a position typed in by the visitor'}${short}.`, `Position: RA ${f.ra.toFixed(4)} deg, Dec ${f.dec.toFixed(4)} deg.`, `Wavelength: ${f.lambdaUm.toFixed(3)} micron.`, `Visits: ${f.visits.length}. Frames in each visit: ${f.visits.map((v) => v.frames).join(', ')}. Time from first to last visit: ${(Math.max(...times) - Math.min(...times)).toFixed(1)} days.`];
     if (f.lightCurve) {
         const lc = f.lightCurve;
         const values = [...lc.points].sort((a, b) => a.mjd - b.mjd).map((p) => p.relative);
@@ -107,48 +109,143 @@ export function factSheet(f: InsightFacts): string[]
     lines.push(`Frames came from: ${f.snapshot ? 'the baked snapshot' : "NASA's live archive"}.`);
     return lines;
 }
+type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp };
+const meanings: [RegExp, string][] = [
+    [/^Position\b/i, 'position|coordinat|located|lies|sits|centred|centered|ra|dec|right ascension|declination'],
+    [/^Wavelength\b/i, 'wavelength|micron|µm|um|band|channel|colour|color|infrared'],
+    [/^Visits\b/i, 'visit|epoch|pass|return|observ'],
+    [/^Frames in each visit\b/i, 'frame|image|exposure|visit'],
+    [/^Time from first to last visit\b/i, 'visit|span|apart|baseline|over|across|within|between|period|separat|later|after|first|last|cover|shift|mov'],
+    [/^Brightness relative\b/i, 'bright|flux|relative|ratio|level|value|reading|measure|point|went'],
+    [/^Largest change\b/i, 'chang|differ|bright|dim|faint|fade|fading|rise|rose|drop|fell|fall|dip|swing|jump|median|largest|peak|increas|decreas'],
+    [/^Lowest signal-to-noise\b/i, 'signal|noise|s/n|snr'],
+    [/^Reference stars\b/i, 'reference|comparison|control|star'],
+    [/^Scatter of each\b/i, 'scatter|spread|reference|comparison|control|steady|stable'],
+    [/^Frames left out\b/i, 'left out|exclud|discard|remov|dropp|skipp|match|frame'],
+    [/^Difference image\b/i, 'differenc|subtract|residual|sigma|σ|significan|image|standard deviation'],
+    [/^Shift in position\b/i, 'shift|mov|motion|position|drift|displac|travel|cross|slid|proper'],
+];
+const numberList = /(?<![\w.])[-−]?\d+(?:\.\d+)?(?:\s*(?:,\s*(?:(?:and|or)\s+)?|\s+(?:and\s+then|and|or|to|then)\s+)[-−]?\d+(?:\.\d+)?)*/g;
+const unitAtStart = /^\s*-?\s*(percent\b|%|micrometres?\b|micrometers?\b|microns?\b|µm\b|um\b|arcseconds?\b|arcsec\b|″|degrees?\b|deg\b|°|standard\s+deviations?\b|sigma\b|σ|days?\b)/i;
+function normalizedUnit(unit: string): string
+{
+    const value = unit.toLowerCase();
+    if (value === '%' || value === 'percent') { return 'percent'; }
+    if (/^(micron|micromet|µm|um)/.test(value)) { return 'micron'; }
+    if (/^(arcsec|″)/.test(value)) { return 'arcsec'; }
+    if (/^(deg|°)/.test(value)) { return 'deg'; }
+    if (/^(sigma|σ|standard)/.test(value)) { return 'sigma'; }
+    if (/^day/.test(value)) { return 'days'; }
+    return '';
+}
+function lists(value: string): { start: number; end: number; values: string[]; unit: string; follower: string }[]
+{
+    return Array.from(value.matchAll(numberList)).map((match) => {
+        const raw = match[0].trimEnd();
+        const end = match.index + raw.length;
+        const after = value.slice(end);
+        const unit = after.match(unitAtStart)?.[1] ?? '';
+        return { start: match.index, end, values: raw.match(/[-−]?\d+(?:\.\d+)?/g) ?? [], unit: normalizedUnit(unit), follower: after };
+    });
+}
+function sheetFacts(sheet: string[]): NumberFact[]
+{
+    const result: NumberFact[] = [];
+    for (const line of sheet) {
+        const segments = Array.from(line.matchAll(/(?:^|\.\s+)([^:]+):\s*(.*?)(?=\.\s+[A-Za-z][^:]*:|\.$|$)/g));
+        for (const segment of segments) {
+            const label = segment[1]!.trim();
+            if (/^Target$/i.test(label)) { continue; }
+            const stems = meanings.find(([pattern]) => pattern.test(label))?.[1] ?? (label.match(/[a-z]{4,}/gi) ?? []).join('|');
+            if (!stems) { continue; }
+            const words = new RegExp(`(?:^|[^\\p{L}])(?:${stems})`, 'iu');
+            for (const list of lists(segment[2]!)) {
+                for (const value of list.values) { result.push({ value: Number(value.replace('−', '-')), integer: !value.includes('.'), unit: list.unit, words }); }
+            }
+        }
+    }
+    for (const entry of CONSTANT_CONTEXT) {
+        const context = entry.context.source;
+        const noun = entry.context.test('micron') ? 'micron' : entry.context.test('arcsec') ? 'arcsec' : entry.context.test('channels') ? 'channels' : entry.context.test('months') ? 'months' : 'visits';
+        result.push({ value: entry.value, integer: Number.isInteger(entry.value), unit: noun === 'micron' || noun === 'arcsec' ? noun : '', words: new RegExp(context, 'i') });
+        if (entry.context.test('detectors')) { result.push({ value: entry.value, integer: true, unit: '', words: /\bdetectors?\b/i }); }
+    }
+    return result;
+}
+// Context matching cannot detect a real number moved to the wrong subject with the same words.
 export function checkNote(text: string, sheet: string[]): { text: string; dropped: number }
 {
-    const sheetNumbers = new Set(sheet.flatMap((line) => (line.match(/\d+(?:\.\d+)?/g) ?? []).map(Number)));
-    const unitPattern = /((?:\d+(?:\.\d+)?\s*(?:(?:,\s*(?:and\s+)?|\s+and\s+)\d+(?:\.\d+)?\s*)*))(?:-\s*)?(percent\b|times\b|sigma\b|standard\s+deviations?\b|microns?\b|µm\b|arcsec(?:onds?)?\b|days?\b|deg(?:rees?)?\b|visits?\b|x\b|%|×|σ)/gi;
-    function unitKey(value: string, unit: string): string
-    {
-        const kind = unit.toLowerCase();
-        const normalized = kind === '%' ? 'percent' : kind === 'x' || kind === '×' ? 'times' : kind === 'σ' || kind.startsWith('standard ') ? 'sigma' : kind === 'µm' || kind.startsWith('micron') ? 'micron' : kind.startsWith('arcsec') ? 'arcsec' : kind.startsWith('day') ? 'day' : kind.startsWith('deg') ? 'deg' : kind.startsWith('visit') ? 'visit' : kind;
-        return `${Number(value)}:${normalized}`;
-    }
-    function unitKeys(value: string): string[]
-    {
-        return Array.from(value.matchAll(unitPattern)).flatMap((match) => (match[1]!.match(/\d+(?:\.\d+)?/g) ?? []).map((n) => unitKey(n, match[2]!)));
-    }
-    const units = new Set(sheet.flatMap(unitKeys).filter((key) => !key.endsWith(':visit')));
-    for (const entry of CONSTANT_CONTEXT) {
-        if (entry.context.test('micron')) { units.add(unitKey(String(entry.value), 'micron')); }
-        if (entry.context.test('arcsec')) { units.add(unitKey(String(entry.value), 'arcsec')); }
-    }
-    units.add(unitKey('3', 'visit'));
-    const visitCount = sheet.join('\n').match(/^Visits:\s*(\d+)\./m)?.[1];
-    if (visitCount) { units.add(unitKey(visitCount, 'visit')); }
+    const facts = sheetFacts(sheet);
+    const visitCount = Number(sheet.join('\n').match(/^Visits:\s*(\d+)\./m)?.[1] ?? 3);
     const target = sheet.join('\n').match(/^Target:\s*(.+)\.$/m)?.[1];
     const dash = '[-\\u2010-\\u2015\\u2212]';
-    // The part of the name before its first dash counts only when it is long enough not to eat ordinary words.
-    const names = target ? [target, target.split(new RegExp(dash))[0]!.trim()].filter((name, i) => name.length >= (i ? 4 : 1)) : [];
-    const escapedNames = [...new Set(names)].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(new RegExp(dash, 'g'), dash));
-    // Whole names only, with any kind of dash: a name must never be cut out of the middle of another word.
-    const namePattern = escapedNames.length ? new RegExp(`(?<!\\w)(?:${escapedNames.join('|')})(?!\\w)`, 'gi') : undefined;
+    const names: string[] = [];
+    if (target) {
+        for (const name of target.split(/,\s*also written\s*/i)) {
+            const variants = [name, name.replace(/\bJ(?=\d)/i, ''), name.replace(/(\s)(?=\d)/, '$1J')];
+            for (const variant of variants) {
+                names.push(variant);
+                const prefix = variant.split(new RegExp(dash))[0]!.trim();
+                if (prefix.length >= 4 && prefix !== variant) { names.push(prefix); }
+                // The designation alone, without the catalogue word. Its own prefixes are not names: "0855" is a number.
+                const bare = variant.replace(/^[A-Za-z]+\s+(?=J?\d)/, '');
+                if (bare !== variant && bare.length >= 8) { names.push(bare); }
+            }
+        }
+    }
+    const escapedNames = [...new Set(names)].sort((a, b) => b.length - a.length).map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(new RegExp(dash, 'g'), dash));
+    const namePattern = escapedNames.length ? new RegExp('(?<!\\w)(?:' + escapedNames.join('|') + ')(?!\\w)', 'gi') : undefined;
+    const foreign = /^(?:hours?|hrs?|minutes?|mins?|seconds?|secs?|weeks?|months?|nm|mm|cm|metres?|meters?|kilometres?|kilometers?|miles?|arcmin|arcminutes?|mas|milliarcsec(?:onds?)?|radians?|celsius|fahrenheit|kg|grams?|watts?|hz|ev|photons?|electrons?|counts?|pixels?|times|x|trillion)\b/i;
+    function unsupportedNumbers(value: string): boolean
+    {
+        for (const list of lists(value)) {
+            const before = value.slice(0, list.start).match(/[\p{L}]+(?:\/[\p{L}]+)?|[%″°]/gu) ?? [];
+            const after = value.slice(list.end).match(/[\p{L}]+(?:\/[\p{L}]+)?|[%″°]/gu) ?? [];
+            const context = [...before.slice(-8), ...after.slice(0, 3)].join(' ');
+            const follower = list.follower.trimStart().replace(/^-\s*/, '');
+            const unitlessBlocked = Boolean(list.unit) || /^[°′″$€£±×^/]/.test(follower) || /^[A-Z]/.test(follower) || foreign.test(follower);
+            for (const raw of list.values) {
+                const val = Number(raw.replace('−', '-'));
+                const integer = !raw.includes('.');
+                if (!facts.some((fact) => {
+                    if (fact.value !== val || (integer && !fact.integer) || !fact.words.test(context)) { return false; }
+                    if (fact.unit) { return list.unit === fact.unit; }
+                    if (unitlessBlocked) {
+                        return /^(?:months?|channels?|detectors?)\b/i.test(follower) && fact.words.test(follower);
+                    }
+                    return true;
+                })) { return true; }
+            }
+        }
+        return false;
+    }
     function invalid(value: string): boolean
     {
-        if (namePattern) { value = value.replace(namePattern, ''); }
-        value = value.replace(/\b(?:CO2|H2O|H2|2MASS|W[1-4]|DR[13]|QR3)\b/gi, '');
+        if (namePattern) { value = value.replace(namePattern, 'NAME'); }
+        value = value.replace(/\b(?:CO2|H2O|H2|CH4|2MASS|W[1-4]|DR[1-3]|QR3)\b/gi, 'NAME').replace(/−/g, '-');
+        // A name, or any token that mixes letters and digits, is never a quantity: "It moved WISE J085510.83 arcsec."
+        for (const token of value.matchAll(/(?<![\w.])(?:NAME|[A-Za-z][\w.]*\d[\w.]*)(?![\w])/g)) {
+            const after = value.slice(token.index + token[0].length);
+            if (unitAtStart.test(after) || foreign.test(after.trimStart().replace(/^-\s*/, ''))) { return true; }
+        }
+        const ordinals = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth'];
+        const ordinal = /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+visits?\b/gi;
         return /discover/i.test(value)
             || Array.from(value).some((char) => /\p{N}/u.test(char) && !/[0-9]/.test(char))
             || /(?<![0-9])\.\d/.test(value)
             || /\d[eE][\d+-]|\d\s*[/^]\s*\d|\d\s*[-\u2010-\u2015\u2212]\s*\d|\d(?:st|nd|rd|th)\b/i.test(value)
-            || /\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|half|halves|halve|halved|halving|twice|double(?![ -]check)|doubled|doubles|doubling|triple|tripled|triples|tripling|quadruple|quadrupled|quadruples|quadrupling|quarters?|\w+-?fold|(?:a|one)[\s-]+(?:third|fifth|tenth)(?=\s+(?:of|as|the|its|their|less|more|fainter|brighter|dimmer|smaller|larger|lower|higher)\b|\s*(?:[.,;:)!?]|$))|thirds|fifths|tenths)\b/i.test(value)
+            || /\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|half|halves|halve|halved|halving|twice|double(?![ -]check)|doubled|doubles|doubling|triple|tripled|triples|tripling|quadruple|quadrupled|quadruples|quadrupling|quarters?|\w+-?fold|(?:a|one)[\s-]+(?:third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)(?!\s+(?:visit|frame|point|reading|value|epoch|look|pass|image|exposure|time)s?\b)|thirds|fourths|fifths|sixths|sevenths|eighths|ninths|tenths)\b/i.test(value)
             || /\d(?:\.\d+)?(?:\s*|\s*-\s*)(?:light[ -]?years?|ly|pc|parsecs?|kpc|au|km|kelvin|years?|yrs?|myr|gyr|mag|magnitudes?|jy|mjy|solar|jupiter|earth|msun|mjup|rsun|lsun|mass(?:es)?)\b/i.test(value)
             || /\d(?:\.\d+)?(?:\s*|\s*-\s*)K\b/.test(value)
-            || (value.match(/\d+(?:\.\d+)?/g) ?? []).some((n) => !sheetNumbers.has(Number(n)) && !CONSTANT_CONTEXT.some((entry) => entry.value === Number(n) && entry.context.test(value)))
-            || unitKeys(value).some((key) => !units.has(key));
+            || /\d\s*\/|\/\s*\d/.test(value)
+            || /\d(?:\.\d+)?(?:\s*-?\s*(?:[a-zµ]+|%|″|°|σ))?\s+(?:per|a|an|each|every)\s+(?:days?|visits?|frames?|years?|months?|weeks?|hours?|minutes?|seconds?|epochs?|pixels?|channels?)\b/i.test(value)
+            || /\d(?:\.\d+)?\s*-?\s*(?:[a-zµ]+|%|″|°|σ)\s*\//i.test(value)
+            || /\d(?:\.\d+)?\s+(?:out\s+of|of|in)\s+(?:(?:the|its|their|all|every)\s+)*(?:\d|a\s+kind\b)/i.test(value)
+            || /\b(?:factor\s+of|orders?\s+of\s+magnitude)\b/i.test(value)
+            || /\b(?:January|February|March|April|June|July|August|September|October|November|December)\b/.test(value)
+            || /(?:\d\s+May\b|\bMay\s+\d)/.test(value)
+            || Array.from(value.matchAll(ordinal)).some((match) => ordinals.indexOf(match[1]!.toLowerCase()) + 1 > visitCount)
+            || unsupportedNumbers(value);
     }
     let dropped = 0;
     let count = 0;

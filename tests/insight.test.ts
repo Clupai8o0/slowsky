@@ -6,7 +6,7 @@ import { TARGETS } from '../src/lib/targets';
 
 const facts: InsightFacts = { targetId: 'custom', ra: 12.34567, dec: -38, lambdaUm: 4.27, visits: [{ mjd: 61000, frames: 3 }, { mjd: 61010, frames: 4 }], lightCurve: { points: [{ mjd: 61000, relative: 1, snr: 20 }, { mjd: 61010, relative: 0.8, snr: 10 }], refScatter: [0.02, 0.03], dropped: 2 }, difference: { peakSigma: -3.4 }, motion: { arcsec: 2.3, days: 10 }, snapshot: true };
 const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3457 deg, Dec -38.0000 deg.', 'Wavelength: 4.270 micron.', 'Visits: 2. Frames in each visit: 3, 4. Time from first to last visit: 10.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.80.', 'Largest change from the median brightness: 11 percent brighter.', 'Lowest signal-to-noise among the points: 10.', 'Reference stars: 2. Scatter of each: 2.0, 3.0 percent.', 'Frames left out because their wavelength did not match: 2.', 'Difference image at the target: 3.4 sigma, fainter in the later visit.', 'Shift in position: 2.3 arcsec over 10.0 days.', 'Frames came from: the baked snapshot.'];
-const note = 'What this shows: The value is 4.27. It is at -38 degrees.\nHow far to trust it: More data helps.';
+const note = 'What this shows: The wavelength is 4.270 micron. The position is -38.0000 degrees.\nHow far to trust it: More data helps.';
 function createHandlers(deps: Pick<InsightDeps, 'apiKey' | 'model' | 'complete' | 'now'> & Partial<InsightDeps>)
 {
     return createServerHandlers({ store: memoryStore(), local: memoryStore(), passcode: undefined, open: true, maxPerUserDay: 20, maxPerDay: 300, maxPerHour: 120, ...deps });
@@ -15,33 +15,80 @@ function request(value: unknown, headers: Record<string, string> = {}): Request
 {
     return new Request('https://example.test/api/insight', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(value) });
 }
+describe('round four corpus', () => {
+    const sheet = ["Target: Barnard's Star.", 'Position: RA 269.4521 deg, Dec 4.6934 deg.', 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Lowest signal-to-noise among the points: 48.', 'Reference stars: 3. Scatter of each: 1.2, 1.8, 2.5 percent.', 'Frames left out because their wavelength did not match: 0.', 'Difference image at the target: 3.4 sigma, brighter in the later visit.', 'Shift in position: 10.4 arcsec over 182.5 days.', "Frames came from: NASA's live archive."];
+    const good = ["Barnard's Star was seen in 3 visits spread over 182.5 days.", 'The visits hold 14, 12 and 16 frames.', 'Its brightness relative to the reference stars went from 1.00 to 0.97 and then 1.12.', 'The largest change from the median brightness is 12 percent brighter.', 'The 3 reference stars scatter by 1.2, 1.8 and 2.5 percent, so the 12 percent change stands out.', 'The lowest signal-to-noise among the points is 48.', 'The difference image shows 3.4 sigma at the target, brighter in the later visit.', 'The star shifted 10.4 arcsec over 182.5 days.', 'The frames were taken at 4.270 micron, close to the carbon dioxide ice feature at 4.27 micron.', 'Its position is RA 269.4521 deg, Dec 4.6934 deg.', 'SPHEREx pixels are about 6.2 arcsec wide, so a 10.4 arcsec shift is larger than one pixel.', 'With only 3 visits, the trend is thinly sampled.', 'The 12 percent brightening is larger than the 2.5 percent scatter of the least steady reference star.', 'A shift of 10.4″ in 182.5 days and a 3.4σ difference both point the same way.', 'Compare the frames at 4.270 µm with a second wavelength in Slowsky.', 'SPHEREx returns about every 6 months, so a later visit would test it.', 'This is a candidate change, and CO2 ice absorbs near this wavelength.'];
+    const bad = ['The reference stars scatter by 12 percent.', 'The star moved 10.4 arcmin.', 'The star moved 10.4 milliarcsec.', 'The frames were taken at 4.270 nm.', 'Its position is RA 269.4521 hours.', 'It moved 10.4 arcsec per day.', 'It moved 10.4 arcsec a day.', 'It moved 10.4 arcsec/day.', 'Its position is RA 269.4521 deg, Dec -4.6934 deg.', '12 of the 14 frames were left out.', '1 in 3 frames was sharp.', 'The fourth visit was the brightest.', 'It brightened by a factor of 12.', 'The change is an order of magnitude larger than the scatter.', 'The visit was on 14 March.', 'The star is at 48 °C.', 'It lies 182.5 trillion kilometres away.', 'The star is 48 light-years away.', 'The signal-to-noise reached 48 percent.', 'The 3 visits each lasted 3.4 days.', 'The scatter is 2.5 sigma.', 'It brightened 1.12 times.', 'The star moved 16 arcsec.', 'The difference is 12 sigma.', 'There were 48 visits.', 'The brightness fell to 0.97 percent.', 'The wavelength is 3.4 micron.', 'It was 3/W2/12 brighter.', 'It is half as bright.', 'The star is 1 of a kind.'];
+    it.each(good)('keeps %s', (sentence) => { expect(checkNote(`${sentence} Plain sentence.`, sheet).dropped).toBe(0); });
+    it.each(bad)('drops %s', (sentence) => { expect(checkNote(`${sentence} Plain sentence. Another plain sentence.`, sheet).dropped).toBe(1); });
+    it('derives and recognizes the actual WISE short name', () => {
+        const wise = factSheet({ ...facts, targetId: 'wise0855' });
+        expect(wise[0]).toBe('Target: WISE J085510.83-071442.5, also written WISE 0855-0714.');
+        for (const sentence of ['WISE 0855−0714 is faint here.', 'WISE J0855-0714 shows no clear change.', 'WISE 0855 is a cold brown dwarf, which is background and not measured here.', 'WISE J085510.83-071442.5 sits near the centre.']) { expect(checkNote(`${sentence} Plain sentence.`, wise).dropped, sentence).toBe(0); }
+        for (const sentence of ['WISE 0855−0714 moved 0855 arcsec.', 'It is 0714 days old.', 'Its neighbour WISE 1049−5319 is brighter.']) { expect(checkNote(`${sentence} Plain sentence. Another plain sentence.`, wise).dropped, sentence).toBe(1); }
+    });
+    it('keeps decimal precision and context attached to each fact', () => {
+        for (const sentence of ['Brightness was 1.', 'The scatter is 12 percent.', 'The change was -12 percent.', 'The position is 4.6934 degrees per day.']) {
+            expect(checkNote(`${sentence} Plain sentence. Another plain sentence.`, sheet).dropped, sentence).toBe(1);
+        }
+        expect(checkNote('Brightness was 1.0. Plain sentence.', sheet).dropped).toBe(0);
+    });
+});
+describe('round four access', () => {
+    it('never lets wrong guesses lock out the correct code', async () => {
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => 0, complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }) });
+        const headers = { 'x-real-ip': 'r4', 'x-insight-passcode': 'wrong' };
+        for (let i = 0; i < 30; i++) { expect((await handler.POST(request({ facts }, headers))).status).toBe(401); }
+        const blocked = await handler.POST(request({ facts }, headers));
+        expect(blocked.status).toBe(429);
+        expect(Number(blocked.headers.get('retry-after'))).toBeLessThanOrEqual(900);
+        headers['x-insight-passcode'] = 'secret';
+        expect(await (await handler.GET(new Request('https://example.test', { headers }))).json()).toMatchObject({ unlocked: true });
+        expect((await handler.POST(request({ facts: { ...facts, ra: 21.123 } }, headers))).status).toBe(200);
+    });
+    it('isolates wrong guesses from the shared store and the right-code brake', async () => {
+        let now = 0;
+        const store = memoryStore();
+        const hit = vi.spyOn(store, 'hit'), count = vi.spyOn(store, 'count'), refund = vi.spyOn(store, 'refund');
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', store, now: () => now, complete: vi.fn() });
+        const headers = { 'x-real-ip': 'r4-flood', 'x-insight-passcode': 'wrong' };
+        for (let i = 0; i < 1000; i++) {
+            const response = i % 2 ? await handler.POST(request({ facts }, headers)) : await handler.GET(new Request('https://example.test', { headers }));
+            if (i < 30) { expect(response.status).toBe(i % 2 ? 401 : 200); }
+        }
+        expect(hit).not.toHaveBeenCalled(); expect(count).not.toHaveBeenCalled(); expect(refund).not.toHaveBeenCalled();
+        headers['x-insight-passcode'] = 'x'.repeat(300);
+        now = 900000;
+        expect(await (await handler.GET(new Request('https://example.test', { headers }))).json()).toMatchObject({ unlocked: false });
+        headers['x-insight-passcode'] = 'wrong';
+        for (let i = 0; i < 200; i++) { await handler.POST(request({ facts }, headers)); }
+        headers['x-insight-passcode'] = 'secret';
+        for (let i = 0; i < 120; i++) { expect((await handler.GET(new Request('https://example.test', { headers }))).status).toBe(200); }
+        count.mockClear();
+        const blocked = await handler.GET(new Request('https://example.test', { headers }));
+        expect(blocked.status).toBe(429); expect(blocked.headers.get('retry-after')).toBe('60');
+        expect(hit).not.toHaveBeenCalled(); expect(count).not.toHaveBeenCalled(); expect(refund).not.toHaveBeenCalled();
+        now = 1800000; headers['x-insight-passcode'] = 'wrong';
+        expect((await handler.POST(request({ facts }, headers))).status).toBe(401);
+    });
+    it('lets concurrent correct requests through during wrong guesses', async () => {
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => 0, complete: vi.fn() });
+        const send = (code: string) => handler.GET(new Request('https://example.test', { headers: { 'x-real-ip': 'r4-parallel', 'x-insight-passcode': code } }));
+        const replies = await Promise.all([...Array.from({ length: 25 }, () => send('bad')), ...Array.from({ length: 30 }, () => send('secret'))]);
+        for (const response of replies.slice(25)) { expect(await response.json()).toMatchObject({ unlocked: true }); }
+    });
+    it('returns 503 when the local counter fails', async () => {
+        const local: LimitStore = { hit: async () => { throw new Error('unavailable'); }, count: async () => 0, refund: async () => {} };
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', local, now: () => 0, complete: vi.fn() });
+            for (const code of ['wrong', 'secret']) { expect((await handler.GET(new Request('https://example.test', { headers: { 'x-insight-passcode': code } }))).status).toBe(503); }
+        } finally { warn.mockRestore(); }
+    });
+});
 describe('round three regressions', () => {
     const complete = async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' });
     const right = { 'x-insight-passcode': 'secret', 'x-real-ip': 'round-three' };
-    it('refunds refused simultaneous requests and all successful guesses', async () => {
-        for (const wrongCount of [29, 0]) {
-            const store = memoryStore();
-            let tryKey = '';
-            const tracked = { ...store, hit: async (key: string, window: number, now: number) => { if (key.startsWith('try:')) { tryKey = key; } return store.hit(key, window, now); } };
-            const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', store: tracked, now: () => 0, complete });
-            const input = { ...facts, ra: wrongCount ? 73 : 74 };
-            for (let i = 0; i < wrongCount; i++) { expect((await handler.POST(request({ facts: input }, { ...right, 'x-insight-passcode': 'bad' }))).status).toBe(401); }
-            await Promise.all(Array.from({ length: wrongCount ? 2 : 40 }, () => handler.POST(request({ facts: input }, right))));
-            for (let i = 0; i < 10; i++) { expect((await handler.POST(request({ facts: input }, right))).status).toBe(200); }
-            expect(await store.count(tryKey, 900000, 0)).toBe(wrongCount);
-        }
-    });
-    it('counts only thirty compared guesses during a parallel flood', async () => {
-        const store = memoryStore();
-        let tryKey = '';
-        const tracked = { ...store, hit: async (key: string, window: number, now: number) => { if (key.startsWith('try:')) { tryKey = key; } return store.hit(key, window, now); } };
-        const local = { ...memoryStore(), hit: async () => 1 };
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', store: tracked, local, now: () => 0, complete });
-        const replies = await Promise.all(Array.from({ length: 200 }, () => handler.POST(request({ facts }, { ...right, 'x-insight-passcode': 'bad' }))));
-        expect(replies.filter((r) => r.status === 401)).toHaveLength(30);
-        expect(replies.filter((r) => r.status === 429)).toHaveLength(170);
-        expect(await store.count(tryKey, 900000, 0)).toBe(30);
-    });
     it('accommodates a shared venue and does not brake cached open traffic', async () => {
         const local = memoryStore();
         const localHit = vi.spyOn(local, 'hit');
@@ -91,7 +138,7 @@ describe('round three regressions', () => {
         } finally { vi.unstubAllEnvs(); }
     });
     it('keeps "a third visit", ties hyphenated units and strips names only as whole words', () => {
-        const sheet = ['Target: WISE 0855−0714.', 'Visits: 3. Frames: 14.', 'Shift in position: 10.4 arcsec over 182.5 days.', 'Difference: 3.4 sigma.'];
+        const sheet = ['Target: WISE 0855−0714.', 'Visits: 3. Frames: 14. Time from first to last visit: 182.5 days.', 'Shift in position: 10.4 arcsec over 182.5 days.', 'Difference image: 3.4 sigma.'];
         const pad = 'Safe sentence. Another safe sentence.';
         const kept = ['A third visit would settle it.', 'Over the 182.5-day span it moved.', 'A 3.4-sigma change shows.', 'WISE 0855-0714 is faint here.', 'WISE 0855–0714 is faint here.'];
         for (const sentence of kept) { expect(checkNote(`${sentence} ${pad}`, sheet).dropped, sentence).toBe(0); }
@@ -104,7 +151,7 @@ describe('round three regressions', () => {
         expect(checkNote(`Half-1 is steady. ${pad}`, ['Target: Half-1.', 'Visits: 3.']).dropped).toBe(0);
     });
     it('checks units and preserves names and catalogue tokens', () => {
-        const sheet = ['Target: WISE 0855−0714.', 'Visits: 3. Frames: 14.', 'Shift in position: 10.4 arcsec over 182.5 days.', 'Difference: 3.4 sigma.'];
+        const sheet = ['Target: WISE 0855−0714.', 'Visits: 3. Frames: 14.', 'Shift in position: 10.4 arcsec over 182.5 days.', 'Difference image: 3.4 sigma.'];
         const bad = ['It moved 182.5 arcsec over 10.4 days.', 'It moved 5.1 arcsec per year.', 'The feature sits at 14 micron.', 'It is 3.4 standard deviations brighter.', 'It is 6 lightyears away.', 'Over a 2-year baseline it moved.', "It has a third of the Sun's mass.", 'It weighs 14 Msun.', 'It weighs 3 Earth masses.', 'There are 4 visits.'];
         // The sigma example must be unsupported on this sheet.
         const unsupportedSigma = [...sheet.filter((line) => !line.startsWith('Difference')), 'Measured value: 3.4.'];
@@ -114,7 +161,7 @@ describe('round three regressions', () => {
         for (const fraction of ['one third', 'a fifth', 'one fifth', 'a tenth', 'one tenth', 'thirds', 'fifths', 'tenths']) { expect(checkNote(`It is ${fraction} brighter. Safe sentence. Another safe sentence.`, sheet).dropped, fraction).toBe(1); }
     });
     it('pairs unit aliases and lists while rejecting mismatches and unsupported hyphenated units', () => {
-        const sheet = ['Target: Example.', 'Visits: 4. Frames: 8.', 'Wavelengths: 1.2, 1.4 and 1.6 micron.', 'Shift: 10.4 arcsec over 182.5 days.', 'Position: 14 deg.', 'Signal: 3.4 sigma.'];
+        const sheet = ['Target: Example.', 'Visits: 4. Frames: 8.', 'Wavelength: 1.2, 1.4 and 1.6 micron.', 'Shift in position: 10.4 arcsec over 182.5 days.', 'Position: 14 deg.', 'Signal: 3.4 sigma.'];
         const good = ['At 1.2, 1.4 and 1.6 µm it changes.', 'The shift is 10.4 arcseconds over 182.5 day.', 'Position is 14 degrees.', 'The signal is 3.4 standard deviations.', 'There are 4 visits.', 'There are 3 visits.'];
         const bad = ['At 1.2 and 8 µm it changes.', 'Position is 8 degrees.', 'There are 8 visits.', 'It is 6-light-year distant.', 'It is 8-km away.', 'It is 8-Mjup.', 'It is 8-Rsun.', 'It is 8-Lsun.', 'It is 8 masses.'];
         for (const sentence of good) { expect(checkNote(`${sentence} Safe sentence. Another safe sentence.`, sheet).dropped, sentence).toBe(0); }
@@ -131,17 +178,6 @@ describe('round three regressions', () => {
     });
 });
 describe('round two regressions', () => {
-    it('refunds correct guesses and counts wrong guesses through a single counter', async () => {
-        let now = 0;
-        const store = memoryStore();
-        const keys: string[] = [];
-        const tracked = { ...store, hit: async (key: string, window: number, time: number) => { keys.push(key); return store.hit(key, window, time); } };
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', store: tracked, local: memoryStore(), now: () => now, complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }) });
-        const headers = { 'x-real-ip': 'round-two', 'x-insight-passcode': 'secret' };
-        for (let i = 0; i < 100; i++) { now += 3000; expect((await handler.GET(new Request('https://example.test', { headers }))).status).toBe(200); }
-        for (let i = 0; i < 100; i++) { now += 3000; expect((await handler.POST(request({ facts: { ...facts, ra: 23 } }, headers))).status).toBe(200); }
-        expect(await store.count(keys.find((k) => k.startsWith('try:'))!, 900000, now)).toBe(0);
-    });
     it('rejects unsupported number forms and preserves listed quantities', () => {
         const bad = ['½', 'Ⅻ', '①', '²', '5e3', '3/4', '2-5', '3rd', 'halved', 'doubling', 'quadrupled', 'threefold', 'hundreds', 'quarter', 'zero', '6 light years'];
         for (const value of bad) {
@@ -191,7 +227,7 @@ describe('round two regressions', () => {
         const replies = await Promise.all(Array.from({ length: 130 }, () => handler.POST(request({ facts }, { 'x-insight-passcode': 'wrong' }))));
         expect(replies.filter((r) => r.status === 401)).toHaveLength(30);
         expect(replies.filter((r) => r.status === 429)).toHaveLength(100);
-        expect(hit).toHaveBeenCalledTimes(120);
+        expect(hit).not.toHaveBeenCalled();
     });
     it('returns exactly 30 wrong guesses for a serial flood', async () => {
         const handler = createHandlers({ apiKey: 'key', model: 'fake', passcode: 'secret', now: () => 0, complete: vi.fn() });
@@ -231,9 +267,9 @@ describe('round two regressions', () => {
         expect(pickStore({ UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'token' })).toBeDefined();
         const keys: string[] = [];
         for (const apiKey of ['key-a', 'key-b']) {
-            const store = memoryStore();
-            const hit = vi.spyOn(store, 'hit').mockImplementation(async (key) => { keys.push(key); return 1; });
-            const handler = createHandlers({ apiKey, model: 'fake', passcode: 'secret', store, now: () => 0, complete: vi.fn() });
+            const local = memoryStore();
+            const hit = vi.spyOn(local, 'hit').mockImplementation(async (key) => { keys.push(key); return 1; });
+            const handler = createHandlers({ apiKey, model: 'fake', passcode: 'secret', local, now: () => 0, complete: vi.fn() });
             await handler.GET(new Request('https://example.test', { headers: { 'x-real-ip': '192.0.2.77', 'x-insight-passcode': 'wrong' } }));
             hit.mockRestore();
         }
@@ -294,10 +330,10 @@ describe('insight access and allowances', () => {
         const complete = vi.fn(async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }));
         const inner = memoryStore();
         const store: LimitStore = { hit: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.hit(...args); }, count: async (...args) => { await new Promise((resolve) => setTimeout(resolve, 5)); return inner.count(...args); }, refund: async (...args) => inner.refund(...args) };
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => 18000000, passcode: 'secret', maxPerHour: 7, maxPerDay: 7, store });
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => 18000000, passcode: 'secret', maxPerHour: 21, maxPerDay: 21, store });
         const replies = await Promise.all(Array.from({ length: 300 }, (_, i) => handler.POST(request({ facts: { ...facts, ra: i / 10 } }, { 'x-real-ip': 'parallel-right', 'x-insight-passcode': 'secret' }))));
-        expect(replies.filter((r) => r.status === 200).length).toBeLessThanOrEqual(6);
-        expect(complete.mock.calls.length).toBeLessThanOrEqual(6);
+        expect(replies.filter((r) => r.status === 200).length).toBeLessThanOrEqual(20);
+        expect(complete.mock.calls.length).toBeLessThanOrEqual(20);
         expect((await handler.POST(request({ facts: { ...facts, ra: 80 } }, { 'x-real-ip': 'another-visitor', 'x-insight-passcode': 'secret' }))).status).toBe(200);
     });
     it('fails closed on store errors without leaking details', async () => {
@@ -317,7 +353,7 @@ describe('insight access and allowances', () => {
         } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
     });
     it.each([
-        ['user-minute:', 7, false], ['user-day:', 21, true], ['global-hour', 121, false], ['global-day', 301, true],
+        ['user-minute:', 21, false], ['user-day:', 21, true], ['global-hour', 121, false], ['global-day', 301, true],
     ])('stops after the %s counter exceeds its limit', async (key, count, daily) => {
         const touched: string[] = [];
         const complete = vi.fn();
@@ -365,7 +401,7 @@ describe('insight access and allowances', () => {
             expect((await handler.POST(request({ facts }, { ...headers, 'x-insight-passcode': 'wrong' }))).status).toBe(401);
         }
         expect(complete).not.toHaveBeenCalled();
-        const locked = await handler.POST(request({ facts }, { ...headers, 'x-insight-passcode': 'secret' }));
+        const locked = await handler.POST(request({ facts }, { ...headers, 'x-insight-passcode': 'wrong' }));
         expect(locked.status).toBe(429);
         expect(locked.headers.get('retry-after')).toBe('900');
         expect((await handler.POST(request({ facts: { ...facts, ra: 300 } }, { 'x-real-ip': '192.0.2.41', 'x-insight-passcode': 'secret' }))).status).toBe(200);
@@ -394,7 +430,7 @@ describe('insight access and allowances', () => {
         for (let i = 0; i < 29; i++) {
             await handler.GET(new Request('https://example.test', { headers: { ...headers, 'x-insight-passcode': 'bad' } }));
         }
-        expect((await handler.GET(new Request('https://example.test', { headers }))).status).toBe(429);
+        expect((await handler.GET(new Request('https://example.test', { headers }))).status).toBe(200);
         expect(keys.every((k) => !k.includes('192.0.2.42'))).toBe(true);
         expect((await handler.POST(request({ facts: { ...facts, ra: 313 } }, { ...headers, 'x-real-ip': '192.0.2.43' }))).status).toBe(200);
         now += 86400000;
@@ -442,7 +478,7 @@ describe('insight facts and guard', () => {
         expect(checkNote(`${bad} Safe sentence. Another safe sentence.`, ['Value 10 days.', 'Value 0.5.'])).toEqual({ text: 'Safe sentence. Another safe sentence.', dropped: 1 });
     });
     it('keeps matching units, pronouns, and allowed constants', () => {
-        expect(checkNote('The star dimmed by 10 percent. No one frame stands out. Helium is at 1.083 micron.', ['Change: 10 percent.'])).toEqual({ text: 'The star dimmed by 10 percent. No one frame stands out. Helium is at 1.083 micron.', dropped: 0 });
+        expect(checkNote('The star dimmed by 10 percent. No one frame stands out. Helium is at 1.083 micron.', ['Largest change: 10 percent.'])).toEqual({ text: 'The star dimmed by 10 percent. No one frame stands out. Helium is at 1.083 micron.', dropped: 0 });
     });
     it('validates clean copies and rejects invalid shapes and values', () => {
         expect(validateFacts(facts)).toEqual(facts);
@@ -462,7 +498,7 @@ describe('insight facts and guard', () => {
     });
     it('removes unverified sentences and requires two survivors', () => {
         expect(checkNote(note, lines)).toEqual({ text: note, dropped: 0 });
-        expect(checkNote('Label: Value 0.85 is real. Invented 9999. Discovery happened. More follows.', ['Value 0.85.'])).toEqual({ text: 'Label: Value 0.85 is real. More follows.', dropped: 2 });
+        expect(checkNote('Label: Value 0.85 is real. Invented 9999. Discovery happened. More follows.', ['Value: 0.85.'])).toEqual({ text: 'Label: Value 0.85 is real. More follows.', dropped: 2 });
         expect(checkNote('Made up 9999: First sentence. Second sentence.\nSafe: Third sentence. Fourth sentence.', [])).toEqual({ text: 'Safe: Third sentence. Fourth sentence.', dropped: 2 });
         expect(() => checkNote('One sentence. Invented 9999.', [])).toThrowError(expect.objectContaining({ code: 'unverified' }));
     });
@@ -496,13 +532,13 @@ describe('insight handler', () => {
     it('enforces per-client limits and recovers after a minute', async () => {
         let now = 100000;
         const complete = vi.fn(async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }));
-        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => now });
-        for (let i = 0; i < 6; i++) { expect((await handler.POST(request({ facts: { ...facts, ra: 100 + i } }, { 'x-forwarded-for': 'limit-test' }))).status).toBe(200); }
-        const limited = await handler.POST(request({ facts: { ...facts, ra: 106 } }, { 'x-forwarded-for': 'limit-test' }));
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete, now: () => now, maxPerUserDay: 40 });
+        for (let i = 0; i < 20; i++) { expect((await handler.POST(request({ facts: { ...facts, ra: 100 + i } }, { 'x-forwarded-for': 'limit-test' }))).status).toBe(200); }
+        const limited = await handler.POST(request({ facts: { ...facts, ra: 120 } }, { 'x-forwarded-for': 'limit-test' }));
         expect(limited.status).toBe(429);
         expect(limited.headers.get('retry-after')).toBeTruthy();
         now += 61000;
-        expect((await handler.POST(request({ facts: { ...facts, ra: 106 } }, { 'x-forwarded-for': 'limit-test' }))).status).toBe(200);
+        expect((await handler.POST(request({ facts: { ...facts, ra: 120 } }, { 'x-forwarded-for': 'limit-test' }))).status).toBe(200);
     });
     it('does not expose errors and rejects refusals and unverifiable notes', async () => {
         for (const [result, status, code] of [[{ text: '', refused: true, model: 'fake' }, 502, 'no_note'], [new Error('sk-secret upstream text'), 502, 'failed'], [{ text: 'Value 9999. Value 8888.', refused: false, model: 'fake' }, 422, 'unverified']] as const) {
@@ -564,5 +600,37 @@ describe('browser client', () => {
     });
     it.each([[503, 'off'], [400, 'invalid'], [413, 'invalid'], [429, 'busy'], [422, 'unverified'], [500, 'failed']] as const)('maps status %i', async (status, code) => {
         await expect(fetchInsight({ ...facts, ra: status / 10 }, { fetcher: vi.fn(async () => new Response('', { status })) as typeof fetch })).rejects.toMatchObject({ code });
+    });
+});
+
+// Sentences a second reviewer (Grok 4.7) got past round 3. Each must fail without the rule that now drops it.
+describe('checkNote: names and words used as numbers', () => {
+    const pad = 'Safe sentence. Another safe sentence.';
+    const barnard = ["Target: Barnard's Star.", 'Position: RA 269.4521 deg, Dec 4.6934 deg.', 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
+    const wise = factSheet({ targetId: 'wise0855', ra: 133.7953, dec: -7.2451, lambdaUm: 4.67, visits: [{ mjd: 61000, frames: 3 }, { mjd: 61010, frames: 4 }, { mjd: 61180, frames: 5 }], motion: { arcsec: 4.1, days: 180 }, snapshot: false });
+    function dropped(sentence: string, sheet: string[]): number { return checkNote(`${sentence} ${pad}`, sheet).dropped; }
+
+    it.each([
+        'It moved WISE J085510.83 arcsec.', 'The change is WISE J085510.83 percent.', 'It shifted WISE 0855 arcsec.', 'The shift is J085510.83 arcsec.',
+        'It moved 0855 arcsec.', 'It shifted 4.1 arcsec over 0855 days.', 'It differs by 2MASS sigma.', 'The excess is W2 percent.', 'It differs by DR3 days.',
+        'The rise is WISE J085510.83-fold.', 'The gap is DR2 months.',
+    ])('drops a name or catalogue token standing in for a number: %s', (sentence) => {
+        expect(dropped(sentence, wise)).toBe(1);
+    });
+    it.each([
+        'WISE J085510.83-071442.5 shifted 4.1 arcsec over 180.0 days.', 'WISE 0855-0714 is a cold brown dwarf.', 'J085510.83-071442.5 is faint here.',
+        'WISE J0855-0714 was seen in 3 visits.', 'WISE 0855 is known to be very cold.', 'Check Gaia DR2 for the same star.', 'Gaia DR3 lists no star here.',
+        'The W2 band of WISE is close to 4.67 micron.', 'Water, CO2 and CH4 absorb in this range.',
+    ])('keeps a name used as a name: %s', (sentence) => {
+        expect(dropped(sentence, wise)).toBe(0);
+    });
+    it.each([
+        'It fell by a third between visits.', 'It fell by a third over 182.5 days.', 'It is a sixth as bright.', 'It dimmed by a seventh.', 'It lost one eighth of its light.',
+        'It rose by two ninths.', 'The motion is 10.4 mas.', 'The motion is 10.4 arcmin.', 'The span is 182.5 hours.', 'The span is 16 months.', 'There are 5 frames at 4.270 micron.',
+    ])('drops a fraction in words or a unit the sheet never uses: %s', (sentence) => {
+        expect(dropped(sentence, barnard)).toBe(1);
+    });
+    it.each(['In the third visit it was brighter.', 'A third visit shows it brighter again.', "Barnard's Star shifted 10.4 arcsec over 182.5 days."])('keeps: %s', (sentence) => {
+        expect(dropped(sentence, barnard)).toBe(0);
     });
 });

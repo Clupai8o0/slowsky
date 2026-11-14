@@ -197,15 +197,17 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
     async function access(request: Request, id: string, now: number): Promise<'ok' | 'locked' | 'busy' | 'slow'> {
         if (!deps.passcode) { return 'ok'; }
         const supplied = request.headers.get('x-insight-passcode') ?? '';
-        if (!supplied && request.method === 'GET') { return 'locked'; }
-        if (await brake(id, now)) { return 'slow'; }
-        if (await counter('hit', `try:${id}`, guessWindow, now) > MAX_ATTEMPTS) { await refund(`try:${id}`, guessWindow, now); return 'busy'; }
-        const [a, b] = await Promise.all([crypto.subtle.digest('SHA-256', new TextEncoder().encode(supplied)), crypto.subtle.digest('SHA-256', new TextEncoder().encode(deps.passcode))]);
-        let diff = 0;
-        const x = new Uint8Array(a), y = new Uint8Array(b);
-        for (let i = 0; i < x.length; i++) { diff |= x[i]! ^ y[i]!; }
-        if (diff === 0) { await refund(`try:${id}`, guessWindow, now); return 'ok'; }
-        return 'locked';
+        if (!request.headers.has('x-insight-passcode') && request.method === 'GET') { return 'locked'; }
+        let correct = false;
+        if (supplied.length <= 256) {
+            const [a, b] = await Promise.all([crypto.subtle.digest('SHA-256', new TextEncoder().encode(supplied)), crypto.subtle.digest('SHA-256', new TextEncoder().encode(deps.passcode))]);
+            let diff = 0;
+            const x = new Uint8Array(a), y = new Uint8Array(b);
+            for (let i = 0; i < x.length; i++) { diff |= x[i]! ^ y[i]!; }
+            correct = diff === 0;
+        }
+        if (correct) { return await brake(id, now) ? 'slow' : 'ok'; }
+        try { return await local.hit(`try:${id}`, guessWindow, now) > MAX_ATTEMPTS ? 'busy' : 'locked'; } catch { throw new StoreFailure(); }
     }
     const handlers = {
         async GET(request: Request): Promise<Response> {
@@ -244,7 +246,7 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
             if (hit) { return json({ ...hit, cached: true }, 200, { 'X-Robots-Tag': 'noindex' }); }
             if (!deps.passcode && await brake(id, now)) { return failure(429, 'busy', { 'Retry-After': String(retry(minute, now)) }); }
             const limits = [
-                { key: `user-minute:${id}`, window: minute, max: 6 },
+                { key: `user-minute:${id}`, window: minute, max: 20 },
                 { key: `user-day:${id}`, window: day, max: deps.maxPerUserDay },
                 { key: 'global-hour', window: hour, max: deps.maxPerHour },
                 { key: 'global-day', window: day, max: deps.maxPerDay },
