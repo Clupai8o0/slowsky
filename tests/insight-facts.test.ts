@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildFacts, peakSigma, type FactsInput, type FactsLightCurve } from '../src/lib/insight-facts';
 import { factSheet, InsightError, validateFacts } from '../src/lib/insight';
-import type { RegriddedFrame } from '../src/lib/types';
+import type { OutputGrid, RegriddedFrame } from '../src/lib/types';
 
 function frame(tMin: number, tMax: number = tMin): RegriddedFrame
 {
@@ -43,6 +43,11 @@ function noise(n: number, rand: () => number, sigma = 1): Float32Array
     return out;
 }
 
+function grid(width: number, height: number = width): OutputGrid
+{
+    return { center: { ra: 10, dec: 20 }, fovDeg: 0.1, pixelArcsec: 6.2, width, height };
+}
+
 function base(): FactsInput
 {
     return {
@@ -56,9 +61,9 @@ function base(): FactsInput
 
 describe('buildFacts', () => {
     it('full input passes validateFacts and the sheet shows the rounded numbers', () => {
-        const diff = noise(400, prng(1));
-        diff[7] = 20;
-        const facts = buildFacts({ ...base(), lightCurve: curve([60500.2, 60680.4], (i) => [1.004, 0.874][i]!), difference: { data: diff }, shift: { measuredArcsec: 1.8734, days: 180.12 } });
+        const diff = noise(441, prng(1));
+        diff[220] = 20;
+        const facts = buildFacts({ ...base(), lightCurve: curve([60500.2, 60680.4], (i) => [1.004, 0.874][i]!), difference: { data: diff, grid: grid(21) }, shift: { measuredArcsec: 1.8734, days: 180.12 } });
         expect(validateFacts(facts)).toEqual(facts);
         const sheet = factSheet(facts).join('\n');
         expect(sheet).toContain('RA 269.4521 deg, Dec 4.6934 deg');
@@ -77,8 +82,8 @@ describe('buildFacts', () => {
         for (const key of ['lightCurve', 'difference', 'motion']) {
             expect(key in none).toBe(false);
         }
-        const empty = buildFacts({ ...base(), lightCurve: { points: [], dropped: 0, refScatter: [] }, difference: { data: new Float32Array(0) }, shift: { measuredArcsec: NaN, days: 10 } });
-        const nan = buildFacts({ ...base(), lightCurve: curve([60500, 60600], () => NaN), difference: { data: new Float32Array(50).fill(NaN) }, shift: { measuredArcsec: 1, days: Infinity } });
+        const empty = buildFacts({ ...base(), lightCurve: { points: [], dropped: 0, refScatter: [] }, difference: { data: new Float32Array(0), grid: grid(0) }, shift: { measuredArcsec: NaN, days: 10 } });
+        const nan = buildFacts({ ...base(), lightCurve: curve([60500, 60600], () => NaN), difference: { data: new Float32Array(400).fill(NaN), grid: grid(20) }, shift: { measuredArcsec: 1, days: Infinity } });
         for (const f of [empty, nan]) {
             expect('lightCurve' in f).toBe(false);
             expect('difference' in f).toBe(false);
@@ -130,7 +135,7 @@ describe('buildFacts', () => {
                 visits,
                 snapshot: rand() > 0.5,
                 ...(rand() > 0.3 ? { lightCurve: lc } : {}),
-                ...(rand() > 0.3 ? { difference: { data: noise(64, rand, 0.1 + rand() * 5) } } : {}),
+                ...(rand() > 0.3 ? { difference: { data: noise(400, rand, 0.1 + rand() * 5), grid: grid(20) } } : {}),
                 ...(rand() > 0.3 ? { shift: { measuredArcsec: rand() * 50, days: rand() * 3000 } } : {}),
             };
             const f = buildFacts(input);
@@ -140,22 +145,52 @@ describe('buildFacts', () => {
 });
 
 describe('peakSigma', () => {
-    it('spike in flat noise gives about height / sigma', () => {
-        const img = noise(4096, prng(7), 2);
-        img[100] = 40;
-        const s = peakSigma(img)!;
+    // 81x81 grid, centre pixel (40, 40).
+    const g = grid(81);
+    const at = (x: number, y: number): number => y * 81 + x;
+
+    it('spike at the target gives about height / sigma', () => {
+        const img = noise(81 * 81, prng(7), 2);
+        img[at(40, 40)] = 40;
+        const s = peakSigma(img, g)!;
         expect(s).toBeGreaterThan(20 * 0.9);
         expect(s).toBeLessThan(20 * 1.1);
-        img[100] = -40;
-        expect(peakSigma(img)!).toBeLessThan(-18);
     });
 
-    it('all-NaN and constant images give undefined', () => {
-        expect(peakSigma(new Float32Array(100).fill(NaN))).toBeUndefined();
-        expect(peakSigma(new Float32Array(100).fill(3))).toBeUndefined();
-        expect(peakSigma(new Float32Array(0))).toBeUndefined();
-        const spiked = new Float32Array(100).fill(3);
-        spiked[5] = 10;
-        expect(peakSigma(spiked)).toBeUndefined();
+    it('the same spike 30 pixels away is not a change at the target', () => {
+        const img = noise(81 * 81, prng(7), 2);
+        img[at(70, 40)] = 40;
+        expect(Math.abs(peakSigma(img, g)!)).toBeLessThan(4);
+    });
+
+    it('a dip at the target is negative', () => {
+        const img = noise(81 * 81, prng(7), 2);
+        img[at(40, 40)] = -40;
+        expect(peakSigma(img, g)!).toBeLessThan(-18);
+    });
+
+    it('explicit at works off-centre', () => {
+        const img = noise(81 * 81, prng(7), 2);
+        img[at(10, 15)] = 40;
+        expect(peakSigma(img, g, { x: 10, y: 15 })!).toBeGreaterThan(18);
+        expect(Math.abs(peakSigma(img, g)!)).toBeLessThan(4);
+    });
+
+    it('undefined cases', () => {
+        const small = grid(5);
+        expect(peakSigma(new Float32Array(81 * 81).fill(NaN), g)).toBeUndefined();
+        const hole = noise(81 * 81, prng(3));
+        for (let y = 38; y <= 42; y++) {
+            for (let x = 38; x <= 42; x++) {
+                hole[at(x, y)] = NaN;
+            }
+        }
+        expect(peakSigma(hole, g)).toBeUndefined();
+        // 5x5 grid: background ring beyond 2 radii (3 px) holds fewer than 20 pixels.
+        expect(peakSigma(noise(25, prng(4)), small)).toBeUndefined();
+        const flat = new Float32Array(81 * 81).fill(3);
+        flat[at(40, 40)] = 10;
+        expect(peakSigma(flat, g)).toBeUndefined();
+        expect(peakSigma(new Float32Array(100), g)).toBeUndefined();
     });
 });

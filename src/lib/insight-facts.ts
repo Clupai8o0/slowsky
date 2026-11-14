@@ -3,7 +3,7 @@
 // and trimmed so validateFacts accepts them. Safe to run in a Web Worker (no DOM).
 import { InsightError, type InsightFacts } from './insight';
 import { TARGETS } from './targets';
-import type { RegriddedFrame, SkyCoord } from './types';
+import type { OutputGrid, PixelCoord, RegriddedFrame, SkyCoord } from './types';
 
 // photometry.ts and stack.ts are not on this branch, so the inputs are typed structurally.
 // LightCurve (photometry.ts) and StackResult (stack.ts) both fit these shapes.
@@ -19,13 +19,19 @@ export interface FactsLightCurve {
     refScatter: number[];
 }
 
+export interface FactsDifference {
+    data: Float32Array;
+    grid: OutputGrid;
+    at?: PixelCoord; // target pixel; defaults to the grid centre
+}
+
 export interface FactsInput {
     targetId: string; // a TARGETS id, or 'custom' for a typed-in position
     center: SkyCoord; // ICRS degrees
     lambdaUm: number;
     visits: RegriddedFrame[][];
     lightCurve?: FactsLightCurve;
-    difference?: { data: Float32Array };
+    difference?: FactsDifference; // StackResult users pass { data: stack.data, grid }
     shift?: { measuredArcsec: number; days: number };
     snapshot: boolean;
 }
@@ -72,26 +78,52 @@ function median(values: number[]): number
     return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 }
 
-export function peakSigma(diff: Float32Array): number | undefined
+// Aperture radius at the target: 1.5 SPHEREx pixels of 6.2 arcsec.
+const APERTURE_ARCSEC = 9.3;
+// Background pixels start this many aperture radii from the target.
+const BACKGROUND_FACTOR = 2;
+const MIN_BACKGROUND = 20;
+
+export function peakSigma(diff: Float32Array, grid: OutputGrid, at?: PixelCoord): number | undefined
 {
-    const values: number[] = [];
-    for (const v of diff) {
-        if (Number.isFinite(v)) {
-            values.push(v);
-        }
-    }
-    if (values.length < 3) {
+    const { width, height } = grid;
+    if (diff.length !== width * height) {
         return undefined;
     }
-    const med = median(values);
-    const sigma = median(values.map((v) => Math.abs(v - med))) * 1.4826;
+    const cx = at?.x ?? (width - 1) / 2;
+    const cy = at?.y ?? (height - 1) / 2;
+    const radius = Math.max(APERTURE_ARCSEC / grid.pixelArcsec, 1.5);
+    if (!Number.isFinite(radius) || !Number.isFinite(cx) || !Number.isFinite(cy)) {
+        return undefined;
+    }
+    const inner: number[] = [];
+    const background: number[] = [];
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const v = diff[y * width + x]!;
+            if (!Number.isFinite(v)) {
+                continue;
+            }
+            const r = Math.hypot(x - cx, y - cy);
+            if (r <= radius) {
+                inner.push(v);
+            } else if (r > BACKGROUND_FACTOR * radius) {
+                background.push(v);
+            }
+        }
+    }
+    if (!inner.length || background.length < MIN_BACKGROUND) {
+        return undefined;
+    }
+    const level = median(background);
+    const sigma = median(background.map((v) => Math.abs(v - level))) * 1.4826;
     if (!(sigma > 0) || !Number.isFinite(sigma)) {
         return undefined;
     }
     let peak = 0;
-    for (const v of values) {
-        if (Math.abs(v - med) > Math.abs(peak)) {
-            peak = v - med;
+    for (const v of inner) {
+        if (Math.abs(v - level) > Math.abs(peak)) {
+            peak = v - level;
         }
     }
     const result = peak / sigma;
@@ -141,12 +173,12 @@ function lightCurveSection(lc: FactsLightCurve | undefined): InsightFacts['light
     return { points: thin(points, MAX_POINTS), refScatter, dropped };
 }
 
-function differenceSection(diff: { data: Float32Array } | undefined): InsightFacts['difference']
+function differenceSection(diff: FactsDifference | undefined): InsightFacts['difference']
 {
     if (!diff) {
         return undefined;
     }
-    const sigma = peakSigma(diff.data);
+    const sigma = peakSigma(diff.data, diff.grid, diff.at);
     if (sigma === undefined) {
         return undefined;
     }
