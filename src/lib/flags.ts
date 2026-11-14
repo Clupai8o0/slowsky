@@ -3,6 +3,11 @@ import { riceDecode } from './rice';
 
 export class FlagsError extends Error {}
 
+// SPHEREx frames are 2040 x 2040. A larger axis is not a FLAGS image we will decode.
+export const MAX_AXIS = 4096;
+const MAX_BLOCKSIZE = 1024;
+const MAX_DECODED_PIXELS = MAX_AXIS * MAX_AXIS;
+
 export interface FlagsLayout {
     width: number;
     height: number;
@@ -27,6 +32,11 @@ function integer(value: unknown, label: string, minimum = 0): number
         throw new FlagsError(`Invalid ${label}`);
     }
     return value;
+}
+
+function roundUp16(count: number): number
+{
+    return Math.ceil(count / 16) * 16;
 }
 
 function columnBytes(format: unknown): number
@@ -64,9 +74,21 @@ export function parseFlagsLayout(header: FitsHeader, hduDataStart: number): Flag
     }
     const width = integer(h.get('ZNAXIS1'), 'image width', 1);
     const height = integer(h.get('ZNAXIS2'), 'image height', 1);
+    if (width > MAX_AXIS) {
+        throw new FlagsError('Invalid ZNAXIS1');
+    }
+    if (height > MAX_AXIS) {
+        throw new FlagsError('Invalid ZNAXIS2');
+    }
     integer(width * height, 'image pixel count', 1);
     const tileWidth = integer(h.get('ZTILE1') ?? width, 'tile width', 1);
     const tileHeight = integer(h.get('ZTILE2') ?? 1, 'tile height', 1);
+    if (tileWidth > width) {
+        throw new FlagsError('Invalid ZTILE1');
+    }
+    if (tileHeight > height) {
+        throw new FlagsError('Invalid ZTILE2');
+    }
     const tilesAcross = Math.ceil(width / tileWidth);
     const rowSize = integer(h.get('NAXIS1'), 'table row size', 1);
     const rowCount = integer(h.get('NAXIS2'), 'table row count', 1);
@@ -114,6 +136,11 @@ export function parseFlagsLayout(header: FitsHeader, hduDataStart: number): Flag
     const bytePix = parameters.get('BYTEPIX') ?? 4;
     if (![1, 2, 4].includes(bytePix) || bytePix * 8 !== h.get('ZBITPIX')) {
         throw new FlagsError('BYTEPIX must agree with integer ZBITPIX');
+    }
+    // The FITS default BLOCKSIZE is 32 even when the tile is shorter (one partial block).
+    const blockLimit = Math.min(MAX_BLOCKSIZE, Math.max(32, roundUp16(tileWidth * tileHeight)));
+    if (blockSize > blockLimit) {
+        throw new FlagsError('Invalid BLOCKSIZE');
     }
     const tableStart = integer(hduDataStart, 'HDU data start');
     const tableBytes = integer(rowSize * rowCount, 'table size');
@@ -273,12 +300,20 @@ export async function readFlags(url: string, layout: FlagsLayout, box: PixelBox,
     }
     const fetcher = opts.fetcher ?? globalThis.fetch.bind(globalThis);
     const tiles: { index: number; x: number; y: number; width: number; height: number; start: number; length: number }[] = [];
+    // A 1x1 box still decodes every tile it touches. Stop before any fetch when that would pass 4096 x 4096.
+    let decoded = 0;
     for (let ty = Math.floor(box.y0 / layout.tileHeight); ty <= Math.floor((box.y1 - 1) / layout.tileHeight); ty++) {
         for (let tx = Math.floor(box.x0 / layout.tileWidth); tx <= Math.floor((box.x1 - 1) / layout.tileWidth); tx++) {
             const x = tx * layout.tileWidth;
             const y = ty * layout.tileHeight;
-            tiles.push({ index: ty * layout.tilesAcross + tx, x, y,
-                width: Math.min(layout.tileWidth, layout.width - x), height: Math.min(layout.tileHeight, layout.height - y),
+            const tileWidth = Math.min(layout.tileWidth, layout.width - x);
+            const tileHeight = Math.min(layout.tileHeight, layout.height - y);
+            const count = tileWidth * tileHeight;
+            if (!Number.isSafeInteger(count) || count < 1 || decoded > MAX_DECODED_PIXELS - count) {
+                throw new FlagsError('FLAGS cutout would decode too many pixels');
+            }
+            decoded += count;
+            tiles.push({ index: ty * layout.tilesAcross + tx, x, y, width: tileWidth, height: tileHeight,
                 start: 0, length: 0 });
         }
     }
@@ -338,8 +373,13 @@ export async function readFlags(url: string, layout: FlagsLayout, box: PixelBox,
     const data = new Int32Array(width * height);
     for (const tile of tiles) {
         let pixels: Int32Array;
+        const count = tile.width * tile.height;
         try {
-            pixels = riceDecode(inside(heapRanges, tile.start, tile.length), tile.width * tile.height, layout);
+            pixels = riceDecode(inside(heapRanges, tile.start, tile.length), count, {
+                blockSize: layout.blockSize,
+                bytePix: layout.bytePix,
+                maxPixels: count,
+            });
         } catch (error) {
             throw new FlagsError(`Invalid RICE_1 FLAGS tile ${tile.index}`, { cause: error });
         }

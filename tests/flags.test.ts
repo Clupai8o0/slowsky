@@ -2,7 +2,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseHeader } from '../src/lib/fits';
-import { FlagsError, flagMask, flagNames, parseFlagsLayout, readFlags } from '../src/lib/flags';
+import { FlagsError, MAX_AXIS, flagMask, flagNames, parseFlagsLayout, readFlags } from '../src/lib/flags';
+import type { FlagsLayout } from '../src/lib/flags';
+import { RiceError, riceDecode } from '../src/lib/rice';
 import type { CardValue, FitsHeader, PixelBox } from '../src/lib/types';
 
 function header(changes: Record<string, CardValue | undefined> = {}): FitsHeader
@@ -28,6 +30,12 @@ function header(changes: Record<string, CardValue | undefined> = {}): FitsHeader
         }
         return value;
     } };
+}
+
+// One table row, so a changed axis still matches the tile grid the old parser accepts.
+function oneRow(changes: Record<string, CardValue | undefined> = {}): FitsHeader
+{
+    return header({ ZNAXIS2: 1, ZTILE2: 1, NAXIS2: 1, PCOUNT: 0, THEAP: 12, ...changes });
 }
 
 interface Segment { start: number; bytes: Uint8Array }
@@ -255,6 +263,86 @@ describe('FLAGS layouts and safety', () => {
         await expect(readFlags('x', fixture.layout, { x0: 0, y0: 0, x1: 1, y1: 1 },
             { fetcher: fake.fetcher, signal: AbortSignal.abort() })).rejects.toThrow();
         expect(fake.calls).toHaveLength(0);
+    });
+
+    it('refuses an image, tile or block larger than a SPHEREx frame', () => {
+        const huge = 2_147_483_647;
+        expect(() => parseFlagsLayout(oneRow({ ZNAXIS1: huge, ZTILE1: huge, ZVAL1: huge, PCOUNT: 5 }), 1000))
+            .toThrow(/ZNAXIS1/);
+        expect(() => parseFlagsLayout(oneRow({ ZNAXIS1: MAX_AXIS + 1, ZTILE1: MAX_AXIS + 1 }), 0)).toThrow(/ZNAXIS1/);
+        expect(() => parseFlagsLayout(header({
+            ZNAXIS1: 1, ZNAXIS2: MAX_AXIS + 1, ZTILE1: 1, ZTILE2: 1, NAXIS2: MAX_AXIS + 1,
+            PCOUNT: 0, THEAP: 12 * (MAX_AXIS + 1),
+        }), 0)).toThrow(/ZNAXIS2/);
+        expect(() => parseFlagsLayout(oneRow({ ZNAXIS1: 8, ZTILE1: 9 }), 0)).toThrow(/ZTILE1/);
+        expect(() => parseFlagsLayout(header({
+            ZNAXIS1: 4, ZNAXIS2: 4, ZTILE1: 4, ZTILE2: 5, NAXIS2: 1, PCOUNT: 0, THEAP: 12,
+        }), 0)).toThrow(/ZTILE2/);
+        expect(() => parseFlagsLayout(oneRow({ ZNAXIS1: 2040, ZTILE1: 2040, ZVAL1: 2048 }), 0)).toThrow(/BLOCKSIZE/);
+        expect(() => parseFlagsLayout(header({ ZVAL1: 48 }), 1000)).toThrow(/BLOCKSIZE/);
+        expect(parseFlagsLayout(oneRow({ ZNAXIS1: MAX_AXIS, ZTILE1: MAX_AXIS }), 0).width).toBe(MAX_AXIS);
+        expect(parseFlagsLayout(oneRow({ ZNAXIS1: 1024, ZTILE1: 1024, ZVAL1: 1024 }), 0).blockSize).toBe(1024);
+    });
+
+    it('refuses a forged huge tile before fetching its heap', async () => {
+        const huge = 2_147_483_647;
+        const layout: FlagsLayout = {
+            width: huge, height: 1, tileWidth: huge, tileHeight: 1, tilesAcross: 1,
+            rowSize: 8, rowCount: 1, tableStart: 0, tableBytes: 8, heapStart: 8, heapBytes: 5,
+            descriptor: 'P', descriptorOffset: 0, blockSize: huge, bytePix: 4,
+        };
+        const calls: string[] = [];
+        const fetcher: typeof fetch = async (_url, init) => {
+            calls.push(new Headers(init?.headers).get('Range') ?? '');
+            return new Response(new Uint8Array(5));
+        };
+        const started = performance.now();
+        await expect(readFlags('x', layout, { x0: 0, y0: 0, x1: 1, y1: 1 }, { fetcher }))
+            .rejects.toThrow('FLAGS cutout would decode too many pixels');
+        expect(performance.now() - started).toBeLessThan(1000);
+        expect(calls).toEqual([]);
+    });
+
+    it('refuses a cutout whose tiles would decode more than 4096 x 4096 pixels, before any fetch', async () => {
+        const side = MAX_AXIS;
+        const layout: FlagsLayout = {
+            width: side, height: side * 2, tileWidth: side, tileHeight: side, tilesAcross: 1,
+            rowSize: 8, rowCount: 2, tableStart: 0, tableBytes: 16, heapStart: 16, heapBytes: 8,
+            descriptor: 'P', descriptorOffset: 0, blockSize: 32, bytePix: 4,
+        };
+        let calls = 0;
+        const fetcher: typeof fetch = async () => {
+            calls += 1;
+            return new Response(new Uint8Array(5));
+        };
+        await expect(readFlags('x', layout, { x0: 0, y0: 0, x1: side, y1: side * 2 }, { fetcher }))
+            .rejects.toThrow('FLAGS cutout would decode too many pixels');
+        expect(calls).toBe(0);
+    });
+
+    it('still fetches a tile that decodes to exactly 4096 x 4096 pixels', async () => {
+        const side = MAX_AXIS;
+        const layout: FlagsLayout = {
+            width: side, height: side, tileWidth: side, tileHeight: side, tilesAcross: 1,
+            rowSize: 8, rowCount: 1, tableStart: 0, tableBytes: 8, heapStart: 8, heapBytes: 5,
+            descriptor: 'P', descriptorOffset: 0, blockSize: 32, bytePix: 4,
+        };
+        let calls = 0;
+        const fetcher: typeof fetch = async () => {
+            calls += 1;
+            return new Response(new Uint8Array(0), { status: 200 });
+        };
+        await expect(readFlags('x', layout, { x0: 0, y0: 0, x1: side, y1: side }, { fetcher })).rejects.toThrow(FlagsError);
+        expect(calls).toBe(1);
+    });
+
+    it('decodes 100 pixels at maxPixels 100 and refuses 101', () => {
+        const values = Array.from({ length: 101 }, (_, i) => i - 50);
+        const over = riceEscape(values);
+        expect(() => riceDecode(over, 101, { blockSize: 32, bytePix: 4, maxPixels: 100 })).toThrow(RiceError);
+        const fitted = riceEscape(values.slice(0, 100));
+        expect(riceDecode(fitted, 100, { blockSize: 32, bytePix: 4, maxPixels: 100 }))
+            .toEqual(Int32Array.from(values.slice(0, 100)));
     });
 });
 

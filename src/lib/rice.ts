@@ -7,7 +7,7 @@ export class RiceError extends Error {}
 // Selector 0 means zero differences; 1..fsMax mean fs = selector-1 low bits;
 // fsMax+1 escapes to full-width mapped differences. All fields are MSB first.
 export function riceDecode(bytes: Uint8Array, nPixels: number,
-    opts: { blockSize: number; bytePix: 1 | 2 | 4 }): Int32Array
+    opts: { blockSize: number; bytePix: 1 | 2 | 4; maxPixels?: number }): Int32Array
 {
     if (!Number.isSafeInteger(nPixels) || nPixels < 0 || nPixels > 0x7fffffff
         || !Number.isSafeInteger(opts.blockSize) || opts.blockSize < 1
@@ -18,6 +18,10 @@ export function riceDecode(bytes: Uint8Array, nPixels: number,
     const selectorBits = opts.bytePix === 4 ? 5 : opts.bytePix === 2 ? 4 : 3;
     if (nPixels > 0 && bytes.length * 8 < 8 * opts.bytePix + Math.ceil(nPixels / opts.blockSize) * selectorBits) {
         throw new RiceError('Truncated RICE_1 input');
+    }
+    const maxPixels = opts.maxPixels ?? 4096 * 4096;
+    if (!Number.isSafeInteger(maxPixels) || maxPixels < 0 || nPixels > maxPixels) {
+        throw new RiceError('RICE_1 pixel count exceeds maxPixels');
     }
     let output: Int32Array;
     try {
