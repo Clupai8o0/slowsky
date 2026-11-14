@@ -369,9 +369,10 @@ describe('colourAt', () => {
         expect(eqNoisy.valid).toBe(true);
         expect(Math.abs(eqNoisy.index)).toBeLessThanOrEqual(0.02);
 
+        // Noise-free patches have snr = 0, so pass minSnr: 0 to check the ratio arithmetic alone.
         const cleanShort = makePatch([{ ...CENTER, flux: 600 }], 0.5);
         const cleanLong3x = makePatch([{ ...CENTER, flux: 1800 }], 1.25);
-        const cleanRatio = colourAt(cleanShort, cleanLong3x, SIZE, SIZE, CENTER, { pixelArcsec: 6.15 });
+        const cleanRatio = colourAt(cleanShort, cleanLong3x, SIZE, SIZE, CENTER, { pixelArcsec: 6.15, minSnr: 0 });
         expect(cleanRatio.seen).toBe('both');
         expect(cleanRatio.valid).toBe(true);
         expect(Math.abs(cleanRatio.index - 0.5)).toBeLessThanOrEqual(0.03);
@@ -382,7 +383,7 @@ describe('colourAt', () => {
             SIZE,
             SIZE,
             CENTER,
-            { pixelArcsec: 6.15 },
+            { pixelArcsec: 6.15, minSnr: 0 },
         );
         expect(cleanEq.seen).toBe('both');
         expect(cleanEq.valid).toBe(true);
@@ -411,15 +412,16 @@ describe('colourAt', () => {
     });
 
     it('clamps negative sums to 0, handles invalid apertures, and throws on invalid minSnr', () => {
-        const dippedShort = makePatch([{ ...CENTER, flux: -50 }], 0.5);
-        const brightLong = makePatch([{ ...CENTER, flux: 1200 }], 0.5);
+        // Seeded low-noise patches keep brightLong far above minSnr while dippedShort stays negative.
+        const dippedShort = makeNoisePatch(SIZE, 0.5, 0.01, 713, [{ ...CENTER, flux: -50 }]);
+        const brightLong = makeNoisePatch(SIZE, 0.5, 0.01, 714, [{ ...CENTER, flux: 1200 }]);
         const clamped = colourAt(dippedShort, brightLong, SIZE, SIZE, CENTER, { pixelArcsec: 6.15 });
         expect(clamped.short).toBe(0);
         expect(clamped.seen).toBe('long');
         expect(clamped.valid).toBe(false);
         expect(clamped.index).toBeNaN();
 
-        const withNan = makePatch([{ ...CENTER, flux: 1200 }], 0.5);
+        const withNan = makeNoisePatch(SIZE, 0.5, 0.01, 715, [{ ...CENTER, flux: 1200 }]);
         withNan[CENTER.y * SIZE + CENTER.x] = Number.NaN;
         const badNan = colourAt(withNan, brightLong, SIZE, SIZE, CENTER, { pixelArcsec: 6.15 });
         expect(badNan.short).toBeNaN();
@@ -479,15 +481,76 @@ describe('colourAt', () => {
         }
     });
 
+    it('throws FalseColourError when noiseScale is below 1 or non-finite', () => {
+        const pic = makePatch([{ ...CENTER, flux: 1200 }], 0.5);
+        for (const noiseScale of [0, 0.5, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+            expect(() => colourAt(pic, pic, SIZE, SIZE, CENTER, { pixelArcsec: 6.15, noiseScale })).toThrow(FalseColourError);
+        }
+    });
+
+    it('treats a noise-free positive source as unseen at default minSnr and seen with minSnr 0', () => {
+        const cleanShort = makePatch([{ ...CENTER, flux: 600 }], 0.5);
+        const cleanLong = makePatch([{ ...CENTER, flux: 1200 }], 1.25);
+
+        const atDefault = colourAt(cleanShort, cleanLong, SIZE, SIZE, CENTER, { pixelArcsec: 6.15 });
+        expect(atDefault.seen).toBe('neither');
+        expect(atDefault.valid).toBe(false);
+        expect(atDefault.index).toBeNaN();
+
+        const atZero = colourAt(cleanShort, cleanLong, SIZE, SIZE, CENTER, { pixelArcsec: 6.15, minSnr: 0 });
+        expect(atZero.seen).toBe('both');
+        expect(atZero.valid).toBe(true);
+        expect(Number.isFinite(atZero.index)).toBe(true);
+    });
+
+    it('reports seen neither on a quantised sky ring where MAD clips to zero despite +/-10 outliers', () => {
+        const qSize = 64;
+        const centre: PixelCoord = { x: 32, y: 32 };
+        // Default sky-ring bounds from aperture() in src/lib/photometry.ts (radius = 10, annulusIn = 16, annulusOut = 24).
+        const annulusIn = 16;
+        const annulusOut = 24;
+        const inner2 = annulusIn * annulusIn;
+        const outer2 = annulusOut * annulusOut;
+        const quantised = new Float32Array(qSize * qSize);
+        let ringIdx = 0;
+        let sign = 1;
+        const xMin = Math.max(0, Math.ceil(centre.x - annulusOut));
+        const xMax = Math.min(qSize - 1, Math.floor(centre.x + annulusOut));
+        const yMin = Math.max(0, Math.ceil(centre.y - annulusOut));
+        const yMax = Math.min(qSize - 1, Math.floor(centre.y + annulusOut));
+        for (let y = yMin; y <= yMax; y++) {
+            const dy2 = (y - centre.y) ** 2;
+            for (let x = xMin; x <= xMax; x++) {
+                const distance2 = (x - centre.x) ** 2 + dy2;
+                if (distance2 < inner2 || distance2 > outer2) {
+                    continue;
+                }
+                if (ringIdx % 3 === 0) {
+                    quantised[y * qSize + x] = 10 * sign;
+                    sign = -sign;
+                }
+                ringIdx++;
+            }
+        }
+        quantised[centre.y * qSize + centre.x] = 1e-4;
+
+        const res = colourAt(quantised, quantised, qSize, qSize, centre, { pixelArcsec: 6.15 });
+        expect(res.seen).toBe('neither');
+        expect(res.valid).toBe(false);
+        expect(res.index).toBeNaN();
+    });
+
     it('lets an explicit noiseScale of 2 override the pixelArcsec rule', () => {
         const short = makeNoisePatch(nSize, 0.5, 1, 740, [{ ...spot, flux: 1500 }]);
         const long = makeNoisePatch(nSize, 1.1, 1, 741, [{ ...spot, flux: 1800 }]);
 
         const one = colourAt(short, long, nSize, nSize, spot, { pixelArcsec: 6.15 / 4, noiseScale: 1 });
         const two = colourAt(short, long, nSize, nSize, spot, { pixelArcsec: 6.15 / 4, noiseScale: 2 });
+        const byRule = colourAt(short, long, nSize, nSize, spot, { pixelArcsec: 6.15 / 4 });
 
         expect(two.snrShort).toBeCloseTo(one.snrShort / 2, 9);
         expect(two.snrLong).toBeCloseTo(one.snrLong / 2, 9);
+        expect(two.snrShort).toBeGreaterThan(byRule.snrShort);
     });
 });
 
@@ -599,6 +662,7 @@ describe('determinism and string hygiene', () => {
             () => falseColourRgba(ok, ok, { lo: 5, hi: 5, kind: 'linear' }, { lo: 0, hi: 1, kind: 'linear' }),
             () => falseColourRgba(ok, ok, { lo: 0, hi: 1, kind: 'linear' }, { lo: 0, hi: 1, kind: 'linear' }, new Uint8ClampedArray(4)),
             () => colourAt(ok, ok, 2, 1, { x: 0, y: 0 }, { pixelArcsec: 6.15, minSnr: -1 }),
+            () => colourAt(ok, ok, 2, 1, { x: 0, y: 0 }, { pixelArcsec: 6.15, noiseScale: 0.5 }),
             () => colourAt(ok, ok, 2, 1, { x: 0, y: 0 }, { pixelArcsec: 0 }),
             () => falseColourLegend(Number.NaN, Number.POSITIVE_INFINITY),
             () => falseColourLegend(4.42, 1.12),

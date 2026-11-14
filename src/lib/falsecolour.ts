@@ -151,9 +151,12 @@ export function falseColourRgba(
     return px;
 }
 
-// Measures background-subtracted aperture sums and signal-to-noise at `at`, reporting which pictures see a source
-// at or above `minSnr` (or positive flux on a noise-free background) and a colour ratio only when both see it.
+// Measures background-subtracted aperture sums and signal-to-noise at `at`, reporting a colour ratio only when both
+// pictures see the source. A source is seen only at or above `minSnr` with a valid positive sum; a patch with no
+// measurable noise has `snr = 0` and is not seen (with `minSnr: 0` a valid positive sum is still seen since `0 >= 0`).
 // The signal-to-noise includes the resampling noise scale for `pixelArcsec` unless `noiseScale` overrides it.
+// `radius`, `annulusIn` and `annulusOut` are in output pixels, so a caller on a finer grid must scale them to keep
+// the same size on the sky.
 export function colourAt(
     short: Float32Array,
     long: Float32Array,
@@ -173,6 +176,9 @@ export function colourAt(
     if (!Number.isFinite(opts.pixelArcsec) || opts.pixelArcsec <= 0) {
         throw new FalseColourError('Pixel size must be finite and positive');
     }
+    if (opts.noiseScale !== undefined && (!Number.isFinite(opts.noiseScale) || opts.noiseScale < 1)) {
+        throw new FalseColourError('Noise scale must be finite and at least 1');
+    }
     const minSnr = opts.minSnr ?? 3;
     if (!Number.isFinite(minSnr) || minSnr < 0) {
         throw new FalseColourError('Minimum signal-to-noise ratio must be zero or positive');
@@ -190,8 +196,8 @@ export function colourAt(
     const l = apLong.valid ? Math.max(0, apLong.sum) : Number.NaN;
     const snrShort = apShort.valid ? apShort.snr : 0;
     const snrLong = apLong.valid ? apLong.snr : 0;
-    const seenShort = apShort.valid && apShort.sum > 0 && (apShort.backgroundSigma === 0 || apShort.snr >= minSnr);
-    const seenLong = apLong.valid && apLong.sum > 0 && (apLong.backgroundSigma === 0 || apLong.snr >= minSnr);
+    const seenShort = apShort.valid && apShort.sum > 0 && apShort.snr >= minSnr;
+    const seenLong = apLong.valid && apLong.sum > 0 && apLong.snr >= minSnr;
 
     if (seenShort && seenLong) {
         return {
