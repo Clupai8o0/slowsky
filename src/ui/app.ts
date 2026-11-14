@@ -17,7 +17,7 @@ import { createDemoSource } from './demo-source';
 import { diffScale, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
-import { curveFor, frameMjd, ringsOn, shiftFor, type Curve } from './measure';
+import { curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, type Curve } from './measure';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -261,7 +261,7 @@ function shell(): string
     <div class="sk-ctrl">
     <div class="sk-legrow">
       <div class="sk-leg">
-        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
+        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-SA 3.0 IGO)">Gaia DR3</a></span>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
@@ -526,7 +526,7 @@ export function mount(root: HTMLElement): void
             compose();
         }
         const kindNow = st.target ? COPY[st.target].kind : 'field';
-        curve = kindNow === 'variable' || kindNow === 'spectrum' || kindNow === 'cold' ? curveFor(res) : null;
+        curve = kindNow === 'variable' || kindNow === 'spectrum' || kindNow === 'cold' ? curveFor(res, st.target ? targetById(st.target)?.astrometry : undefined) : null;
         renderCurve();
         canvas.width = res.grid.width;
         canvas.height = res.grid.height;
@@ -659,8 +659,10 @@ export function mount(root: HTMLElement): void
         // aperture), scaled the same way as the point, so a faint or missing target still gets an honest bar.
         const scales = pts.filter((o) => o.p.relative !== 0 && o.p.ratio !== 0).map((o) => o.p.ratio / o.p.relative).sort((a, b) => a - b);
         const med = scales.length ? scales[Math.floor(scales.length / 2)]! : NaN;
+        const spread = Math.max(1, NATIVE_ARCSEC / result.grid.pixelArcsec);
         const err = pts.map((o) => {
-            const own = o.p.target.backgroundSigma * Math.sqrt(o.p.target.nPix) / (o.p.refSum * med);
+            // Regridding spreads each detector pixel over several output pixels, so their noise is shared: scale up.
+            const own = o.p.target.backgroundSigma * Math.sqrt(o.p.target.nPix) * spread / (o.p.refSum * med);
             return Math.hypot(Math.abs(o.p.relative) * noise, Number.isFinite(own) ? own : 0);
         });
         let lo = Math.min(...ys.map((v, i) => v - err[i]!), 1 - noise);

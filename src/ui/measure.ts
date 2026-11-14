@@ -7,7 +7,7 @@ import { positionAt } from '../lib/targets';
 import type { SkyResult, TrackPoint } from '../lib/source';
 import type { Astrometry, OutputGrid, PixelCoord, RegriddedFrame } from '../lib/types';
 
-const NATIVE_ARCSEC = 6.15;
+export const NATIVE_ARCSEC = 6.15; // SPHEREx detector pixel
 // SPHEREx saturates on stars brighter than about G 9, and stars fainter than G 15 are lost in the noise
 // of one frame at 0.1°. References come from between.
 const REF_G_MIN = 9;
@@ -129,7 +129,8 @@ export interface Curve {
 
 // The target's brightness in each frame divided by the summed brightness of a few steady Gaia stars, so
 // changes in the instrument cancel. Null when there is no track, too few frames or too few usable stars.
-export function curveFor(result: SkyResult): Curve | null
+// `self` is the target's catalogue motion: a Gaia star moving like it is the target itself, not a blend.
+export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
 {
     const frames = result.frames.map((p) => p.frame);
     if (!result.track?.length || frames.length < 2 || result.stars.length === 0) {
@@ -167,8 +168,15 @@ export function curveFor(result: SkyResult): Curve | null
         return c && Math.hypot(c.x - p.x, c.y - p.y) < 3 ? c : p;
     };
     let lc: LightCurve;
+    let order: number[] = []; // lightCurve asks for the target once per kept frame, in point order
     try {
-        const measure = () => lightCurve(frames, (f) => where(f), refs.map((r) => r.pix), { ...options, lambda: result.lambda, maxDeltaUm: 0.05 });
+        const measure = () => {
+            order = [];
+            return lightCurve(frames, (f, i) => {
+                order.push(i);
+                return where(f);
+            }, refs.map((r) => r.pix), { ...options, lambda: result.lambda, maxDeltaUm: 0.05 });
+        };
         lc = measure();
         while (refs.length > 2) {
             const worst = lc.refScatter.reduce((best, scatter, i) => scatter > (lc.refScatter[best] ?? -Infinity) ? i : best, -1);
@@ -191,19 +199,22 @@ export function curveFor(result: SkyResult): Curve | null
     if (lc.points.filter((p) => p.valid).length < 2) {
         return null;
     }
-    const frameOf = lc.points.map((p) => frames.findIndex((f) => frameMjd(f) === p.mjd));
+    const frameOf = order.slice();
     const validFrames = frameOf.filter((_, i) => lc.points[i]!.valid).map((i) => frames[i]!);
-    let fluxSum = 0;
-    let variance = 0;
-    for (let i = 0; i < refs.length; i++) {
-        const flux = median(validFrames.map((f) => aperture(f.data, width, height, refs[i]!.pix, options).sum));
-        const scatter = lc.refScatter[i]!;
-        if (Number.isFinite(flux) && Number.isFinite(scatter)) {
-            fluxSum += flux;
-            variance += (flux * scatter) ** 2;
+    const noise = sumNoise(
+        refs.map((r) => median(validFrames.map((f) => aperture(f.data, width, height, r.pix, options).sum))),
+        lc.refScatter,
+    );
+    const native = NATIVE_ARCSEC / result.grid.pixelArcsec;
+    const reach = radius + 0.33 * native;
+    const pmOk = (id: string): boolean => {
+        const s = stars.get(id);
+        if (!self || s?.pmRa === undefined || s.pmDec === undefined) {
+            return false;
         }
-    }
-    const noise = fluxSum !== 0 ? Math.sqrt(variance) / fluxSum : 0;
+        const want = Math.hypot(self.pmRa, self.pmDec);
+        return Math.hypot(s.pmRa - self.pmRa, s.pmDec - self.pmDec) <= Math.max(20, 0.1 * want);
+    };
     let blend: Curve['blend'] = null;
     for (const index of frameOf) {
         const mjd = frameMjd(frames[index]!);
@@ -211,12 +222,12 @@ export function curveFor(result: SkyResult): Curve | null
         const nearby = ringsAt(result.stars, result.grid, mjd).map((r) => ({
             sourceId: r.sourceId, g: r.g, px: Math.hypot(r.pix.x - target.x, r.pix.y - target.y),
         }));
-        const nearest = nearby.reduce<typeof nearby[number] | undefined>((best, r) => !best || r.px < best.px ? r : best, undefined);
-        // The target itself, when Gaia sees it. A neighbour over 2.5 mag fainter than it adds under 10% light;
-        // when Gaia does not see the target (WISE 0855), any neighbour in the aperture counts.
-        const self = nearest && nearest.px <= 1.5 ? nearest : undefined;
+        // The target itself, when Gaia sees it: the brightest star within a native pixel that moves like it. A
+        // neighbour over 2.5 mag fainter adds under 10% light; when Gaia does not see the target (WISE 0855),
+        // any neighbour in the aperture counts.
+        const me = nearby.filter((r) => r.px <= native && pmOk(r.sourceId)).sort((a, b) => a.g - b.g)[0];
         for (const r of nearby) {
-            if (r === self || r.px > radius + 2 || (self && r.g > self.g + 2.5)) {
+            if (r === me || r.px > reach || (me && r.g > me.g + 2.5)) {
                 continue;
             }
             if (!blend || r.g < blend.g || (r.sourceId === blend.sourceId && r.px < blend.px)) {
@@ -225,6 +236,38 @@ export function curveFor(result: SkyResult): Curve | null
         }
     }
     return { lc, refs: refs.length, frameOf, blend, noise };
+}
+
+// Fractional scatter of the summed comparison flux. Each refScatter[i] is star i against the sum of the others, so
+// it carries their noise too: solve for each star's own scatter first, then add them weighted by flux.
+export function sumNoise(flux: number[], scatter: number[]): number
+{
+    const ok = flux.map((f, i) => Number.isFinite(f) && f > 0 && Number.isFinite(scatter[i]));
+    const F = flux.map((f, i) => (ok[i] ? f : 0));
+    const s2 = scatter.map((v, i) => (ok[i] ? v * v : 0));
+    let own = s2.slice();
+    for (let pass = 0; pass < 40; pass++) {
+        own = own.map((v, i) => {
+            if (!ok[i]) {
+                return 0;
+            }
+            let rest = 0;
+            let restVar = 0;
+            for (let j = 0; j < F.length; j++) {
+                if (j !== i && ok[j]) {
+                    rest += F[j]!;
+                    restVar += F[j]! ** 2 * own[j]!;
+                }
+            }
+            const next = Math.max(0, s2[i]! - (rest > 0 ? restVar / rest ** 2 : 0));
+            return 0.5 * v + 0.5 * next; // damped, so equal stars settle instead of see-sawing
+        });
+    }
+    const total = F.reduce((a, b) => a + b, 0);
+    if (!(total > 0)) {
+        return 0;
+    }
+    return Math.sqrt(F.reduce((sum, f, i) => sum + f ** 2 * own[i]!, 0)) / total;
 }
 
 export interface Shift {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apertureFor, centreNear, curveFor, frameMjd, middleMjd, ringsOn, shiftFor } from '../src/ui/measure';
+import { apertureFor, centreNear, curveFor, frameMjd, middleMjd, ringsOn, shiftFor, sumNoise } from '../src/ui/measure';
 import { aperture } from '../src/lib/photometry';
 import { gridPixToSky } from '../src/lib/regrid';
 import { separationDeg } from '../src/lib/coords';
@@ -127,16 +127,30 @@ describe('curveFor', () => {
     it('reports the brightest blend at 3 px and ignores the nearest self star at 0.5 px', () => {
         const r = result([100, 100, 100]);
         r.stars.push(star('self', { x: 80.5, y: 80 }, 15), star('blend', { x: 83, y: 80 }, 16.3), star('fainter', { x: 82, y: 80 }, 17));
-        const c = curveFor(r);
+        const me: Astrometry = { ...grid.center, epochJyear: 2016, pmRa: 0, pmDec: 0 };
+        const c = curveFor(r, me);
         expect(c).not.toBeNull();
         expect(c!.blend?.sourceId).toBe('blend');
         expect(c!.blend?.g).toBe(16.3);
         expect(c!.blend?.px).toBeCloseTo(3, 6);
         r.stars = r.stars.filter((s) => s.sourceId !== 'blend' && s.sourceId !== 'fainter');
-        expect(curveFor(r)?.blend).toBeNull();
+        expect(curveFor(r, me)?.blend).toBeNull();
         // Over 2.5 mag fainter than the target: under 10% of its light, not a blend.
         r.stars.push(star('faint', { x: 83, y: 80 }, 17.6));
-        expect(curveFor(r)?.blend).toBeNull();
+        expect(curveFor(r, me)?.blend).toBeNull();
+        // A star that does not move like the target is never taken for it, however close (WISE 0855 is not in Gaia).
+        const fast: Astrometry = { ...me, pmRa: -8000, pmDec: -700 };
+        expect(curveFor(r, fast)?.blend?.sourceId).toBe('self');
+    });
+
+    it('solves each comparison star\'s own scatter before adding them', () => {
+        // Two equal stars, each seen with scatter s against the other: the sum scatters by s / 2.
+        expect(sumNoise([100, 100], [0.02, 0.02])).toBeCloseTo(0.02 / 2, 4);
+        // A bright steady star dominates the sum; faint noisy ones barely move it.
+        expect(sumNoise([1000, 10, 20, 30], [0.001, 0.3, 0.3, 0.3])).toBeLessThan(0.02);
+        // Non-positive fluxes are skipped and never give a negative noise.
+        expect(sumNoise([400, -450], [0.05, 0.05])).toBeGreaterThanOrEqual(0);
+        expect(sumNoise([], [])).toBe(0);
     });
 
     it('checks blends at each frame date and target track position', () => {
@@ -160,8 +174,8 @@ describe('curveFor', () => {
         expect(c?.refs).toBe(4);
         expect(c!.lc.points.filter((p) => p.valid)).toHaveLength(5);
         const fluxes = [1000, 20, 20, 20];
-        const expected = Math.sqrt(fluxes.reduce((sum, flux, i) => sum + (flux * c!.lc.refScatter[i]!) ** 2, 0)) / 1060;
-        expect(c!.noise).toBeCloseTo(expected, 6);
+        // Aperture sums are proportional to the injected fluxes, and sumNoise depends only on their ratios.
+        expect(c!.noise).toBeCloseTo(sumNoise(fluxes, c!.lc.refScatter), 3);
         expect(c!.noise).toBeGreaterThan(0.1);
     });
 
