@@ -185,7 +185,7 @@ function scatterSentence(value: string, scatter: NonNullable<NumberFact['scatter
 {
     if (!scatter.count) { return false; }
     const escaped = scatter.values.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const list = escaped.length === 1 ? escaped[0] : `${escaped.slice(0, -1).join(', ')}${escaped.length > 2 ? ',?' : ''} and ${escaped[escaped.length - 1]}`;
+    const list = escaped.length === 1 ? escaped[0] : `${escaped.slice(0, -1).join(', ')}(?:${escaped.length > 2 ? ',?' : ''} and|,) ${escaped[escaped.length - 1]}`;
     const singular = scatter.count === '1';
     return new RegExp(`^the(?: ${scatter.count})? (?:reference|comparison) ${singular ? 'star (?:scatters by|has a scatter of)' : 'stars (?:scatter by|have a scatter of)'} ${list} percent\\.$`, 'i').test(value.trim());
 }
@@ -318,12 +318,20 @@ export function checkNote(text: string, sheet: string[], opts: { labelled?: bool
     const noReferences = !referenceLine || /^Reference stars:\s*(?:0\b|none\b)/i.test(referenceLine);
     const noScatter = Boolean(referenceLine && /^Reference stars:\s*scatter unavailable\b/i.test(referenceLine));
     const hasChange = sheet.some((line) => /^(?:Brightness relative to the reference stars, in time order|Difference image at the target):/i.test(line));
+    const differenceLine = sheet.find((line) => /^Difference image at the target:/i.test(line));
+    const caution = differenceLine?.match(/^Difference image at the target: .+?\.\s+(.+\.)$/i)?.[1];
+    const changeSeen = Boolean((change && change !== 'less than 1') || (readingValues.length === 2 && Number(readingValues[0]) !== Number(readingValues[1])) || (differenceLine && !/no change above the noise/i.test(differenceLine)));
+    // An endpoint sentence hides a middle reading that lies outside the endpoints.
+    const endsHide = readingValues.length > 2 && readingValues.slice(1, -1).map(Number).some((v) => v > Math.max(Number(readingValues[0]), Number(readingValues.at(-1))) || v < Math.min(Number(readingValues[0]), Number(readingValues.at(-1))));
+    const fewer = sheet.some((line) => /Points too faint to measure are left out/i.test(line));
+    let medianKept = false;
+    let scatterKept = false;
     const hasTwoVisits = /^Visits:\s*(?:at least\s+)?(\d+)\./im.exec(sheet.join('\n'));
     function nextForm(value: string): boolean
     {
         const sentence = value.toLowerCase();
-        if (sentence === 'wait for another visit to see whether the change repeats.' || sentence === 'change the colour to see whether the change shows at another wavelength.') { return hasChange; }
-        if (sentence === 'compare the target with the reference stars in the same frames.') { return !noReferences; }
+        if (sentence === 'wait for another visit to see whether the change repeats.' || sentence === 'change the colour to see whether the change shows at another wavelength.') { return hasChange && changeSeen; }
+        if (sentence === 'compare the target with the reference stars in the same frames.') { return /^Reference stars:\s*[1-9]\d* with available scatter\b/i.test(referenceLine ?? ''); }
         if (sentence === 'look at subtract to see what is left at the target.') { return Boolean(hasTwoVisits && Number(hasTwoVisits[1]) >= 2); }
         return [
             'switch on flagged pixels to see whether one sits on the target.',
@@ -335,13 +343,16 @@ export function checkNote(text: string, sheet: string[], opts: { labelled?: bool
     function readingForm(value: string, values: string[]): boolean
     {
         const escape = (part: string) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const lead = exactVisits === null ? '' : `(?:over ${exactVisits} visits,? )?`;
+        const lead = exactVisits === null || fewer ? '' : `(?:over ${exactVisits} visits,? )?`;
         const first = values[0]!;
         const last = values[values.length - 1]!;
         const all = values.length === 2 ? `${escape(first)},? (?:and )?${escape(last)}` : `${values.slice(0, -1).map(escape).join(', ')}(?:,? and|,) ${escape(last)}`;
         if (new RegExp(`^${lead}in time order,? the brightness (?:relative to the reference stars )?(?:is|was|reads|read) ${all}\\.$`, 'i').test(value)) { return true; }
         const ends = value.match(new RegExp(`^${lead}the brightness (went|rose|fell|changed) from ${escape(first)} to ${escape(last)}(?: (?:between|from) the first (?:visit )?(?:and|to) the last(?: visit)?)?\\.$`, 'i'));
         if (ends && Number(first) !== Number(last)) {
+            if (endsHide) { return false; }
+            const size = Math.abs(Number(last) - Number(first)) / Number(first) * 100;
+            if (/^(?:rose|fell|changed)$/i.test(ends[1]!) && !(Number(first) > 0 && scatterValues.length && size > Math.max(...scatterValues) + 1e-10 && size > 1 + 1e-10)) { return false; }
             return !(/^rose$/i.test(ends[1]!) && Number(last) <= Number(first)) && !(/^fell$/i.test(ends[1]!) && Number(last) >= Number(first));
         }
         const rank = value.match(new RegExp(`^${lead}the (first|last|highest|lowest) reading (?:is|was) (\\d+(?:\\.\\d+)?)\\.$`, 'i'));
@@ -351,7 +362,7 @@ export function checkNote(text: string, sheet: string[], opts: { labelled?: bool
             const expected = key === 'first' ? first : key === 'last' ? last : values.find((v) => Number(v) === extreme);
             return rank[2] === expected && (key === 'first' || key === 'last' || values.filter((v) => Number(v) === extreme).length === 1);
         }
-        return first === last && new RegExp(`^${lead}the first and last readings are (?:both|the same,) ${escape(first)}\\.$`, 'i').test(value);
+        return first === last && !endsHide && new RegExp(`^${lead}the first and last readings are (?:both|the same,) ${escape(first)}\\.$`, 'i').test(value);
     }
     function directionInvalid(value: string): boolean
     {
@@ -405,16 +416,16 @@ export function checkNote(text: string, sheet: string[], opts: { labelled?: bool
     // Closed forms are constructed from printed facts, never from a number found elsewhere on the sheet.
     function closedForm(value: string): boolean
     {
-        if (/^this is a candidate only\.$/i.test(value)) { return true; }
+        if (/^this is a candidate only\.$/i.test(value)) { return changeSeen || hasShift; }
         if (readingValues.length >= 2 && readingForm(value, readingValues)) { return true; }
         if (facts.some((fact) => fact.medianDirection && medianSentence(value, fact))) { return true; }
         if (facts.some((fact) => fact.scatter && scatterSentence(value, fact.scatter))) { return true; }
-        if (/^the change is (?:several times larger than that scatter|larger than that scatter|no larger than that scatter, so it may be noise)\.$/i.test(value)) { return !comparisonInvalid(value); }
-        if (/^there are no reference stars to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return noReferences; }
-        if (/^the reference stars' scatter is unavailable, so there is nothing to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return noScatter; }
-        if (/^there are fewer than 3 visits, so the change counts for little\.$/i.test(value)) { return exactVisits !== null && exactVisits < 3; }
+        if (/^the change is (?:several times larger than that scatter|larger than that scatter|no larger than that scatter, so it may be noise)\.$/i.test(value)) { return medianKept && scatterKept && !comparisonInvalid(value); }
+        if (/^there are no reference stars to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return noReferences && changeSeen; }
+        if (/^the reference stars' scatter is unavailable, so there is nothing to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return noScatter && changeSeen; }
+        if (/^there are fewer than 3 visits, so the change counts for little\.$/i.test(value)) { return exactVisits !== null && exactVisits < 3 && changeSeen; }
         const snr = sheet.join('\n').match(/^Lowest signal-to-noise among the points:\s*((?:(?:below|more than) )?\d+(?:\.\d+)?)\./im)?.[1];
-        if (/^the lowest signal-to-noise is small, so the change counts for little\.$/i.test(value)) { return Boolean(snr && (snr === 'below 1' || (!snr.includes('than') && Number(snr) < 3))); }
+        if (/^the lowest signal-to-noise is small, so the change counts for little\.$/i.test(value)) { return changeSeen && Boolean(snr && (snr === 'below 1' || (!snr.includes('than') && Number(snr) < 3))); }
         if (/^there is nothing measured to interpret yet\.$/i.test(value)) { return !sheet.some((line) => /^(?:Brightness relative to the reference stars, in time order|Difference image at the target|Shift in position):/i.test(line)); }
         const forms: string[] = [];
         if (snr) { forms.push(`The lowest signal-to-noise among the points is ${snr}.`); }
@@ -423,7 +434,7 @@ export function checkNote(text: string, sheet: string[], opts: { labelled?: bool
             if (wavelength) { forms.push(`The wavelength is ${wavelength}.`); }
             const visit = line.match(/^Visits: (.+?)\. Frames in each visit: (.+?)\.(?: Time from first to last visit: (.+?)\.)?$/i);
             if (visit) {
-                forms.push(`There were ${visit[1]} visits.`, `The frames in each visit were ${visit[2]}.`);
+                forms.push(visit[1] === '1' ? 'There was 1 visit.' : `There were ${visit[1]} visits.`, `The frames in each visit were ${visit[2]}.`);
                 if (visit[3]) { forms.push(`The time from first to last visit was ${visit[3]}.`); }
             }
             const left = line.match(/^Frames left out because their wavelength did not match: (.+)\.$/i)?.[1];
@@ -432,6 +443,7 @@ export function checkNote(text: string, sheet: string[], opts: { labelled?: bool
             if (shift) { forms.push(`The shift in position was ${shift}.`); }
             const difference = line.match(/^Difference image at the target: (.+?\.)(?:\s|$)/i)?.[1];
             if (difference) { forms.push(`Difference image at the target: ${difference}`); }
+            if (difference && caution) { forms.push(caution); }
             const position = line.match(/^Position: (.+)\.$/i)?.[1];
             if (position) { forms.push(`The position is ${position}.`); }
             const targetName = line.match(/^Target: (.+)\.$/i)?.[1];
@@ -543,7 +555,26 @@ export function checkNote(text: string, sheet: string[], opts: { labelled?: bool
     let measuredCount = 0;
     let activeLabel = '';
     const paragraphs: string[] = [];
-    for (const raw of text.split(/\r?\n/)) {
+    const rawLines = text.split(/\r?\n/);
+    if (opts.labelled) {
+        const groups = new Map<string, { label: string; bodies: string[] }>();
+        const preamble: string[] = [];
+        let group: { label: string; bodies: string[] } | undefined;
+        for (const raw of rawLines) {
+            const line = raw.trim();
+            if (!line) { continue; }
+            const match = line.match(/^(?:\*\*)?(What this shows|How far to trust it|What to check next)\s*(?:\*\*)?\s*:(?:\*\*)?/i);
+            if (match) {
+                const key = match[1]!.toLowerCase();
+                group = groups.get(key);
+                if (!group) { group = { label: `${match[1]}:`, bodies: [] }; groups.set(key, group); }
+            }
+            const body = line.slice(match?.[0].length ?? 0).trim();
+            if (body) { (group ? group.bodies : preamble).push(body); }
+        }
+        rawLines.splice(0, rawLines.length, ...preamble, ...[...groups.values()].map(({ label, bodies }) => `${label} ${bodies.join(' ')}`));
+    }
+    for (const raw of rawLines) {
         const line = raw.trim();
         if (!line) { continue; }
         const labelMatch = line.match(/^(?:\*\*)?(What this shows|How far to trust it|What to check next)\s*(?:\*\*)?\s*:(?:\*\*)?/i);
@@ -560,18 +591,27 @@ export function checkNote(text: string, sheet: string[], opts: { labelled?: bool
             dropped += sentences.length;
             continue;
         }
-        const kept = sentences.filter((sentence) => {
+        let previousKeptDifference = false;
+        const kept = sentences.filter((sentence, index) => {
             const labeled = `${label} ${sentence}`;
             const pairs = [['(', ')'], ['[', ']'], ['{', '}'], ['“', '”']];
             const unbalanced = pairs.some(([left, right]) => sentence.split(left!).length !== sentence.split(right!).length) || (sentence.match(/"/g)?.length ?? 0) % 2 !== 0;
             const closed = /^(?:What this shows|How far to trust it):$/i.test(activeLabel);
             const next = /^What to check next:$/i.test(activeLabel);
-            if (!/[.!?]$/.test(sentence) || unbalanced || (opts.labelled && !activeLabel) || (closed && !closedForm(sentence)) || (next && !nextForm(sentence)) || invalid(sentence) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
+            const lower = sentence.toLowerCase();
+            const differenceForm = /^difference image at the target:/i.test(sentence);
+            const cautionMissing = closed && caution !== undefined && ((differenceForm && sentences[index + 1]?.toLowerCase() !== caution.toLowerCase()) || (lower === caution.toLowerCase() && !previousKeptDifference));
+            const sheetWarning = closed && caution !== undefined && lower === caution.toLowerCase() && previousKeptDifference;
+            if (!/[.!?]$/.test(sentence) || unbalanced || cautionMissing || (opts.labelled && !activeLabel) || (closed && !closedForm(sentence)) || (next && !nextForm(sentence)) || (!sheetWarning && invalid(sentence)) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
                 dropped++;
+                previousKeptDifference = false;
                 return false;
             }
+            previousKeptDifference = differenceForm;
             count++;
-            if (closed) { measuredCount++; }
+            if (closed && !/^this is a candidate only\.$/i.test(sentence)) { measuredCount++; }
+            if (closed && facts.some((fact) => fact.medianDirection && medianSentence(sentence, fact))) { medianKept = true; }
+            if (closed && facts.some((fact) => fact.scatter && scatterSentence(sentence, fact.scatter))) { scatterKept = true; }
             return true;
         });
         if (kept.length) { paragraphs.push([label, ...kept].filter(Boolean).join(' ')); }

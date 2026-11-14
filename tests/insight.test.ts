@@ -8,9 +8,9 @@ const facts: InsightFacts = { targetId: 'custom', ra: 12.34567, dec: -38, lambda
 const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3457 deg, Dec -38.0000 deg.', 'Wavelength: 4.270 micron.', 'Visits: 2. Frames in each visit: 3, 4. Time from first to last visit: 10.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.80.', 'Lowest signal-to-noise among the points: 10. This counts sky noise only, so the real uncertainty is larger.', 'Reference stars: 2 with available scatter. Scatter of each: 2.0, 3.0 percent.', 'Frames left out because their wavelength did not match: 2.', 'Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit.', 'Shift in position: 2.3 arcsec over 10.0 days.', 'Frames came from: a saved copy.'];
 
 describe('round 14 labelled notes and next checks', () => {
-    const base = 'What this shows: This is a candidate only.\nHow far to trust it: This is a candidate only.';
+    const base = 'What this shows: The wavelength is 1.083 micron.\nHow far to trust it: The wavelength is 1.083 micron.';
     const options = { labelled: true };
-    const sheet = ['Visits: 2.', 'Brightness relative to the reference stars, in time order: 1.00, 1.30.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.'];
+    const sheet = ['Wavelength: 1.083 micron.', 'Visits: 2.', 'Brightness relative to the reference stars, in time order: 1.00, 1.30.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.'];
     const checks = [
         'Wait for another visit to see whether the change repeats.',
         'Compare the target with the reference stars in the same frames.',
@@ -37,20 +37,19 @@ describe('round 14 labelled notes and next checks', () => {
         }
     });
     it('requires a change line, reference stars, and two visits where specified', () => {
-        const empty = ['Visits: 1.'];
+        const empty = ['Visits: 1.', 'Wavelength: 1.083 micron.'];
         for (const i of [0, 1, 2, 6]) {
             expect(checkNote(`${base}\nWhat to check next: ${checks[i]}`, empty, options).dropped, checks[i]).toBe(1);
         }
-        for (const line of ['Reference stars: 0 with available scatter.', 'Reference stars: none.']) {
-            expect(checkNote(`${base}\nWhat to check next: ${checks[1]}`, [line], options).dropped).toBe(1);
+        for (const line of ['Reference stars: 0 with available scatter.', 'Reference stars: none.', 'Reference stars: scatter unavailable.']) {
+            expect(checkNote(`${base}\nWhat to check next: ${checks[1]}`, [...empty, line], options).dropped).toBe(1);
         }
-        expect(checkNote(`${base}\nWhat to check next: ${checks[1]}`, ['Reference stars: scatter unavailable.'], options).dropped).toBe(0);
-        expect(checkNote(`${base}\nWhat to check next: ${checks[2]}`, [], options).dropped).toBe(1);
-        expect(checkNote(`${base}\nWhat to check next: ${checks[2]}`, ['Visits: at least 12.'], options).dropped).toBe(0);
+        expect(checkNote(`${base}\nWhat to check next: ${checks[2]}`, empty, options).dropped).toBe(1);
+        expect(checkNote(`${base}\nWhat to check next: ${checks[2]}`, ['Wavelength: 1.083 micron.', 'Visits: at least 12.'], options).dropped).toBe(0);
         for (const i of [3, 4, 5, 7]) {
-            expect(checkNote(`${base}\nWhat to check next: ${checks[i]}`, [], options).dropped, checks[i]).toBe(0);
+            expect(checkNote(`${base}\nWhat to check next: ${checks[i]}`, empty, options).dropped, checks[i]).toBe(0);
         }
-        expect(checkNote(`${base}\nWhat to check next: ${checks[0]} ${checks[6]}`, ['Difference image at the target: no change above the noise.'], options).dropped).toBe(0);
+        expect(checkNote(`${base}\nWhat to check next: ${checks[0]} ${checks[6]}`, [...empty, 'Difference image at the target: no change above the noise.'], options).dropped).toBe(2);
     });
     it('keeps every quoted sentence form offered by the prompt', () => {
         const full = ['Target: a position typed in by the visitor.', 'Position: RA 12.3457 deg, Dec -38.0000 deg.', 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 3, 4, 5. Time from first to last visit: 20.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 1.00, 1.30.', 'Largest change from the median brightness: 30 percent above it.', 'Lowest signal-to-noise among the points: below 1.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.', 'Frames left out because their wavelength did not match: 2.', 'Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit.', 'Shift in position: 2.3 arcsec over 10.0 days.', 'Frames came from: a saved copy.'];
@@ -58,7 +57,7 @@ describe('round 14 labelled notes and next checks', () => {
             'In time order, the brightness was LIST.': ['In time order, the brightness was 1.00, 1.00, 1.30.', full],
             'The brightness went from FIRST to LAST.': ['The brightness went from 1.00 to 1.30.', full],
             'The first reading was VALUE.': ['The first reading was 1.00.', full],
-            'The first and last readings are both VALUE.': ['The first and last readings are both 1.00.', full.map((line) => line.replace('1.00, 1.00, 1.30', '1.00, 1.30, 1.00'))],
+            'The first and last readings are both VALUE.': ['The first and last readings are both 1.00.', full.map((line) => line.replace('1.00, 1.00, 1.30', '1.00, 1.00, 1.00'))],
             'The largest change from the median brightness is N percent above the median.': ['The largest change from the median brightness is 30 percent above the median.', full],
             'The N reference stars scatter by LIST percent.': ['The 2 reference stars scatter by 1.2 and 2.0 percent.', full],
             'The 1 reference star scatters by VALUE percent.': ['The 1 reference star scatters by 1.2 percent.', full.map((line) => line.replace('2 with available scatter. Scatter of each: 1.2, 2.0', '1 with available scatter. Scatter of each: 1.2'))],
@@ -69,6 +68,7 @@ describe('round 14 labelled notes and next checks', () => {
             "The reference stars' scatter is unavailable, so there is nothing to compare the change with.": ["The reference stars' scatter is unavailable, so there is nothing to compare the change with.", full.map((line) => line.startsWith('Reference stars:') ? 'Reference stars: scatter unavailable.' : line)],
             'The lowest signal-to-noise among the points is VALUE.': ['The lowest signal-to-noise among the points is below 1.', full],
             'There were N visits.': ['There were 3 visits.', full],
+            'There was 1 visit.': ['There was 1 visit.', full.map((line) => line.startsWith('Visits:') ? 'Visits: 1. Frames in each visit: 3.' : line)],
             'The frames in each visit were LIST.': ['The frames in each visit were 3, 4, 5.', full],
             'The time from first to last visit was VALUE days.': ['The time from first to last visit was 20.0 days.', full],
             'The wavelength is VALUE micron.': ['The wavelength is 4.270 micron.', full],
@@ -78,7 +78,7 @@ describe('round 14 labelled notes and next checks', () => {
             'The position is VALUE.': ['The position is RA 12.3457 deg, Dec -38.0000 deg.', full],
             'The target is VALUE.': ['The target is a position typed in by the visitor.', full],
             'The frames came from VALUE.': ['The frames came from a saved copy.', full],
-            'There are fewer than 3 visits, so the change counts for little.': ['There are fewer than 3 visits, so the change counts for little.', ['Visits: 2.']],
+            'There are fewer than 3 visits, so the change counts for little.': ['There are fewer than 3 visits, so the change counts for little.', ['Visits: 2.', 'Brightness relative to the reference stars, in time order: 1.00, 1.30.']],
             'The lowest signal-to-noise is small, so the change counts for little.': ['The lowest signal-to-noise is small, so the change counts for little.', full],
             'There is nothing measured to interpret yet.': ['There is nothing measured to interpret yet.', ['Visits: 2.']],
             'This is a candidate only.': ['This is a candidate only.', full],
@@ -90,24 +90,32 @@ describe('round 14 labelled notes and next checks', () => {
         for (const form of offered) {
             const [sentence, source] = fixtures[form]!;
             for (const label of ['What this shows', 'How far to trust it']) {
-                expect(checkNote(`${label}: ${sentence} This is a candidate only.`, source, options).text, form).toContain(sentence);
+                const median = source.find((line) => line.startsWith('Largest change'))?.includes('less than 1') ? 'The largest change from the median brightness is less than 1 percent from the median.' : 'The largest change from the median brightness is 30 percent above the median.';
+                const prerequisites = form.startsWith('The change is ') ? `${median} The 2 reference stars scatter by 1.2 and 2.0 percent. ` : '';
+                expect(checkNote(`${label}: ${prerequisites}${sentence} The wavelength is 4.270 micron.\nWhat to check next: ${checks[7]}`, [...source, 'Wavelength: 4.270 micron.'], options).text, form).toContain(sentence);
             }
         }
         for (const form of ['There are no reference stars to compare the change with.', "The reference stars' scatter is unavailable, so there is nothing to compare the change with."]) {
             const [sentence, source] = fixtures[form]!;
             const variant = sentence.slice(0, -1) + ', so the change counts for little.';
-            expect(checkNote(`How far to trust it: ${variant} This is a candidate only.`, source, options).text).toContain(variant);
+            expect(checkNote(`How far to trust it: ${variant}\nWhat to check next: ${checks[7]}`, source, options).text).toContain(variant);
         }
         expect(quoted(third!).sort()).toEqual([...checks].sort());
         for (const sentence of quoted(third!)) {
-            expect(checkNote(`${base}\nWhat to check next: ${sentence}`, full, options).text, sentence).toContain(sentence);
+            expect(checkNote(`What this shows: The wavelength is 4.270 micron.\nHow far to trust it: The wavelength is 4.270 micron.\nWhat to check next: ${sentence}`, full, options).text, sentence).toContain(sentence);
         }
     });
 });
 
 describe('round 13 closed paragraphs', () => {
     const sheet = ['Visits: 3. Frames in each visit: 7, 9, 8. Time from first to last visit: 400.0 days.', 'Brightness relative to the reference stars, in time order: 1.30, 1.00, 1.00.', 'Largest change from the median brightness: 30 percent above it.', 'Lowest signal-to-noise among the points: below 1.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.', 'Shift in position: 10.4 arcsec over 400.0 days.', 'Wavelength: 1.083 micron.'];
-    const has = (sentence: string, label = 'What this shows', source = sheet) => checkNote(`${label}: ${sentence}\nHow far to trust it: This is a candidate only. This is a candidate only.`, source).text.includes(sentence);
+    const has = (sentence: string, label = 'What this shows', source = sheet) => {
+        const change = source.find((line) => line.startsWith('Largest change'))?.match(/: (.+)\./)?.[1];
+        const median = change?.replace('above it', 'above the median').replace('below it', 'below the median').replace('less than 1 percent', 'less than 1 percent from the median');
+        const scatter = source.find((line) => line.startsWith('Reference stars:'))?.match(/Scatter of each: (.+) percent\./)?.[1];
+        const prefix = sentence.startsWith('The change is ') && median && scatter ? `What this shows: The largest change from the median brightness is ${median}. The 2 reference stars scatter by ${scatter} percent.\n` : '';
+        return checkNote(`${prefix}${label}: ${sentence}\nWhat to check next: Switch on Flagged pixels to see whether one sits on the target. Change the colour to look at another wavelength.`, source).text.includes(sentence);
+    };
     it.each(['Over 3 visits, the brightness rose.', 'The second visit was the brightest.', 'The last second-brightest reading was 1.00.', 'The brightness fell by 3 of the observations.', 'The wavelength is 1.083 microns or so.', 'The target shifted 10.4 arcseconds at most.', 'There are 2MASS observations of the target.', 'The signal-to-noise is high.', 'That is negligible.', "The swing is swamped by the reference stars' scatter.", 'This is a genuine change.'])('rejects reviewer claim %s', (sentence) => {
         expect(has(sentence)).toBe(false);
         expect(has(sentence, 'How far to trust it')).toBe(false);
@@ -178,15 +186,16 @@ describe('round 13 closed paragraphs', () => {
         ];
         for (const [name, values, change, trust] of scenarios) {
             const reference = name === 'no reference stars' ? [] : [name === 'scatter unavailable' ? 'Reference stars: scatter unavailable.' : 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.'];
-            const source = [`Visits: ${values.length}.`, `Brightness relative to the reference stars, in time order: ${values.join(', ')}.`, ...(change ? [`Largest change from the median brightness: ${change}.`] : []), ...reference];
-            const text = `What this shows: In time order, the brightness was ${values.join(', ')}. This is a candidate only.\nHow far to trust it: ${trust}\nWhat to check next: Change the colour to look at another wavelength.`;
+            const source = [`Visits: ${values.length}. Frames in each visit: ${values.map(() => '3').join(', ')}.`, `Brightness relative to the reference stars, in time order: ${values.join(', ')}.`, ...(change ? [`Largest change from the median brightness: ${change}.`] : []), ...reference];
+            const safeTrust = trust.startsWith('The change is ') ? 'The 2 reference stars scatter by 1.2 and 2.0 percent.' : trust;
+            const text = `What this shows: In time order, the brightness was ${values.join(', ')}.\nHow far to trust it: ${safeTrust}\nWhat to check next: Change the colour to look at another wavelength.`;
             const result = checkNote(text, source, { labelled: true });
-            expect(result.text.split('\n').map((part) => (part.match(/[.!?](?=\s|$)/g) ?? []).length), name).toEqual([2, 1, 1]);
+            expect(result.text.split('\n').map((part) => (part.match(/[.!?](?=\s|$)/g) ?? []).length), name).toEqual([1, 1, 1]);
             expect(result.dropped, name).toBe(0);
         }
         for (const [name, source, show, trust] of [
             ['shift only', ['Shift in position: 10.4 arcsec over 400.0 days.'], 'The shift in position was 10.4 arcsec over 400.0 days.', 'This is a candidate only.'],
-            ['nothing measured', ['Visits: 2.'], 'There is nothing measured to interpret yet.', 'There are fewer than 3 visits, so the change counts for little.'],
+            ['nothing measured', ['Visits: 2. Frames in each visit: 3, 4.'], 'There is nothing measured to interpret yet.', 'There were 2 visits.'],
         ] as const) {
             const result = checkNote(`What this shows: ${show}\nHow far to trust it: ${trust}\nWhat to check next: Change the colour to look at another wavelength.`, [...source], { labelled: true });
             expect(result.text.split('\n').map((part) => (part.match(/[.!?](?=\s|$)/g) ?? []).length), name).toEqual([1, 1, 1]);
@@ -195,7 +204,7 @@ describe('round 13 closed paragraphs', () => {
     });
     it('checks both endpoints and unique extremes', () => {
         const peak = sheet.map((line) => line.replace('1.30, 1.00, 1.00', '1.00, 1.30, 1.00'));
-        expect(has('The first and last readings are both 1.00.', 'What this shows', peak)).toBe(true);
+        expect(has('The first and last readings are both 1.00.', 'What this shows', peak)).toBe(false);
         expect(has('The first and last readings are both 1.30.', 'What this shows', peak)).toBe(false);
         expect(has('The highest reading was 1.30.', 'What this shows', peak)).toBe(true);
         expect(has('The lowest reading was 1.00.', 'What this shows', peak)).toBe(false);
@@ -210,7 +219,7 @@ describe('round 13 closed paragraphs', () => {
     it('blocks comparison without a Largest change line', () => {
         const two = ['Visits: 2.', 'Brightness relative to the reference stars, in time order: 1.00, 1.00.', 'Reference stars: 1 with available scatter. Scatter of each: 1.2 percent.'];
         expect(has('The change is no larger than that scatter, so it may be noise.', 'How far to trust it', two)).toBe(false);
-        expect(has('There are fewer than 3 visits, so the change counts for little.', 'How far to trust it', two)).toBe(true);
+        expect(has('There are fewer than 3 visits, so the change counts for little.', 'How far to trust it', two)).toBe(false);
     });
     it('runs direction and the full-range level check even with digits', () => {
         const peak = sheet.map((line) => line.replace('1.30, 1.00, 1.00', '1.00, 1.30, 1.00'));
@@ -260,7 +269,7 @@ describe('round 12 regressions', () => {
         const s = sheet();
         for (const bad of ['The brightness rose to 1.30.', 'In the second visit the brightness was 1.30.', 'After 400.0 days the brightness was 1.30.', 'The brightness rose from 1.30 to 1.00.', 'In time order the brightness was 1.00, 1.30 and 1.00.']) { expect(kept(bad, s), bad).toBe(false); }
         for (const good of ['In time order the brightness was 1.30, 1.00 and 1.00.', 'The brightness fell from 1.30 to 1.00.', 'The first reading was 1.30.']) { expect(kept(good, s), good).toBe(true); }
-        expect(kept('The first and last readings are both 1.00.', sheet('1.00, 1.30, 1.00'))).toBe(true);
+        expect(kept('The first and last readings are both 1.00.', sheet('1.00, 1.30, 1.00'))).toBe(false);
         expect(kept('The highest reading was 1.00.', sheet('1.00, 1.00, 0.80'))).toBe(false);
         for (const bad of ['In the first visit the brightness was 1.30 and the last was 1.00, so it rose.', 'The brightness was unchanged from 1.30 to 1.00.', 'The brightness started at 1.30 and ended at 1.00.', 'From the first visit to the last, the brightness fell from 1.30 to 1.00.']) { expect(kept(bad, s), bad).toBe(false); }
         expect(kept('The brightness went from 1.30 then 1.00.', sheet('1.30, 1.50, 1.00'))).toBe(false);
@@ -329,12 +338,152 @@ describe('round 12 regressions', () => {
         const cases = [
             [sheet().filter((line) => !line.startsWith('Reference stars:')), 'In time order the brightness was 1.30, 1.00 and 1.00.', 'There are no reference stars to compare the change with.'],
             [sheet('1.00, 1.30').map((line) => line.replace('Visits: 3.', 'Visits: 2.')), 'In time order the brightness was 1.00 and 1.30.', 'The reference stars scatter by 1.2 and 2.0 percent.'],
-            [sheet('1.00, 1.30, 1.00'), 'The first and last readings are both 1.00.', 'The reference stars scatter by 1.2 and 2.0 percent.'],
-            [sheet('1.00, 1.00, 1.00', 'less than 1 percent'), 'In time order the brightness was 1.00, 1.00 and 1.00.', 'The change is no larger than that scatter, so it may be noise.'],
+            [sheet('1.00, 1.30, 1.00'), 'In time order the brightness was 1.00, 1.30 and 1.00.', 'The reference stars scatter by 1.2 and 2.0 percent.'],
+            [sheet('1.00, 1.00, 1.00', 'less than 1 percent'), 'In time order the brightness was 1.00, 1.00 and 1.00.', 'The reference stars scatter by 1.2 and 2.0 percent.'],
         ] as const;
         for (const [facts, summary, trust] of cases) {
             const note = `What this shows: ${summary}\nHow far to trust it: ${trust}\nWhat to check next: Change the colour to look at another wavelength.`;
             expect(checkNote(note, facts).text.split('\n'), note).toHaveLength(3);
+        }
+    });
+});
+
+describe('round 15 measured-note safeguards', () => {
+    const base = ['Wavelength: 1.200 micron.', 'Visits: 3. Frames in each visit: 8, 8, 8.', 'Brightness relative to the reference stars, in time order: 1.00, 1.00, 1.30.', 'Largest change from the median brightness: 30 percent above it.', 'Lowest signal-to-noise among the points: 30.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.'];
+    const median = 'The largest change from the median brightness is 30 percent above the median.';
+    const scatter = 'The 2 reference stars scatter by 1.2, 2.0 percent.';
+    const next = 'Change the colour to look at another wavelength.';
+    const run = (sentence: string, source = base, label = 'What this shows') => checkNote(`${label}: ${sentence}\nHow far to trust it: The wavelength is 1.200 micron.\nWhat to check next: ${next}`, source, { labelled: true }).text;
+    it('rule 1: comparisons require earlier kept median and scatter', () => {
+        const comparison = 'The change is several times larger than that scatter.';
+        expect(run(comparison)).not.toContain(comparison);
+        expect(run(`${median} ${scatter} ${comparison}`)).toContain(comparison);
+        expect(run(`${median} ${comparison} ${scatter}`)).not.toContain(comparison);
+    });
+    it('rule 2: endpoint sentences cannot hide a middle peak', () => {
+        const peak = base.map((s) => s.replace('1.00, 1.00, 1.30', '1.00, 1.30, 1.02'));
+        expect(run('The brightness went from 1.00 to 1.02.', peak)).not.toContain('went from');
+        expect(run('The first and last readings are both 1.00.', peak.map((s) => s.replace('1.30, 1.02', '1.30, 1.00')))).not.toContain('both');
+    });
+    it('rule 3: directional endpoints must exceed scatter and one percent', () => {
+        const small = base.map((s) => s.replace('1.00, 1.00, 1.30', '1.00, 1.00, 1.01'));
+        expect(run('The brightness rose from 1.00 to 1.01.', small)).not.toContain('rose from');
+        expect(run('The brightness went from 1.00 to 1.01.', small)).toContain('went from');
+        const equalScatter = base.map((s) => s.replace('1.00, 1.00, 1.30', '1.00, 1.00, 1.02'));
+        expect(run('The brightness rose from 1.00 to 1.02.', equalScatter)).not.toContain('rose from');
+    });
+    it('rule 4: change-dependent suggestions require a measured change', () => {
+        const flat = base.map((s) => s.replace('30 percent above it', 'less than 1 percent'));
+        for (const s of ['Wait for another visit to see whether the change repeats.', 'Change the colour to see whether the change shows at another wavelength.']) {
+            expect(run(s, flat, 'What to check next')).not.toContain(s);
+            expect(run(s, base, 'What to check next')).toContain(s);
+        }
+    });
+    it('rule 5: little and no-comparison claims require a measured change', () => {
+        const flat = base.map((s) => s.replace('30 percent above it', 'less than 1 percent').replace('Visits: 3.', 'Visits: 2.').replace('Lowest signal-to-noise among the points: 30.', 'Lowest signal-to-noise among the points: below 1.'));
+        const absent = flat.filter((s) => !s.startsWith('Reference stars:'));
+        const unavailable = [...absent, 'Reference stars: scatter unavailable.'];
+        for (const [s, source] of [
+            ['There are fewer than 3 visits, so the change counts for little.', flat],
+            ['The lowest signal-to-noise is small, so the change counts for little.', flat],
+            ['There are no reference stars to compare the change with.', absent],
+            ['There are no reference stars to compare the change with, so the change counts for little.', absent],
+            ["The reference stars' scatter is unavailable, so there is nothing to compare the change with.", unavailable],
+            ["The reference stars' scatter is unavailable, so there is nothing to compare the change with, so the change counts for little.", unavailable],
+        ] as const) { expect(run(s, source)).not.toContain(s); }
+    });
+    it('rule 6: difference and its warning must be adjacent and both kept', () => {
+        const difference = 'Difference image at the target: strongest pixel 7.0 sigma, brighter there in the later visit.';
+        const warning = 'A bright star leaves marks this strong from a tiny misalignment, and a star that moved leaves a bright side and a dark side.';
+        const source = [...base, `${difference} ${warning}`];
+        expect(run(difference, source)).not.toContain(difference);
+        expect(run(warning, source)).not.toContain(warning);
+        expect(run(`${difference} ${warning}`, source)).toContain(`${difference} ${warning}`);
+        expect(run(`${difference.replace('7.0', '8.0')} ${warning}`, source)).not.toContain(warning);
+    });
+    it('rule 7: candidate requires a measured change or shift and cannot satisfy measurement', () => {
+        const flat = base.map((s) => s.replace('30 percent above it', 'less than 1 percent'));
+        expect(run('This is a candidate only.', flat)).not.toContain('This is a candidate only.');
+        expect(run('This is a candidate only.')).toContain('This is a candidate only.');
+        expect(() => checkNote(`What this shows: This is a candidate only.\nWhat to check next: ${next}`, base, { labelled: true })).toThrowError(expect.objectContaining({ code: 'unverified' }));
+    });
+    it('rule 8: faint points prohibit the over-visits lead', () => {
+        const faint = base.map((s) => s.replace('1.00, 1.00, 1.30.', '1.00, 1.00, 1.30. Points too faint to measure are left out.'));
+        expect(run('Over 3 visits, in time order, the brightness was 1.00, 1.00, 1.30.', faint)).not.toContain('Over 3 visits');
+    });
+    it('rule 9: scatter accepts the sheet comma list and and-list', () => {
+        expect(run(scatter)).toContain(scatter);
+        expect(run('The 2 reference stars scatter by 1.2 and 2.0 percent.')).toContain('1.2 and 2.0');
+    });
+    it('rule 10: changed requires an endpoint change exceeding scatter and one percent', () => {
+        const small = base.map((s) => s.replace('1.00, 1.00, 1.30', '1.00, 1.00, 1.01'));
+        expect(run('The brightness changed from 1.00 to 1.01.', small)).not.toContain('changed from');
+        expect(run('The brightness changed from 1.00 to 1.30.')).toContain('changed from');
+        const equalScatter = base.map((s) => s.replace('1.00, 1.00, 1.30', '1.00, 1.00, 1.02'));
+        expect(run('The brightness changed from 1.00 to 1.02.', equalScatter)).not.toContain('changed from');
+    });
+    it('rule 11: reference comparison needs available reference scatter', () => {
+        const source = base.map((s) => s.startsWith('Reference stars:') ? 'Reference stars: scatter unavailable.' : s);
+        const sentence = 'Compare the target with the reference stars in the same frames.';
+        expect(run(sentence, source, 'What to check next')).not.toContain(sentence);
+        expect(run(sentence, base, 'What to check next')).toContain(sentence);
+    });
+    it('rule 12: labelled continuation lines group under their active label once', () => {
+        const note = `What this shows:\n\nThe wavelength is 1.200 micron.\nHow far to trust it:\n${scatter}\nWhat this shows: ${median}\nWhat to check next: ${next}`;
+        const text = checkNote(note, base, { labelled: true }).text;
+        expect(text.split('\n')).toEqual([`What this shows: The wavelength is 1.200 micron. ${median}`, `How far to trust it: ${scatter}`, `What to check next: ${next}`]);
+    });
+    it('rule 13: exactly one visit uses singular grammar', () => {
+        const one = base.map((s) => s.startsWith('Visits:') ? 'Visits: 1. Frames in each visit: 8.' : s);
+        expect(run('There was 1 visit.', one)).toContain('There was 1 visit.');
+        expect(run('There were 1 visits.', one)).not.toContain('There were 1 visits.');
+    });
+    it('mutant: first and last both must actually match', () => {
+        expect(run('The first and last readings are both 1.00.')).not.toContain('readings are both');
+    });
+    it('mutant: small signal-to-noise needs a small printed value', () => {
+        expect(run('The lowest signal-to-noise is small, so the change counts for little.')).not.toContain('is small');
+    });
+    it('mutant: nothing measured requires no brightness, difference or shift line', () => {
+        expect(run('There is nothing measured to interpret yet.')).not.toContain('nothing measured');
+    });
+    it('mutant: third paragraph requires the complete exact sentence', () => {
+        for (const s of ['Change the colour to look at another wavelength!', 'Change the colour to look at another wavelength, and it is real.']) {
+            expect(run(s, base, 'What to check next')).not.toContain(s);
+        }
+    });
+    it('checks 20,000-character labelled inputs in under 200 ms', () => {
+        for (const input of ['A' + '1.a'.repeat(6667), 'a.'.repeat(10000)]) {
+            const start = performance.now();
+            checkNote(`What this shows: The wavelength is 1.200 micron.\nWhat to check next: ${next}\n${input}`, base, { labelled: true });
+            expect(performance.now() - start).toBeLessThan(200);
+        }
+    });
+    it('keeps all three paragraphs of twelve notes following the new prompt', () => {
+        const make = (values: number[], options: { refs?: number[]; visits?: number; shift?: boolean; difference?: number; faint?: boolean; noCurve?: boolean } = {}) => {
+            const visits = Array.from({ length: options.visits ?? values.length }, (_, i) => ({ mjd: 61000 + 10 * i, frames: 8 }));
+            const points = values.map((relative, i) => ({ mjd: 61000 + 10 * i, relative, snr: options.faint && i === 1 ? 0.5 : 30 }));
+            return factSheet({ ...facts, visits, ...(options.noCurve ? { lightCurve: undefined } : { lightCurve: { points, refScatter: options.refs ?? [0.012, 0.02], dropped: 0 } }), difference: options.difference === undefined ? undefined : { peakSigma: options.difference }, motion: options.shift ? { arcsec: 3.2, days: 10 } : undefined });
+        };
+        const difference = 'Difference image at the target: strongest pixel 7.0 sigma, brighter there in the later visit. A bright star leaves marks this strong from a tiny misalignment, and a star that moved leaves a bright side and a dark side.';
+        const cases: [string, string[], string, string, number[]][] = [
+            ['rise', make([1, 1, 1.3]), 'The brightness rose from 1.00 to 1.30.', scatter, [1, 1, 1]],
+            ['fall', make([1.3, 1, 1]), 'The brightness fell from 1.30 to 1.00.', scatter, [1, 1, 1]],
+            ['flat', make([1, 1, 1]), 'In time order, the brightness was 1.00, 1.00, 1.00.', scatter, [1, 1, 1]],
+            ['middle peak', make([1, 1.3, 1]), 'In time order, the brightness was 1.00, 1.30, 1.00.', scatter, [1, 1, 1]],
+            ['two visits', make([1, 1.3]), 'The brightness went from 1.00 to 1.30.', 'There are fewer than 3 visits, so the change counts for little.', [1, 1, 1]],
+            ['one visit', make([1]), 'There was 1 visit.', 'The lowest signal-to-noise among the points is 30.', [1, 1, 1]],
+            ['no reference scatter', make([1, 1, 1.3], { refs: [] }), 'The brightness went from 1.00 to 1.30.', "The reference stars' scatter is unavailable, so there is nothing to compare the change with.", [1, 1, 1]],
+            ['less than 1 percent', make([1, 1.004, 1.008]), 'In time order, the brightness was 1.00, 1.00, 1.01.', scatter, [1, 1, 1]],
+            ['shift only', make([], { visits: 2, noCurve: true, shift: true }), 'The shift in position was 3.2 arcsec over 10.0 days.', 'There were 2 visits.', [1, 1, 1]],
+            ['nothing measured', make([], { visits: 2, noCurve: true }), 'There is nothing measured to interpret yet.', 'There were 2 visits.', [1, 1, 1]],
+            ['difference warning', make([], { visits: 2, noCurve: true, difference: 7 }), difference, 'There were 2 visits.', [2, 1, 1]],
+            ['faint points', make([1, 0.2, 1.1, 1.3], { faint: true }), 'In time order, the brightness was 1.00, 1.10, 1.30.', scatter, [1, 1, 1]],
+        ];
+        for (const [name, source, show, trust, counts] of cases) {
+            const result = checkNote(`What this shows: ${show}\nHow far to trust it: ${trust}\nWhat to check next: ${next}`, source, { labelled: true });
+            expect(result.text.split('\n').map((part) => (part.match(/[.!?](?=\s|$)/g) ?? []).length), name).toEqual(counts);
+            expect(result.dropped, name).toBe(0);
         }
     });
 });
