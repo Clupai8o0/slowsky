@@ -4,6 +4,7 @@ import type { SkyRequest, SkyResult, SkySource, GaiaStar, TrackPoint } from '../
 import type { FrameRecord, OutputGrid, PlayerFrame, RegriddedFrame } from '../lib/types';
 import type { LockedFrame } from '../lib/lock';
 import { COPY, DETECTORS, type TargetKind } from './copy';
+import { gridPixToSky } from '../lib/regrid';
 
 const PIXEL_ARCSEC = 6.15;
 const VISIT_DATES = ['2025-04-12', '2025-10-09', '2026-04-11', '2026-10-08'];
@@ -182,10 +183,10 @@ export function createDemoSource(): SkySource
 
             const stars: GaiaStar[] = field
                 .filter((s) => s.f > 30)
+                // Rings are placed from RA and Dec at each frame's date, so each simulated star needs its own.
                 .map((s, i) => ({
                     sourceId: `sim-${i}`,
-                    ra: req.center.ra,
-                    dec: req.center.dec,
+                    ...gridPixToSky(grid, { x: s.x, y: s.y }),
                     g: 14,
                     epochJyear: 2016,
                     pix: { x: s.x, y: s.y },
