@@ -67,14 +67,17 @@ function point(mjd: number, over: Partial<HaloCurvePoint> = {}): HaloCurvePoint
     };
 }
 
-function fake(points: HaloCurvePoint[], dropped = 0): (...a: Parameters<typeof haloCurve>) => HaloCurve
+// Halo round 10 fields; `as HaloCurve` keeps the stand-in valid with the module before and after them.
+const R10 = { refSpread: [0.01, 0.01], refExcess: [0.5, 0.5], refBlind: 0.04, note: '', caveat: '', drawable: true, reason: '' };
+
+function fake(points: HaloCurvePoint[], dropped = 0, extra: Partial<typeof R10> = {}): (...a: Parameters<typeof haloCurve>) => HaloCurve
 {
     return (frames, target) => {
         // Ask for the target in date order, as the module does, so the panel can map points back to frames.
         frames.map((f, i) => ({ f, i })).sort((a, b) => a.f.frame.tMin - b.f.frame.tMin).forEach(({ f, i }) => {
             (target as (f: RegriddedFrame, i: number) => PixelCoord)(f, i);
         });
-        return { points, dropped, refScatter: [0.01, 0.01, 0.01, 0.01], lambda: 0.9 };
+        return { points, dropped, refScatter: [0.01, 0.01, 0.01, 0.01], lambda: 0.9, ...R10, ...extra } as HaloCurve;
     };
 }
 
@@ -263,5 +266,41 @@ describe('renderHalo', () => {
             expect(renderHalo(box(), v(r, { targetId }), { ring, curve })).toBe(false);
         }
         expect(curve).not.toHaveBeenCalled();
+    });
+});
+
+describe('halo round 10', () => {
+    const three = () => [point(MJD0), point(MJD0 + 100, { relative: 1.04 }), point(MJD0 + 200)];
+
+    it('draws no line when the module says it cannot, and prints its reason, caveat and note', () => {
+        const r = result([5000, 5000, 5000]);
+        const caveat = 'The comparison stars do not hold steady against each other (they differ by more than their noise allows), so these readings may be off.';
+        const h = haloFor(r, { ring, curve: fake(three(), 0, { drawable: false, reason: 'The comparison stars do not hold steady against each other', caveat }) })!;
+        expect(h.kind).toBe('table');
+        const html = haloHtml(h, 'R Draconis', -1);
+        expect(html).toContain('No curve is drawn: the comparison stars do not hold steady against each other. Each reading is listed instead.');
+        expect(html).not.toContain('these looks do not meet that');
+        expect(html).toContain(`<p class="sk-body mute">${caveat}</p>`);
+        expect(html).not.toContain('<svg');
+        expect(html).not.toMatch(BANNED);
+    });
+
+    it('keeps the table under a drawn line and prints the module note', () => {
+        const r = result([5000, 5000, 5000]);
+        const note = 'A change in one comparison star could shift these readings by up to about 4% without being caught here.';
+        const h = haloFor(r, { ring, curve: fake(three(), 0, { note }) })!;
+        expect(h.kind).toBe('curve');
+        const html = haloHtml(h, 'R Draconis', -1);
+        expect(html).toContain('<svg');
+        expect(html).toContain('<table class="sk-halo-t">');
+        expect(html).toContain(`<p class="sk-body mute">${note}</p>`);
+        expect(html.indexOf('</svg>')).toBeLessThan(html.indexOf('<table'));
+    });
+
+    it('a module that says nothing new leaves the old wording', () => {
+        const r = result([5000, 5000, 5000]);
+        const h = haloFor(r, { ring, curve: fake([point(MJD0), point(MJD0 + 100)]) })!;
+        expect(h.kind).toBe('table');
+        expect(haloHtml(h, 'R Draconis', -1)).toContain('these looks do not meet that');
     });
 });

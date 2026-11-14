@@ -33,7 +33,14 @@ export interface HaloView {
     dropped: number; // frames too far off this colour
     caveats: { text: string; mjds: number[] }[];
     ringStars: number[]; // Gaia G of catalogued stars in or at the edge of the ring, brightest first
+    // From the module (halo round 9-10), printed as it writes them; empty or absent with an older module.
+    caveat?: string; // why the readings may be off (comparison stars, a larger blank middle)
+    note?: string; // how far a change in one comparison star could shift the readings unseen
+    reason?: string; // why no curve is drawn, when the module says it cannot be
 }
+
+// Fields halo round 9-10 adds to HaloCurve; read as optional so the panel works with the module before and after.
+type CurveDrawing = Partial<{ caveat: string; note: string; drawable: boolean; reason: string }>;
 
 // A line is drawn only from looks on at least MIN_VISITS visits, all within CURVE_WIDTH_UM of colour. Otherwise
 // the readings go in a table. Two points always make a line that looks like a trend. On real R Draconis frames,
@@ -124,7 +131,10 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
     points.sort((a, b) => a.mjd - b.mjd);
     const lams = points.map((p) => p.lambda);
     const oneColour = lams.every(Number.isFinite) && Math.max(...lams) - Math.min(...lams) <= CURVE_WIDTH_UM + 1e-9;
-    const line = points.length >= MIN_VISITS && visitCount(points.map((p) => p.mjd)) >= MIN_VISITS && oneColour;
+    // The module has the last word: its comparison-star and blank-middle checks can stop a line this rule allows.
+    const drawing = lc as HaloCurve & CurveDrawing;
+    const line = points.length >= MIN_VISITS && visitCount(points.map((p) => p.mjd)) >= MIN_VISITS && oneColour
+        && drawing.drawable !== false;
     return {
         kind: line ? 'curve' : points.length > 0 ? 'table' : 'none',
         lambda: Number.isFinite(lc.lambda) ? lc.lambda : result.lambda,
@@ -136,6 +146,9 @@ export function haloFor(result: SkyResult, deps: HaloDeps = {}): HaloView | null
         dropped: lc.dropped,
         caveats: [...caveats].map(([text, mjds]) => ({ text, mjds })),
         ringStars: starsInRing(result, centre.pix, ring),
+        caveat: drawing.caveat ?? '',
+        note: drawing.note ?? '',
+        reason: drawing.drawable === false ? drawing.reason ?? '' : '',
     };
 }
 
@@ -190,25 +203,30 @@ export function haloHtml(h: HaloView, name: string, on: number): string
         ? ` ${gs.length === 1 ? `A catalogued Gaia star (G ${gs[0]!.toFixed(1)}) sits` : `${gs.length} catalogued Gaia stars (brightest G ${gs[0]!.toFixed(1)}) sit`}`
             + ` in or at the edge of the ring, so some of ${gs.length === 1 ? 'its' : 'their'} light is in every reading.`
         : '';
+    // The module's own sentences on the comparison stars and the blank middle, under the readings.
+    const module = [h.caveat, h.note].filter((t): t is string => !!t).map((t) => `<p class="sk-body mute">${esc(t)}</p>`).join('');
+    // One reading compared with its own median always reads +0.0%, so show only its noise.
+    const one = h.points.length === 1;
+    // Each look's date is a button that shows that frame in Blink, as the dots on the curve do.
+    const rows = h.points.map((p) => `<tr><td><button type="button" class="sk-halo-k${p.k === on ? ' on' : ''}" data-k="${p.k}"`
+        + `${p.k === on ? ' aria-current="true"' : ''} aria-label="Show the look of ${date(p.mjd, true)}">${date(p.mjd, true)}</button></td><td>${p.lambda.toFixed(3)} µm</td>`
+        + `<td>${one ? `one reading, nothing to compare (noise ± ${(p.err * 100).toFixed(1)}%)` : `${pct(p.relative)} ± ${(p.err * 100).toFixed(1)}%`}</td></tr>`).join('');
+    const table = `<table class="sk-halo-t"><caption class="sk-sr">Light in the ring, each look</caption>`
+        + '<thead><tr><th scope="col">Look</th><th scope="col">Colour</th><th scope="col">Ring light vs the median of these looks</th></tr></thead>'
+        + `<tbody>${rows}</tbody></table>`;
     if (h.kind === 'none' || h.kind === 'table') {
+        const listed = h.kind === 'none' ? '' : one ? ' The one reading is listed instead.' : ' Each reading is listed instead.';
+        const why = h.reason
+            ? ` No curve is drawn: ${h.reason[0]!.toLowerCase()}${h.reason.slice(1)}.${listed}`
+            : ` A curve is drawn only from looks on at least ${MIN_VISITS} visits, all within ${CURVE_WIDTH_UM} µm of colour;`
+                + ` these looks do not meet that, so ${h.kind === 'none' ? 'there is no curve' : one ? 'the one reading is listed instead' : 'each reading is listed instead'}.`;
         const head = `Near ${h.lambda.toFixed(2)} µm, ${where}, could be measured in ${h.points.length} of ${plural(h.looks, 'look', 'looks')}`
-            + `${h.points.length ? `, taken on ${plural(visits, 'visit', 'visits')}` : ''}.`
-            + ` A curve is drawn only from looks on at least ${MIN_VISITS} visits, all within ${CURVE_WIDTH_UM} µm of colour;`
-            + ` these looks do not meet that, so ${h.kind === 'none' ? 'there is no curve' : h.points.length === 1 ? 'the one reading is listed instead' : 'each reading is listed instead'}.${off}`;
+            + `${h.points.length ? `, taken on ${plural(visits, 'visit', 'visits')}` : ''}.${why}${off}`;
         if (h.kind === 'none') {
-            return `<p class="sk-body mute">${head}</p>${notes}`;
+            return `<p class="sk-body mute">${head}</p>${module}${notes}`;
         }
-        // One reading compared with its own median always reads +0.0%, so show only its noise.
-        const one = h.points.length === 1;
-        // Each look's date is a button that shows that frame in Blink, as the dots on the curve do.
-        const rows = h.points.map((p) => `<tr><td><button type="button" class="sk-halo-k${p.k === on ? ' on' : ''}" data-k="${p.k}"`
-            + `${p.k === on ? ' aria-current="true"' : ''} aria-label="Show the look of ${date(p.mjd, true)}">${date(p.mjd, true)}</button></td><td>${p.lambda.toFixed(3)} µm</td>`
-            + `<td>${one ? `one reading, nothing to compare (noise ± ${(p.err * 100).toFixed(1)}%)` : `${pct(p.relative)} ± ${(p.err * 100).toFixed(1)}%`}</td></tr>`).join('');
-        const table = `<table class="sk-halo-t"><caption class="sk-sr">Light in the ring, each look</caption>`
-            + '<thead><tr><th scope="col">Look</th><th scope="col">Colour</th><th scope="col">Ring light vs the median of these looks</th></tr></thead>'
-            + `<tbody>${rows}</tbody></table>`;
         return `<p class="sk-body mute">${head}</p>${table}<p class="sk-body mute">Measured against ${h.refs} nearby comparison stars from Gaia. `
-            + `The ± is each reading’s noise: the sky around the ring and around the comparison stars, and how far off the star’s catalogue position could be.${colours}${inRing}</p>${notes}`;
+            + `The ± is each reading’s noise: the sky around the ring and around the comparison stars, and how far off the star’s catalogue position could be.${colours}${inRing}</p>${module}${notes}`;
     }
     const W = 300;
     const H = 100;
@@ -238,5 +256,6 @@ export function haloHtml(h: HaloView, name: string, on: number): string
     const note = `At ${h.lambda.toFixed(2)} µm: ${where}, measured against ${h.refs} nearby comparison stars from Gaia, look by look. `
         + 'The bar on each dot is its noise: the sky around the ring and around the comparison stars, and how far off the '
         + `star’s catalogue position could be. A change inside its bar may be noise.${colours}${inRing}${left}`;
-    return `<div class="sk-lc">${svg}${axis}</div>${dates}<p class="sk-body mute">${note}</p>${notes}`;
+    // The readings stay in a table under the line, so every number on it can be read.
+    return `<div class="sk-lc">${svg}${axis}</div>${dates}<p class="sk-body mute">${note}</p>${module}${table}${notes}`;
 }
