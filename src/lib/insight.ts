@@ -9,15 +9,20 @@ export interface InsightFacts {
     motion?: { arcsec: number; days: number };
     snapshot: boolean;
 }
-export interface InsightNote { text: string; model: string; dropped: number; cached: boolean }
-export type InsightErrorCode = 'off' | 'invalid' | 'busy' | 'unverified' | 'failed';
+export interface InsightNote { text: string; model: string; dropped: number; cached: boolean; remaining?: number }
+export interface InsightStatus { enabled: boolean; locked: boolean; unlocked: boolean; model?: string; remaining?: number }
+export type InsightErrorCode = 'off' | 'locked' | 'invalid' | 'busy' | 'unverified' | 'failed';
 export class InsightError extends Error {
     readonly code: InsightErrorCode;
-    constructor(code: InsightErrorCode)
+    readonly retryAfter?: number;
+    readonly reason?: string;
+    constructor(code: InsightErrorCode, retryAfter?: number, reason?: string)
     {
         super(code);
         this.name = 'InsightError';
         this.code = code;
+        this.retryAfter = retryAfter;
+        this.reason = reason;
     }
 }
 export const CONSTANTS: readonly number[] = [0.75, 5, 5.0, 102, 6, 6.2, 1.083, 1.875, 3.05, 3.3, 4.05, 4.27, 4.67];
@@ -128,6 +133,19 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     return { text: paragraphs.join('\n'), dropped };
 }
 const cache = new Map<string, InsightNote>();
+export async function insightStatus(opts: { passcode?: string; fetcher?: typeof fetch } = {}): Promise<InsightStatus>
+{
+    try {
+        const headers: Record<string, string> = {};
+        if (opts.passcode !== undefined) { headers['X-Insight-Passcode'] = opts.passcode; }
+        const response = await (opts.fetcher ?? fetch)('/api/insight', { headers });
+        if (!response.ok) { throw new Error('status'); }
+        const value: unknown = await response.json();
+        if (!value || typeof value !== 'object' || !('enabled' in value) || typeof value.enabled !== 'boolean' || !('locked' in value) || typeof value.locked !== 'boolean' || !('unlocked' in value) || typeof value.unlocked !== 'boolean') { throw new Error('status'); }
+        const v = value as InsightStatus;
+        return { enabled: v.enabled, locked: v.locked, unlocked: v.unlocked, ...(typeof v.model === 'string' ? { model: v.model } : {}), ...(typeof v.remaining === 'number' && Number.isFinite(v.remaining) ? { remaining: v.remaining } : {}) };
+    } catch { return { enabled: false, locked: false, unlocked: false }; }
+}
 export async function insightEnabled(fetcher: typeof fetch = fetch): Promise<boolean>
 {
     try {
@@ -135,23 +153,29 @@ export async function insightEnabled(fetcher: typeof fetch = fetch): Promise<boo
         return response.status === 200 && (await response.json()).enabled === true;
     } catch { return false; }
 }
-export async function fetchInsight(facts: InsightFacts, opts: { signal?: AbortSignal; fetcher?: typeof fetch } = {}): Promise<InsightNote>
+export async function fetchInsight(facts: InsightFacts, opts: { signal?: AbortSignal; fetcher?: typeof fetch; passcode?: string } = {}): Promise<InsightNote>
 {
     const clean = validateFacts(facts);
     const key = JSON.stringify(clean);
-    const hit = cache.get(key);
+    const hit = opts.passcode === undefined ? cache.get(key) : undefined;
     if (hit) { return { ...hit, cached: true }; }
     try {
-        const response = await (opts.fetcher ?? fetch)('/api/insight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ facts: clean }), signal: opts.signal });
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (opts.passcode !== undefined) { headers['X-Insight-Passcode'] = opts.passcode; }
+        const response = await (opts.fetcher ?? fetch)('/api/insight', { method: 'POST', headers, body: JSON.stringify({ facts: clean }), signal: opts.signal });
         if (!response.ok) {
-            const code: InsightErrorCode = response.status === 503 ? 'off' : response.status === 400 || response.status === 413 ? 'invalid' : response.status === 429 ? 'busy' : response.status === 422 ? 'unverified' : 'failed';
-            throw new InsightError(code);
+            const code: InsightErrorCode = response.status === 503 ? 'off' : response.status === 401 ? 'locked' : response.status === 400 || response.status === 413 ? 'invalid' : response.status === 429 ? 'busy' : response.status === 422 ? 'unverified' : 'failed';
+            const rawRetry = response.headers.get('Retry-After');
+            const retryAfter = rawRetry !== null && /^\d+$/.test(rawRetry) ? Number(rawRetry) : undefined;
+            let reason: string | undefined;
+            try { const body: unknown = await response.json(); if (body && typeof body === 'object' && 'reason' in body && typeof body.reason === 'string') { reason = body.reason; } } catch { /* Error bodies are optional. */ }
+            throw new InsightError(code, retryAfter, reason);
         }
         const data: unknown = await response.json();
         if (!data || typeof data !== 'object' || typeof (data as InsightNote).text !== 'string' || typeof (data as InsightNote).model !== 'string' || typeof (data as InsightNote).dropped !== 'number') { throw new InsightError('failed'); }
-        const note = { text: (data as InsightNote).text, model: (data as InsightNote).model, dropped: (data as InsightNote).dropped, cached: false };
+        const note: InsightNote = { text: (data as InsightNote).text, model: (data as InsightNote).model, dropped: (data as InsightNote).dropped, cached: (data as InsightNote).cached === true, ...(typeof (data as InsightNote).remaining === 'number' ? { remaining: (data as InsightNote).remaining } : {}) };
         if (cache.size >= 50) { cache.delete(cache.keys().next().value!); }
-        cache.set(key, note);
+        if (opts.passcode === undefined) { cache.set(key, note); }
         return { ...note };
     } catch (error) {
         if (opts.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) { throw error; }

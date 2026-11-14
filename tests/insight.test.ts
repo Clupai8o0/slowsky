@@ -1,15 +1,107 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHandlers } from '../api/insight';
-import { checkNote, factSheet, fetchInsight, insightEnabled, validateFacts, type InsightFacts } from '../src/lib/insight';
+import { createHandlers as createServerHandlers, memoryStore, upstashStore, type InsightDeps } from '../api/insight';
+import { checkNote, factSheet, fetchInsight, insightEnabled, insightStatus, validateFacts, type InsightFacts } from '../src/lib/insight';
 import { TARGETS } from '../src/lib/targets';
 
 const facts: InsightFacts = { targetId: 'custom', ra: 12.34567, dec: -38, lambdaUm: 4.27, visits: [{ mjd: 61000, frames: 3 }, { mjd: 61010, frames: 4 }], lightCurve: { points: [{ mjd: 61000, relative: 1, snr: 20 }, { mjd: 61010, relative: 0.8, snr: 10 }], refScatter: [0.02, 0.03], dropped: 2 }, difference: { peakSigma: -3.4 }, motion: { arcsec: 2.3, days: 10 }, snapshot: true };
 const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3457 deg, Dec -38.0000 deg.', 'Wavelength: 4.270 micron.', 'Visits: 2. Frames in each visit: 3, 4. Time from first to last visit: 10.0 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.80.', 'Largest change from the median brightness: 11 percent brighter.', 'Lowest signal-to-noise among the points: 10.', 'Reference stars: 2. Scatter of each: 2.0, 3.0 percent.', 'Frames left out because their wavelength did not match: 2.', 'Difference image at the target: 3.4 sigma, fainter in the later visit.', 'Shift in position: 2.3 arcsec over 10.0 days.', 'Frames came from: the baked snapshot.'];
 const note = 'What this shows: The value is 4.27. It is at -38 degrees.\nHow far to trust it: More data helps.';
+function createHandlers(deps: Pick<InsightDeps, 'apiKey' | 'model' | 'complete' | 'now'> & Partial<InsightDeps>)
+{
+    return createServerHandlers({ store: memoryStore(), passcode: undefined, open: true, maxPerUserDay: 20, maxPerDay: 300, maxPerHour: 120, ...deps });
+}
 function request(value: unknown, headers: Record<string, string> = {}): Request
 {
     return new Request('https://example.test/api/insight', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(value) });
 }
+describe('insight access and allowances', () => {
+    it('fails closed, locks guesses, and unlocks after the window', async () => {
+        let now = 0;
+        const complete = vi.fn(async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }));
+        const base = { apiKey: 'key', model: 'fake', complete, now: () => now };
+        expect(await (await createHandlers({ ...base, open: false }).GET(new Request('https://example.test'))).json()).toEqual({ enabled: false, locked: false, unlocked: false, model: 'fake' });
+        expect((await (await createHandlers(base).GET(new Request('https://example.test'))).json()).enabled).toBe(true);
+        const handler = createHandlers({ ...base, passcode: 'secret' });
+        const headers = { 'x-real-ip': '192.0.2.40' };
+        expect((await handler.POST(request({ facts }, headers))).status).toBe(401);
+        for (let i = 0; i < 5; i++) {
+            expect((await handler.POST(request({ facts }, { ...headers, 'x-insight-passcode': 'wrong' }))).status).toBe(401);
+        }
+        expect(complete).not.toHaveBeenCalled();
+        const locked = await handler.POST(request({ facts }, { ...headers, 'x-insight-passcode': 'secret' }));
+        expect(locked.status).toBe(429);
+        expect(locked.headers.get('retry-after')).toBe('900');
+        expect((await handler.POST(request({ facts: { ...facts, ra: 300 } }, { 'x-real-ip': '192.0.2.41', 'x-insight-passcode': 'secret' }))).status).toBe(200);
+        now += 900000;
+        expect((await handler.POST(request({ facts: { ...facts, ra: 301 } }, { ...headers, 'x-insight-passcode': 'secret' }))).status).toBe(200);
+    });
+    it('counts new answers per visitor and day, without charging refusals or cache hits', async () => {
+        let now = 0;
+        const keys: string[] = [];
+        const inner = memoryStore();
+        const store = { hit: async (k: string, w: number, n: number) => { keys.push(k); return inner.hit(k, w, n); }, count: async (k: string, w: number, n: number) => { keys.push(k); return inner.count(k, w, n); } };
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => now, passcode: 'secret', store, maxPerUserDay: 3 });
+        const headers = { 'x-real-ip': '192.0.2.42', 'x-insight-passcode': 'secret' };
+        for (let i = 0; i < 3; i++) {
+            expect(await (await handler.POST(request({ facts: { ...facts, ra: 310 + i } }, headers))).json()).toMatchObject({ remaining: 2 - i, cached: false });
+        }
+        const refused = await handler.POST(request({ facts: { ...facts, ra: 313 } }, headers));
+        expect(await refused.json()).toEqual({ error: 'busy', reason: 'daily' });
+        const userDayKey = keys.find((key) => key.startsWith('user-day:'))!;
+        expect(await inner.count(userDayKey, 86400000, now)).toBe(3);
+        expect(await (await handler.POST(request({ facts: { ...facts, ra: 310 } }, headers))).json()).toMatchObject({ cached: true });
+        expect(await (await handler.GET(new Request('https://example.test', { headers }))).json()).toMatchObject({ remaining: 0, unlocked: true });
+        const wrong = await (await handler.GET(new Request('https://example.test', { headers: { ...headers, 'x-insight-passcode': 'bad' } }))).json();
+        expect(wrong).toMatchObject({ unlocked: false });
+        expect(wrong).not.toHaveProperty('remaining');
+        for (let i = 0; i < 4; i++) {
+            await handler.GET(new Request('https://example.test', { headers: { ...headers, 'x-insight-passcode': 'bad' } }));
+        }
+        expect((await handler.GET(new Request('https://example.test', { headers }))).status).toBe(429);
+        expect(keys.every((k) => !k.includes('192.0.2.42'))).toBe(true);
+        expect((await handler.POST(request({ facts: { ...facts, ra: 313 } }, { ...headers, 'x-real-ip': '192.0.2.43' }))).status).toBe(200);
+        now += 86400000;
+        expect((await handler.POST(request({ facts: { ...facts, ra: 314 } }, headers))).status).toBe(200);
+    });
+    it('expires fixed windows and uses x-real-ip before the forwarded address', async () => {
+        const store = memoryStore();
+        expect(await store.hit('a', 1000, 999)).toBe(1);
+        expect(await store.count('a', 1000, 1000)).toBe(0);
+        const handler = createHandlers({ apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => 400000000, store, maxPerUserDay: 1 });
+        const headers = { 'x-real-ip': 'real', 'x-forwarded-for': 'forwarded-a, proxy' };
+        expect((await handler.POST(request({ facts: { ...facts, ra: 340 } }, headers))).status).toBe(200);
+        expect((await handler.POST(request({ facts: { ...facts, ra: 341 } }, { ...headers, 'x-forwarded-for': 'forwarded-b' }))).status).toBe(429);
+    });
+    it('enforces the global daily cap and falls back on store errors', async () => {
+        const base = { apiKey: 'key', model: 'fake', complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }), now: () => 180000000, maxPerDay: 2 };
+        const handler = createHandlers(base);
+        for (let i = 0; i < 3; i++) {
+            expect((await handler.POST(request({ facts: { ...facts, ra: 320 + i } }, { 'x-real-ip': `test-${i}` }))).status).toBe(i < 2 ? 200 : 429);
+        }
+        const broken = { hit: async () => { throw new Error(); }, count: async () => { throw new Error(); } };
+        expect((await createHandlers({ ...base, store: broken }).POST(request({ facts: { ...facts, ra: 324 } }))).status).toBe(200);
+    });
+    it('uses the Upstash REST protocol and rejects failures', async () => {
+        const fetcher = vi.fn().mockResolvedValueOnce(Response.json([{ result: 4 }, { result: 1 }])).mockResolvedValueOnce(Response.json({ result: null })).mockResolvedValueOnce(new Response('', { status: 500 }));
+        const store = upstashStore('https://redis.test/', 'token', fetcher);
+        expect(await store.hit('key', 1000, 2500)).toBe(4);
+        expect(fetcher.mock.calls[0]![0]).toBe('https://redis.test/pipeline');
+        expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toEqual([['INCR', 'key:2'], ['PEXPIRE', 'key:2', '2000']]);
+        expect(fetcher.mock.calls[0]![1].headers.Authorization).toBe('Bearer token');
+        expect(await store.count('key', 1000, 2500)).toBe(0);
+        await expect(store.count('key', 1000, 2500)).rejects.toThrow();
+    });
+    it('sends browser passcodes only in headers and reports errors', async () => {
+        const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ enabled: true, locked: true, unlocked: true })).mockResolvedValueOnce(Response.json({ error: 'locked' }, { status: 401 })).mockResolvedValueOnce(Response.json({ error: 'busy', reason: 'daily' }, { status: 429, headers: { 'Retry-After': '12' } }));
+        expect((await insightStatus({ passcode: 'secret', fetcher })).unlocked).toBe(true);
+        expect(fetcher.mock.calls[0]![1].headers['X-Insight-Passcode']).toBe('secret');
+        await expect(fetchInsight({ ...facts, ra: 330 }, { passcode: 'secret', fetcher })).rejects.toMatchObject({ code: 'locked' });
+        expect(fetcher.mock.calls[1]![1].body).not.toContain('secret');
+        await expect(fetchInsight({ ...facts, ra: 331 }, { fetcher })).rejects.toMatchObject({ code: 'busy', retryAfter: 12, reason: 'daily' });
+        expect(fetcher.mock.calls[2]![1].headers).not.toHaveProperty('X-Insight-Passcode');
+        expect(await insightStatus({ fetcher: vi.fn(async () => { throw new Error(); }) as typeof fetch })).toEqual({ enabled: false, locked: false, unlocked: false });
+    });
+});
 describe('insight facts and guard', () => {
     it('validates clean copies and rejects invalid shapes and values', () => {
         expect(validateFacts(facts)).toEqual(facts);
@@ -49,7 +141,7 @@ describe('insight handler', () => {
         expect((await handler.POST(new Request('https://example.test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' }))).status).toBe(400);
         const response = await handler.POST(request({ facts }));
         expect(response.status).toBe(200);
-        expect(await response.json()).toEqual({ text: note, dropped: 0, model: 'fake' });
+        expect(await response.json()).toEqual({ text: note, dropped: 0, model: 'fake', cached: false, remaining: 19 });
         for (const line of lines) { expect(complete.mock.calls[0]![1]).toContain(line); }
         expect((await handler.POST(request({ facts }))).status).toBe(200);
         expect(complete).toHaveBeenCalledTimes(1);
@@ -78,13 +170,13 @@ describe('insight handler', () => {
     it('enforces the hourly cap and lets cached answers through', async () => {
         vi.stubEnv('INSIGHT_MAX_PER_HOUR', '1');
         try {
-            const handler = createHandlers({ apiKey: 'key', model: 'fake', now: () => 5000000, complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }) });
+            const handler = createHandlers({ apiKey: 'key', model: 'fake', maxPerHour: 1, now: () => 5000000, complete: async () => ({ text: 'First sentence. Second sentence.', refused: false, model: 'fake' }) });
             const first = { ...facts, ra: 250 };
             expect((await handler.POST(request({ facts: first }, { 'x-forwarded-for': 'hourly-a' }))).status).toBe(200);
             expect((await handler.POST(request({ facts: first }, { 'x-forwarded-for': 'hourly-b' }))).status).toBe(200);
             const limited = await handler.POST(request({ facts: { ...facts, ra: 251 } }, { 'x-forwarded-for': 'hourly-b' }));
             expect(limited.status).toBe(429);
-            expect(limited.headers.get('retry-after')).toBe('3600');
+            expect(limited.headers.get('retry-after')).toBe('2200');
         } finally { vi.unstubAllEnvs(); }
     });
     it('aborts a completion which does not settle', async () => {
