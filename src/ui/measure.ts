@@ -335,8 +335,8 @@ export function shiftFor(result: SkyResult, a: Astrometry): Shift | null
     return shift;
 }
 
-// How many frames show a saturated centre: no value within half a detector pixel of the target's track
-// position, with a bright ring around it (its median above the frame's 99th percentile). Blank pixels in dark
+// How many frames show a saturated centre: no value within half a detector pixel (or, on coarse grids, the
+// nearest output pixel) of the target's track position, with a bright ring around it (its median above the frame's 99th percentile). Blank pixels in dark
 // sky (no coverage, an edge) do not count. R Dra and Barnard's Star saturate.
 export function coreBlank(result: SkyResult): { blank: number; of: number } | null
 {

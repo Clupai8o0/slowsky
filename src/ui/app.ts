@@ -1049,7 +1049,7 @@ export function mount(root: HTMLElement): void
                 const wobble = Number.isFinite(curve.noise) ? curve.noise * 100 : NaN;
                 const inside = Number.isFinite(wobble) && change < 2 * wobble;
                 return {
-                    fact: `Across ${rel.length} looks its brightest is ${change.toFixed(change < 10 ? 1 : 0)}% above its faintest, against ${curve.refs} comparison stars${Number.isFinite(wobble) ? ` whose combined light wobbles by ±${wobble.toFixed(1)}%` : ''}.${inside ? ' That change is inside the noise.' : ''}`,
+                    fact: `Across ${rel.length} looks its brightest is ${change.toFixed(change < 10 ? 1 : 0)}% above its faintest, against ${curve.refs} comparison stars${Number.isFinite(wobble) ? ` (estimated comparison noise ±${wobble.toFixed(1)}%)` : ''}.${inside ? ' That change is inside the noise.' : ''}`,
                 };
             }
             return {};
