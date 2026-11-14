@@ -171,6 +171,7 @@ export interface AiNoteDeps {
     storage?: PassStore | null; // defaults to sessionStorage; never localStorage
     doc?: Doc;
     now?: () => number; // ms clock, for spacing out status re-checks
+    onState?: (state: { ready: boolean; facts: InsightFacts | null; passcode?: string }) => void;
 }
 
 // After a status check that never reached the server, a later view change tries again, at most this often.
@@ -318,11 +319,12 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     {
         // Facts are built only once the route is on, so a switched-off site never pays for them.
         panel.hidden = !(st && st.enabled && view && factsNow());
-        if (panel.hidden) {
-            return;
+        if (!panel.hidden) {
+            lock.hidden = !locked();
+            go.hidden = locked();
         }
-        lock.hidden = !locked();
-        go.hidden = locked();
+        const ready = !panel.hidden && !locked();
+        deps.onState?.({ ready, facts: ready ? factsNow() : null, passcode: passcode() });
     }
 
     function showLock(text: string): void

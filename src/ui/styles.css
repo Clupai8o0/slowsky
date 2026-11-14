@@ -550,6 +550,22 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-ai-given summary:hover { color: var(--ink2); }
 .sk-ai-given ul { margin: 8px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; line-height: 1.5; }
 .sk-ai-disc, .sk-ai-left { margin: 0; font-size: var(--fs-label); line-height: 1.5; color: var(--mute); }
+.sk-ask-form { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; }
+.sk-ask-label { font-size: var(--fs-small); line-height: 1.4; color: var(--ink2); }
+.sk-ask-row { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
+.sk-ask-form input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--hair2); border-radius: 3px; background: none; color: var(--ink); font-size: var(--fs-body); }
+.sk-ask-form input::placeholder { color: var(--mute); }
+.sk .sk-ask-form input:focus-visible { border-color: rgba(255, 255, 255, .5); outline: 2px solid rgba(255, 255, 255, .85); outline-offset: 2px; }
+.sk-ask-form button:disabled { cursor: progress; color: var(--mute); }
+.sk-ask-hint { margin: 0; font-size: var(--fs-small); line-height: 1.5; color: var(--mute); }
+.sk-ask-form [data-ask=out]:empty { display: none; }
+.sk-ask { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: var(--fs-body); line-height: 1.55; color: var(--ink2); overflow-wrap: anywhere; }
+.sk-ask p { margin: 0; }
+.sk-ask-h { margin: 4px 0 0; font-size: var(--fs-small); font-weight: 500; line-height: 1.4; color: var(--ink); }
+.sk-ask-h:first-child { margin-top: 0; }
+.sk-ask-rows { margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; color: var(--ink); overflow-wrap: anywhere; }
+.sk-ask-rows li { min-width: 0; overflow-wrap: anywhere; }
+.sk-ask-note { font-size: var(--fs-small); line-height: 1.5; color: var(--mute); }
 @media (max-width: 1080px) {
     .sk { --fs-body: 15px; display: flex; flex-direction: column; height: auto; min-height: 100dvh; padding: 0 0 40px;
         background: radial-gradient(120% 50% at 50% 34%, rgba(40, 70, 160, .26), transparent 70%), var(--void); }
@@ -617,6 +633,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
     .sk-rng { height: 44px; }
     .sk-search input { min-height: 44px; }
     .sk-ai-lock label { height: 44px; }
+    .sk-ask-form input { height: 44px; }
     .sk-ai-given summary { min-height: 44px; }
     .sk-src::after, .sk-m-details dd a::after, .sk-chg-more::after, .sk-halo-k::after { height: 44px; margin-top: -22px; }
     .sk-m-details dd a, .sk-coord .sk-src { display: inline-flex; align-items: center; min-height: 44px; }

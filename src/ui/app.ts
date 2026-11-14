@@ -19,6 +19,7 @@ import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
 import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
+import { mountAsk } from './ask-panel';
 import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, renderSpectrum, type LayerState } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, type SubOp, type Visit } from './subtract';
@@ -378,7 +379,8 @@ export function mount(root: HTMLElement): void
     const q = <T extends Element>(sel: string) => root.querySelector(sel) as T;
     const qa = <T extends Element>(sel: string) => [...root.querySelectorAll(sel)] as T[];
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
-    const aiNote = mountAiNote(ref<HTMLElement>('ai'));
+    const ask = mountAsk(ref<HTMLElement>('ai'));
+    const aiNote = mountAiNote(ref<HTMLElement>('ai'), { onState: (s) => ask.sync(s) });
     const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
     const changesSlot = mountChanges(() => renderSlots());
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderSlots());

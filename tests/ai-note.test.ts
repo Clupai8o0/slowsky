@@ -777,3 +777,45 @@ describe('mountAiNote, review round 2', () => {
         expect(doc.el('go').hidden).toBe(false);
     });
 });
+
+describe('mountAiNote onState', () => {
+    it('fires with ready: false while locked and ready: true with facts after unlock', async () => {
+        const states: Parameters<NonNullable<AiNoteDeps['onState']>>[0][] = [];
+        const doc = new FakeDoc();
+        const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+            status: async (o) => (o?.passcode === 'moon' ? { enabled: true, locked: true, unlocked: true } : LOCKED),
+            storage: new MemStore(),
+            doc: doc as never,
+            onState: (s) => states.push(s),
+        });
+        await flush();
+        const v = noteView();
+        ai.update(v);
+        expect(states.at(-1)).toEqual({ ready: false, facts: null, passcode: undefined });
+        doc.el('pass').value = 'moon';
+        await doc.el('lock').fire('submit');
+        expect(states.at(-1)).toEqual({ ready: true, facts: buildFacts(factsInput(v)), passcode: 'moon' });
+        ai.update(null);
+        expect(states.at(-1)).toEqual({ ready: false, facts: null, passcode: 'moon' });
+    });
+
+    it('leaves AI note behaviour unchanged when onState is omitted', async () => {
+        const doc = new FakeDoc();
+        const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+            status: async (o) => (o?.passcode === 'moon' ? { enabled: true, locked: true, unlocked: true } : LOCKED),
+            fetch: async () => ({ text: NOTE_TEXT, model: 'claude-opus-5-5', dropped: 0, cached: false }),
+            storage: new MemStore(),
+            doc: doc as never,
+        });
+        await flush();
+        ai.update(noteView());
+        expect(doc.el('lock').hidden).toBe(false);
+        expect(doc.el('go').hidden).toBe(true);
+        doc.el('pass').value = 'moon';
+        await doc.el('lock').fire('submit');
+        expect(doc.el('lock').hidden).toBe(true);
+        expect(doc.el('go').hidden).toBe(false);
+        await doc.el('go').fire('click');
+        expect(doc.el('out').textContent).toContain('What this shows: a star.');
+    });
+});
