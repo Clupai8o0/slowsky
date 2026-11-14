@@ -297,10 +297,16 @@ describe('live source (fake SIA and S3)', () => {
         expect(reader.headers).toEqual([]);
     });
 
-    it('uses the old thinning when any visit lacks a footprint or a prediction', async () => {
+    it('uses the old thinning when a frame lacks a footprint or no frame can be predicted', async () => {
         for (const invalid of ['missing', 'degenerate']) {
             const fakes = [...stepped('a', 60900, false), ...stepped('b', 61080, true)];
-            fakes[15]!.record.footprint = invalid === 'missing' ? undefined : Array(4).fill(CENTER);
+            if (invalid === 'missing') {
+                fakes[15]!.record.footprint = undefined;
+            } else {
+                for (const f of fakes) {
+                    f.record.footprint = Array(4).fill(CENTER);
+                }
+            }
             const records = fakes.map(f => f.record);
             const reader = counting(fakes);
             const source = createLiveSource({ reader, search: async () => records, maxHeaders: 6 });
@@ -337,25 +343,172 @@ describe('live source (fake SIA and S3)', () => {
         expect(reader.headers).toEqual([fakes[0]!.record.url, fakes[2]!.record.url]);
     });
 
+    it('falls back to thinVisits when corners 2 and 3 are swapped with the target at the centre', async () => {
+        const fakes = [
+            fake('swap0D1', 60900.00, 0, false),
+            fake('swap1D1', 60900.01, 20, false),
+            fake('swap2D1', 60900.02, 0, false),
+        ];
+        for (const f of fakes) {
+            const [c0, c1, c2, c3] = corners(f);
+            f.record.footprint = [c0!, c1!, c3!, c2!];
+        }
+        const reader = counting(fakes);
+        let readsBeforeWave = 0;
+        const readWave = reader.readWaveGrid;
+        reader.readWaveGrid = async (index, signal) => {
+            if (readsBeforeWave === 0) {
+                readsBeforeWave = new Set(reader.headers).size;
+            }
+            return readWave(index, signal);
+        };
+        const req = { center: CENTER, fovDeg: 0.01, detector: 1 as const, lambda: lambdaAtCentre(fakes[1]!) };
+        const actual = await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 2 }).load(req);
+        const urls = new Set(reader.headers);
+        expect(urls.size).toBe(2);
+        expect(urls.has(fakes[1]!.record.url)).toBe(true);
+        expect(readsBeforeWave).toBe(2); // A rejected guess never reads the probe's wave grid.
+        expect(actual.frames.length).toBeGreaterThan(0);
+        expect(actual.frames.every(frame => urls.has(frame.frame.frame.url))).toBe(true);
+    });
+
+    it('keeps using guesses when one frame has a valid footprint on the far side of the sky', async () => {
+        const good = [...stepped('a', 60900, false), ...stepped('b', 61080, true)];
+        const far = fake('far0D1', 60900.5, 0, false);
+        far.cards.CRVAL1 = (CENTER.ra + 180) % 360;
+        far.cards.CRVAL2 = -CENTER.dec;
+        far.record.footprint = corners(far);
+        const fakes = [...good, far];
+        const chosen = lambdaAtCentre(good[7]!);
+        const reader = counting(fakes);
+        const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 6 });
+        const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: chosen });
+        expect(res.locked.map(l => l.frame.obsId)).toEqual(['a7D1', 'b7D1']);
+    });
+
     it('falls back after a failed probe header and still returns frames', async () => {
-        const fakes = Array.from({ length: 4 }, (_, i) => fakeBand(`fail${i}D1`, 60900 + i * 0.01, 1));
+        for (const [probeIndex, maxHeaders] of [[0, 2], [1, 3]] as const) {
+            const fakes = Array.from({ length: 4 }, (_, i) => fakeBand(`fail${i}D1`, 60900 + i * 0.01, 1));
+            for (const [i, f] of fakes.entries()) {
+                if (i !== probeIndex) {
+                    f.cards.CRPIX2 = Number(f.cards.CRPIX2) + 100;
+                }
+                f.record.footprint = corners(f);
+            }
+            const probeUrl = fakes[probeIndex]!.record.url;
+            const reader = counting(fakes);
+            const index = reader.index;
+            reader.index = async (url, signal) => {
+                if (url === probeUrl) {
+                    reader.headers.push(url);
+                    throw new Error('header fetch failed');
+                }
+                return index(url, signal);
+            };
+            const result = await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders })
+                .load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1 });
+            expect(result.frames.length).toBeGreaterThan(0);
+            expect(reader.headers.filter(url => url === probeUrl)).toHaveLength(1);
+            expect(new Set(reader.headers).size).toBeLessThanOrEqual(maxHeaders);
+            expect(result.frames.every(f => f.frame.frame.url !== probeUrl)).toBe(true);
+        }
+    });
+
+    it('can reuse a readable probe when its wave-grid read fails', async () => {
+        const fakes = Array.from({ length: 3 }, (_, i) => fakeBand(`wavefail${i}D1`, 60900 + i * 0.01, 1));
+        for (const [i, f] of fakes.entries()) {
+            if (i !== 0) {
+                f.cards.CRPIX2 = Number(f.cards.CRPIX2) + 100;
+            }
+            f.record.footprint = corners(f);
+        }
+        const reader = counting(fakes);
+        const readWave = reader.readWaveGrid;
+        let first = true;
+        reader.readWaveGrid = async (index, signal) => {
+            if (first) {
+                first = false;
+                throw new Error('wave grid temporarily unavailable');
+            }
+            return readWave(index, signal);
+        };
+        const result = await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 2 })
+            .load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1 });
+        expect(result.locked.some(frame => frame.frame.url === fakes[0]!.record.url)).toBe(true);
+        expect(new Set(reader.headers).size).toBe(2);
+    });
+
+    it('skips an unreadable non-probe frame with a note, and rejects when every frame fails', async () => {
+        const fakes = [
+            fakeBand('ok0D1', 60900, 1),
+            fakeBand('bad1D1', 60920, 1),
+            fakeBand('ok2D1', 60940, 1),
+            fakeBand('extra3D1', 60940.01, 1),
+        ];
+        for (const [i, f] of fakes.entries()) {
+            if (i !== 0) {
+                f.cards.CRPIX2 = Number(f.cards.CRPIX2) + 100;
+            }
+            f.record.footprint = corners(f);
+        }
+        const badUrl = fakes[1]!.record.url;
+        const reader = counting(fakes);
+        const index = reader.index;
+        reader.index = async (url, signal) => {
+            if (url === badUrl) {
+                reader.headers.push(url);
+                throw new Error('corrupt FITS');
+            }
+            return index(url, signal);
+        };
+        const progress: SkyProgress[] = [];
+        const res = await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 3 })
+            .load({
+                center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1,
+                onProgress: (p) => {
+                    if (p.stage === 'headers') {
+                        progress.push(p);
+                    }
+                },
+            });
+        expect(reader.headers[0]).toBe(fakes[0]!.record.url);
+        expect(res.locked.map(l => l.frame.obsId)).toEqual(['ok0D1', 'ok2D1']);
+        expect(res.notes).toContain('1 frame could not be read.');
+        expect(res.notes.join(' ')).not.toContain('detector edge');
+        expect(progress[progress.length - 1]).toEqual({ stage: 'headers', done: 3, total: 3 });
+
+        for (const maxHeaders of [1, 3, 60]) {
+            const broken = counting(fakes);
+            broken.index = async (url) => {
+                broken.headers.push(url);
+                throw new Error('S3 down');
+            };
+            const allBad = createLiveSource({ reader: broken, search: async () => fakes.map(f => f.record), maxHeaders });
+            await expect(allBad.load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1 })).rejects.toThrow('S3 down');
+        }
+    });
+
+    it('reads one distinct URL and returns one frame when maxHeaders is 1', async () => {
+        const fakes = Array.from({ length: 4 }, (_, i) => fakeBand(`one${i}D1`, 60900 + i * 0.01, 1));
         for (const f of fakes) {
             f.record.footprint = corners(f);
         }
         const reader = counting(fakes);
-        const index = reader.index;
-        let first = true;
-        reader.index = async (url, signal) => {
-            if (first) {
-                first = false;
-                reader.headers.push(url);
-                throw new Error('header fetch failed');
-            }
-            return index(url, signal);
-        };
-        const result = await createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 2 })
-            .load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1 });
-        expect(result.frames.length).toBeGreaterThan(0);
+        const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 1 });
+        const res = await source.load({ center: CENTER, fovDeg: 0.01, detector: 1, lambda: 1 });
+        expect(new Set(reader.headers).size).toBe(1);
+        expect(res.frames).toHaveLength(1);
+    });
+
+    it('uses the full maxHeaders budget when the probe is among the picks', async () => {
+        const fakes = [...stepped('a', 60900, false), ...stepped('b', 61080, true), ...stepped('c', 61260, false)];
+        const chosen = lambdaAtCentre(fakes[5]!);
+        const reader = counting(fakes);
+        const source = createLiveSource({ reader, search: async () => fakes.map(f => f.record), maxHeaders: 3 });
+        const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: chosen });
+        expect(res.locked.some(l => l.frame.url === reader.headers[0])).toBe(true);
+        expect(new Set(reader.headers).size).toBe(3);
+        expect(res.locked.map(l => l.frame.obsId)).toEqual(['a5D1', 'b5D1', 'c5D1']);
     });
 
     it('propagates an abort during the probe read', async () => {

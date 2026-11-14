@@ -4,7 +4,7 @@
 // wavelength lock -> regrid) and snapshot (the same steps on frames baked into public/snapshot).
 // Runs in the page and in Web Workers (no DOM globals).
 import type {
-    CardValue, Cutout, Detector, FitsHeader, FrameQuery, FrameRecord, OutputGrid, PixelBox, PixelCoord,
+    CardValue, Cutout, Detector, FitsHeader, FitsIndex, FrameQuery, FrameRecord, OutputGrid, PixelBox, PixelCoord,
     PlayerFrame, RangeReader, RegriddedFrame, SkyCoord, Target, TargetId, WaveGrid, Wcs,
 } from './types';
 import { commonRange, lockWavelength, type LockedFrame } from './lock';
@@ -461,7 +461,7 @@ async function pickByGuess(
     reader: RangeReader,
     opts: SourceOptions,
     max: number,
-    probeRead: { url?: string },
+    probeRead: { url?: string; failed?: boolean; error?: unknown },
 ): Promise<{ frames: FrameRecord[]; skippedVisits: number } | undefined>
 {
     if (max < 1) {
@@ -470,9 +470,12 @@ async function pickByGuess(
     let probe: FrameRecord | undefined;
     let probeDepth = 0;
     for (const f of frames) {
-        const p = f.footprint ? predictPixel(f.footprint, [DETECTOR_PX, DETECTOR_PX], lookPoint(target, req, f)) : null;
-        if (!p) {
+        if (!f.footprint) {
             return undefined;
+        }
+        const p = predictPixel(f.footprint, [DETECTOR_PX, DETECTOR_PX], lookPoint(target, req, f));
+        if (!p) {
+            continue;
         }
         const d = Math.min(p.x, p.y, DETECTOR_PX - 1 - p.x, DETECTOR_PX - 1 - p.y);
         if (d > probeDepth) {
@@ -485,7 +488,14 @@ async function pickByGuess(
     }
     try {
         probeRead.url = probe.url;
-        const index = await reader.index(probe.url, req.signal);
+        let index: FitsIndex;
+        try {
+            index = await reader.index(probe.url, req.signal);
+        } catch (err) {
+            probeRead.failed = true;
+            probeRead.error = err;
+            throw err;
+        }
         const wcs = makeWcs(wcsFromHeader(index.hdu('IMAGE').header));
         const naxis = wcs.params.naxis;
         const look = lookPoint(target, req, probe);
@@ -498,18 +508,21 @@ async function pickByGuess(
         // The footprint order is (-0.5,-0.5), (nx-0.5,-0.5), (nx-0.5,ny-0.5), (-0.5,ny-0.5).
         const corner0 = safeSkyToPix(wcs, probe.footprint[0]!);
         const corner1 = safeSkyToPix(wcs, probe.footprint[1]!);
-        if (!corner0 || !corner1 || Math.hypot(corner0.x + 0.5, corner0.y + 0.5) > GUESS_MAX_ERROR_PX
-            || Math.hypot(corner1.x - (naxis[0] - 0.5), corner1.y + 0.5) > GUESS_MAX_ERROR_PX) {
+        const corner2 = safeSkyToPix(wcs, probe.footprint[2]!);
+        if (!corner0 || !corner1 || !corner2
+            || Math.hypot(corner0.x + 0.5, corner0.y + 0.5) > GUESS_MAX_ERROR_PX
+            || Math.hypot(corner1.x - (naxis[0] - 0.5), corner1.y + 0.5) > GUESS_MAX_ERROR_PX
+            || Math.hypot(corner2.x - (naxis[0] - 0.5), corner2.y - (naxis[1] - 0.5)) > GUESS_MAX_ERROR_PX) {
             return undefined;
         }
         const wave = await reader.readWaveGrid(index, req.signal);
         const guessed = new Map<string, { lambda: number; bandwidth: number }>();
         for (const f of frames) {
-            const p = f.footprint ? predictPixel(f.footprint, naxis, lookPoint(target, req, f)) : null;
-            if (!p) {
+            if (!f.footprint) {
                 return undefined;
             }
-            if (!inside(p, naxis, -GUESS_EDGE_PX)) {
+            const p = predictPixel(f.footprint, naxis, lookPoint(target, req, f));
+            if (!p || !inside(p, naxis, -GUESS_EDGE_PX)) {
                 // Off the detector: never near any wavelength.
                 guessed.set(f.obsId, { lambda: Infinity, bandwidth: 0 });
                 continue;
@@ -524,12 +537,17 @@ async function pickByGuess(
         if (!Number.isFinite(chosen)) {
             return undefined;
         }
-        // Reserve one header for the probe, even if it is not among the picked frames.
-        const pick = pickByWavelength(visits, (f) => {
+        function predicted(f: FrameRecord): number | undefined
+        {
             const l = lambdaOf(f);
             // Off-detector guesses are known to be useless: a huge finite value makes their visit "far", not "unknown".
             return l === Infinity ? 1e9 : l;
-        }, chosen, limitOf, max - 1);
+        }
+        const probeUrl = probe.url;
+        let pick = pickByWavelength(visits, predicted, chosen, limitOf, max);
+        if (pick.frames.length >= max && !pick.frames.some((f) => f.url === probeUrl)) {
+            pick = pickByWavelength(visits, predicted, chosen, limitOf, max - 1);
+        }
         return pick.frames.length > 0 ? pick : undefined;
     } catch (err) {
         if (req.signal?.aborted) {
@@ -568,63 +586,110 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
             let candidates = onDetector;
             let skippedVisits = 0;
             if (onDetector.length > maxHeaders) {
-                const probeRead: { url?: string } = {};
+                const probeRead: { url?: string; failed?: boolean; error?: unknown } = {};
                 const pick = await pickByGuess(onDetector, visits, target, req, reader, opts, maxHeaders, probeRead);
-                const fallback = thinVisits(visits, maxHeaders);
-                // The FITS reader caches the probe URL; otherwise reserve a read for it, including failed reads.
-                const fallbackBudget = !probeRead.url || fallback.some((frame) => frame.url === probeRead.url)
-                    ? maxHeaders : Math.max(0, maxHeaders - 1);
-                candidates = pick?.frames ?? (fallbackBudget === maxHeaders ? fallback : thinVisits(visits, fallbackBudget));
-                skippedVisits = pick?.skippedVisits ?? 0;
+                if (pick) {
+                    candidates = pick.frames;
+                    skippedVisits = pick.skippedVisits;
+                } else if (probeRead.failed) {
+                    candidates = thinVisits(visits, Math.max(0, maxHeaders - 1))
+                        .filter((frame) => frame.url !== probeRead.url);
+                    if (candidates.length === 0) {
+                        catalogue.stop();
+                        throw probeRead.error;
+                    }
+                } else {
+                    const fallback = thinVisits(visits, maxHeaders);
+                    if (!probeRead.url || fallback.some((frame) => frame.url === probeRead.url)) {
+                        candidates = fallback;
+                    } else {
+                        candidates = thinVisits(visits, Math.max(0, maxHeaders - 1));
+                        const urls = new Set([probeRead.url, ...candidates.map((frame) => frame.url)]);
+                        const budget = Math.min(maxHeaders, new Set(onDetector.map((frame) => frame.url)).size);
+                        for (const frame of [...fallback, ...onDetector]) {
+                            if (urls.size >= budget) {
+                                break;
+                            }
+                            if (!urls.has(frame.url)) {
+                                candidates.push(frame);
+                                urls.add(frame.url);
+                            }
+                        }
+                        if (candidates.length === 0) {
+                            candidates = onDetector.filter((frame) => frame.url === probeRead.url).slice(0, 1);
+                        }
+                        candidates.sort((a, b) => a.tMin - b.tMin);
+                    }
+                }
             }
             if (candidates.length < onDetector.length) {
                 notes.push(`Read ${candidates.length} of ${onDetector.length} frames to keep loading quick.`);
             }
             let done = 0;
+            let unreadable = 0;
+            let firstError: unknown;
             const total = candidates.length;
             req.onProgress?.({ stage: 'headers', done, total });
             const infos = await mapLimit(candidates, opts.concurrency ?? 4, async (record): Promise<FrameInfo | undefined> => {
-                req.signal?.throwIfAborted();
-                const index = await reader.index(record.url, req.signal);
-                const header = index.hdu('IMAGE').header;
-                const wcs = makeWcs(wcsFromHeader(header));
-                const look = lookPoint(target, req, record);
-                const pix = safeSkyToPix(wcs, look);
+                let info: FrameInfo | undefined;
+                try {
+                    req.signal?.throwIfAborted();
+                    const index = await reader.index(record.url, req.signal);
+                    const header = index.hdu('IMAGE').header;
+                    const wcs = makeWcs(wcsFromHeader(header));
+                    const look = lookPoint(target, req, record);
+                    const pix = safeSkyToPix(wcs, look);
+                    if (pix && inside(pix, wcs.params.naxis, EDGE_MARGIN_PX)) {
+                        const wave = await reader.readWaveGrid(index, req.signal);
+                        const sample = sampleWave(wave, pix);
+                        const version = header.get('PIPEVERS') ?? header.get('VERSION');
+                        const full: FrameRecord = typeof version === 'string' ? { ...record, pipelineVersion: version } : record;
+                        info = {
+                            record: full,
+                            wcs,
+                            wave,
+                            lambda: sample.lambda,
+                            bandwidth: sample.bandwidth,
+                            async loadCutout(box: PixelBox, signal?: AbortSignal): Promise<Cutout>
+                            {
+                                const [image, zodi] = await Promise.all([
+                                    reader.readFloat32(index, 'IMAGE', box, signal),
+                                    reader.readFloat32(index, 'ZODI', box, signal),
+                                ]);
+                                return {
+                                    frame: full, box, width: box.x1 - box.x0, height: box.y1 - box.y0,
+                                    image, zodi, wcs: wcs.params, wave, header,
+                                };
+                            },
+                        };
+                        if (target) {
+                            info.trackSky = look;
+                        }
+                    }
+                } catch (err) {
+                    if (req.signal?.aborted) {
+                        throw err;
+                    }
+                    if (unreadable === 0) {
+                        firstError = err;
+                    }
+                    unreadable++;
+                }
                 done++;
                 req.onProgress?.({ stage: 'headers', done, total });
-                if (!pix || !inside(pix, wcs.params.naxis, EDGE_MARGIN_PX)) {
-                    return undefined;
-                }
-                const wave = await reader.readWaveGrid(index, req.signal);
-                const sample = sampleWave(wave, pix);
-                const version = header.get('PIPEVERS') ?? header.get('VERSION');
-                const full: FrameRecord = typeof version === 'string' ? { ...record, pipelineVersion: version } : record;
-                const info: FrameInfo = {
-                    record: full,
-                    wcs,
-                    wave,
-                    lambda: sample.lambda,
-                    bandwidth: sample.bandwidth,
-                    async loadCutout(box: PixelBox, signal?: AbortSignal): Promise<Cutout>
-                    {
-                        const [image, zodi] = await Promise.all([
-                            reader.readFloat32(index, 'IMAGE', box, signal),
-                            reader.readFloat32(index, 'ZODI', box, signal),
-                        ]);
-                        return {
-                            frame: full, box, width: box.x1 - box.x0, height: box.y1 - box.y0,
-                            image, zodi, wcs: wcs.params, wave, header,
-                        };
-                    },
-                };
-                if (target) {
-                    info.trackSky = look;
-                }
                 return info;
             });
+            if (unreadable > 0) {
+                if (unreadable === candidates.length) {
+                    catalogue.stop();
+                    throw firstError;
+                }
+                notes.push(`${plural(unreadable, 'frame')} could not be read.`);
+            }
             const usable = infos.filter((f): f is FrameInfo => f !== undefined);
-            if (usable.length < candidates.length) {
-                notes.push(`${plural(candidates.length - usable.length, 'frame')} left out: the spot is at the detector edge.`);
+            const atEdge = candidates.length - usable.length - unreadable;
+            if (atEdge > 0) {
+                notes.push(`${plural(atEdge, 'frame')} left out: the spot is at the detector edge.`);
             }
             const core = await assemble(req, usable, visits, opts, notes, skippedVisits);
             // The picture is ready: give a slow catalogue a short grace time, then go on without it.
