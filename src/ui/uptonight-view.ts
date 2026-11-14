@@ -9,7 +9,12 @@ export function upTonightText(r: UpTonight | null, observer: Observer = MELBOURN
     if (r.maxAltDeg < -1) {
         return { line: `This spot never rises above the horizon from ${observer.name}.`, note: '' };
     }
-    const note = `Times are ${observer.name} time. Dark means the Sun is more than ${Math.abs(DARK_SUN_ALT_DEG)}° below the horizon. This says where the spot is in the sky, not whether anything can be seen there.`;
+    const clock = new Intl.DateTimeFormat('en-GB', { timeZone: observer.timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    // The dark hours are printed so a time after midnight is read as part of this night: the start is rounded up and
+    // the end down, so both printed minutes are dark.
+    const darkFrom = clock.format(new Date(Math.ceil(+r.darkStart / 60000) * 60000));
+    const darkTo = clock.format(new Date(Math.floor(+r.darkEnd / 60000) * 60000));
+    const note = `Times are ${observer.name} time. Dark means the Sun is more than ${Math.abs(DARK_SUN_ALT_DEG)}° below the horizon, here from ${darkFrom} to ${darkTo}. This says where the spot is in the sky, not whether anything can be seen there.`;
     const prefix = r.inside ? `For the rest of the night from ${observer.name}` : `Tonight from ${observer.name}`;
     if (r.bestAltDeg < -1) {
         return { line: `${prefix}: below the horizon while it is dark.`, note };
@@ -18,8 +23,7 @@ export function upTonightText(r: UpTonight | null, observer: Observer = MELBOURN
     const latest = Math.floor(+r.darkEnd / 60000) * 60000;
     const rounded = Math.round(+r.best / 60000) * 60000;
     const bounded = earliest > latest ? latest : Math.max(earliest, Math.min(latest, rounded));
-    const time = new Intl.DateTimeFormat('en-GB', { timeZone: observer.timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-        .format(new Date(bounded));
+    const time = clock.format(new Date(bounded));
     const altitude = Math.round(r.bestAltDeg) || 0;
     const directions = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
     const direction = directions[Math.floor((((r.bestAzDeg % 360) + 360) % 360 + 22.5) / 45) % 8];

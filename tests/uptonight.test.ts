@@ -54,7 +54,7 @@ describe('astropy fixture', () => {
 
 describe('sentences', () => {
     const base: UpTonight = { darkStart: new Date('2026-11-14T09:00:00Z'), from: new Date('2026-11-14T09:00:00Z'), darkEnd: new Date('2026-11-14T18:30:00Z'), best: new Date('2026-11-14T10:14:00Z'), bestAltDeg: 15, bestAzDeg: 0, maxAltDeg: 20, inside: false, sinking: false };
-    const note = 'Times are Melbourne time. Dark means the Sun is more than 12° below the horizon. This says where the spot is in the sky, not whether anything can be seen there.';
+    const note = 'Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 20:00 to 05:30. This says where the spot is in the sky, not whether anything can be seen there.';
     const cases: [string, Partial<UpTonight>, string, string][] = [
         ['never rises', { maxAltDeg: -2 }, 'This spot never rises above the horizon from Melbourne.', ''],
         ['below', { bestAltDeg: -2 }, 'Tonight from Melbourne: below the horizon while it is dark.', note],
@@ -129,6 +129,14 @@ describe('sentences', () => {
             }
         }
         expect(said).toBeGreaterThan(100);
+    });
+    it('prints the dark hours in the note, start rounded up and end rounded down', () => {
+        const text = upTonightText({ ...base, darkStart: new Date('2026-11-14T09:00:20Z'), darkEnd: new Date('2026-11-14T18:29:59Z') })!;
+        expect(text.note).toContain('here from 20:01 to 05:29.');
+        const real = upTonight(76.95652603458333, 30.401438173888888, new Date('2026-11-15T18:30:00Z'))!;
+        const said = upTonightText(real)!;
+        expect(said.line).toMatch(/^Tonight from Melbourne: highest in the dark at 02:4\d/);
+        expect(said.note).toMatch(/here from 21:1\d to 04:5\d\./);
     });
     it('formats daylight saving, directions and rounded zero', () => {
         expect(upTonightText(base)!.line).toContain('21:14');
