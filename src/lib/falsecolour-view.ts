@@ -1,5 +1,5 @@
 import { colourAt, falseColourLegend, falseColourRgba, FalseColourError, pairStretch, type ColourAt } from './falsecolour';
-import { stackVisit } from './stack';
+import { frameBackground, stackVisit } from './stack';
 import { aperture, resampleNoiseScale } from './photometry';
 import { ringsAt } from './gaia';
 import { mjdToDate, type SkyResult } from './source';
@@ -199,24 +199,38 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     const available = [Number.isFinite(reading.short) && !noNoise[0], Number.isFinite(reading.long) && !noNoise[1]];
     const stackSeen = [reading.seen === 'short' || reading.seen === 'both', reading.seen === 'long' || reading.seen === 'both'];
     const bandList = [short, long];
-    const agreement = bandList.map((band, i) => {
-        if (!available[i] || !stackSeen[i] || band.frames.length === 1) {
-            return band.frames.length === 1 && stackSeen[i] ? 1 : 0;
+    const checks = bandList.map((band, i) => {
+        if (!available[i] || band.frames.length < 2) {
+            return { failure: '', strong: 0 };
         }
-        return band.frames.reduce((count, frame) => {
-            const ap = aperture(frame.data, grid.width, grid.height, at, { ...radii, noiseScale: resampleNoiseScale(grid.pixelArcsec) });
-            return count + (ap.valid && ap.sum > 0 && ap.snr >= MIN_COLOUR_SNR ? 1 : 0);
-        }, 0);
+        const measurements = band.frames.map(frame => aperture(frame.data, grid.width, grid.height, at,
+            { ...radii, noiseScale: resampleNoiseScale(grid.pixelArcsec) }));
+        const strong = measurements.filter(ap => ap.valid && ap.sum > 0 && ap.snr >= MIN_COLOUR_SNR).length;
+        if (!stackSeen[i]) {
+            return { failure: strong >= 2 ? 'changed' : '', strong };
+        }
+        if (measurements.some(ap => !ap.valid || !Number.isFinite(ap.sum) || !Number.isFinite(ap.noise) || ap.noise <= 0)) {
+            return { failure: 'uncheckable', strong };
+        }
+        const strongest = measurements.reduce((best, ap, j) => ap.sum > measurements[best]!.sum ? j : best, 0);
+        const rest = measurements.filter((_, j) => j !== strongest);
+        const sum = rest.reduce((total, ap) => total + ap.sum, 0) / rest.length;
+        const noise = Math.sqrt(rest.reduce((total, ap) => total + ap.noise ** 2, 0)) / rest.length;
+        // A steady source at SNR 3 in N frames reads 3*sqrt((N-1)/N) with one omitted.
+        const holds = sum / noise >= MIN_COLOUR_SNR * Math.sqrt(rest.length / measurements.length);
+        return { failure: holds ? '' : 'strongest', strong };
     });
     const peakDistances = bandList.map((band, i) => {
-        if (!available[i]) { return NaN; }
+        if (!available[i] || !stackSeen[i] || checks[i]!.failure) { return NaN; }
         let brightest = -Infinity;
         let distance = NaN;
+        const offsets = band.frames.length === 2 ? band.frames.map(frame => frameBackground(frame.data)) : [];
         for (let y = Math.max(0, Math.ceil(at.y - radii.radius)); y <= Math.min(grid.height - 1, Math.floor(at.y + radii.radius)); y++) {
             for (let x = Math.max(0, Math.ceil(at.x - radii.radius)); x <= Math.min(grid.width - 1, Math.floor(at.x + radii.radius)); x++) {
                 const d = Math.hypot(x - at.x, y - at.y);
-                const value = band.data[y * grid.width + x]!;
-                if (d > radii.radius || !Number.isFinite(value) || !Number.isFinite(shownShort[y * grid.width + x]) || !Number.isFinite(shownLong[y * grid.width + x])) {
+                const p = y * grid.width + x;
+                const value = offsets.length === 2 ? Math.min(Math.fround(band.frames[0]!.data[p]! - offsets[0]!), Math.fround(band.frames[1]!.data[p]! - offsets[1]!)) : band.data[p]!;
+                if (d > radii.radius || !Number.isFinite(value)) {
                     continue;
                 }
                 // Equal values (a flat or clipped top) count as the one nearest the centre, not the first one scanned.
@@ -228,7 +242,7 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
         }
         return distance;
     });
-    const disagrees = bandList.map((band, i) => available[i] && stackSeen[i] && band.frames.length >= 2 && agreement[i]! < 2);
+    const disagrees = checks.map(check => Boolean(check.failure));
     // Only a band that counts as seen has light whose place means something: in noise the brightest pixel falls anywhere.
     const offCentre = peakDistances.map((d, i) => Boolean(available[i] && stackSeen[i] && !disagrees[i]) && d > OFF_CENTRE_ARCSEC);
     const singleSeen = bandList.map((band, i) => available[i] && stackSeen[i] && band.frames.length === 1);
@@ -240,36 +254,48 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
             }
             const peak = offCentre[i] ? `, brightest ${peakDistances[i]!.toFixed(1)}″ from the centre` : '';
             if (disagrees[i]) {
-                return `${wavelength} shows a signal in only ${agreement[i]} of ${band.frames.length} frames, so it is not counted as seen${peak}`;
+                if (checks[i]!.failure === 'uncheckable') {
+                    return `${wavelength} could not be checked frame by frame, so it is not counted as seen`;
+                }
+                if (checks[i]!.failure === 'changed') {
+                    return `${wavelength} shows a signal in ${checks[i]!.strong} of ${band.frames.length} frames but not in their average, so it is not counted as seen (it may have changed or moved, or be detector hits)`;
+                }
+                return `${wavelength} shows a signal that does not hold up without its strongest frame, so it is not counted as seen`;
             }
             if (stackSeen[i]) {
                 const ratio = i === 0 ? reading.snrShort : reading.snrLong;
                 return `seen at ${wavelength} (signal-to-noise ${snr(ratio)}${singleSeen[i] ? ', one frame only, so a detector hit cannot be ruled out' : ''}${peak})`;
             }
-            return `no clear signal at ${wavelength} (clear means at least ${MIN_COLOUR_SNR} times the noise${peak})`;
+            return `no clear signal at ${wavelength} (clear means at least ${MIN_COLOUR_SNR} times the noise)`;
         });
         const seenBoth = stackSeen.every(Boolean) && available.every(Boolean) && !disagrees.some(Boolean);
         const offLabels = bandList.filter((_, i) => offCentre[i]).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
         const index = seenBoth && reading.valid && Number.isFinite(reading.index) && !offCentre.some(Boolean)
-            ? `; colour index ${signed(reading.index)}` : offCentre.some(Boolean)
-                ? `; no colour index is given because the light is not centred at ${offLabels}` : '';
+            ? `; colour index ${signed(reading.index)}` : seenBoth && offCentre.some(Boolean)
+                ? `; no colour index is given because the brightest point is not at the centre at ${offLabels}` : '';
         parts.reading = `At the centre: ${descriptions.join('; ')}${index}.`;
         if (!index.startsWith('; colour index ')) {
             parts.method = parts.method.replace('The colour index is (long − short) / (long + short) of the two brightness sums. ', '');
         }
     }
-    const catalogue = [a, b].find(result => result.stars?.length > 0)
-        ?? [a, b].find(result => Array.isArray(result.stars) && !result.notes.includes('Gaia stars are not available for this view.'));
+    const catalogue = [a, b].find(result => result.stars?.length > 0);
     if (parts.method) {
-        const radius = (radii.radius * grid.pixelArcsec).toFixed(0);
+        parts.method += " Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it.";
+        if (/colour index [−+\d]/.test(parts.reading)) {
+            parts.method += ` The index is given only when each colour's brightest point is within ${OFF_CENTRE_ARCSEC.toFixed(1)}″ of the centre.`;
+        }
+        const radius = (radii.radius * grid.pixelArcsec).toFixed(1);
         if (!catalogue) {
             parts.method += ` The reading adds up all light within ${radius}″ of the centre, so it can include a neighbour.`;
         } else {
-            const times = [...short.times, ...long.times].flat().filter(Number.isFinite);
-            const mjd = times.length ? (Math.min(...times) + Math.max(...times)) / 2 : NaN;
-            const positions = Number.isFinite(mjd) ? ringsAt(catalogue.stars, grid, mjd).map(ring => ring.pix) : catalogue.stars.map(star => star.pix);
+            const times = [...new Set([...short.times, ...long.times].map(([start, end]) => (start + end) / 2).filter(Number.isFinite))];
             // Include the boundary, allowing for round-off in the sky-to-grid projection.
-            const distances = positions.map(p => Math.hypot(p.x - at.x, p.y - at.y)).filter(d => d <= radii.radius + 1e-9).sort((x, y) => x - y);
+            const positions = times.length ? times.map(mjd => new Map(ringsAt(catalogue.stars, grid, mjd).map(ring => [ring.sourceId, ring.pix]))) : [];
+            const distances = catalogue.stars.map(star => {
+                const points = positions.length ? positions.flatMap(map => { const p = map.get(star.sourceId); return p ? [p] : []; }) : [star.pix];
+                return Math.min(...points.map(p => Math.hypot(p.x - at.x, p.y - at.y)));
+            })
+                .filter(d => d <= radii.radius + 1e-9).sort((x, y) => x - y);
             // The page's list is cut to the brighter Gaia stars (gaia.ts), so "none on the list" is not "nothing there".
             const stars = distances.length === 0 ? 'none of the Gaia stars this page loads lies inside that circle'
                 : distances.length === 1 ? `1 of the Gaia stars this page loads lies inside that circle, ${(distances[0]! * grid.pixelArcsec).toFixed(1)}″ from the centre`
@@ -278,16 +304,20 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
         }
     }
     const label = (name: string, band: typeof short) => {
-        const suffix = band.leftOut ? `; ${band.leftOut} more left out (they cover less of this view)` : '';
+        const suffix = band.leftOut ? `; ${band.leftOut} more left out (${band.leftOut === 1 ? 'it does' : 'they do'} not share enough of this view with the frames used)` : '';
         return `${name}, ${band.times.length} ${band.times.length === 1 ? 'frame' : 'frames'}, ${dates(band.times)}${suffix}.`;
     };
     const legend = falseColourLegend(short.lambda, long.lambda);
     parts.labels = `${label(legend.blue, short)} ${label(legend.red, long)}`;
     if (short.unpainted || long.unpainted) {
-        parts.note += ' In each band, parts not covered by every frame are left unpainted.';
+        parts.note += ' A pixel is painted only where every frame of both colours covers it.';
     }
     if (short.frames.length < 3 || long.frames.length < 3) {
-        parts.note += ' With fewer than 3 frames, a detector hit in a single frame cannot be rejected from the picture.';
+        const wavelengths = bandList.filter(band => band.frames.length < 3).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
+        parts.note += ` With fewer than 3 frames at ${wavelengths}, a detector hit in a single frame cannot be rejected from the picture.`;
+    }
+    if (bandList.some(band => band.frames.length >= 3)) {
+        parts.note += ' A value that stands out in only one or a few of the frames may be left out, so something that flared or moved may be missing from this picture.';
     }
     return { rgba, width: grid.width, height: grid.height, parts, sentence: Object.values(parts).filter(Boolean).join(' ') };
 }

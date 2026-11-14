@@ -86,7 +86,7 @@ function sortedMedian(buf: Float32Array, m: number): number
 }
 
 // Median of a frame's finite pixels after one 3-sigma clip about the median.
-function frameBackground(data: Float32Array): number
+export function frameBackground(data: Float32Array): number
 {
     let count = 0;
     for (let i = 0; i < data.length; i++) {
