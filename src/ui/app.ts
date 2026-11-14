@@ -1029,17 +1029,19 @@ export function mount(root: HTMLElement): void
             : '';
         if (kind === 'mover') {
             return blankText
-                ? { not: `Its centre is too bright for the camera in ${blankText}, so its position is rough, to about one pixel.` }
+                ? { not: `Its centre has no value in ${blankText}, inside a bright glow, the way a star too bright for the camera shows. So its position is rough, to about one pixel.` }
                 : {};
         }
         if (kind === 'saturated') {
             return blankText
-                ? { not: `Its centre is too bright for the camera in ${blankText}, so the centre cannot be measured. The glow around it can.` }
+                ? { not: `Its centre has no value in ${blankText}, inside a bright glow, the way a star too bright for the camera shows. So the centre cannot be measured; the glow around it can.` }
                 : { not: 'Its centre may be too bright for the camera, so treat any change at the centre with care.' };
         }
         if (kind === 'variable' && curve) {
-            const rel = curve.lc.points.filter((p) => p.valid && Number.isFinite(p.relative)).map((p) => p.relative);
-            if (rel.length >= 2 && Math.min(...rel) <= 0) {
+            const valid = curve.lc.points.filter((p) => p.valid && Number.isFinite(p.relative));
+            const rel = valid.map((p) => p.relative);
+            // Ratios only mean something when the star itself is seen above the sky in every look.
+            if (rel.length >= 2 && (Math.min(...rel) <= 0 || valid.some((p) => !(p.target.sum > 0)))) {
                 return { fact: `Across ${rel.length} looks it fades to nothing measurable in at least one, against ${curve.refs} comparison stars.` };
             }
             if (rel.length >= 2) {
