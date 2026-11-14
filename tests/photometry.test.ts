@@ -137,6 +137,17 @@ function sparseAperture(values: number[])
 }
 
 describe('aperture', () => {
+    it('includes median sky uncertainty and a caller-supplied noise scale', () => {
+        const { data, size, at } = sparseRing(Array.from({ length: 40 }, (_, i) => i % 2 ? 2 : 0));
+        const opts = { radius: 1, annulusIn: 2, annulusOut: 4 };
+        data[at.y * size + at.x] = 11;
+        const expected = 10 / (1.4826 * Math.sqrt(5 * (1 + Math.PI / 2 * 5 / 40)));
+        expect(aperture(data, size, size, at, opts).snr).toBeCloseTo(expected, 12);
+        expect(aperture(data, size, size, at, { ...opts, noiseScale: 2 }).snr).toBeCloseTo(expected / 2, 12);
+        for (const noiseScale of [0.99, NaN, Infinity]) {
+            expect(() => aperture(data, size, size, at, { ...opts, noiseScale })).toThrow(PhotometryError);
+        }
+    });
     it('recovers known Gaussian flux and sky with seeded noise', () => {
         const at = { x: 60.37, y: 41.81 };
         const measured = aperture(image([{ ...at, flux: 2000 }]), width, height, at);
@@ -306,6 +317,29 @@ describe('toJy', () => {
 });
 
 describe('lightCurve', () => {
+    it('scales correlated noise for finer grids and respects an explicit override', () => {
+        const native = frame(0);
+        native.grid.pixelArcsec = 6.15;
+        const fine = { ...native, grid: { ...native.grid, pixelArcsec: 3.075 } };
+        const a = lightCurve([native], target, refs).points[0]!.target.snr;
+        expect(lightCurve([fine], target, refs).points[0]!.target.snr).toBeCloseTo(a / 2, 10);
+        expect(lightCurve([fine], target, refs, { noiseScale: 1 }).points[0]!.target.snr).toBeCloseTo(a, 10);
+    });
+
+    it('uses sample reference scatter and requires two ratios', () => {
+        const controls = refs.slice(0, 2);
+        const make = (ratio: number, index: number): RegriddedFrame => {
+            const f = frame(index);
+            f.data.fill(0);
+            f.data[47 * width + 48] = 10;
+            f.data[45 * width + 112] = ratio * 100;
+            f.data[119 * width + 48] = 100;
+            return f;
+        };
+        const frames = [make(0.9, 0), make(1.1, 1)];
+        expect(lightCurve(frames, target, controls).refScatter[0]).toBeCloseTo(Math.sqrt(0.02), 6);
+        expect(lightCurve(frames.slice(0, 1), target, controls).refScatter[0]).toBeNaN();
+    });
     it('recovers a 1.5x target step while gains and skies change and reference controls stay flat', () => {
         const frames = sixFrames();
         const shuffled = [frames[4]!, frames[0]!, frames[5]!, frames[2]!, frames[1]!, frames[3]!];
@@ -437,7 +471,7 @@ describe('lightCurve', () => {
         for (let i = 0; i < 2; i++) {
             const ratios = first.map((sum, j) => i === 0 ? sum / second[j]! : second[j]! / sum);
             const middle = [...ratios].sort((a, b) => a - b)[1]!;
-            const rms = Math.sqrt(ratios.reduce((sum, value) => sum + (value / middle - 1) ** 2, 0) / ratios.length);
+            const rms = Math.sqrt(ratios.reduce((sum, value) => sum + (value / middle - 1) ** 2, 0) / (ratios.length - 1));
             expect(curve.refScatter[i]).toBeCloseTo(rms, 12);
         }
     });

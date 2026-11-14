@@ -86,28 +86,46 @@ export function factSheet(f: InsightFacts): string[]
     const times = f.visits.map((v) => v.mjd);
     const match = name?.match(/^(\w+) J(\d{4}\d*(?:\.\d+)?)([-+−])(\d{4}\d*(?:\.\d+)?)$/i);
     const short = match ? `, also written ${match[1]} ${match[2]!.slice(0, 4)}${match[3]}${match[4]!.slice(0, 4)}` : '';
-    const lines = [`Target: ${name ?? 'a position typed in by the visitor'}${short}.`, `Position: RA ${f.ra.toFixed(4)} deg, Dec ${f.dec.toFixed(4)} deg.`, `Wavelength: ${f.lambdaUm.toFixed(3)} micron.`, `Visits: ${f.visits.length}. Frames in each visit: ${f.visits.map((v) => v.frames).join(', ')}. Time from first to last visit: ${(Math.max(...times) - Math.min(...times)).toFixed(1)} days.`];
+    const frames = f.visits.map((v) => v.frames === 500 ? 'at least 500' : String(v.frames)).join(', ');
+    const lines = [`Target: ${name ?? 'a position typed in by the visitor'}${short}.`, `Position: RA ${f.ra.toFixed(4)} deg, Dec ${f.dec.toFixed(4)} deg.`, `Wavelength: ${f.lambdaUm.toFixed(3)} micron.`, `Visits: ${f.visits.length} shown. Frames in each visit: ${frames}. Time from first to last visit: ${(Math.max(...times) - Math.min(...times)).toFixed(1)} days.`];
     if (f.lightCurve) {
         const lc = f.lightCurve;
-        const values = [...lc.points].sort((a, b) => a.mjd - b.mjd).map((p) => p.relative);
-        const sorted = [...values].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        const median = sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
-        const furthest = values.reduce((a, b) => Math.abs(b - median) > Math.abs(a - median) ? b : a);
-        lines.push(`Brightness relative to the reference stars, in time order: ${values.map((n) => n.toFixed(2)).join(', ')}.`);
-        if (median !== 0) {
-            const change = (furthest / median - 1) * 100;
-            lines.push(`Largest change from the median brightness: ${Math.abs(change).toFixed(0)} percent ${change <= 0 ? 'dimmer' : 'brighter'}.`);
+        const values = lc.points.filter((p) => p.snr >= 1).sort((a, b) => a.mjd - b.mjd).map((p) => p.relative);
+        if (values.length >= 2) {
+            const sorted = [...values].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+            lines.push(`Brightness relative to the reference stars, in time order: ${values.map((n) => n.toFixed(2)).join(', ')}.`);
+            if (median !== 0) {
+                const below = median - sorted[0]!;
+                const above = sorted[sorted.length - 1]! - median;
+                const change = Math.max(below, above) / median * 100;
+                const amount = change.toFixed(0);
+                const equal = Math.abs(above - below) <= Number.EPSILON * Math.max(1, Math.abs(median), above, below) * 4;
+                const description = amount === '0' ? 'less than 1 percent' : `${amount} percent ${equal ? 'either side' : below > above ? 'dimmer' : 'brighter'}`;
+                lines.push(`Largest change from the median brightness: ${description}.`);
+            }
         }
-        lines.push(`Lowest signal-to-noise among the points: ${Math.min(...lc.points.map((p) => p.snr)).toFixed(0)}.`, lc.refScatter.length ? `Reference stars: ${lc.refScatter.length}. Scatter of each: ${lc.refScatter.map((n) => (n * 100).toFixed(1)).join(', ')} percent.` : 'Reference stars: none, so the brightness change has no control.', `Frames left out because their wavelength did not match: ${lc.dropped}.`);
+        const snr = Math.min(...lc.points.map((p) => p.snr));
+        const snrText = snr > 100 ? 'more than 100' : snr < 1 ? 'below 1' : snr.toFixed(0);
+        const scatter = lc.refScatter.filter(Number.isFinite);
+        lines.push(`Lowest signal-to-noise among the points: ${snrText}. This counts sky noise only, so the real uncertainty is larger.`, scatter.length ? `Reference stars: ${scatter.length} with available scatter. Scatter of each: ${scatter.map((n) => (n * 100).toFixed(1)).join(', ')} percent.` : 'Reference stars: scatter unavailable.', `Frames left out because their wavelength did not match: ${lc.dropped}.`);
     }
     if (f.difference) {
-        lines.push(`Difference image at the target: ${Math.abs(f.difference.peakSigma).toFixed(1)} sigma, ${f.difference.peakSigma >= 0 ? 'brighter' : 'fainter'} in the later visit.`);
+        const peak = Math.abs(f.difference.peakSigma);
+        if (peak.toFixed(1) === '0.0') {
+            lines.push('Difference image at the target: no change above the noise.');
+        } else {
+            const value = peak > 100 ? 'more than 100' : peak.toFixed(1);
+            const caution = peak >= 5 ? ' A bright star leaves marks this strong from a tiny misalignment, and a star that moved leaves a bright side and a dark side.' : '';
+            lines.push(`Difference image at the target: strongest pixel ${value} sigma, ${f.difference.peakSigma >= 0 ? 'brighter' : 'fainter'} there in the later visit.${caution}`);
+        }
     }
     if (f.motion) {
-        lines.push(`Shift in position: ${f.motion.arcsec.toFixed(1)} arcsec over ${f.motion.days.toFixed(1)} days.`);
+        const shift = f.motion.arcsec.toFixed(1);
+        lines.push(`Shift in position: ${shift === '0.0' ? 'none measured' : `${shift} arcsec`} over ${f.motion.days.toFixed(1)} days.`);
     }
-    lines.push(`Frames came from: ${f.snapshot ? 'the baked snapshot' : "NASA's live archive"}.`);
+    lines.push(`Frames came from: ${f.snapshot ? 'a saved copy' : "NASA's live archive"}.`);
     return lines;
 }
 type NumberFact = { value: number; integer: boolean; unit: string; words: RegExp; nouns?: RegExp; required?: RegExp };
@@ -183,7 +201,7 @@ function sheetFacts(sheet: string[]): NumberFact[]
 export function checkNote(text: string, sheet: string[]): { text: string; dropped: number }
 {
     const facts = sheetFacts(sheet);
-    const visitCount = Number(sheet.join('\n').match(/^Visits:\s*(\d+)\./m)?.[1] ?? 3);
+    const visitCount = Number(sheet.join('\n').match(/^Visits:\s*(\d+)(?: shown)?\./m)?.[1] ?? 3);
     const target = sheet.join('\n').match(/^Target:\s*(.+)\.$/m)?.[1];
     const dash = '[-\\u2010-\\u2015\\u2212]';
     const names: string[] = [];

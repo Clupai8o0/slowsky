@@ -4,6 +4,7 @@ export interface ApertureOptions {
     radius?: number;
     annulusIn?: number;
     annulusOut?: number;
+    noiseScale?: number;
 }
 
 export interface ApertureResult {
@@ -13,6 +14,7 @@ export interface ApertureResult {
     backgroundSigma: number;
     nPix: number;
     nSky: number;
+    /** Sky noise only; excludes stellar photon, flat-field and pointing noise, so bright-star SNR is an upper limit. */
     snr: number;
 }
 
@@ -56,16 +58,20 @@ function madSigma(values: number[], center: number): number
     return 1.4826 * median(values.map((value) => Math.abs(value - center)));
 }
 
-function checkOptions(opts: ApertureOptions): { radius: number; annulusIn: number; annulusOut: number }
+function checkOptions(opts: ApertureOptions): { radius: number; annulusIn: number; annulusOut: number; noiseScale: number }
 {
     const radius = opts.radius ?? 10;
     const annulusIn = opts.annulusIn ?? 16;
     const annulusOut = opts.annulusOut ?? 24;
+    const noiseScale = opts.noiseScale ?? 1;
     if (!Number.isFinite(radius) || radius <= 0 || !Number.isFinite(annulusIn) || annulusIn < radius
         || !Number.isFinite(annulusOut) || annulusOut <= annulusIn) {
         throw new PhotometryError('Require finite radii with 0 < radius <= annulusIn < annulusOut');
     }
-    return { radius, annulusIn, annulusOut };
+    if (!Number.isFinite(noiseScale) || noiseScale < 1) {
+        throw new PhotometryError('Noise scale must be finite and at least 1');
+    }
+    return { radius, annulusIn, annulusOut, noiseScale };
 }
 
 /** Whole pixel measurements; invalid sums are NaN and nSky counts the clipped ring. */
@@ -77,7 +83,7 @@ export function aperture(
     opts: ApertureOptions = {},
 ): ApertureResult
 {
-    const { radius, annulusIn, annulusOut } = checkOptions(opts);
+    const { radius, annulusIn, annulusOut, noiseScale } = checkOptions(opts);
     if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) {
         return {
             valid: false,
@@ -145,7 +151,8 @@ export function aperture(
     const backgroundSigma = madSigma(ring, background);
     valid = valid && nPix > 0 && nRing >= 20;
     const sum = valid ? total - nPix * background : Number.NaN;
-    const snr = valid && backgroundSigma > 0 ? sum / (backgroundSigma * Math.sqrt(nPix)) : 0;
+    const noise = backgroundSigma * Math.sqrt(nPix * (1 + Math.PI / 2 * nPix / nSky)) * noiseScale;
+    const snr = valid && Number.isFinite(noise) && noise > 0 ? sum / noise : 0;
     return { valid, sum, background, backgroundSigma, nPix, nSky, snr };
 }
 
@@ -210,6 +217,8 @@ export function toJy(sum: number, pixelArcsec: number): number
     return sum * 1e6 * pixelArcsec ** 2 * 2.3504430539e-11;
 }
 
+const NATIVE_PIXEL_ARCSEC = 6.15;
+
 /** Moving targets receive the index in the original input, before filtering/sorting. */
 export function lightCurve(
     frames: RegriddedFrame[],
@@ -250,8 +259,9 @@ export function lightCurve(
     const refRatios: number[][] = refs.length >= 2 ? refs.map(() => []) : [];
     for (const { frame: f, index } of kept) {
         const at = typeof target === 'function' ? target(f, index) : target;
-        const measured = aperture(f.data, f.grid.width, f.grid.height, at, opts);
-        const referenceResults = refs.map((ref) => aperture(f.data, f.grid.width, f.grid.height, ref, opts));
+        const apertureOpts = { ...opts, noiseScale: opts.noiseScale ?? Math.max(1, NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec) };
+        const measured = aperture(f.data, f.grid.width, f.grid.height, at, apertureOpts);
+        const referenceResults = refs.map((ref) => aperture(f.data, f.grid.width, f.grid.height, ref, apertureOpts));
         const refSum = referenceResults.reduce((sum, ref) => sum + ref.sum, 0);
         const valid = measured.valid && referenceResults.every((ref) => ref.valid) && refSum > 0;
         points.push({
@@ -287,10 +297,10 @@ export function lightCurve(
     }
     const refScatter = refRatios.map((ratios) => {
         const middle = median(ratios);
-        if (!Number.isFinite(middle) || middle === 0) {
+        if (ratios.length < 2 || !Number.isFinite(middle) || middle === 0) {
             return Number.NaN;
         }
-        return Math.sqrt(ratios.reduce((sum, ratio) => sum + (ratio / middle - 1) ** 2, 0) / ratios.length);
+        return Math.sqrt(ratios.reduce((sum, ratio) => sum + (ratio / middle - 1) ** 2, 0) / (ratios.length - 1));
     });
     return { points, dropped: frames.length - kept.length, refScatter, lambda: reference };
 }

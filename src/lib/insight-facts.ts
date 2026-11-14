@@ -31,7 +31,7 @@ export interface FactsInput {
     lambdaUm: number;
     visits: RegriddedFrame[][];
     lightCurve?: FactsLightCurve;
-    difference?: FactsDifference; // StackResult users pass { data: stack.data, grid }
+    difference?: FactsDifference; // Later minus earlier; StackResult users pass { data: stack.data, grid }.
     shift?: { measuredArcsec: number; days: number };
     snapshot: boolean;
 }
@@ -159,7 +159,7 @@ function lightCurveSection(lc: FactsLightCurve | undefined): InsightFacts['light
     // Points outside what validateFacts allows are left out rather than clamped, so no value is altered.
     const points = lc.points
         .filter((p) => p.valid !== false && Number.isFinite(p.mjd) && Number.isFinite(p.relative) && Number.isFinite(p.target.snr))
-        .map((p) => ({ mjd: round(p.mjd, 4), relative: round(p.relative, 4), snr: round(p.target.snr, 1) }))
+        .map((p) => ({ mjd: round(p.mjd, 4), relative: round(p.relative, 4), snr: p.target.snr }))
         .filter((p) => p.mjd >= MJD_MIN && p.mjd <= MJD_MAX && p.relative >= 0 && p.relative <= 100 && p.snr >= -1000 && p.snr <= 100000)
         .sort((a, b) => a.mjd - b.mjd);
     if (!points.length) {

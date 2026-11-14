@@ -288,7 +288,7 @@ describe('mountAiNote', () => {
         expect(doc.el('out').textContent).toContain('<img src=x onerror=alert(1)>');
         expect(doc.el('given').hidden).toBe(false);
         expect(doc.el('givenList').children.length).toBeGreaterThan(3);
-        expect(doc.el('givenList').textContent).toContain('Visits: 2.');
+        expect(doc.el('givenList').textContent).toContain('Visits: 2 shown.');
         expect(doc.el('disc').textContent).toContain('Claude Opus 5.5');
         expect(doc.el('left').textContent).toBe('4 AI notes left today');
         expect(fetchCalls.at(-1)?.passcode).toBeUndefined();
