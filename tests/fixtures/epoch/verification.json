@@ -1,0 +1,121 @@
+{
+  "date_utc": "2026-11-14",
+  "gate": {
+    "typecheck": "npx tsc --noEmit: exit 0",
+    "offline": "npx vitest run --configLoader runner tests/epoch.test.ts tests/healpix.test.ts: 43 passed, 1 live test skipped",
+    "live": "EPOCH_LIVE=1 npx vitest run --configLoader runner tests/epoch.test.ts: 37 passed, using the library default 10000 ms per-tile timeout",
+    "whole_suite_run": false,
+    "committed": false,
+    "decoder": "Test-only asynchronous, serial Pillow subprocesses: native 5000 ms deadline; queued launches stop and drain in a finally block."
+  },
+  "live_image": {
+    "width": 1201,
+    "height": 1201,
+    "pixel_arcsec": 1,
+    "order": 9,
+    "tiles": 19,
+    "missing": 0,
+    "stationary_stars": [
+      {
+        "gaia_dr3_source_id": "4472836460256445696",
+        "k": 6.495,
+        "pm_mas_yr": 3.398,
+        "offset_arcsec": 0.676,
+        "peak": 255,
+        "background": 55,
+        "connected_maximum_pixels": 106
+      },
+      {
+        "gaia_dr3_source_id": "4472819662645303296",
+        "k": 7.888,
+        "pm_mas_yr": 8.641,
+        "offset_arcsec": 0.395,
+        "peak": 255,
+        "background": 28,
+        "connected_maximum_pixels": 48
+      }
+    ],
+    "stationary_query_endpoint": "https://gea.esac.esa.int/tap-server/tap/sync",
+    "stationary_query_location": "tests/epoch.test.ts GAIA_QUERY; printed by the live test",
+    "barnard": {
+      "gaia_dr3_source_id": "4472832130942575872",
+      "reference": "barnard-gaia.json",
+      "track_years": [
+        1997.4,
+        2001.2
+      ],
+      "track_offset_arcsec": 0.386,
+      "separation_from_2026_arcsec": 265.306,
+      "implied_jyear_approx": 2000.5,
+      "representative_brightest_pixel": [
+        600,
+        595
+      ],
+      "peak": 255,
+      "background": 90,
+      "connected_maximum_pixels": 407,
+      "tie_rule": "Actual brightest pixel nearest the largest connected maximum plateau's centroid, computed from image values alone.",
+      "timing_caution": "The implied date is a position along the proper-motion track, not an observing-date measurement. Bright cores are saturated in the display-stretched JPEG.",
+      "repository_snapshot_crosscheck": "targets.ts is labelled SIMBAD epoch2000; checked against independent ESA Gaia DR3 astrometry with the repo positionAt function. Separations at 1997.4, 2001.2,2026 are all under0.5arcsec."
+    },
+    "tile_urls": [
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2033989.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2033990.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2033991.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2033996.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2033997.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2033998.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2033999.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034000.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034002.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034003.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034008.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034009.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034010.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034011.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034012.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034014.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034021.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034032.jpg",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034033.jpg"
+    ]
+  },
+  "mutations": [
+    {
+      "change": "Flip FITS/JPEG tile row order",
+      "failing_test": "FITS and JPEG row orders put the same asymmetric sources in the same output pixels",
+      "exit": 1
+    },
+    {
+      "change": "Swap east/west in output sampling",
+      "failing_test": "places a source 30 arcsec north above centre and 30 arcsec east to the left",
+      "exit": 1
+    },
+    {
+      "change": "Use pixel order+1",
+      "failing_test": "independent sky mapping (all 12 RA-wrap/polar/size combinations fail)",
+      "exit": 1
+    }
+  ],
+  "limitations": [
+    "Only JPEG is advertised for the selected K HiPS source; its FITS URL returned404. JPEG/PNG samples are display intensities, not calibrated physical flux.",
+    "No licence field was found in the selected K properties file; no licence was inferred.",
+    "K tile first request3.159372sec, repeat1.687541sec with CORS*. The timing requirement passed on repeat; this is not a latency guarantee.",
+    "FITS row order is checked against HiPS1.0 figure4 and synthetic FITS tiles; no live K FITS tile was available.",
+    "Claims coordination could not acquire its shared git-directory lock in this sandbox. Only the user-allowed lane files were edited."
+  ],
+  "review": {
+    "opus": "Opus 5.5 high reviewed library and tests; no geometry, rotation or FITS decoding defect. Raised timeout, tagged display values, bounded peak search, rounded implied date.",
+    "codex": "Astra independent review; stationary/plateau/queue findings fixed; final read-only recheck reports no residual findings."
+  },
+  "cleanup": {
+    "state": "manual cleanup required",
+    "stalled_run": "/tmp/epoch-live-default.log",
+    "node_pids": [
+      73184,
+      73356
+    ],
+    "detail": "Earlier synchronous-decoder test remains stalled. Both PIDs verified by unique log descriptors and this worktree cwd. STOP g127 blocks termination; acknowledgement failed because /Users/clupa/.local/state/claude-claims/guardrail-acks.json.lock is outside the writable sandbox. No guardrail bypass was attempted.",
+    "claims": "closeout reports inherited parent-session claims in other lanes; these were left untouched."
+  }
+}

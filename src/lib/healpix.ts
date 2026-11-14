@@ -99,3 +99,52 @@ export function healpixCenter(cell: number, order: number): SkyCoord
     const ra = ((meridian * radius + x - y) * 45 / radius % 360 + 360) % 360;
     return { ra, dec: Math.asin(z) * 180 / Math.PI };
 }
+
+/** HiPS 1.0, section 4.2.1, figure 4 (FITS corners S,W / E,N).
+ * https://www.ivoa.net/documents/HiPS/20170519/REC-HIPS-1.0-20170519.pdf
+ * The NESTED even bits run south->east, odd bits south->west. Thus tile
+ * columns take the odd bits; JPEG/PNG rows take the even bits. FITS flips rows.
+ */
+export function healpixTilePixel(cell: number, tileOrder: number, tileWidth: number,
+    format: 'fits' | 'jpeg' | 'png'): { npix: number; x: number; y: number }
+{
+    const shift = Math.log2(tileWidth);
+    side(tileOrder);
+    if (!Number.isInteger(shift) || shift < 0 || tileOrder + shift > 24) {
+        throw new RangeError('HiPS tile width must be a power of two within HEALPix order 24');
+    }
+    const count = tileWidth * tileWidth;
+    if (!Number.isSafeInteger(cell) || cell < 0 || cell >= 12 * 4 ** (tileOrder + shift)) {
+        throw new RangeError('Invalid HiPS pixel');
+    }
+    const code = cell % count;
+    let x = 0;
+    let row = 0;
+    for (let bit = 0; bit < shift; bit++) {
+        row += Math.floor(code / 4 ** bit) % 2 * 2 ** bit;
+        x += Math.floor(code / (2 * 4 ** bit)) % 2 * 2 ** bit;
+    }
+    return { npix: Math.floor(cell / count), x, y: format === 'fits' ? tileWidth - 1 - row : row };
+}
+
+/** Galactic longitude/latitude in the SkyCoord ra/dec slots, in degrees.
+ * Rotation of ICRS Cartesian axes into the Galactic frame, evaluated with
+ * astropy SkyCoord(..., frame='icrs').galactic for the three unit vectors.
+ * https://docs.astropy.org/en/stable/coordinates/transforming.html
+ */
+export function icrsToGalactic(c: SkyCoord): SkyCoord
+{
+    if (!Number.isFinite(c.ra) || !Number.isFinite(c.dec) || Math.abs(c.dec) > 90) {
+        throw new RangeError('Invalid ICRS coordinate');
+    }
+    const ra = ((c.ra % 360) + 360) % 360 * Math.PI / 180;
+    const dec = c.dec * Math.PI / 180;
+    const x = Math.cos(dec) * Math.cos(ra);
+    const y = Math.cos(dec) * Math.sin(ra);
+    const z = Math.sin(dec);
+    const gx = -0.05487565771259168 * x - 0.8734370519556163 * y - 0.4838350736167155 * z;
+    const gy = 0.4941094371927275 * x - 0.44482972122329517 * y + 0.7469821839866676 * z;
+    const gz = -0.8676661375596587 * x - 0.1980763372730008 * y + 0.45598381368730173 * z;
+    return { ra: (Math.atan2(gy, gx) * 180 / Math.PI + 360) % 360,
+        dec: Math.atan2(gz, Math.hypot(gx, gy)) * 180 / Math.PI };
+}

@@ -1,0 +1,210 @@
+{
+  "checked_utc": "2026-11-14T14:29:08.418795+00:00",
+  "origin": "https://slowsky.vercel.app",
+  "lists": [
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/list",
+      "status": 200,
+      "cors": "*"
+    },
+    {
+      "url": "https://skies.esac.esa.int/hipslist",
+      "status": 200,
+      "cors": "*",
+      "seconds": 2.032112042012159
+    }
+  ],
+  "candidates": [
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/properties",
+      "status": 200,
+      "cors": "*",
+      "seconds": 0.8411358750017826,
+      "properties": {
+        "hips_order": "9",
+        "hips_tile_width": "512",
+        "hips_tile_format": "jpeg",
+        "hips_frame": "equatorial",
+        "hips_pixel_scale": "2.236E-4",
+        "obs_title": "2MASS K (2.16um)",
+        "obs_copyright": "University of Massachusetts & IPAC/Caltech",
+        "obs_copyright_url": "http://www.ipac.caltech.edu/2mass/",
+        "em_min": "2.015E-6",
+        "em_max": "2.303E-6",
+        "t_min": "50600",
+        "t_max": "51941",
+        "hips_pixel_cut": "-0.5 40",
+        "hips_pixel_bitpix": "-32"
+      },
+      "licence_fields": {}
+    },
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/H/properties",
+      "status": 200,
+      "cors": "*",
+      "seconds": 0.8960875000047963,
+      "properties": {
+        "hips_order": "9",
+        "hips_tile_width": "512",
+        "hips_tile_format": "jpeg",
+        "hips_frame": "equatorial",
+        "hips_pixel_scale": "2.236E-4",
+        "obs_title": "2MASS H (1.66um)",
+        "obs_copyright": "University of Massachusetts & IPAC/Caltech",
+        "obs_copyright_url": "http://www.ipac.caltech.edu/2mass/",
+        "em_min": "1.525E-6",
+        "em_max": "1.798E-6",
+        "t_min": "50600",
+        "t_max": "51941",
+        "hips_pixel_cut": "-0.5 100",
+        "hips_pixel_bitpix": "-32"
+      },
+      "licence_fields": {}
+    },
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/J/properties",
+      "status": 200,
+      "cors": "*",
+      "seconds": 0.9076087919820566,
+      "properties": {
+        "hips_order": "9",
+        "hips_tile_width": "512",
+        "hips_tile_format": "jpeg",
+        "hips_frame": "equatorial",
+        "hips_pixel_scale": "2.236E-4",
+        "obs_title": "2MASS J (1.23um)",
+        "obs_copyright": "University of Massachusetts & IPAC/Caltech",
+        "obs_copyright_url": "http://www.ipac.caltech.edu/2mass/",
+        "em_min": "1.147E-6",
+        "em_max": "1.323E-6",
+        "t_min": "50600",
+        "t_max": "51941",
+        "hips_pixel_cut": "-0.5 40",
+        "hips_pixel_bitpix": "-32"
+      },
+      "licence_fields": {}
+    },
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/Color/properties",
+      "status": 200,
+      "cors": "*",
+      "seconds": 1.0490175840095617,
+      "properties": {
+        "hips_order": "9",
+        "hips_tile_width": "512",
+        "hips_tile_format": "jpeg",
+        "hips_frame": "equatorial",
+        "hips_pixel_scale": "2.236E-4",
+        "obs_title": "2MASS color J (1.23um), H (1.66um), K (2.16um)",
+        "obs_copyright": "University of Massachusetts & IPAC/Caltech",
+        "obs_copyright_url": "http://www.ipac.caltech.edu/2mass/",
+        "em_min": "1.147E-6",
+        "em_max": "2.303E-6",
+        "t_min": "50600",
+        "t_max": "51941",
+        "hips_pixel_cut": null,
+        "hips_pixel_bitpix": null
+      },
+      "licence_fields": {
+        "hips_license": "ODbL-1.0"
+      }
+    },
+    {
+      "url": "https://skies.esac.esa.int/2MASSColor/properties",
+      "status": 200,
+      "cors": "*",
+      "seconds": 2.125001999986125,
+      "properties": {
+        "hips_order": "9",
+        "hips_tile_width": "512",
+        "hips_tile_format": "jpeg",
+        "hips_frame": "equatorial",
+        "hips_pixel_scale": "2.236E-4",
+        "obs_title": "2MASS color J (1.23um), H (1.66um), K (2.16um)",
+        "obs_copyright": "University of Massachusetts & IPAC/Caltech",
+        "obs_copyright_url": "http://www.ipac.caltech.edu/2mass/",
+        "em_min": "1.147E-6",
+        "em_max": "2.303E-6",
+        "t_min": "50600",
+        "t_max": "51941",
+        "hips_pixel_cut": null,
+        "hips_pixel_bitpix": null
+      },
+      "licence_fields": {}
+    }
+  ],
+  "tiles": [
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034008.jpg",
+      "status": 200,
+      "cors": "*",
+      "seconds": 3.1593720839882735,
+      "bytes": 133036
+    },
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/H/Norder9/Dir2030000/Npix2034008.jpg",
+      "status": 200,
+      "cors": "*",
+      "seconds": 1.7351124580018222,
+      "bytes": 98138
+    },
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/J/Norder9/Dir2030000/Npix2034008.jpg",
+      "status": 200,
+      "cors": "*",
+      "seconds": 1.6620740419893991,
+      "bytes": 105272
+    },
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/Color/Norder9/Dir2030000/Npix2034008.jpg",
+      "status": 200,
+      "cors": "*",
+      "seconds": 1.8332060829852708,
+      "bytes": 116263
+    },
+    {
+      "url": "https://skies.esac.esa.int/2MASSColor/Norder9/Dir2030000/Npix2034008.jpg",
+      "status": 200,
+      "cors": "*",
+      "seconds": 1.9751962080190424,
+      "bytes": 116263
+    },
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034008.fits",
+      "status": 404,
+      "cors": "*",
+      "seconds": 0.885246958991047
+    },
+    {
+      "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/Norder9/Dir2030000/Npix2034008.jpg",
+      "status": 200,
+      "cors": "*",
+      "seconds": 1.687541,
+      "bytes": 133036,
+      "note": "Sequential repeat after initial 3.159372-second response; curl time_total includes full body."
+    }
+  ],
+  "choice": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/properties",
+  "epoch": {
+    "label": "2MASS survey: 1997-06-01–2001-02-01",
+    "t_min": 50600,
+    "t_max": 51941,
+    "utc_dates": [
+      "1997-06-01",
+      "2001-02-01"
+    ],
+    "url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/properties"
+  },
+  "credit": {
+    "text": "University of Massachusetts & IPAC/Caltech",
+    "url": "http://www.ipac.caltech.edu/2mass/",
+    "evidence_url": "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/properties"
+  },
+  "notes": [
+    "K FITS is not advertised and returned 404. K JPEG is display-stretched; not calibrated intensity.",
+    "No licence field is present in the selected K properties response. No licence is inferred.",
+    "ESA lists only 2MASS colour, not separate J/H/K. Missing properties are null; absent licence fields are an empty object.",
+    "An under-three-second repeat is measured, not a latency guarantee.",
+    "No forbidden service host was requested."
+  ]
+}
