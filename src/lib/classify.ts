@@ -4,9 +4,8 @@ export type ModelKind = 'mover' | 'brightness' | 'artifact' | 'nothing';
 
 type Tree = { value: number[] } | { feature: number; threshold: number; left: Tree; right: Tree };
 
-export interface ClassifierModel {
+interface ModelBase {
     version: 1;
-    architecture: 'gradient-boosted-trees-12';
     madeBy: string;
     aiNote: string;
     seed: number;
@@ -21,11 +20,32 @@ export interface ClassifierModel {
     };
     training: Record<string, unknown>;
     features: string[];
+}
+
+interface TreesModel extends ModelBase {
+    architecture: 'gradient-boosted-trees-12';
     trees: Tree[];
 }
 
+interface Layer {
+    weights: number[];
+    bias: number[];
+}
+
+interface CnnModel extends ModelBase {
+    architecture: 'cnn-3x3-gap-features-12-16-16';
+    inputTransform: 'median-asinh-5';
+    featureMean: number[];
+    featureScale: number[];
+    conv: Layer[];
+    dense: Layer[];
+}
+
+export type ClassifierModel = TreesModel | CnnModel;
+
 const KINDS: ModelKind[] = ['mover', 'brightness', 'artifact', 'nothing'];
 const ARCHITECTURE = 'gradient-boosted-trees-12';
+const CNN = 'cnn-3x3-gap-features-12-16-16';
 const PREPROCESS = 'twelve-morphology-flux-features';
 const FEATURES = ['logPeak', 'logArea', 'elongation', 'residualSharpness',
     'peakDistance', 'dipoleBalance', 'dipoleDistance', 'epochFluxRatio',
@@ -79,23 +99,42 @@ function treeFor(value: unknown, depth = 0): Tree
         left: treeFor(node.left, depth + 1), right: treeFor(node.right, depth + 1) };
 }
 
+function bounded(value: unknown, length: number, limit: number): number[]
+{
+    const values = numbers(value, length);
+    if (values.some((v) => Math.abs(v) > limit)) {
+        throw new Error('Classifier: unbounded neural coefficient');
+    }
+    return values;
+}
+
+function layersFor(value: unknown, dimensions: readonly (readonly [number, number])[], kernel: number): Layer[]
+{
+    if (!Array.isArray(value) || value.length !== dimensions.length) {
+        throw new Error('Classifier: invalid neural layer count');
+    }
+    return dimensions.map(([inputs, outputs], i) => {
+        const layer = object(value[i]);
+        return { weights: bounded(layer.weights, inputs * outputs * kernel, 1000),
+            bias: bounded(layer.bias, outputs, 1000) };
+    });
+}
+
 /** Parse once after a lazy fetch. Inference and sampling are DOM/Worker independent. */
 export function loadClassifier(json: unknown): ClassifierModel
 {
     const root = object(json), stamp = object(root.stamp), training = object(root.training);
-    if (root.version !== 1 || root.architecture !== ARCHITECTURE || !equals(root.classes, KINDS)
+    if (root.version !== 1 || typeof root.architecture !== 'string' || ![ARCHITECTURE, CNN].includes(root.architecture) || !equals(root.classes, KINDS)
         || typeof root.madeBy !== 'string' || !root.madeBy || typeof root.aiNote !== 'string'
         || typeof root.seed !== 'number' || !Number.isSafeInteger(root.seed)
         || stamp.size !== SIZE || stamp.layout !== 'CHW' || stamp.pixelArcsec !== NATIVE
         || !equals(stamp.channels, ['earlier', 'later', 'later-earlier'])
         || stamp.normalization !== 'difference-MAD-sigma' || stamp.preprocess !== PREPROCESS
-        || !equals(root.features, FEATURES) || !Array.isArray(root.trees)
-        || root.trees.length < 1 || root.trees.length > 256) {
+        || !equals(root.features, FEATURES)) {
         throw new Error('Classifier: unsupported model or stamp specification');
     }
     const counts = object(training.counts);
-    if (Object.keys(counts).length !== 5 || !Number.isInteger(training.rounds)
-        || training.rounds !== root.trees.length) {
+    if (Object.keys(counts).sort().join(',') !== 'barnard,epsindb,rdra,rwaur,wise0855') {
         throw new Error('Classifier: missing training provenance');
     }
     for (const targetCounts of Object.values(counts)) {
@@ -104,12 +143,30 @@ export function loadClassifier(json: unknown): ClassifierModel
             throw new Error('Classifier: invalid class counts');
         }
     }
-    const trees = root.trees.map((entry: unknown) => treeFor(entry));
-    return { version: 1, architecture: ARCHITECTURE, madeBy: root.madeBy,
+    const base: ModelBase = { version: 1, madeBy: root.madeBy,
         aiNote: root.aiNote, seed: root.seed, classes: KINDS.slice(),
         stamp: { size: SIZE, channels: ['earlier', 'later', 'later-earlier'], layout: 'CHW',
             pixelArcsec: NATIVE, normalization: 'difference-MAD-sigma', preprocess: PREPROCESS },
-        training: { ...training }, features: FEATURES.slice(), trees };
+        training: { ...training }, features: FEATURES.slice() };
+    if (root.architecture === ARCHITECTURE) {
+        if (!Array.isArray(root.trees) || root.trees.length < 1 || root.trees.length > 256
+            || !Number.isInteger(training.rounds) || training.rounds !== root.trees.length) {
+            throw new Error('Classifier: invalid tree count or training rounds');
+        }
+        return { ...base, architecture: ARCHITECTURE, trees: root.trees.map((entry: unknown) => treeFor(entry)) };
+    }
+    if (root.inputTransform !== 'median-asinh-5' || training.batchNormFolded !== true
+        || !Number.isInteger(training.epochs) || Number(training.epochs) < 1 || Number(training.epochs) > 30) {
+        throw new Error('Classifier: invalid neural preprocessing or training provenance');
+    }
+    const featureScale = bounded(root.featureScale, 12, 1e6);
+    if (featureScale.some((v) => v < 1e-6)) {
+        throw new Error('Classifier: invalid feature scale');
+    }
+    return { ...base, architecture: CNN, inputTransform: 'median-asinh-5',
+        featureMean: bounded(root.featureMean, 12, 1e6), featureScale,
+        conv: layersFor(root.conv, [[3, 12], [12, 16], [16, 16]], 9),
+        dense: layersFor(root.dense, [[28, 32], [32, 4]], 1) };
 }
 
 function bilinear(data: Float32Array, grid: OutputGrid, x: number, y: number): number | undefined
@@ -255,20 +312,98 @@ function featuresFor(stamp: Float32Array): number[]
         ratio, fractional, nearest, sourceSharp, ab / Math.sqrt(aa * bb + 1e-12)];
 }
 
-/** Twelve measured morphology/flux features and exported boosted trees. */
+function convolution(input: Float64Array, size: number, channels: number, layer: Layer): Float64Array
+{
+    const area = size * size, result = new Float64Array(layer.bias.length * area);
+    for (let out = 0; out < layer.bias.length; out++) {
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                let value = layer.bias[out]!;
+                for (let channel = 0; channel < channels; channel++) {
+                    const offset = (out * channels + channel) * 9;
+                    for (let ky = 0; ky < 3; ky++) {
+                        const sy = y + ky - 1;
+                        if (sy < 0 || sy >= size) {
+                            continue;
+                        }
+                        for (let kx = 0; kx < 3; kx++) {
+                            const sx = x + kx - 1;
+                            if (sx >= 0 && sx < size) {
+                                value += input[channel * area + sy * size + sx]! * layer.weights[offset + ky * 3 + kx]!;
+                            }
+                        }
+                    }
+                }
+                result[out * area + y * size + x] = Math.max(0, value);
+            }
+        }
+    }
+    return result;
+}
+
+function dense(input: readonly number[], layer: Layer): number[]
+{
+    return layer.bias.map((bias, out) => {
+        let result = bias;
+        for (let i = 0; i < input.length; i++) {
+            result += input[i]! * layer.weights[out * input.length + i]!;
+        }
+        return result;
+    });
+}
+
+function cnnLogits(model: CnnModel, stamp: Float32Array, features: number[]): number[]
+{
+    const normalized = new Float64Array(stamp.length);
+    for (let channel = 0; channel < 3; channel++) {
+        const start = channel * AREA, values = Array.from(stamp.subarray(start, start + AREA));
+        const median = values.slice().sort((a, b) => a - b)[112]!;
+        for (let i = 0; i < AREA; i++) {
+            normalized[start + i] = Math.asinh((values[i]! - median) / 5);
+        }
+    }
+    const first = convolution(normalized, 15, 3, model.conv[0]!);
+    const second = convolution(first, 15, 12, model.conv[1]!);
+    const pooled = new Float64Array(16 * 49);
+    for (let c = 0; c < 16; c++) {
+        for (let y = 0; y < 7; y++) {
+            for (let x = 0; x < 7; x++) {
+                const at = c * AREA + y * 2 * 15 + x * 2;
+                pooled[c * 49 + y * 7 + x] = Math.max(second[at]!, second[at + 1]!,
+                    second[at + 15]!, second[at + 16]!);
+            }
+        }
+    }
+    const last = convolution(pooled, 7, 16, model.conv[2]!);
+    const combined: number[] = [];
+    for (let c = 0; c < 16; c++) {
+        let sum = 0;
+        for (let i = 0; i < 49; i++) {
+            sum += last[c * 49 + i]!;
+        }
+        combined.push(sum / 49);
+    }
+    features.forEach((v, i) => combined.push((v - model.featureMean[i]!) / model.featureScale[i]!));
+    return dense(dense(combined, model.dense[0]!).map((v) => Math.max(0, v)), model.dense[1]!);
+}
+
+/** Twelve morphology/flux features; dispatch exported CNN or boosted trees. */
 export function classify(model: ClassifierModel, stamp: Float32Array): { kind: ModelKind; p: Record<ModelKind, number> }
 {
     if (stamp.length !== AREA * 3 || !stamp.every(Number.isFinite)) {
         throw new Error('Classifier: expected a finite 3x15x15 stamp');
     }
-    const features = featuresFor(stamp), logits = [0, 0, 0, 0];
-    for (const root of model.trees) {
-        let tree = root;
-        while (!('value' in tree)) {
-            tree = features[tree.feature]! <= tree.threshold ? tree.left : tree.right;
-        }
-        for (let c = 0; c < 4; c++) {
-            logits[c]! += tree.value[c]!;
+    const features = featuresFor(stamp);
+    const logits = model.architecture === CNN ? cnnLogits(model, stamp, features) : [0, 0, 0, 0];
+    if (model.architecture === ARCHITECTURE) {
+        for (const root of model.trees) {
+            let tree = root;
+            while (!('value' in tree)) {
+                tree = features[tree.feature]! <= tree.threshold ? tree.left : tree.right;
+            }
+            for (let c = 0; c < 4; c++) {
+                logits[c]! += tree.value[c]!;
+            }
         }
     }
     const maximum = Math.max(...logits), exp = logits.map((v) => Math.exp(v - maximum));

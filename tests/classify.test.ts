@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
+// @ts-expect-error Node types are not included in the browser TypeScript configuration.
+import { createHash } from 'node:crypto';
+// @ts-expect-error Node types are not included in the browser TypeScript configuration.
+import { readFileSync } from 'node:fs';
 import weights from '../public/models/change-classifier.json';
+import treeWeights from '../public/models/change-classifier-trees.json';
+import cnnWeightsAttempt from '../public/models/change-classifier-cnn.json';
 import parity from './fixtures/classify-parity.json';
 import evaluation from '../public/models/change-classifier.eval.json';
 import { classify, loadClassifier, stampFor } from '../src/lib/classify';
@@ -8,15 +14,51 @@ import type { OutputGrid } from '../src/lib/types';
 const grid: OutputGrid = { center: { ra: 0, dec: 0 }, fovDeg: 0.1,
     pixelArcsec: 6.15, width: 41, height: 41 };
 
+function cnnWeights()
+{
+    const layer = (inputs: number, outputs: number, kernel: number) => ({
+        weights: Array.from({ length: inputs * outputs * kernel }, () => 0),
+        bias: Array.from({ length: outputs }, () => 0),
+    });
+    return { ...treeWeights, architecture: 'cnn-3x3-gap-features-12-16-16',
+        inputTransform: 'median-asinh-5', featureMean: Array(12).fill(0) as number[],
+        featureScale: Array(12).fill(1) as number[],
+        conv: [layer(3, 12, 9), layer(12, 16, 9), layer(16, 16, 9)],
+        dense: [layer(28, 32, 1), { ...layer(32, 4, 1), bias: [0, 1, 2, 3] }],
+        training: { ...treeWeights.training, epochs: 20, batchNormFolded: true } };
+}
+
 describe('snapshot change classifier', () => {
-    it('validates the complete model and refuses malformed or incompatible weights', () => {
-        expect(loadClassifier(weights).classes).toEqual(['mover', 'brightness', 'artifact', 'nothing']);
-        for (const bad of [null, {}, { ...weights, classes: ['nothing'] },
-            { ...weights, stamp: { ...weights.stamp, pixelArcsec: 1 } },
-            { ...weights, trees: [] }, { ...weights, features: [] }]) {
+    it('dispatches folded CNN weights and rejects malformed neural layers', () => {
+        const cnn = cnnWeights();
+        const model = loadClassifier(cnn);
+        const result = classify(model, new Float32Array(675));
+        expect(result.kind).toBe('nothing');
+        expect(result.p.nothing).toBeCloseTo(Math.exp(3) / (1 + Math.exp(1) + Math.exp(2) + Math.exp(3)), 12);
+        for (const bad of [
+            { ...cnn, architecture: 'cnn-unknown' },
+            { ...cnn, architecture: [cnn.architecture] },
+            { ...cnn, conv: [] }, { ...cnn, dense: [] },
+            { ...cnn, featureScale: Array(12).fill(0) },
+            { ...cnn, featureMean: [NaN, ...Array(11).fill(0)] },
+            { ...cnn, inputTransform: 'unknown' },
+            { ...cnn, training: { ...cnn.training, batchNormFolded: false } },
+            { ...cnn, conv: [{ ...cnn.conv[0], weights: [1] }, ...cnn.conv.slice(1)] },
+            { ...cnn, dense: [cnn.dense[0], { ...cnn.dense[1], bias: [0, 1, 2, Infinity] }] },
+            { ...cnn, dense: [cnn.dense[0], { ...cnn.dense[1], bias: [0, 1, 2, 1e300] }] },
+        ]) {
             expect(() => loadClassifier(bad)).toThrow();
         }
-        const oneTree = { ...weights, training: { ...weights.training, rounds: 1 } };
+    });
+
+    it('validates the complete model and refuses malformed or incompatible weights', () => {
+        expect(loadClassifier(weights).classes).toEqual(['mover', 'brightness', 'artifact', 'nothing']);
+        for (const bad of [null, {}, { ...treeWeights, classes: ['nothing'] },
+            { ...treeWeights, stamp: { ...treeWeights.stamp, pixelArcsec: 1 } },
+            { ...treeWeights, trees: [] }, { ...treeWeights, features: [] }]) {
+            expect(() => loadClassifier(bad)).toThrow();
+        }
+        const oneTree = { ...treeWeights, training: { ...treeWeights.training, rounds: 1 } };
         expect(() => loadClassifier({ ...oneTree, trees: [{ value: [Infinity, 0, 0, 0] }] })).toThrow();
         expect(() => loadClassifier({ ...oneTree, trees: [{ value: [] }] })).toThrow();
         expect(() => loadClassifier({ ...oneTree, trees: [{ value: [1e300, 0, 0, 0] }] })).toThrow();
@@ -43,6 +85,52 @@ describe('snapshot change classifier', () => {
         invalid[1] = NaN;
         expect(() => classify(model, invalid)).toThrow();
         expect(classify(model, new Float32Array(675)).kind).toBe('nothing');
+    });
+
+    it('matches PyTorch for the CNN attempt and the unchanged phone fallback', () => {
+        for (const [json, cases] of [[treeWeights, parity.treeCases], [cnnWeightsAttempt, parity.cnnCases]] as const) {
+            const model = loadClassifier(json);
+            expect(cases).toHaveLength(20);
+            for (const sample of cases) {
+                const result = classify(model, Float32Array.from(sample.stamp));
+                model.classes.forEach((kind, i) => {
+                    expect(Math.abs(result.p[kind] - sample.probabilities[i]!)).toBeLessThan(1e-4);
+                });
+            }
+        }
+        const digest = (name: string) => createHash('sha256')
+            .update(readFileSync(new URL(`../public/models/${name}`, import.meta.url))).digest('hex');
+        expect(digest('change-classifier-trees.json'))
+            .toBe('891a06394934f650b7710f3ab6d1252eb6a9f7dabc42fcc189c41ec232831cc7');
+        expect(digest('change-classifier.json')).toBe(parity.modelSha256);
+        expect(digest('change-classifier-trees.json')).toBe(parity.treeModelSha256);
+        expect(digest('change-classifier-cnn.json')).toBe(parity.cnnModelSha256);
+    });
+
+    it('selects on training-target validation and records an honest neural gate', () => {
+        const attempt = evaluation.cnnAttempt;
+        expect(attempt.training.totalStamps).toBe(50_000);
+        expect(attempt.training.perTargetPerClass).toBe(2500);
+        expect(attempt.determinism.passed).toBe(true);
+        expect(attempt.determinism.hashes).toEqual([parity.cnnModelSha256, parity.cnnModelSha256]);
+        expect(attempt.folds).toHaveLength(5);
+        expect(evaluation.comparison).toHaveLength(5);
+        for (const fold of attempt.folds) {
+            expect(fold.trainTargets).not.toContain(fold.testTarget);
+            expect(fold.validationTargets).toEqual(fold.trainTargets);
+            expect(fold.heldOutEvaluations).toBe(1);
+            expect(fold.optimizerCount + fold.validationCount).toBe(fold.trainCount);
+            const best = Math.max(...fold.history.map((epoch) => epoch.validationMacroF1!));
+            expect(fold.bestValidationMacroF1).toBe(best);
+        }
+        expect(attempt.gate.passed).toBe(Object.values(attempt.gate.checks).every(Boolean));
+        if (attempt.gate.passed) {
+            expect(weights.architecture).toBe(cnnWeightsAttempt.architecture);
+            expect(attempt.meanFoldMetrics.macroF1)
+                .toBeGreaterThanOrEqual(evaluation.treesBaseline.meanFoldMetrics.macroF1 + 0.01);
+        } else {
+            expect(weights.architecture).toBe(treeWeights.architecture);
+        }
     });
 
     it('cuts CHW native stamps and bilinearly resamples a finer output grid', () => {
