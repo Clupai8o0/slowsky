@@ -390,7 +390,7 @@ export function mount(root: HTMLElement): void
     // Older picture (2MASS): off unless FEATURES.epoch; Play, False colour and Flagged pixels switch it off.
     const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),
         note: ref<HTMLElement>('epochNote'), thenHides: [ref<HTMLElement>('flags'), ref<HTMLElement>('changesMarks')] },
-        { enabled: FEATURES.epoch, pause: () => play(false), hasWiderField: (fov) => FOVS.some((f) => f > fov + 1e-6) });
+        { enabled: FEATURES.epoch, pause: () => play(false), hasWiderField: (fov) => mountEpoch.hasWiderField(fov, st.fovDeg) });
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const glow = ref<HTMLCanvasElement>('glow');

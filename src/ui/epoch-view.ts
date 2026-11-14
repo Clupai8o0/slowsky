@@ -19,6 +19,11 @@ export const EPOCH_FLIP_MS = 900;
 export const EPOCH_FOVS: readonly number[] = [0.1, 0.25];
 export const EPOCH_MAX_BYTES = 2000000;
 
+export function hasWiderEpochField(viewFov: number, pickerFov: number): boolean
+{
+    return EPOCH_FOVS.some((f) => f > Math.max(viewFov, pickerFov) + 1e-6);
+}
+
 export const EPOCH_TEXT = Object.freeze({
     key: 'Older picture',
     loading: 'Reading the older picture…',
@@ -106,7 +111,7 @@ function monthMjd(month: string): number
 
 // The target's catalogue path across the survey months, for a target the page draws a track ring for.
 function epochPath(result: SkyResult, targetId: string | undefined,
-    epoch: Pick<EpochOk['epoch'], 'fromMonth' | 'toMonth'> = TWO_MASS_K): { bracket: EpochBracket | null } | null
+    epoch: Pick<EpochOk['epoch'], 'fromMonth' | 'toMonth'> = TWO_MASS_K): { bracket: EpochBracket | null; partial: boolean; name: string } | null
 {
     if (!targetId || !Object.hasOwn(COPY, targetId) || !result.track?.length) {
         return null;
@@ -124,7 +129,10 @@ function epochPath(result: SkyResult, targetId: string | undefined,
     if (!(Math.hypot(to.x - from.x, to.y - from.y) >= 1)) {
         return null;
     }
-    return { bracket: inside(from) && inside(to) ? { from, to } : null };
+    const fromInside = inside(from);
+    const toInside = inside(to);
+    return { bracket: fromInside && toInside ? { from, to } : null,
+        partial: fromInside !== toInside, name: COPY[targetId as TargetId].display };
 }
 
 export function epochBracket(result: SkyResult, targetId: string | undefined,
@@ -133,13 +141,17 @@ export function epochBracket(result: SkyResult, targetId: string | undefined,
     return epochPath(result, targetId, epoch)?.bracket ?? null;
 }
 
-function bracketLegend(epoch: EpochOk['epoch'], outside: boolean, wider: boolean): string
+function bracketLegend(epoch: EpochOk['epoch'], path: NonNullable<ReturnType<typeof epochPath>>, wider: boolean): string
 {
     const month = (value: string) => new Date((monthMjd(value) - 40587) * 86400000)
         .toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-    const dates = `${month(epoch.fromMonth)} and ${month(epoch.toMonth)}`;
-    return outside ? `Its catalogue motion puts it outside this view between ${dates}.${wider ? ' Try a wider field.' : ''}`
-        : `Where its catalogue motion puts it between ${dates}`;
+    const from = month(epoch.fromMonth);
+    const to = month(epoch.toMonth);
+    if (path.bracket) {
+        return `Where the catalogue motion of ${path.name} puts it between ${from} and ${to}`;
+    }
+    const span = path.partial ? `for part of ${from} to ${to}` : `between ${from} and ${to}`;
+    return `The catalogue motion of ${path.name} puts it outside this view ${span}.${wider ? ' Try a wider field.' : ''}`;
 }
 
 // ---------- the decoder the page supplies ----------
@@ -211,7 +223,7 @@ export interface EpochOut {
     key: boolean;
     pressed: boolean;
     note: NotePart[]; // [] hides the line
-    legend: string; // the bracket's legend line, '' when there is none
+    legend: string; // the catalogue motion line, '' when there is none
     picture: { rgba: Uint8ClampedArray; width: number; height: number } | null;
     then: boolean; // the older picture covers the sky
     tag: { label: string; action: string | null } | null; // null action means pressing stops automatic flipping
@@ -325,7 +337,7 @@ export function createEpoch(deps: EpochDeps): EpochSlot
         const then = phase === 'then';
         const label = then ? EPOCH_TEXT.then : epochNowLabel(view.when);
         return { ...base, note: epochNoteParts(status.res, view.result.lambda), legend: status.path
-            ? bracketLegend(status.res.epoch, !status.path.bracket, deps.hasWiderField?.(view.result.grid.fovDeg) ?? false) : '',
+            ? bracketLegend(status.res.epoch, status.path, deps.hasWiderField?.(view.result.grid.fovDeg) ?? false) : '',
             picture: { rgba: status.rgba, width: status.res.width, height: status.res.height }, then,
             tag: { label, action: hand ? (then ? EPOCH_TEXT.showNow : EPOCH_TEXT.showThen) : null },
             bracket: status.path?.bracket ?? null };
@@ -615,3 +627,5 @@ export function mountEpoch(els: EpochElements, deps: EpochMountDeps): EpochSlot
         },
     });
 }
+
+mountEpoch.hasWiderField = hasWiderEpochField;

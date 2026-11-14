@@ -483,7 +483,7 @@ describe('older picture: drawing', () => {
         r.resolve(result);
         await settle();
         expect(r.last().bracket).not.toBeNull();
-        expect(r.last().legend).toBe('Where its catalogue motion puts it between January 1996 and February 2001');
+        expect(r.last().legend).toBe('Where the catalogue motion of Barnard’s Star puts it between January 1996 and February 2001');
     });
 
     it('explains an outside Barnard path and retains an inside bracket through the flip', async () => {
@@ -499,25 +499,28 @@ describe('older picture: drawing', () => {
         const astro = targetById('barnard')!.astrometry;
         const endpoints = [50600, 51941].map((mjd) => gridSkyToPix(partial.grid, positionAt(astro, mjd)));
         expect(endpoints.map((p) => p.y >= -0.5 && p.y <= partial.grid.height - 0.5)).toEqual([false, true]);
-        for (const s of [narrow, partial]) {
+        for (const [s, sentence] of [
+            [narrow, 'The catalogue motion of Barnard’s Star puts it outside this view between June 1997 and February 2001. Try a wider field.'],
+            [partial, 'The catalogue motion of Barnard’s Star puts it outside this view for part of June 1997 to February 2001. Try a wider field.'],
+        ] as const) {
             const r = rig({ reduced: true });
             await ready(r, s, { targetId: 'barnard' });
             expect(r.last().bracket).toBeNull();
-            expect(r.last().legend).toBe('Its catalogue motion puts it outside this view between June 1997 and February 2001. Try a wider field.');
+            expect(r.last().legend).toBe(sentence);
             r.slot.off();
             expect(r.last().legend).toBe('');
         }
         const r = rig();
         await ready(r, wide, { targetId: 'barnard' });
         expect(r.last().bracket).not.toBeNull();
-        expect(r.last().legend).toBe('Where its catalogue motion puts it between June 1997 and February 2001');
+        expect(r.last().legend).toBe('Where the catalogue motion of Barnard’s Star puts it between June 1997 and February 2001');
         vi.advanceTimersByTime(EPOCH_FLIP_MS);
         expect(r.last().then).toBe(false);
         expect(r.last().bracket).not.toBeNull();
         r.slot.off();
         const noWider = rig({ reduced: true, wider: false });
         await ready(noWider, narrow, { targetId: 'barnard' });
-        expect(noWider.last().legend).toBe('Its catalogue motion puts it outside this view between June 1997 and February 2001.');
+        expect(noWider.last().legend).toBe('The catalogue motion of Barnard’s Star puts it outside this view between June 1997 and February 2001.');
         noWider.slot.off();
         const otherMonths = rig({ reduced: true });
         otherMonths.slot.update(view(narrow, { targetId: 'barnard' }));
@@ -526,7 +529,7 @@ describe('older picture: drawing', () => {
         otherResult.epoch = { ...otherResult.epoch, fromMonth: '1996-01', toMonth: '2001-02' };
         otherMonths.resolve(otherResult);
         await settle();
-        expect(otherMonths.last().legend).toBe('Its catalogue motion puts it outside this view between January 1996 and February 2001. Try a wider field.');
+        expect(otherMonths.last().legend).toBe('The catalogue motion of Barnard’s Star puts it outside this view between January 1996 and February 2001. Try a wider field.');
         otherMonths.slot.off();
         const short = rig({ reduced: true });
         short.slot.update(view(partial, { targetId: 'barnard' }));
@@ -582,6 +585,8 @@ describe('older picture: page wiring', () => {
         expect((label as Element).textContent).toBe(EPOCH_TEXT.then);
         expect(space).toBe(' ');
         expect((action as Element).textContent).toBe('Stop the flip');
+        const bracketLegend = note.children.find((child) => child instanceof Element && child.className === 'sk-ep-leg') as Element;
+        expect(bracketLegend.children.some((child) => child instanceof Element && child.tagName === 'i')).toBe(true);
         expect(tag.attrs['aria-label']).toBeUndefined();
         expect(marks.style.visibility).toBe('hidden');
         const noteUpdates = note.replacements;
@@ -595,8 +600,33 @@ describe('older picture: page wiring', () => {
         slot.tagPress();
         expect((action as Element).textContent).toBe('Show then');
         slot.off();
+        for (const [fovDeg, pixelArcsec, height] of [[0.1, 360 / 587, 587], [0.25, 1, 550]] as const) {
+            const outside = sky(fovDeg, { grid: { center: centre, fovDeg, pixelArcsec, width: 587, height },
+                track: [{ mjd: 61041, ra: centre.ra, dec: centre.dec, pix: { x: 0, y: 0 } }] });
+            const outsideSlot = mountEpoch({ key, layer, tag, note, thenHides: [marks] } as unknown as EpochElements,
+                { enabled: true, pause: () => {}, read: vi.fn(async () => okResult(outside.grid)) as unknown as typeof import('../src/lib/epoch').readEpoch });
+            outsideSlot.update(view(outside, { targetId: 'barnard' }));
+            outsideSlot.press();
+            await settle();
+            const legend = note.children.find((child) => child instanceof Element && child.className === 'sk-ep-leg') as Element;
+            expect(legend).toBeDefined();
+            expect(legend.children.some((child) => child instanceof Element && child.tagName === 'i')).toBe(false);
+            outsideSlot.off();
+        }
         vi.unstubAllGlobals();
         vi.useRealTimers();
+    });
+
+    it('wires wider-field advice to fields offered beyond both the view and picker', () => {
+        const match = page.match(/hasWiderField:\s*(.*?)\s*\}\);/s);
+        expect(match).not.toBeNull();
+        const callback = new Function('mountEpoch', 'st', 'FOVS', `return (${match![1]});`);
+        const check = (viewFov: number, pickerFov: number) =>
+            callback(mountEpoch, { fovDeg: pickerFov }, [0.1, 0.25, 0.5, 1])(viewFov);
+        expect(check(0.1, 0.1)).toBe(true);
+        expect(check(0.25, 0.25)).toBe(false);
+        expect(check(0.1, 0.25)).toBe(false);
+        expect(check(0.25, 0.1)).toBe(false);
     });
 
     it('declares a status note and hides SPHEREx change marks during Then', () => {
