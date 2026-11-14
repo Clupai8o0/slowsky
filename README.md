@@ -24,8 +24,8 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   - **Stack** averages all frames into one. Faint things show up; moving things smear.
   - **Subtract** compares two visits that you pick from two lists, A (earlier) and B (later). It starts on the
     first and the last visit. Here a visit is a run of the frames on show, each taken less than 10 days after the
-    one before, so it can hold more than one frame. This grouping is looser than the one step 4 below uses to
-    choose the frames. A visit with more than one frame is averaged first. **B − A** shows B minus A: blue marks
+    one before, so it can hold more than one frame. This grouping is not the same as the one step 4 below uses
+    to choose the frames. A visit with more than one frame is averaged first. **B − A** shows B minus A: blue marks
     more light in A, orange more light in B, and black about the same (a change smaller than about 2.5 times the
     picture's typical scatter) or a pixel that is blank in either visit. **A + B** adds the two visits pixel by
     pixel instead, so light in both adds up and light in only one counts once; a pixel that is blank in either
@@ -237,9 +237,10 @@ These parts are in the code but switched off on the site, so a visitor cannot us
   picture's values are too large to check; when its three inputs do not agree; when the difference is only an
   even offset or an even slope across the square; when its top two answers score about the same; or when a much
   stronger change sits away from the centre of the square.
-- Nothing on the site loads the model or shows its answer. `src/ui/ml-hint.ts` holds the words it would show and
-  puts the model's own label under each one (`HELPER_LABEL` in `src/lib/classify.ts`): "Experimental sort hint,
-  trained only on fake changes added to single frames. Never tested on real two-date changes. Not a verdict."
+- Nothing on the site loads the model or shows its answer. `src/ui/ml-hint.ts` holds the words it would show, and
+  is written to show the model's own label beside each one (`HELPER_LABEL` in `src/lib/classify.ts`):
+  "Experimental sort hint, trained only on fake changes added to single frames. Never tested on real two-date
+  changes. Not a verdict."
 
 ## Licence
 
