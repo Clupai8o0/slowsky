@@ -283,6 +283,7 @@ def model_card(summary, eval_digest):
                    f"Mover recall is {low_bin['classes']['mover']['recall']:.2f} at S/N 3-5. "
                    f'{share} of test stamps are movers; if real ones are rarer, more mover labels are wrong.'
                    ' The browser helper also declines faint, over-bright, inconsistent and close-call stamps, '
+                   'and ones where a change away from the centre is over 136 times brighter, '
                    'so it labels fewer stamps than these scores cover.'),
         'treesMacroF1OriginalFolds': round(summary['cnnAttempt']['sameTestTrees']['meanFoldMetrics']['macroF1'], 3),
         'treesNote': TREES_NOTE, 'evalSha256': eval_digest, 'seed': summary['seed'],
@@ -372,6 +373,50 @@ def self_test():
     print('CNN self-test passed: feature equivalence, augmentation, BN folding, target isolation', flush=True)
 
 
+def confirmation_fold_metrics(fold):
+    """Rebuild metrics from the matrix and binned mover recall, without drawing stamps."""
+    matrix = np.asarray(fold['confusionMatrix'])
+    assert matrix.shape == (4, 4) and np.all(matrix >= 0) and np.all(matrix == np.floor(matrix)), 'Confirmation matrix invalid'
+    assert fold['confusionOrder'] == 'rows=truth, columns=prediction', 'Confirmation matrix order invalid'
+    precision = np.diag(matrix) / np.maximum(matrix.sum(0), 1)
+    recall = np.diag(matrix) / np.maximum(matrix.sum(1), 1)
+    f1 = 2 * precision * recall / np.maximum(precision + recall, 1e-12)
+    assert matrix.sum() > 0, 'Confirmation matrix empty'
+    high_count, high_correct = 0, 0.0
+    bin_counts, bin_correct = np.zeros(4), np.zeros(4)
+    bins = fold['recallBySnrBin']
+    assert [(b['lo'], b['hi']) for b in bins] == [(3, 5), (5, 7), (7, 10), (10, 20), (20, 30), (30, None)], 'Confirmation S/N bins invalid'
+    for bin in bins:
+        for i, name in enumerate(CLASSES):
+            item = bin['classes'][name]
+            count, value = item['count'], item['recall']
+            assert isinstance(count, int) and count >= 0, 'Confirmation bin count invalid'
+            if count == 0:
+                assert value is None, 'Confirmation empty bin recall invalid'
+            else:
+                assert value is not None and 0 <= value <= 1, 'Confirmation bin recall invalid'
+                assert abs(value * count - round(value * count)) < 1e-9, 'Confirmation bin recall is not a count'
+                bin_counts[i] += count
+                bin_correct[i] += round(value * count)
+        if bin['lo'] >= 10:
+            item = bin['classes']['mover']
+            high_count += item['count']
+            high_correct += item['count'] * (item['recall'] or 0)
+    assert high_count > 0 and high_count == fold['moverSnr10Count'], 'Confirmation high-S/N count mismatch'
+    assert np.all(bin_counts <= matrix.sum(1)) and np.all(bin_correct <= np.diag(matrix)), 'Confirmation bin totals mismatch'
+    computed = {'accuracy': float(np.trace(matrix) / matrix.sum()), 'macroF1': float(f1.mean()),
+                'artifactPrecision': float(precision[2]), 'moverRecallSnr10': high_correct / high_count}
+    for key, value in computed.items():
+        assert abs(value - fold[key]) < 1e-12, f'Confirmation fold {key} disagrees with its counts'
+    for i, name in enumerate(CLASSES):
+        values = {'precision': precision[i], 'recall': recall[i], 'f1': f1[i], 'count': matrix[i].sum()}
+        for key, value in values.items():
+            assert abs(value - fold['perClass'][name][key]) < 1e-12, f'Confirmation {name} {key} mismatch'
+    # Bin counts and recalls cannot be independently reconstructed from the
+    # matrix: the individual examples and their S/N values are not stored.
+    return computed
+
+
 def check_confirmation(evaluation, eval_digest):
     """Recompute the five frozen-plan gates; no fitting or fresh draw is allowed here."""
     result_path, lock_path = CONFIRM_RESULT, CONFIRM_LOCK
@@ -385,15 +430,17 @@ def check_confirmation(evaluation, eval_digest):
     # The frozen plan uses these five fields from the hash-bound training evaluation.
     targets = sorted(evaluation['cnnAttempt']['training']['counts'])
     assert len(targets) == 5, 'Confirmation requires the five planned fields'
+    means = {}
     for folds_key, mean_key in (('folds', 'meanFoldMetrics'), ('treeFolds', 'treesMeanFoldMetrics')):
         folds = result[folds_key]
         assert sorted(fold['testTarget'] for fold in folds) == targets, (
             f'Confirmation {folds_key} must contain each planned field exactly once')
-        recomputed = mean_metrics(folds)
+        recomputed = mean_metrics([confirmation_fold_metrics(fold) for fold in folds])
+        means[folds_key] = recomputed
         for key in KEYS:
             assert abs(recomputed[key] - result[mean_key][key]) < 1e-12, (
                 f'Confirmation {mean_key} {key} disagrees with its folds')
-    mean, trees = mean_metrics(result['folds']), mean_metrics(result['treeFolds'])
+    mean, trees = means['folds'], means['treeFolds']
     baseline = evaluation['treesBaseline']['meanFoldMetrics']['macroF1']
     expected = {
         'macroF1': mean['macroF1'] >= 0.8,

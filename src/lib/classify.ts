@@ -50,6 +50,9 @@ interface CnnModel extends ModelBase {
 export type ClassifierModel = TreesModel | CnnModel;
 
 // Our own choice, not tuned or validated: decline when the top two uncalibrated scores are closer than this.
+/** Decline when the stamp's peak |diff| is more than this many times the core peak (measured; see classify()). The public card quotes it. */
+export const MAX_OFF_CENTRE_RATIO = 136;
+
 export const MIN_SCORE_MARGIN = 0.2;
 export const HELPER_LABEL = 'Experimental sort hint, trained only on fake changes added to single frames. '
     + 'Never tested on real two-date changes. Not a verdict.';
@@ -428,13 +431,22 @@ export function classify(model: ClassifierModel, stamp: Float32Array): Classific
     if (stamp.length !== AREA * 3 || !stamp.every(Number.isFinite)) {
         return { kind: 'declined', reason: 'invalid stamp' };
     }
+    // Check the precision of the whole stamp before comparing any pixel.
     for (let i = 0; i < AREA; i++) {
         const earlier = stamp[i]!, later = stamp[AREA + i]!, difference = stamp[AREA * 2 + i]!;
         // stampFor and ml_stamps.py each store a/sigma, b/sigma and (b-a)/sigma with
-        // one Float32 rounding. For normal values each error is <= 2^-24 times its unrounded magnitude;
-        // their sum bounds this residual. Eight units allow for the rounded scale
-        // and float64 arithmetic; the floor of 1 also covers Float32 subnormals.
-        const roundingBound = 8 * 2 ** -24 * Math.max(1, Math.abs(earlier), Math.abs(later), Math.abs(difference));
+        // one Float32 rounding apiece: each half-ulp is at most 2^-24 times its
+        // magnitude, so their sum bounds the residual; factor 2 covers using
+        // rounded magnitudes, and the floor covers subnormals.
+        const roundingBound = 2 * 2 ** -24 * Math.max(1, Math.abs(earlier) + Math.abs(later) + Math.abs(difference));
+        // Our chosen limit: above a quarter noise unit the check is too imprecise.
+        if (roundingBound > 0.25) {
+            return { kind: 'declined', reason: 'values too large to check the channels against each other' };
+        }
+    }
+    for (let i = 0; i < AREA; i++) {
+        const earlier = stamp[i]!, later = stamp[AREA + i]!, difference = stamp[AREA * 2 + i]!;
+        const roundingBound = 2 * 2 ** -24 * Math.max(1, Math.abs(earlier) + Math.abs(later) + Math.abs(difference));
         if (Math.abs(difference - (later - earlier)) > roundingBound) {
             return { kind: 'declined', reason: 'stamp channels disagree' };
         }
@@ -446,6 +458,11 @@ export function classify(model: ClassifierModel, stamp: Float32Array): Classific
     const fullPeak = diff.reduce((maximum, value) => Math.max(maximum, Math.abs(value)), 0);
     if (fullPeak > 2 * model.training.peakSnrMax) {
         return { kind: 'declined', reason: 'brighter than anything in training' };
+    }
+    // Seed 20261114, 600/class/field: largest class 99th percentile is 135.30
+    // (nothing); 136 retains at least 99% of each measured class.
+    if (fullPeak > MAX_OFF_CENTRE_RATIO * peak) {
+        return { kind: 'declined', reason: 'brighter change outside the centre' };
     }
     // An affine plane (including a constant offset) has no localized change.
     // Fit all pixels so rounding noise in a Float32 gradient is tolerated.

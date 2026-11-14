@@ -56,6 +56,7 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
         + `Mover recall is ${low.classes.mover.recall!.toFixed(2)} at S/N 3-5. `
         + `${prevalence}; if real ones are rarer, more mover labels are wrong.`
         + ' The browser helper also declines faint, over-bright, inconsistent and close-call stamps, '
+        + `and ones where a change away from the centre is over ${classifier.MAX_OFF_CENTRE_RATIO} times brighter, `
         + 'so it labels fewer stamps than these scores cover.');
     for (const text of [JSON.stringify(card), weights.aiNote, weights.madeBy]) {
         expect(text).not.toMatch(/detected a|confirmed|proves|discovery/i);
@@ -372,6 +373,59 @@ assert scope['finish'](False, {'passed': True}) == 0
 `);
     });
 
+    it.each(['lock', 'result'])('tree CLI refuses training with an existing confirmation %s on a temp copy', (state) => {
+        pythonProbe(`
+with TemporaryDirectory(prefix='slowsky-tree-guard-') as temporary:
+    folder = Path(temporary)
+    checkout(folder)
+    if sys.argv[1] == 'lock':
+        (folder / 'models/change-classifier.confirm.json').unlink()
+        (folder / 'models/change-classifier.confirm.lock').touch()
+    (folder / 'sitecustomize.py').write_text('''import sys\ndef guard(frame, event, arg):\n    if event == 'call' and frame.f_code.co_name in {'dataset', 'train_trees'}:\n        raise RuntimeError('TRAINING_REACHED: ' + frame.f_code.co_name)\nsys.setprofile(guard)\n''')
+    before = snapshot(folder)
+    run = cli(folder, 'ml_train.py')
+    assert snapshot(folder) == before, 'training changed copied evidence'
+    assert run.returncode != 0 and 'Training refused:' in run.stderr and 'confirm' in run.stderr.lower(), (
+        f'{sys.argv[1]}: exit={run.returncode}; stdout={run.stdout}; stderr={run.stderr}')
+    assert 'TRAINING_REACHED' not in run.stderr
+`, [state]);
+    });
+
+    it.each(['folds', 'treeFolds'])('CLI check rejects a changed confusion matrix in %s', (kind) => {
+        pythonProbe(`
+with TemporaryDirectory(prefix='slowsky-fold-matrix-') as temporary:
+    folder = Path(temporary)
+    checkout(folder)
+    path = folder / 'models/change-classifier.confirm.json'
+    result = json.loads(path.read_text())
+    result[sys.argv[1]][0]['confusionMatrix'][2][2] = 0
+    path.write_text(json.dumps(result))
+    before = snapshot(folder)
+    run = cli(folder, 'ml_train_cnn.py', '--check')
+    assert snapshot(folder) == before
+    assert run.returncode != 0 and 'confirm' in run.stderr.lower(), (
+        f'{sys.argv[1]}: exit={run.returncode}; stdout={run.stdout}; stderr={run.stderr}')
+`, [kind]);
+    });
+
+    it.each(['perClass', 'snrBin'])('CLI check rejects altered fold %s metrics on copied evidence', (kind) => {
+        pythonProbe(`
+with TemporaryDirectory(prefix='slowsky-fold-metric-') as temporary:
+    folder = Path(temporary)
+    checkout(folder)
+    path = folder / 'models/change-classifier.confirm.json'
+    result = json.loads(path.read_text())
+    fold = result['folds'][0]
+    if sys.argv[1] == 'perClass': fold['perClass']['artifact']['f1'] = 0
+    else: fold['recallBySnrBin'][3]['classes']['mover']['recall'] = 0
+    path.write_text(json.dumps(result))
+    before = snapshot(folder)
+    run = cli(folder, 'ml_train_cnn.py', '--check')
+    assert snapshot(folder) == before
+    assert run.returncode != 0 and 'confirm' in run.stderr.lower(), (run.returncode, run.stdout, run.stderr)
+`, [kind]);
+    });
+
     it.each(['lock', 'result'])('CLI refuses training with an existing confirmation %s on a temp copy', (state) => {
         pythonProbe(`
 with TemporaryDirectory(prefix='slowsky-training-guard-') as temporary:
@@ -475,8 +529,9 @@ card = json.loads((ROOT / 'public/models/change-classifier.card.json').read_byte
 scope = dict(ROOT=ReadPath(ROOT), np=np, hashlib=hashlib, json=SimpleNamespace(loads=loads),
              CONFIRM_RESULT=ReadPath(ROOT / 'models/change-classifier.confirm.json'),
              CONFIRM_LOCK=ReadPath(ROOT / 'models/change-classifier.confirm.lock'),
+             CLASSES=['mover', 'brightness', 'artifact', 'nothing'],
              KEYS=('macroF1', 'accuracy', 'moverRecallSnr10', 'artifactPrecision'), model_card=lambda *_: card)
-functions(source('ml_train_cnn.py'), ['check', 'sha', 'mean_metrics', 'check_confirmation', 'confirmation_checks'], scope)
+functions(source('ml_train_cnn.py'), ['check', 'sha', 'mean_metrics', 'confirmation_fold_metrics', 'check_confirmation', 'confirmation_checks'], scope)
 try:
     scope['check']()
 except AssertionError as error:
@@ -549,6 +604,32 @@ describe('snapshot change classifier', () => {
         });
     });
 
+    it.each([[6_000_000, 2.5], [10_000_000, 4.5]])('declines unverifiable channels at %i with difference %f', (value, difference) => {
+        const stamp = new Float32Array(675);
+        stamp.fill(value, 0, 450);
+        stamp[562] = difference;
+        expect(classify(loadClassifier(weights), stamp)).toEqual({
+            kind: 'declined', reason: 'values too large to check the channels against each other',
+        });
+    });
+
+    it('rejects a 0.45 difference on identical million-sigma image channels', () => {
+        const stamp = new Float32Array(675);
+        stamp.fill(1_000_000, 0, 450);
+        stamp[562] = 0.45;
+        expect(classify(loadClassifier(weights), stamp)).toEqual({ kind: 'declined', reason: 'stamp channels disagree' });
+    });
+
+    it('declines an off-centre peak above the measured 99th-percentile threshold', () => {
+        const stamp = new Float32Array(675);
+        stamp[225 + 112] = stamp[450 + 112] = 10;
+        stamp[225] = stamp[450] = 1370;
+        stamp[225 + 224] = stamp[450 + 224] = 1370;
+        expect(classify(loadClassifier(weights), stamp)).toEqual({
+            kind: 'declined', reason: 'brighter change outside the centre',
+        });
+    });
+
     it('accepts channel rounding in every parity stamp and seeded random float32 images up to 1e6', () => {
         const model = loadClassifier(cnnWeights());
         for (const sample of [...parity.cases, ...parity.treeCases, ...parity.cnnCases]) {
@@ -566,9 +647,13 @@ describe('snapshot change classifier', () => {
                 const a = Float32Array.from({ length: 41 * 41 }, () => (2 * random() - 1) * scale);
                 const b = i % 2 === 0 ? a.map((v) => v + (2 * random() - 1) * 5)
                     : Float32Array.from(a, () => (2 * random() - 1) * scale);
-                const stamp = stampFor(a, b, grid, { x: 20 + random(), y: 20 + random() }, 0.5 + random())!;
+                const stamp = stampFor(a, b, grid, { x: 20 + random(), y: 20 + random() }, 1.5 + random())!;
                 expect(stamp).toHaveLength(675);
-                expect(classify(model, stamp)).not.toEqual({ kind: 'declined', reason: 'stamp channels disagree' });
+                const result = classify(model, stamp);
+                if (result.kind === 'declined') {
+                    expect(['stamp channels disagree', 'values too large to check the channels against each other'])
+                        .not.toContain(result.reason);
+                }
             }
         }
     });

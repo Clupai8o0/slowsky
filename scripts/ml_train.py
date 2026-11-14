@@ -149,6 +149,10 @@ def export(model, args, counts, peak_snr_max):
 
 
 def main(args):
+    from ml_confirm import LOCK as CONFIRM_LOCK, RESULT as CONFIRM_RESULT
+    if CONFIRM_LOCK.exists() or CONFIRM_RESULT.exists():
+        raise SystemExit('Training refused: a frozen confirmation lock or result exists; '
+                         'do not overwrite its evaluation or model')
     started = time.monotonic()
     revision, dirty = git_state(('public/models/change-classifier.json',
                                  'models/change-classifier.eval.json',
