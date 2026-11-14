@@ -1188,6 +1188,21 @@ describe('note and question coordination', () => {
         expect(doc.el('left').hidden).toBe(true);
     });
 
+    it('C5 hides an open-mode count after a note that ends "off" when the check gives no count', async () => {
+        let notes = 0;
+        const { doc, ai } = pair(async () => { if (notes++ === 0) { return noteReply(4); } throw new InsightError('off'); }, async () => answer(3), async () => ({ enabled: true, locked: false, unlocked: true }));
+        await flush();
+        ai.update(noteView());
+        await doc.el('go').fire('click');
+        expect(doc.el('left').textContent).toContain('4 ');
+        ai.update(noteView(61001));
+        await doc.el('go').fire('click');
+        await flush();
+        // A gateway error after the server counted the request looks like "off": 4 could be one too high.
+        expect(doc.el('left').hidden).toBe(true);
+        expect(doc.el('msg').textContent).toBe(MSG.failed);
+    });
+
     it('C5 a tab-visible check that gives no count leaves an open-mode count as it is', async () => {
         const { doc, ai } = pair(async () => noteReply(4), async () => answer(3), async () => ({ enabled: true, locked: false, unlocked: true }));
         await flush();

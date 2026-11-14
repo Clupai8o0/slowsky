@@ -563,7 +563,9 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 const { s, reached } = await check(sent);
                 if (reached && !s.busy && typeof s.remaining === 'number') {
                     setRequestRemaining(s.remaining, request);
-                } else if (!reached || s.busy || (s.locked && !s.unlocked)) {
+                } else {
+                    // No count came back (failed check, busy, locked, or no passcode set): the request may have
+                    // been counted, so the line is hidden rather than left one too high.
                     exhaustRemaining(request);
                 }
                 if (mine !== tries || ctrl !== c || request.generation !== generation) {
