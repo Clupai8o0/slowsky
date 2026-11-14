@@ -70,8 +70,8 @@ describe('round 14 labelled notes and next checks', () => {
             'There were N visits.': ['There were 3 visits.', full],
             'There was 1 visit.': ['There was 1 visit.', full.map((line) => line.startsWith('Visits:') ? 'Visits: 1. Frames in each visit: 3.' : line)],
             'The frames in each visit were LIST.': ['The frames in each visit were 3, 4, 5.', full],
-            'The time from first to last visit was VALUE days.': ['The time from first to last visit was 20.0 days.', full],
-            'The wavelength is VALUE micron.': ['The wavelength is 4.270 micron.', full],
+            'The time from first to last visit was VALUE.': ['The time from first to last visit was 20.0 days.', full],
+            'The wavelength is VALUE.': ['The wavelength is 4.270 micron.', full],
             'Frames left out because their wavelength did not match: N.': ['Frames left out because their wavelength did not match: 2.', full],
             'The shift in position was VALUE.': ['The shift in position was 2.3 arcsec over 10.0 days.', full],
             'Difference image at the target: VALUE.': ['Difference image at the target: strongest pixel 3.4 sigma, fainter there in the later visit.', full],
@@ -107,6 +107,79 @@ describe('round 14 labelled notes and next checks', () => {
     });
 });
 
+describe('round 16 conservative labelled forms', () => {
+    const sheet = (readings: string, change?: string, scatter?: string, difference?: string) => [
+        'Wavelength: 1.234 micron.',
+        `Visits: ${readings.split(', ').length}. Frames in each visit: 3, 3. Time from first to last visit: 12.3 days.`,
+        `Brightness relative to the reference stars, in time order: ${readings}.`,
+        ...(change ? [`Largest change from the median brightness: ${change}.`] : []),
+        ...(scatter ? [`Reference stars: 2 with available scatter. Scatter of each: ${scatter} percent.`] : []),
+        ...(difference ? [`Difference image at the target: ${difference}.`] : []),
+    ];
+    const keeps = (sentence: string, source: string[], next = false) => {
+        const note = next
+            ? `What this shows: The wavelength is 1.234 micron.\nWhat to check next: ${sentence} Change the colour to look at another wavelength.`
+            : `What this shows: ${sentence} The wavelength is 1.234 micron.\nWhat to check next: Change the colour to look at another wavelength.`;
+        return checkNote(note, source, { labelled: true }).text.includes(sentence);
+    };
+    it('J1 rejects asserting endpoint verbs even when the change is large', () => {
+        for (const [values, first, last, change] of [['1.00, 1.10, 1.30', '1.00', '1.30', '30 percent above it'], ['1.30, 1.10, 1.00', '1.30', '1.00', '30 percent below it'], ['1.00, 1.30', '1.00', '1.30', undefined]] as const) {
+            const source = sheet(values, change, '0.1, 0.2');
+            for (const verb of ['rose', 'fell', 'changed']) { expect(keeps(`The brightness ${verb} from ${first} to ${last}.`, source), verb).toBe(false); }
+            expect(keeps(`The brightness went from ${first} to ${last}.`, source)).toBe(true);
+        }
+        const source = sheet('1.00, 1.01, 1.02', '1 percent above it', '1.2, 1.5');
+        const text = checkNote('What this shows: The brightness rose from 1.00 to 1.02. The brightness went from 1.00 to 1.02.\nHow far to trust it: The largest change from the median brightness is 1 percent above the median. The 2 reference stars scatter by 1.2 and 1.5 percent. The change is no larger than that scatter, so it may be noise.\nWhat to check next: Change the colour to look at another wavelength.', source, { labelled: true }).text;
+        expect(text).not.toMatch(/\b(?:rose|fell|rise|drop|brighten|fade|dim|changed)\b/i);
+        expect(text).toContain('The change is no larger than that scatter');
+        for (const verb of ['rose', 'fell', 'rise', 'drop', 'brighten', 'fade', 'dim', 'changed']) {
+            expect(keeps(`The brightness ${verb} across the visits.`, source), verb).toBe(false);
+        }
+    });
+    it('J2 refuses endpoint ranks that hide a middle extreme', () => {
+        const peak = sheet('1.00, 1.50, 1.00', '50 percent above it');
+        for (const rank of ['first', 'last']) { expect(keeps(`The ${rank} reading was 1.00.`, peak), rank).toBe(false); }
+        expect(keeps('The highest reading was 1.50.', peak)).toBe(true);
+        expect(keeps('In time order, the brightness was 1.00, 1.50, 1.00.', peak)).toBe(true);
+        const monotonic = sheet('1.00, 1.10, 1.20', '10 percent above it');
+        expect(keeps('The first reading was 1.00.', monotonic)).toBe(true);
+        expect(keeps('The last reading was 1.20.', monotonic)).toBe(true);
+    });
+    it('J3 drops duplicated units', () => {
+        expect(keeps('The wavelength is 1.234 micron micron.', sheet('1.00, 1.10'))).toBe(false);
+    });
+    it('K1 requires a notable change or a reporting difference line', () => {
+        const sentences = ['This is a candidate only.', 'Wait for another visit to see whether the change repeats.', 'Change the colour to see whether the change shows at another wavelength.'];
+        const cases: [string, string[], boolean][] = [
+            ['two inside scatter', sheet('1.00, 1.01', undefined, '2.0'), false],
+            ['median inside scatter', sheet('1.00, 1.00, 1.30', '30 percent above it', '50'), false],
+            ['median above scatter', sheet('1.00, 1.00, 1.30', '30 percent above it', '5'), true],
+            ['no reference stars', sheet('1.00, 1.01'), true],
+            ['difference despite flat readings', sheet('1.00, 1.00', undefined, '50', 'strongest pixel 3.4 sigma, brighter there in the later visit'), true],
+        ];
+        for (const [name, source, expected] of cases) {
+            for (const [i, sentence] of sentences.entries()) { expect(keeps(sentence, source, i > 0), `${name}: ${sentence}`).toBe(expected); }
+        }
+        expect(keeps('There are fewer than 3 visits, so the change counts for little.', cases[0]![1])).toBe(true);
+        for (const source of [sheet('1.00, 1.01', undefined, '1.0'), sheet('1.00, 1.01', undefined, '0.5, 2.0'), sheet('1.00, 1.01', '1 percent above it', '2.0'), sheet('1.00, 1.00', undefined, '2.0', 'no change above the noise')]) {
+            expect(keeps(sentences[0]!, source)).toBe(false);
+        }
+        expect(keeps(sentences[0]!, [...cases[0]![1], 'Shift in position: 2.0 arcsec over 10.0 days.'])).toBe(true);
+        expect(keeps(sentences[0]!, sheet('1.00, 1.01', undefined, '0.5'))).toBe(true);
+    });
+    it('K2 spells out the restrictions in the prompt', () => {
+        for (const instruction of ['Never when the sheet says "at least" or says points were left out.', 'or the sheet has a difference line and it does not say "no change above the noise"', 'copy the whole warning immediately after the difference sentence, in the same paragraph', 'Use only when the sheet has a Largest change line.']) {
+            expect(SYSTEM_PROMPT).toContain(instruction);
+        }
+    });
+    it('K3 accepts negative ranks and prints canonical labels', () => {
+        const source = sheet('-0.10, 0.00, 0.10', '10 percent above it');
+        expect(keeps('The lowest reading was -0.10.', source)).toBe(true);
+        const result = checkNote('what this shows: The wavelength is 1.234 micron.\nhow far to trust it: The wavelength is 1.234 micron.\nwhat to check next: Change the colour to look at another wavelength.', source, { labelled: true });
+        expect(result.text).toBe('What this shows: The wavelength is 1.234 micron.\nHow far to trust it: The wavelength is 1.234 micron.\nWhat to check next: Change the colour to look at another wavelength.');
+    });
+});
+
 describe('round 13 closed paragraphs', () => {
     const sheet = ['Visits: 3. Frames in each visit: 7, 9, 8. Time from first to last visit: 400.0 days.', 'Brightness relative to the reference stars, in time order: 1.30, 1.00, 1.00.', 'Largest change from the median brightness: 30 percent above it.', 'Lowest signal-to-noise among the points: below 1.', 'Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.', 'Shift in position: 10.4 arcsec over 400.0 days.', 'Wavelength: 1.083 micron.'];
     const has = (sentence: string, label = 'What this shows', source = sheet) => {
@@ -137,7 +210,7 @@ describe('round 13 closed paragraphs', () => {
     });
     it.each([
         ['ordered readings', 'In time order, the brightness was 1.30, 1.00, 1.00.', 'In time order, the brightness was 1.00, 1.30, 1.00.'],
-        ['endpoints', 'The brightness fell from 1.30 to 1.00.', 'The brightness rose from 1.30 to 1.00.'],
+        ['endpoints', 'The brightness went from 1.30 to 1.00.', 'The brightness rose from 1.30 to 1.00.'],
         ['rank', 'The first reading was 1.30.', 'The first reading was 1.00.'],
         ['median', 'The largest change from the median brightness is 30 percent above the median.', 'The largest change from the median brightness is 30 percent below the median.'],
         ['scatter', 'The 2 reference stars scatter by 1.2 and 2.0 percent.', 'The 2 reference stars scatter by 1.2 and 1.2 percent.'],
@@ -268,13 +341,13 @@ describe('round 12 regressions', () => {
     it('H1 accepts only ordered complete readings and truthful endpoints', () => {
         const s = sheet();
         for (const bad of ['The brightness rose to 1.30.', 'In the second visit the brightness was 1.30.', 'After 400.0 days the brightness was 1.30.', 'The brightness rose from 1.30 to 1.00.', 'In time order the brightness was 1.00, 1.30 and 1.00.']) { expect(kept(bad, s), bad).toBe(false); }
-        for (const good of ['In time order the brightness was 1.30, 1.00 and 1.00.', 'The brightness fell from 1.30 to 1.00.', 'The first reading was 1.30.']) { expect(kept(good, s), good).toBe(true); }
+        for (const good of ['In time order the brightness was 1.30, 1.00 and 1.00.', 'The brightness went from 1.30 to 1.00.', 'The first reading was 1.30.']) { expect(kept(good, s), good).toBe(true); }
         expect(kept('The first and last readings are both 1.00.', sheet('1.00, 1.30, 1.00'))).toBe(false);
         expect(kept('The highest reading was 1.00.', sheet('1.00, 1.00, 0.80'))).toBe(false);
         for (const bad of ['In the first visit the brightness was 1.30 and the last was 1.00, so it rose.', 'The brightness was unchanged from 1.30 to 1.00.', 'The brightness started at 1.30 and ended at 1.00.', 'From the first visit to the last, the brightness fell from 1.30 to 1.00.']) { expect(kept(bad, s), bad).toBe(false); }
         expect(kept('The brightness went from 1.30 then 1.00.', sheet('1.30, 1.50, 1.00'))).toBe(false);
         expect(kept('The brightness rose from 1.00 to 1.30 by the end.', sheet('1.00, 1.30, 1.00'))).toBe(false);
-        expect(kept('Over 3 visits, the brightness fell from 1.30 to 1.00 between the first visit and the last visit.', s)).toBe(true);
+        expect(kept('Over 3 visits, the brightness went from 1.30 to 1.00 between the first visit and the last visit.', s)).toBe(true);
     });
     it('H2a checks comparisons containing digits', () => {
         expect(kept('Over 3 visits, the change is several times larger than that scatter.', sheet('1.00, 1.00, 1.03', '3 percent above it'))).toBe(false);
@@ -313,7 +386,7 @@ describe('round 12 regressions', () => {
     });
     it('O rejects sentence-initial bounds', () => {
         for (const bad of ['Over 400.0 days passed between the first and last visit.', 'Over 3 visits were needed.']) { expect(kept(bad, sheet()), bad).toBe(false); }
-        expect(kept('Over 3 visits, the brightness fell from 1.30 to 1.00.', sheet())).toBe(true);
+        expect(kept('Over 3 visits, the brightness went from 1.30 to 1.00.', sheet())).toBe(true);
     });
     it('P caps long notes and handles hostile dotted input quickly', () => {
         for (const input of ['A' + '1.a'.repeat(6667), 'a.'.repeat(10000)]) {
@@ -415,10 +488,10 @@ describe('round 15 measured-note safeguards', () => {
         expect(run(scatter)).toContain(scatter);
         expect(run('The 2 reference stars scatter by 1.2 and 2.0 percent.')).toContain('1.2 and 2.0');
     });
-    it('rule 10: changed requires an endpoint change exceeding scatter and one percent', () => {
+    it('rule 10: changed is never an accepted endpoint verb', () => {
         const small = base.map((s) => s.replace('1.00, 1.00, 1.30', '1.00, 1.00, 1.01'));
         expect(run('The brightness changed from 1.00 to 1.01.', small)).not.toContain('changed from');
-        expect(run('The brightness changed from 1.00 to 1.30.')).toContain('changed from');
+        expect(run('The brightness changed from 1.00 to 1.30.')).not.toContain('changed from');
         const equalScatter = base.map((s) => s.replace('1.00, 1.00, 1.30', '1.00, 1.00, 1.02'));
         expect(run('The brightness changed from 1.00 to 1.02.', equalScatter)).not.toContain('changed from');
     });
@@ -467,8 +540,8 @@ describe('round 15 measured-note safeguards', () => {
         };
         const difference = 'Difference image at the target: strongest pixel 7.0 sigma, brighter there in the later visit. A bright star leaves marks this strong from a tiny misalignment, and a star that moved leaves a bright side and a dark side.';
         const cases: [string, string[], string, string, number[]][] = [
-            ['rise', make([1, 1, 1.3]), 'The brightness rose from 1.00 to 1.30.', scatter, [1, 1, 1]],
-            ['fall', make([1.3, 1, 1]), 'The brightness fell from 1.30 to 1.00.', scatter, [1, 1, 1]],
+            ['rise', make([1, 1, 1.3]), 'The brightness went from 1.00 to 1.30.', scatter, [1, 1, 1]],
+            ['fall', make([1.3, 1, 1]), 'The brightness went from 1.30 to 1.00.', scatter, [1, 1, 1]],
             ['flat', make([1, 1, 1]), 'In time order, the brightness was 1.00, 1.00, 1.00.', scatter, [1, 1, 1]],
             ['middle peak', make([1, 1.3, 1]), 'In time order, the brightness was 1.00, 1.30, 1.00.', scatter, [1, 1, 1]],
             ['two visits', make([1, 1.3]), 'The brightness went from 1.00 to 1.30.', 'There are fewer than 3 visits, so the change counts for little.', [1, 1, 1]],
@@ -1772,7 +1845,7 @@ describe('round 11 measurement safeguards', () => {
     it('H1 mutant: order, repeated positions and direction cannot be bypassed', () => {
         const rising = sheet.map((s) => s.replace('1.30, 1.00, 1.00', '1.00, 1.00, 1.30'));
         for (const sentence of ['The brightness fell from 1.30 to 1.00.', 'In time order the brightness was 1.30, 1.00 and 1.00.', 'The brightness peaked at 1.30 at the first visit.', 'The brightness fell from 1.00 to 1.30.']) { expect(check(sentence, rising), sentence).toBe(1); }
-        expect(check('The brightness rose from 1.00 to 1.30.', rising)).toBe(0);
+        expect(check('The brightness went from 1.00 to 1.30.', rising)).toBe(0);
         expect(check('In time order the brightness was 1.00, 1.00 and 1.30.', rising)).toBe(0);
     });
     it('H2 mutant: several times means at least three times the largest scatter', () => {

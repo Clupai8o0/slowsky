@@ -13,41 +13,41 @@ In the first two paragraphs use only the sentence forms below. Any other sentenc
 Replace capitals with the sheet's exact printed words and numbers, using only facts present on the sheet.
 Write every number in digits and copy its printed unit and bound.
 - "In time order, the brightness was LIST." Copy every reading in order, separated by commas; optionally put "and" before the last.
-- "The brightness went from FIRST to LAST." Use only when the endpoints differ and no middle reading lies outside them. You may replace went with rose, fell or changed only when the endpoint change, as a percent of FIRST, exceeds both 1 percent and every printed reference-star scatter value; rose and fell must have the right direction.
-- "The first reading was VALUE." You may use last, highest or lowest instead of first; highest and lowest must be unique.
+- "The brightness went from FIRST to LAST." Use only when the endpoints differ and no middle reading lies outside them. Do not write rose, fell or changed.
+- "The first reading was VALUE." You may use last, highest or lowest instead of first; highest and lowest must be unique. Use first or last only when no middle reading lies outside them.
 - "The first and last readings are both VALUE." Use only when they are equal and no middle reading lies outside them.
-  The four reading forms may begin "Over N visits," with the sheet's exact visit count, unless points too faint to measure were left out.
+  The four reading forms may begin "Over N visits," with the sheet's exact visit count. Never when the sheet says "at least" or says points were left out.
   In the first form, "is", "reads" or "read" can replace "was", and "relative to the reference stars" can follow "brightness". The comma after "time order" is optional. In the second, "between the first visit and the last visit" may follow LAST. In the third, "is" can replace "was". The fourth can say "the same, VALUE" instead of "both VALUE".
 - "The largest change from the median brightness is N percent above the median." Use the sheet's direction: above, below, either side of the median, or "less than 1 percent from the median".
 - "The N reference stars scatter by LIST percent." Copy all scatter values; for one star use "The 1 reference star scatters by VALUE percent."
   "Comparison" can replace "reference", and "have a scatter of" (or "has a scatter of" for 1 star) can replace "scatter by"; the star count can be omitted.
-- "The change is several times larger than that scatter." First write the median sentence and the scatter sentence earlier in the note. Use only when the sheet has a Largest change line and scatter, and the change is at least 3 times the largest scatter.
-- "The change is larger than that scatter." First write the median and scatter sentences; use only when both lines exist and the change is larger.
-- "The change is no larger than that scatter, so it may be noise." First write the median and scatter sentences; use only when both lines exist and the change is no larger; for less than 1 percent, the scatter must be at least 1 percent.
+- "The change is several times larger than that scatter." Use only when the sheet has a Largest change line. First write the median sentence and the scatter sentence earlier in the note; the change must be at least 3 times the largest scatter.
+- "The change is larger than that scatter." Use only when the sheet has a Largest change line. First write the median and scatter sentences; use only when both lines exist and the change is larger.
+- "The change is no larger than that scatter, so it may be noise." Use only when the sheet has a Largest change line. First write the median and scatter sentences; use only when both lines exist and the change is no larger; for less than 1 percent, the scatter must be at least 1 percent.
   A sheet with 2 visits has no Largest change line, so do not compare; use the fewer-than-3-visits sentence below instead.
 - "There are no reference stars to compare the change with." Use only if a change was measured and the reference stars line is absent, 0 or none.
 - "The reference stars' scatter is unavailable, so there is nothing to compare the change with." Use only if a change was measured and the sheet says scatter unavailable.
   Either no-reference sentence may end ", so the change counts for little."
 - "The lowest signal-to-noise among the points is VALUE." Copy its bound words too.
-- "There were N visits." For exactly 1 visit write "There was 1 visit." "The frames in each visit were LIST." "The time from first to last visit was VALUE days."
-- "The wavelength is VALUE micron." "Frames left out because their wavelength did not match: N."
+- "There were N visits." For exactly 1 visit write "There was 1 visit." "The frames in each visit were LIST." "The time from first to last visit was VALUE." Copy the text after the label, with its unit.
+- "The wavelength is VALUE." Copy the text after the label, with its unit. "Frames left out because their wavelength did not match: N."
 - "The shift in position was VALUE." Copy the entire text after the sheet's Shift in position label.
-- "Difference image at the target: VALUE." Copy the first sentence after that label. If the sheet has a warning after it, copy the whole warning immediately after the difference sentence; do not write the warning alone.
+- "Difference image at the target: VALUE." Copy the first sentence after that label. If the sheet has a warning after it, copy the whole warning immediately after the difference sentence, in the same paragraph; do not write the warning alone.
 - "The position is VALUE." "The target is VALUE." Copy the text after the corresponding label.
 - "The frames came from VALUE." Copy the text after the Frames came from label.
 - "There are fewer than 3 visits, so the change counts for little." Use only if a change was measured and the sheet has fewer than 3 visits.
 - "The lowest signal-to-noise is small, so the change counts for little." Use only if a change was measured and it is below 1 or under 3.
 - "There is nothing measured to interpret yet." Use only if there is no brightness, difference or shift line.
-- "This is a candidate only." Use only if a change or shift was measured; this sentence does not count as a measurement.
-Here a change was measured when the largest change is not "less than 1 percent", or exactly two brightness readings differ, or the difference line does not say "no change above the noise". A shift was measured when the shift line gives a number of arcsec, not "none measured".
+- "This is a candidate only." Use only if a shift was measured, or a change was measured and, when reference-star scatter is printed, the brightness change is larger than every printed scatter value, or the difference line reports a change. This sentence does not count as a measurement.
+Here a change was measured when the largest change is not "less than 1 percent", or exactly two brightness readings differ, or the sheet has a difference line and it does not say "no change above the noise". A shift was measured when the shift line gives a number of arcsec, not "none measured".
 In the third paragraph use 1 or 2 of these sentences, exactly as written. Any other sentence there will be removed.
-- "Wait for another visit to see whether the change repeats." Only when a change was measured.
+- "Wait for another visit to see whether the change repeats." Only when a change was measured and, when reference-star scatter is printed, the brightness change is larger than every printed scatter value, or the difference line reports a change.
 - "Compare the target with the reference stars in the same frames." Only when the sheet says 1 or more reference stars have available scatter.
 - "Look at Subtract to see what is left at the target." Only when there are at least 2 visits.
 - "Switch on Flagged pixels to see whether one sits on the target." Always allowed.
 - "Step through the frames in Blink to see whether one frame stands out." Always allowed.
 - "Switch on Brightest Gaia stars to see whether a catalogue star lies at the target." Always allowed.
-- "Change the colour to see whether the change shows at another wavelength." Only when a change was measured.
+- "Change the colour to see whether the change shows at another wavelength." Only when a change was measured and, when reference-star scatter is printed, the brightness change is larger than every printed scatter value, or the difference line reports a change.
 - "Change the colour to look at another wavelength." Always allowed.
 Use plain words, no extra headings, lists or markdown.
 
