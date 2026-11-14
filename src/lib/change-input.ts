@@ -3,7 +3,7 @@
 // with its Gaia source_id, so both entries of one star share an id. Pure, no DOM, so it runs in a Worker.
 // Not wired into the page yet.
 
-import { compareVisits, type ChangeOptions, type ChangeResult, type StarPix, type VisitImage } from './changes';
+import { compareVisits, type ChangeOptions, type VisitChangeResult, type StarPix, type VisitImage } from './changes';
 import { gridSkyToPix } from './regrid';
 import type { GaiaStar, SkyResult } from './source';
 import { groupByVisit, stackVisit } from './stack';
@@ -47,7 +47,8 @@ function image(visit: RegriddedFrame[]): VisitImage
     const stack = stackVisit(visit);
     const lambda = visit.reduce((sum, f) => sum + f.lambdaAtCenter, 0) / visit.length;
     return {
-        data: stack.data, lambda, mjd: middle(visit), obsIds: visit.map((f) => f.frame.obsId),
+        data: stack.data, lambda, mjd: middle(visit),
+        obsIds: visit.slice().sort((a, b) => a.frame.tMin - b.frame.tMin).map((f) => f.frame.obsId),
         ...(stack.variance ? { variance: stack.variance } : {}),
     };
 }
@@ -95,15 +96,16 @@ export function changeInput(result: SkyResult, opts: ChangeInputOptions = {}): C
         notes.push('No catalogue stars for this view: every change is reported without a catalogue match.');
     }
     if (!earlier.variance || !later.variance) {
-        notes.push('No error maps for these visits; noise is estimated from the difference image.');
+        notes.push('No error maps for at least one visit; noise is estimated from the difference image.');
     }
     return { earlier, later, stars, visits: visits.length, notes };
 }
 
-export function findChanges(result: SkyResult, opts: ChangeInputOptions = {}, changeOpts?: ChangeOptions): ChangeResult
+export function findChanges(result: SkyResult, opts: ChangeInputOptions = {}, changeOpts?: ChangeOptions): VisitChangeResult
 {
     const input = changeInput(result, opts);
     const found = compareVisits(input.earlier, input.later, result.grid, input.stars, changeOpts);
-    found.notes.push(...input.notes);
+    const noiseReported = found.notes.some((note) => /noise from the difference image/i.test(note));
+    found.notes.push(...input.notes.filter((note) => !(noiseReported && note.startsWith('No error maps'))));
     return found;
 }
