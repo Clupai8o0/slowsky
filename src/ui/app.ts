@@ -17,12 +17,12 @@ import { createDemoSource } from './demo-source';
 import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
-import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
+import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
 import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, renderSpectrum, type LayerState } from './slots';
 import { mountEpoch } from './epoch-view';
 import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
-import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, type SubOp, type Visit } from './subtract';
+import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
 
 type Mode = 'blink' | 'stack' | 'diff';
 type SourceKind = 'live' | 'snapshot' | 'demo';
@@ -1486,7 +1486,7 @@ export function mount(root: HTMLElement): void
             return {};
         }
         if (kind === 'cold') {
-            const visits = visitsOf(result).map((v) => `${v.n} in ${monthYear(v.mjd)}`);
+            const visits = visitGroups(result).map((v) => `${v.n} in ${visitMonths(v)}`);
             // From earlier telescopes, not measured here, so it sits in the description, not under "Measured here".
             // Luhman 2014 (arXiv:1404.6501, Table 1): [3.6] 17.44, [4.5] 13.89, W2 (4.6 µm) 13.89 mag. Detector 6
             // covers 4.42 to 5.00 µm. Other detectors get no sentence here; the card's own line covers 3.6 vs 4.5 µm.

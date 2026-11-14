@@ -119,8 +119,9 @@ export function subtractText(a: Visit, b: Visit, op: SubOp): string
     return `Sum of the two visits, ${dateA} (${looksA}) plus ${dateB} (${looksB}): the pictures are added pixel by pixel, so light in both visits adds up and light in only one counts once. Pixels blank in either visit show black.${avg}`;
 }
 
-// The months a visit covers: "Jul 2026", "Apr–May 2026", "Dec 2025–Jan 2026".
-function visitMonths(v: Visit): string
+// The months a visit covers: "Jul 2026", "Apr–May 2026", "Dec 2025–Jan 2026". Also used by the looks sentence,
+// so a visit that runs over a month end agrees with the thumbnails, which are dated frame by frame.
+export function visitMonths(v: Pick<Visit, 'mjd' | 'end'>): string
 {
     const a = new Date((v.mjd - 40587) * 86400000);
     const b = new Date((v.end - 40587) * 86400000);
