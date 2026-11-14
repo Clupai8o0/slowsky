@@ -314,7 +314,7 @@ function shell(): string
     <h2 class="sk-mh" id="sk-h8"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
     <div class="sk-slot-spec" data-ref="specBox"></div>
   </section>
-  <section class="sk-mod sk-m-slot" aria-labelledby="sk-h9" data-ref="changes" hidden>
+  <section class="sk-mod sk-m-slot sk-m-changes" aria-labelledby="sk-h9" data-ref="changes" hidden>
     <h2 class="sk-mh" id="sk-h9"><span class="ic">${ICON.diff}</span>Candidate changes</h2>
     <div data-ref="changesBox"></div>
   </section>
@@ -335,7 +335,7 @@ function shell(): string
     <div class="sk-lcx" data-ref="lcx" aria-hidden="true"></div>
     <p class="sk-body mute" data-bind="lcNote"></p>
   </section>
-  <section class="sk-mod sk-m-slot" aria-labelledby="sk-h10" data-ref="halo" hidden>
+  <section class="sk-mod sk-m-slot sk-m-halo" aria-labelledby="sk-h10" data-ref="halo" hidden>
     <h2 class="sk-mh" id="sk-h10"><span class="ic">${ICON.curve}</span>Halo over time</h2>
     <div data-ref="haloBox"></div>
   </section>
