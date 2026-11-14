@@ -259,14 +259,16 @@ def model_card(summary, eval_digest):
               'macroF1': 'macro-F1'}
     thresholds = summary['gate']['thresholds']
     trees_by_target = {entry['testTarget']: entry['trees'] for entry in summary['comparison']}
-    below = []
-    for target in dict.fromkeys(item['target'] for items in summary['worstFoldGate'].values() for item in items):
-        parts = [f"{labels[key]} is {item['value']:.3f}, below the {thresholds[key]:.2f} target"
-                 for key, items in summary['worstFoldGate'].items() for item in items if item['target'] == target]
-        values = {key: item['value'] for key, items in summary['worstFoldGate'].items()
-                  for item in items if item['target'] == target}
-        better = all(trees_by_target[target][key] > value for key, value in values.items())
-        below.append(f"On {target}, {' and '.join(parts)}" + ('; trees did better there.' if better else '.'))
+    cnn_shipped = summary['cnnAttempt']['gate']['passed']
+    # One clause per metric (not per field), grouped by target value, keeps every miss inside the card budget.
+    below = {}
+    for key, items in summary['worstFoldGate'].items():
+        if not items:
+            continue
+        values = ', '.join(f"{item['target']} {item['value']:.3f}"
+                           + (' (trees better)' if cnn_shipped and trees_by_target[item['target']][key] > item['value'] else '')
+                           for item in items)
+        below.setdefault(f"{thresholds[key]:.2f}", []).append(f"{labels[key]} on {values}")
     low_bin = next(b for b in summary['recallBySnrBin'] if b['lo'] == 3 and b['hi'] == 5)
     test_counts = sorted({fold['testCount'] for fold in summary['folds']})
     frame_counts = [sum(frame['target'] == fold['testTarget'] for frame in summary['psfMeasurements'])
@@ -294,7 +296,7 @@ def model_card(summary, eval_digest):
         'treesNote': TREES_NOTE, 'evalSha256': eval_digest, 'seed': summary['seed'],
     }
     if below:
-        card['belowGate'] = ' '.join(below)
+        card['belowGate'] = ' '.join(f"Below the {target} target: {'; '.join(parts)}." for target, parts in below.items())
     return card
 
 

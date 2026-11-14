@@ -55,7 +55,7 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
         expect(card.belowGate).not.toContain('under the gate');
         for (const key of ['moverRecallSnr10', 'artifactPrecision']) {
             if (gated.worstFoldGate[key]!.length > 0) {
-                expect(card.belowGate).toContain('below the 0.85 target');
+                expect(card.belowGate).toMatch(/below the 0\.85 target/i);
             }
         }
     }
@@ -72,7 +72,8 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     expect(updated.comparisonNote).toBe(card.treesNote);
     expect(evaluation.validation).toContain('Synthetic injections only; each fold holds out all frames of one target');
     expect(evaluation.validation).toContain('not accuracy on real unknown objects');
-    expect(evaluation.configurationSelection).toContain('Development validation, not an untouched benchmark');
+    // Whichever model is kept (CNN or the trees fallback), the eval says the folds were used for selection.
+    expect(evaluation.configurationSelection).toMatch(/development validation, not an untouched benchmark/i);
     expect(card.evalSha256).toBe(digest);
     expect(card.seed).toBe(evaluation.seed);
     expect(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url)).length).toBeLessThan(1280);
