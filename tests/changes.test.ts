@@ -1294,6 +1294,27 @@ describe('change finder, round 7: no number where a neighbour or an edge is in t
         expect(numbered(r)).toEqual([]);
     });
 
+    it('does not say "appeared" for a source that was there before on a background with no scatter (Codex round 7)', () => {
+        const a = new Float32Array(grid.width * grid.height), b = noise(grid);
+        point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
+        expect(r.candidates.length).toBeGreaterThan(0);
+        expect(r.candidates.map((c) => c.reason).filter((s) => /appeared/.test(s))).toEqual([]);
+    });
+
+    it('counts a neighbour listed for both visits once (Codex round 7)', () => {
+        const a = noise(grid), b = noise(grid);
+        const x2 = 60 + 8 / P;
+        point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);
+        point(a, grid, x2, 60, 200); point(b, grid, x2, 60, 200);
+        const once = [{ x: 60, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }];
+        const twice = [...once, { x: 60 + 0.1 / P, y: 60, id: 'a' }, { x: x2 + 0.1 / P, y: 60, id: 'b' }];
+        const quoted = (stars: typeof once) => compareVisits(image(a, 'a'), image(b, 'b'), grid, stars)
+            .candidates.filter((c) => c.fracChange !== undefined).length;
+        expect(quoted(once)).toBe(1);
+        expect(quoted(twice)).toBe(1);
+    });
+
     it('still quotes the percentage for an isolated star that brightens 50%', () => {
         const a = noise(grid), b = noise(grid);
         point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);

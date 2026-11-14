@@ -524,8 +524,10 @@ function sourceCentroid(data: Float32Array, center: PixelCoord, grid: OutputGrid
     return sum > 0 ? { x: sx / sum, y: sy / sum } : undefined;
 }
 
-function fractionalChange(earlier: Float32Array, later: Float32Array, pix: PixelCoord, grid: OutputGrid,
-    apertureArcsec = 12): number | undefined
+// Background-subtracted aperture sums in both images and the earlier sum's noise; undefined when the
+// aperture or its 24-36″ ring cannot be measured.
+function apertureSums(earlier: Float32Array, later: Float32Array, pix: PixelCoord, grid: OutputGrid,
+    apertureArcsec = 12): { sumA: number; sumB: number; noise: number } | undefined
 {
     const radius = apertureArcsec / grid.pixelArcsec, ring = 24 / grid.pixelArcsec;
     const ringA: number[] = [], ringB: number[] = [];
@@ -580,6 +582,17 @@ function fractionalChange(earlier: Float32Array, later: Float32Array, pix: Pixel
     // The regridded pixels are correlated on the scale of one native pixel.
     const k = Math.max(1, Math.round(NATIVE / grid.pixelArcsec));
     const noise = backgroundA.sigma * Math.sqrt(count) * k;
+    return { sumA, sumB, noise };
+}
+
+function fractionalChange(earlier: Float32Array, later: Float32Array, pix: PixelCoord, grid: OutputGrid,
+    apertureArcsec = 12): number | undefined
+{
+    const sums = apertureSums(earlier, later, pix, grid, apertureArcsec);
+    if (!sums) {
+        return undefined;
+    }
+    const { sumA, sumB, noise } = sums;
     if (!(sumA > 0) || !(sumB > 0) || !(noise > 0) || !Number.isFinite(noise) || sumA < 5 * noise) {
         return undefined;
     }
@@ -774,8 +787,10 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     // neighbour that brightens is in the later aperture (Codex round 7: "80% brighter" for a 50% change).
     const NEIGHBOUR = 0.25;
     // Neighbours add up: two at 0.2 each dilute like one at 0.4 (Codex round 7: 39% quoted for a 50% change).
+    // A star listed once per visit (two entries, one id) counts once: its largest share is kept (Codex round 7).
     const crowdedIn = (star: StarPix, data: Float32Array): boolean => {
         const own = level(star, data), sigma = PSF_FWHM / 2.35482;
+        const byId = new Map<string, number>();
         let share = 0;
         for (const s of stars) {
             if (s === star || !Number.isFinite(s.x) || !Number.isFinite(s.y) || sameStar(s, star)) {
@@ -791,7 +806,14 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             if (!Number.isFinite(ratio) || !(mine > 0)) {
                 return true;
             }
-            share += Math.max(0, ratio);
+            if (s.id === undefined) {
+                share += Math.max(0, ratio);
+            } else {
+                byId.set(s.id, Math.max(byId.get(s.id) ?? 0, ratio));
+            }
+        }
+        for (const ratio of byId.values()) {
+            share += ratio;
         }
         return !(share < NEIGHBOUR);
     };
@@ -828,7 +850,11 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 + `stars changed or a source moved between them; by how much could not be measured (${snrText(c.snr)}; candidate).`;
         } else {
             c.kind = 'unknown';
-            c.reason = b.sign === 1 && !c.gaiaMatch && !signMismatch && !wing && !opposite
+            // "Appeared" only when the earlier aperture was measured and held no source (Codex round 7: a zero-
+            // scatter background left the fraction unmeasurable and a 2000 -> 3000 source read as new).
+            const sums = apertureSums(earlier.data, later.data, b.pix, grid);
+            const absentBefore = sums !== undefined && sums.noise > 0 && Number.isFinite(sums.noise) && sums.sumA < 5 * sums.noise;
+            c.reason = b.sign === 1 && !c.gaiaMatch && !signMismatch && !wing && !opposite && absentBefore
                 ? `A source appeared here (candidate); ${snrText(c.snr)}.`
                 : `Changed at ${snrText(c.snr)}; brightness change could not be measured here (candidate).`;
         }
