@@ -37,7 +37,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
         short: 'Dim at some colours',
         kind: 'spectrum',
         headline: 'Epsilon Indi B, missing colours',
-        show: 'Two brown dwarfs: heavier than planets, too light to shine like stars. Change the colour: they are dim where methane and water soak up light.',
+        show: 'Two brown dwarfs: heavier than planets, too light to shine like stars. Change the colour: they are dim where methane and water soak up light. The saved copy holds frames from detector 3 only (1.63 to 2.41 µm); colours outside that band load from NASA’s archive, which takes about 30 s.',
         not: 'No brightness curve is drawn for it here. Blinking shows how it moves; it does not test whether its brightness changes.',
     },
     wise0855: {
@@ -67,7 +67,7 @@ export const CUSTOM_COPY = {
 export const MODE_HINT = {
     blink: 'Blink flips between dates. Things that move or change are easier to spot.',
     stack: 'Stack averages every frame. Faint things appear; moving things smear.',
-    diff: 'Subtract: last look minus first. Blue was there then, orange is there now.',
+    diff: 'Subtract: last look minus first. Blue marks more light earlier, orange more light later.',
 } as const;
 
 export const STAGE_TEXT = {

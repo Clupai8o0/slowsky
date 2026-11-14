@@ -284,7 +284,27 @@ export function initLayout(root: HTMLElement): Layout
         apply();
     });
 
+    // Keyed to the phone CSS query, not !wide: at a sub-pixel width between 1080 and 1081 px neither applies.
+    const narrow = matchMedia('(max-width: 1080px)');
+    narrow.addEventListener('change', () => placeAbout(root, !narrow.matches));
+    placeAbout(root, !narrow.matches);
     fit();
     apply();
     return { toggleFocus };
+}
+
+// In one column, CSS order shows "What to look for" after the sky and the status line, but in the page it sits in the
+// left rail, before the sky, so Tab reached its link first. Move it to just after the status line on narrow screens
+// and back under the target picker on wide ones, so Tab follows what is on screen.
+export function placeAbout(root: HTMLElement, isWide: boolean): void
+{
+    const about = root.querySelector<HTMLElement>('.sk-m-about');
+    const anchor = root.querySelector<HTMLElement>(isWide ? '.sk-m-pick' : '.sk-status');
+    if (!about || !anchor || anchor.nextElementSibling === about) {
+        return;
+    }
+    const active = document.activeElement;
+    const focused = active instanceof HTMLElement && about.contains(active) ? active : null;
+    anchor.after(about);
+    focused?.focus({ preventScroll: true });
 }

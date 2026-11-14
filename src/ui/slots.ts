@@ -11,10 +11,36 @@
 // - halo: a panel under "Brightness over time", for the R Draconis halo curve (lane/halo3).
 import { readFlags } from '../lib/flags';
 import { flagsRgba, regridFlags, summariseFlags } from '../lib/flags-view';
-import type { SkyResult } from '../lib/source';
-import type { RegriddedFrame } from '../lib/types';
+import { createLiveSource, type SkyResult, type SkySource } from '../lib/source';
+import { ColourGridError, falseColourView } from '../lib/falsecolour-view';
+import { apertureFor } from './measure';
+import type { RegriddedFrame, TargetId } from '../lib/types';
+import { COPY } from './copy';
+import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
+import { ChangeInputError, findChanges } from '../lib/change-input';
+import { changesHtml, changesMarks, changesView, type ChangesView } from './changes-view';
 
-export const FEATURES = Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false });
+export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo' | 'mlHint';
+export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
+    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false, mlHint: false });
+
+// Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
+// Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
+export function featuresFrom(list: string | undefined, defaults: Readonly<Record<Feature, boolean>> = DEFAULT_FEATURES): Readonly<Record<Feature, boolean>>
+{
+    const out = { ...defaults };
+    for (const raw of (list ?? '').split(',')) {
+        const item = raw.trim();
+        const off = item.startsWith('-');
+        const name = (off ? item.slice(1) : item).trim();
+        if (Object.prototype.hasOwnProperty.call(out, name)) {
+            out[name as Feature] = !off;
+        }
+    }
+    return Object.freeze(out);
+}
+
+export const FEATURES = featuresFrom(import.meta.env.VITE_PREVIEW_FEATURES as string | undefined);
 
 export interface SlotView {
     result: SkyResult;
@@ -39,6 +65,7 @@ export function renderSpectrum(box: HTMLElement, view: SlotView): boolean
 export const FLAGS_LEFT_OUT: ReadonlySet<string> = new Set(['SOURCE', 'FULLSAMPLE', 'GHOST_FPA']);
 export const FLAGS_COLOR: [number, number, number] = [255, 79, 216];
 export const FLAGS_ALPHA = 170;
+export const FLAGS_READ_TIMEOUT_MS = 20000;
 
 export const FLAGS_TEXT = Object.freeze({
     snapshot: 'Flags need a live read. Go live to load this frame from the archive with its flags.',
@@ -56,6 +83,8 @@ export interface LayerState {
     key: boolean; // show the key in the sky legend
     layer: boolean; // show the layer over the sky
     note: string; // the line under the legend ('' hides it)
+    // Optional split of `note` for small screens: `lead` always shows, `more` goes behind "How to read this colour".
+    split?: { lead: string; more: string };
 }
 
 export type FlagsState = LayerState;
@@ -68,6 +97,7 @@ type Entry =
 export interface FlagsDeps {
     enabled?: boolean; // defaults to FEATURES.flags (tests switch it on)
     read?: typeof readFlags;
+    timeoutMs?: number; // defaults to FLAGS_READ_TIMEOUT_MS
     // Paints an RGBA mask over the sky; the default uses a canvas inside `layer`.
     paint?: (layer: HTMLElement, rgba: Uint8ClampedArray, width: number, height: number) => void;
 }
@@ -135,8 +165,22 @@ export function mountFlags(layer: HTMLElement, onChange: () => void, deps: Flags
         busy = true;
         cache.set(frame, { status: 'loading' });
         const mine = gen;
-        const signal = ctrl.signal;
-        read(context.url, flags.layout, context.box, { signal }).then(r => {
+        const resetSignal = ctrl.signal;
+        const deadline = new AbortController();
+        const abort = () => deadline.abort();
+        let signal = deadline.signal;
+        if (typeof AbortSignal.any === 'function') {
+            signal = AbortSignal.any([resetSignal, deadline.signal]);
+        } else if (resetSignal.aborted) {
+            abort();
+        } else {
+            resetSignal.addEventListener('abort', abort, { once: true });
+        }
+        const timer = setTimeout(abort, deps.timeoutMs ?? FLAGS_READ_TIMEOUT_MS);
+        read(context.url, flags.layout, context.box, { signal }).finally(() => {
+            clearTimeout(timer);
+            resetSignal.removeEventListener('abort', abort);
+        }).then(r => {
             const used = new Uint8Array(r.data.length);
             const mask = regridFlags(r.data, context.box, context.wcs, frame.grid, bits, used);
             const summary = summariseFlags(r.data, flags.names, bits, used);
@@ -200,12 +244,48 @@ export function mountFlags(layer: HTMLElement, onChange: () => void, deps: Flags
 // the picture, pointer-events off) for rings or labels at each candidate. Called on every render: cache by
 // `view.result` and return quickly. Fill both with textContent or trusted SVG only. Return true when there is
 // something to show; false hides the panel and the layer.
+const changesCache = new WeakMap<SkyResult, ChangesView | null>();
+const changesShown = new WeakMap<HTMLElement, string>();
+
+// The finder's answer for a result, first visit against last, worked out once. Its own error message (too few
+// visits, say) becomes the panel's note; any other failure hides the panel.
+export function changesFor(result: SkyResult, find: typeof findChanges = findChanges): ChangesView | null
+{
+    try {
+        return changesView(find(result));
+    } catch (e) {
+        if (e instanceof ChangeInputError) {
+            return changesView({ error: e.message });
+        }
+        console.warn('[slowsky] change finder failed', e);
+        return null;
+    }
+}
+
 export function renderChanges(box: HTMLElement, marks: HTMLElement, view: SlotView): boolean
 {
-    void box;
-    void marks;
-    void view;
-    return false;
+    if (view.source === 'demo') {
+        return false;
+    }
+    let v = changesCache.get(view.result);
+    if (v === undefined) {
+        v = changesFor(view.result);
+        changesCache.set(view.result, v);
+    }
+    if (!v) {
+        return false;
+    }
+    const html = changesHtml(v);
+    if (changesShown.get(box) !== html) {
+        box.innerHTML = html;
+        changesShown.set(box, html);
+    }
+    const svg = changesMarks(v, view.result.grid.width, view.result.grid.height);
+    if (changesShown.get(marks) !== svg) {
+        marks.innerHTML = svg;
+        changesShown.set(marks, svg);
+    }
+    return true;
 }
 
 // False colour. `layer` is an empty layer over the sky (same box as the picture, under the Gaia rings) for a
@@ -215,27 +295,164 @@ export interface FalseColourSlot {
     update(view: SlotView | null, on: boolean): LayerState;
 }
 
-export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps: { enabled?: boolean } = {}): FalseColourSlot
+export interface FalseColourDeps {
+    enabled?: boolean;
+    source?: SkySource;
+    paint?: (layer: HTMLElement, rgba: Uint8ClampedArray, width: number, height: number) => void;
+}
+
+// These partner wavelengths and threshold are a design choice for this view.
+const COLOUR_THRESHOLD = 2.42;
+const COLOUR_SHORT = 1.25;
+const COLOUR_LONG = 4.60;
+// The detectors that carry those two wavelengths (nominal ranges: 2 covers 1.10 to 1.62 µm, 6 covers 4.42 to 5.00).
+const COLOUR_SHORT_DETECTOR = 2;
+const COLOUR_LONG_DETECTOR = 6;
+
+export const FALSE_COLOUR_TEXT = Object.freeze({
+    snapshot: 'False colour needs a live read. Go live to load a second wavelength; the saved copy holds one wavelength per target.',
+    stack: 'False colour is drawn in Stack.',
+    loading: 'Reading the second colour…',
+    failed: 'The second colour could not be read.',
+    grid: 'The two colours are on different grids.',
+    picture: 'False colour could not be drawn for this view.',
+    empty: 'No frames were found in this view.',
+});
+
+export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps: FalseColourDeps = {}): FalseColourSlot
 {
     const enabled = deps.enabled ?? FEATURES.falseColour;
-    void layer;
-    void onChange;
+    const paint = deps.paint ?? paintCanvas;
+    let result: SkyResult | null = null;
+    let controller: AbortController | null = null;
+    let generation = 0;
+    let entry: { status: 'loading' | 'failed'; note: string } | { status: 'ready'; picture: ReturnType<typeof falseColourView> } | null = null;
+    let painted = false;
+
+    function reset(next: SkyResult | null): void
+    {
+        controller?.abort();
+        controller = null;
+        generation++;
+        result = next;
+        entry = null;
+        painted = false;
+    }
+
+    function start(view: SlotView): void
+    {
+        const current = view.result;
+        const partner = current.lambda >= COLOUR_THRESHOLD ? COLOUR_SHORT : COLOUR_LONG;
+        controller = new AbortController();
+        const mine = generation;
+        entry = { status: 'loading', note: FALSE_COLOUR_TEXT.loading };
+        try {
+            const source = deps.source ?? createLiveSource();
+            source.load({ center: current.grid.center, fovDeg: current.grid.fovDeg,
+                detector: partner === COLOUR_SHORT ? COLOUR_SHORT_DETECTOR : COLOUR_LONG_DETECTOR, lambda: partner,
+                ...(view.targetId ? { target: view.targetId as TargetId } : {}), signal: controller.signal }).then(other => {
+                if (mine !== generation) {
+                    return;
+                }
+                if (!other.frames.length) {
+                    entry = { status: 'failed', note: `No frames were found at ${partner.toFixed(2)} µm.` };
+                } else {
+                    try {
+                        entry = { status: 'ready', picture: falseColourView(current, other, apertureFor(current.grid)) };
+                    } catch (error) {
+                        entry = { status: 'failed', note: error instanceof ColourGridError ? FALSE_COLOUR_TEXT.grid : FALSE_COLOUR_TEXT.picture };
+                    }
+                }
+                onChange();
+            }, () => {
+                if (mine === generation) {
+                    entry = { status: 'failed', note: FALSE_COLOUR_TEXT.failed };
+                    onChange();
+                }
+            });
+        } catch {
+            entry = { status: 'failed', note: FALSE_COLOUR_TEXT.failed };
+        }
+    }
+
     return {
         update(view: SlotView | null, on: boolean): LayerState
         {
-            void on;
-            if (!enabled || !view) {
+            if (!enabled || !view || view.source === 'demo') {
+                if (result) {
+                    reset(null);
+                }
                 return { key: false, layer: false, note: '' };
             }
-            return { key: false, layer: false, note: '' };
+            if (result !== view.result) {
+                reset(view.result);
+            }
+            if (!on || view.source !== 'live' || view.mode !== 'stack') {
+                // A finished picture is kept for this view, so switching back does not read the archive again.
+                // A read still running is dropped, and a failed one is forgotten so switching on again retries.
+                if (entry && entry.status !== 'ready') {
+                    reset(view.result);
+                }
+                const note = !on ? '' : view.source === 'snapshot' ? FALSE_COLOUR_TEXT.snapshot
+                    : view.mode !== 'stack' ? FALSE_COLOUR_TEXT.stack : '';
+                return { key: true, layer: false, note };
+            }
+            if (!view.result.frames.length) {
+                return { key: true, layer: false, note: FALSE_COLOUR_TEXT.empty };
+            }
+            if (!entry) {
+                start(view);
+            }
+            if (!entry || entry.status !== 'ready') {
+                return { key: true, layer: false, note: entry?.note ?? FALSE_COLOUR_TEXT.failed };
+            }
+            try {
+                if (!painted) {
+                    const picture = entry.picture;
+                    paint(layer, picture.rgba, picture.width, picture.height);
+                    painted = true;
+                }
+                const parts = entry.picture.parts;
+                const join = (xs: string[]) => xs.filter(Boolean).join(' ');
+                return { key: true, layer: true, note: entry.picture.sentence,
+                    split: { lead: join([parts.reading, parts.warning]), more: join([parts.labels, parts.note, parts.method]) } };
+            } catch {
+                entry = { status: 'failed', note: FALSE_COLOUR_TEXT.picture };
+                return { key: true, layer: false, note: FALSE_COLOUR_TEXT.picture };
+            }
         },
     };
 }
 
 // R Draconis halo curve. `box` is the panel body under "Brightness over time". Same rules as renderSpectrum.
-export function renderHalo(box: HTMLElement, view: SlotView): boolean
+// Measured once per result (src/ui/halo-view.ts); the simulated sky never gets a curve.
+const haloCache = new WeakMap<SkyResult, HaloView | null>();
+const haloShown = new WeakMap<HTMLElement, string>();
+
+export function renderHalo(box: HTMLElement, view: SlotView, deps: HaloDeps = {}): boolean
 {
-    void box;
-    void view;
-    return false;
+    const card = view.targetId && view.targetId in COPY ? COPY[view.targetId as TargetId] : undefined;
+    if (view.source === 'demo' || card?.kind !== 'saturated') {
+        return false;
+    }
+    let h = haloCache.get(view.result);
+    if (h === undefined) {
+        h = haloFor(view.result, deps);
+        haloCache.set(view.result, h);
+    }
+    if (!h) {
+        return false;
+    }
+    const html = haloHtml(h, card.display, view.mode === 'blink' ? view.index : -1);
+    if (haloShown.get(box) !== html) {
+        // Rewriting the panel drops the focused date button; put focus back on the same date.
+        const active = box.ownerDocument?.activeElement as HTMLElement | null | undefined;
+        const k = active && box.contains(active) ? active.dataset?.k : undefined;
+        box.innerHTML = html;
+        haloShown.set(box, html);
+        if (k !== undefined && /^\d+$/.test(k)) {
+            box.querySelector<HTMLElement>(`[data-k="${k}"]`)?.focus();
+        }
+    }
+    return true;
 }
