@@ -19,7 +19,7 @@ import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
 import { coreBlank, curveFor, frameMjd, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
-import { FEATURES, mountFalseColour, mountFlags, renderChanges, renderHalo, renderSpectrum, type LayerState } from './slots';
+import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, renderSpectrum, type LayerState } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, type SubOp, type Visit } from './subtract';
 
@@ -378,6 +378,7 @@ export function mount(root: HTMLElement): void
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
     const aiNote = mountAiNote(ref<HTMLElement>('ai'));
     const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
+    const changesSlot = mountChanges(() => renderSlots());
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderSlots());
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
@@ -1037,7 +1038,7 @@ export function mount(root: HTMLElement): void
         const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode, source: sourceKind } : null;
         const spec = ref<HTMLElement>('spec');
         spec.hidden = !(FEATURES.spectrum && view && renderSpectrum(ref<HTMLElement>('specBox'), view));
-        const changes = !!(FEATURES.changes && view && renderChanges(ref<HTMLElement>('changesBox'), ref<HTMLElement>('changesMarks'), view));
+        const changes = !!(FEATURES.changes && view && changesSlot.render(ref<HTMLElement>('changesBox'), ref<HTMLElement>('changesMarks'), view));
         ref<HTMLElement>('changes').hidden = !changes;
         ref<HTMLElement>('changesMarks').hidden = !changes;
         ref<HTMLElement>('halo').hidden = !(FEATURES.halo && view && renderHalo(ref<HTMLElement>('haloBox'), view));

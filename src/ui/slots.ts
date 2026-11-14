@@ -19,6 +19,10 @@ import { COPY } from './copy';
 import { haloFor, haloHtml, type HaloDeps, type HaloView } from './halo-view';
 import { ChangeInputError, findChanges } from '../lib/change-input';
 import { changesHtml, changesMarks, changesView, type ChangesView } from './changes-view';
+import { createRangeReader } from '../lib/fits';
+import { groupByVisit } from '../lib/stack';
+import type { RangeReader } from '../lib/types';
+import { readFrameFlags, screen, type FrameFlags } from './flag-screen';
 
 export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo' | 'mlHint';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
@@ -244,8 +248,6 @@ export function mountFlags(layer: HTMLElement, onChange: () => void, deps: Flags
 // the picture, pointer-events off) for rings or labels at each candidate. Called on every render: cache by
 // `view.result` and return quickly. Fill both with textContent or trusted SVG only. Return true when there is
 // something to show; false hides the panel and the layer.
-const changesCache = new WeakMap<SkyResult, ChangesView | null>();
-const changesShown = new WeakMap<HTMLElement, string>();
 
 // The finder's answer for a result, first visit against last, worked out once. Its own error message (too few
 // visits, say) becomes the panel's note; any other failure hides the panel.
@@ -262,30 +264,115 @@ export function changesFor(result: SkyResult, find: typeof findChanges = findCha
     }
 }
 
-export function renderChanges(box: HTMLElement, marks: HTMLElement, view: SlotView): boolean
+export interface ChangesDeps {
+    reader?: RangeReader;
+    read?: typeof readFlags;
+    fetcher?: typeof fetch;
+    timeoutMs?: number;
+    find?: typeof findChanges;
+}
+
+export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { render: (box: HTMLElement, marks: HTMLElement, view: SlotView) => boolean }
 {
-    if (view.source === 'demo') {
-        return false;
+    const reader = deps.reader ?? createRangeReader({ fetch: deps.fetcher });
+    const shown = new WeakMap<HTMLElement, string>();
+    let current: SkyResult | null = null;
+    let resultView: ChangesView | null = null;
+    let controller = new AbortController();
+    // Finished panels by result, so coming back to a result does not read the archive again.
+    const done = new WeakMap<SkyResult, ChangesView | null>();
+
+    function start(result: SkyResult, source: SlotView['source']): void
+    {
+        controller.abort();
+        controller = new AbortController();
+        const reset = controller.signal;
+        current = result;
+        if (done.has(result)) {
+            resultView = done.get(result) ?? null;
+            return;
+        }
+        const initial = changesFor(result, deps.find);
+        resultView = initial;
+        if (!initial?.candidates.length) {
+            done.set(result, initial);
+            return;
+        }
+        // The finder's own list of the compared frames when it gives one, else the same split it makes by default.
+        const byId = (ids: string[]) => result.frames.map(f => f.frame).filter(f => ids.includes(f.frame.obsId));
+        const visits = initial.visits ? [byId(initial.visits.earlier.obsIds), byId(initial.visits.later.obsIds)]
+            : groupByVisit(result.frames.map(f => f.frame), 10);
+        const earlier = visits[0] ?? [];
+        const later = visits.length > 1 ? visits[visits.length - 1]! : [];
+        const frames = [...earlier, ...later];
+        const order = frames.flatMap(f => f.context?.flags?.names.map(n => n.name) ?? []);
+        const saved = source === 'snapshot';
+        const finish = (flags: Map<string, FrameFlags | null>) => {
+            const screened = screen(initial.candidates, { earlier, later }, flags, order, saved);
+            resultView = { ...initial, candidates: screened.kept, lead: screened.lead,
+                ran: screened.dropNote && !screened.kept.length ? false : initial.ran,
+                notes: [...initial.notes, ...(screened.dropNote ? [screened.dropNote] : [])] };
+            done.set(result, resultView);
+        };
+        if (saved || !frames.some(f => f.context?.flags)) {
+            finish(new Map());
+            return;
+        }
+        resultView = { ...initial, notes: [...initial.notes, 'Checking the archive flags for these spots; the list and its numbers may update.'] };
+        void (async () => {
+            const flags = new Map<string, FrameFlags | null>();
+            for (const frame of frames) {
+                if (reset.aborted) {
+                    return;
+                }
+                const deadline = new AbortController();
+                const abort = () => deadline.abort();
+                reset.addEventListener('abort', abort, { once: true });
+                let timer: ReturnType<typeof setTimeout> | undefined;
+                const timeout = new Promise<null>(resolve => {
+                    timer = setTimeout(() => { abort(); resolve(null); }, deps.timeoutMs ?? FLAGS_READ_TIMEOUT_MS);
+                    deadline.signal.addEventListener('abort', () => resolve(null), { once: true });
+                });
+                const value = await Promise.race([readFrameFlags(frame, { reader, readFlags: deps.read ?? readFlags,
+                    fetcher: deps.fetcher, signal: deadline.signal }), timeout]);
+                clearTimeout(timer);
+                reset.removeEventListener('abort', abort);
+                flags.set(frame.frame.obsId, value);
+            }
+            if (!reset.aborted) {
+                finish(flags);
+                onChange();
+            }
+        })();
     }
-    let v = changesCache.get(view.result);
-    if (v === undefined) {
-        v = changesFor(view.result);
-        changesCache.set(view.result, v);
+
+    function render(box: HTMLElement, marks: HTMLElement, view: SlotView): boolean
+    {
+        if (view.source === 'demo') {
+            controller.abort();
+            current = null;
+            return false;
+        }
+        if (current !== view.result) {
+            start(view.result, view.source);
+        }
+        const v = resultView;
+        if (!v) {
+            return false;
+        }
+        const html = changesHtml(v);
+        if (shown.get(box) !== html) {
+            box.innerHTML = html;
+            shown.set(box, html);
+        }
+        const svg = changesMarks(v, view.result.grid.width, view.result.grid.height);
+        if (shown.get(marks) !== svg) {
+            marks.innerHTML = svg;
+            shown.set(marks, svg);
+        }
+        return true;
     }
-    if (!v) {
-        return false;
-    }
-    const html = changesHtml(v);
-    if (changesShown.get(box) !== html) {
-        box.innerHTML = html;
-        changesShown.set(box, html);
-    }
-    const svg = changesMarks(v, view.result.grid.width, view.result.grid.height);
-    if (changesShown.get(marks) !== svg) {
-        marks.innerHTML = svg;
-        changesShown.set(marks, svg);
-    }
-    return true;
+    return { render };
 }
 
 // False colour. `layer` is an empty layer over the sky (same box as the picture, under the Gaia rings) for a

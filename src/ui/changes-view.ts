@@ -5,9 +5,17 @@
 
 import type { ChangeCandidate, ChangeResult } from '../lib/changes';
 
+// Fields the finder is adding (lane/changes r10b): `sentence` (the reason without its caveat), `caveat` (a full
+// sentence, absent when both visits have 2+ frames) and `lightVisit`; `reason` stays as an alias of `sentence`.
+// Until they land, `reason` and the candidate's sign are used.
+export type PanelCandidate = ChangeCandidate & { sentence?: string; caveat?: string; lightVisit?: 'earlier' | 'later' };
+export interface FinderVisits { earlier: { obsIds: string[] }; later: { obsIds: string[] } }
+
 export interface ChangesView {
-    candidates: Pick<ChangeCandidate, 'id' | 'pix' | 'reason'>[];
+    candidates: (PanelCandidate & { line: string })[];
     notes: string[];
+    lead?: string[]; // paragraphs above the list
+    visits?: FinderVisits; // the frames of the two compared visits, when the finder says which
     ran: boolean; // false when the finder could not run (its message is the only note)
 }
 
@@ -21,23 +29,45 @@ export function changesView(found: ChangeResult | { error: string }): ChangesVie
     if ('error' in found) {
         return { candidates: [], notes: [found.error], ran: false };
     }
+    const candidates = (found.candidates as PanelCandidate[]).filter((c) => Number.isFinite(c.pix.x) && Number.isFinite(c.pix.y))
+        .map((c) => ({ ...c, line: c.sentence ?? c.reason }));
+    const lead = withCaveats(candidates);
+    const visits = (found as ChangeResult & { visits?: FinderVisits }).visits;
     return {
-        candidates: found.candidates.filter((c) => Number.isFinite(c.pix.x) && Number.isFinite(c.pix.y)),
+        candidates,
         notes: found.notes,
+        ...(lead.length ? { lead } : {}),
+        ...(visits ? { visits } : {}),
         // The finder sets sigma to NaN when it measured nothing (no frames within its colour window); then
         // "no candidates" would claim a comparison that never happened, so only its notes show.
         ran: Number.isFinite(found.sigma) || found.candidates.length > 0,
     };
 }
 
+// One caveat shared by every candidate shows once above the list (returned); otherwise each line gets its own.
+export function withCaveats(candidates: { caveat?: string; line: string }[]): string[]
+{
+    const first = candidates[0]?.caveat;
+    if (first && candidates.every((c) => c.caveat === first)) {
+        return [first];
+    }
+    for (const c of candidates) {
+        if (c.caveat) {
+            c.line += ` ${c.caveat}`;
+        }
+    }
+    return [];
+}
+
 // The panel body. Text flows in plain blocks, so a reworded sentence or an extra note needs no layout change.
 export function changesHtml(v: ChangesView): string
 {
+    const lead = (v.lead ?? []).map(s => `<p class="sk-chg-lead">${esc(s)}</p>`).join('');
     const list = v.candidates.length
-        ? `<ol class="sk-chg">${v.candidates.map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(c.reason)}</li>`).join('')}</ol>`
+        ? `<ol class="sk-chg">${v.candidates.map((c, i) => `<li><b>Candidate ${i + 1}</b> ${esc(c.line)}</li>`).join('')}</ol>`
         : v.ran ? `<p class="sk-chg-lead">${EMPTY_LEAD}</p>` : '';
     const notes = v.notes.length ? `<ul class="sk-chg-notes">${v.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
-    return list + notes;
+    return lead + list + notes;
 }
 
 // Numbered rings over the sky, on the picture's own pixel grid.

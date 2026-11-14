@@ -50,6 +50,13 @@ describe('Candidate changes panel', () => {
         expect(html).toBe('<ul class="sk-chg-notes"><li>Change finding needs two visits; these frames make 1.</li></ul>');
     });
 
+    it('escapes lead paragraphs and candidate lines above the notes', () => {
+        const v = changesView(found([cand('c', 1, 1, 'Original.')], ['Finder note.']));
+        v.lead = ['A <caveat>.'];
+        v.candidates[0]!.line = 'A <screened> line.';
+        expect(changesHtml(v)).toBe('<p class="sk-chg-lead">A &lt;caveat&gt;.</p><ol class="sk-chg"><li><b>Candidate 1</b> A &lt;screened&gt; line.</li></ol><ul class="sk-chg-notes"><li>Finder note.</li></ul>');
+    });
+
     it('drops candidates with no position and numbers the marks like the list', () => {
         const v = changesView(found([cand('c1', NaN, 3, 'x (candidate).'), cand('c2', 30, 2, 'y (candidate).')], []));
         expect(v.candidates.map((c) => c.id)).toEqual(['c2']);
