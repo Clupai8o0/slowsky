@@ -20,7 +20,7 @@ describe('honest fact sheet', () => {
         }
         expect(factSheet({ ...facts, difference: { peakSigma: 5 } }).join(' ')).toContain('A bright star');
         const pts = [1, 1, 1.0051].map((relative, i) => ({ mjd: 61000 + i, relative, snr: 10 }));
-        expect(factSheet(withPoints(pts))).toContain('Largest change from the median brightness: 1 percent brighter.');
+        expect(factSheet(withPoints(pts))).toContain('Largest change from the median brightness: 1 percent above it.');
     });
     it('omits the span for a single visit', () => {
         expect(factSheet({ ...facts, visits: [facts.visits[0]!] }).join(' ')).not.toContain('Time from first to last visit');
@@ -33,7 +33,7 @@ describe('honest fact sheet', () => {
     it('bounds signal-to-noise and checks the printed bound', () => {
         const sheet = factSheet(withPoints([{ mjd: 61000, relative: 1, snr: 3582 }]));
         expect(sheet).toContain('Lowest signal-to-noise among the points: more than 100. This counts sky noise only, so the real uncertainty is larger.');
-        expect(checkNote('The signal-to-noise is more than 100. Safe sentence. Another safe sentence.', sheet).dropped).toBe(0);
+        expect(checkNote('The signal-to-noise is more than 100. Safe sentence. Another safe sentence.', sheet).dropped).toBe(1);
         expect(checkNote('The signal-to-noise is 3582. Safe sentence. Another safe sentence.', sheet).dropped).toBe(1);
         for (const snr of [-0.01, 0, 0.99]) {
             expect(factSheet(withPoints([{ mjd: 61000, relative: 1, snr }])).join(' ')).toContain('points: below 1.');
@@ -46,15 +46,24 @@ describe('honest fact sheet', () => {
         expect(factSheet(withPoints([{ ...pair[0]!, relative: 0.999 }, { ...pair[1]!, relative: 1.001 }, { mjd: 61002, relative: 1, snr: 10 }]))).toContain('Largest change from the median brightness: less than 1 percent.');
         const weak = factSheet(withPoints([...pair, { mjd: 61002, relative: 20, snr: 0.9 }]));
         expect(weak).toContain('Brightness relative to the reference stars, in time order: 0.80, 1.20. Points too faint to measure are left out.');
+        expect(weak.some((line) => line.startsWith('Largest change'))).toBe(false);
         const one = factSheet(withPoints([pair[0]!, { ...pair[1]!, snr: 0 }]));
         expect(one.some((line) => /^(Brightness relative|Largest change)/.test(line))).toBe(false);
     });
     it('names the direction of a one-sided change and treats printed ties as ties', () => {
         const pts = (rel: number[]) => withPoints(rel.map((relative, i) => ({ mjd: 61000 + i, relative, snr: 10 })));
-        expect(factSheet(pts([1, 1, 0.5]))).toContain('Largest change from the median brightness: 50 percent dimmer.');
-        expect(factSheet(pts([1, 1, 1.5]))).toContain('Largest change from the median brightness: 50 percent brighter.');
+        expect(factSheet(pts([1, 1, 0.5]))).toContain('Largest change from the median brightness: 50 percent below it.');
+        expect(factSheet(pts([1, 1, 1.5]))).toContain('Largest change from the median brightness: 50 percent above it.');
         expect(factSheet(pts([0.8124, 1, 1.1877]))).toContain('Largest change from the median brightness: 19 percent either side.');
         expect(factSheet(pts([0.9, 1, 1.1004]))).toContain('Largest change from the median brightness: 10 percent either side.');
+        for (const values of [[1.3, 1, 1], [1, 1, 1.3], [1, 1, 0.77], [0.81, 1, 1.19]]) {
+            expect(factSheet(pts(values)).find((line) => line.startsWith('Largest change'))).not.toMatch(/brighter|dimmer/);
+        }
+        for (const [values, expected] of [[[1.3, 1, 1], '30 percent above it'], [[1, 1, 0.77], '23 percent below it'], [[0.81, 1, 1.19], '19 percent either side']] as const) {
+            const sheet = factSheet(pts([...values]));
+            expect(sheet).toContain(`Largest change from the median brightness: ${expected}.`);
+            expect(checkNote(`The largest change from the median brightness was ${expected}. Safe sentence. Another safe sentence.`, sheet).dropped).toBe(0);
+        }
     });
     it('adds the misalignment caution whenever the printed value is 5.0 or more', () => {
         expect(factSheet({ ...facts, difference: { peakSigma: 4.96 } }).join(' ')).toContain('5.0 sigma, brighter there in the later visit. A bright star');
@@ -63,14 +72,14 @@ describe('honest fact sheet', () => {
     it('keeps the direction of a printed bound', () => {
         const pad = 'Safe sentence. Another safe sentence.';
         const big = factSheet(withPoints([{ mjd: 61000, relative: 1, snr: 3582 }]));
-        expect(checkNote(`The signal-to-noise is above 100. ${pad}`, big).dropped).toBe(0);
+        expect(checkNote(`The signal-to-noise is above 100. ${pad}`, big).dropped).toBe(1);
         expect(checkNote(`The signal-to-noise is 100. ${pad}`, big).dropped).toBe(1);
         expect(checkNote(`The signal-to-noise is less than 100. ${pad}`, big).dropped).toBe(1);
         const low = factSheet(withPoints([{ mjd: 61000, relative: 1, snr: 0.4 }]));
-        expect(checkNote(`The signal-to-noise is below 1. ${pad}`, low).dropped).toBe(0);
+        expect(checkNote(`The signal-to-noise is below 1. ${pad}`, low).dropped).toBe(1);
         expect(checkNote(`The signal-to-noise is 1. ${pad}`, low).dropped).toBe(1);
         const small = factSheet(withPoints([{ mjd: 61000, relative: 0.999, snr: 50 }, { mjd: 61001, relative: 1.001, snr: 50 }, { mjd: 61002, relative: 1, snr: 50 }]));
-        expect(checkNote(`The largest change was less than 1 percent. ${pad}`, small).dropped).toBe(0);
+        expect(checkNote(`The largest change from the median was less than 1 percent. ${pad}`, small).dropped).toBe(0);
         expect(checkNote(`The brightness changed by more than 1 percent. ${pad}`, small).dropped).toBe(1);
         expect(checkNote(`The brightness changed by 1 percent. ${pad}`, small).dropped).toBe(1);
         const frames = factSheet({ ...facts, visits: [{ mjd: 61000, frames: 500 }, { mjd: 61010, frames: 7 }] });
@@ -102,6 +111,118 @@ describe('honest fact sheet', () => {
         expect(sheet).toContain('Reference stars: 1 with available scatter. Scatter of each: 2.0 percent.');
     });
 });
+
+describe('round 10 conservative number checks', () => {
+    const pad = 'This is a useful view. Check it again.';
+    const check = (sentence: string, sheet: string[]) => checkNote(`${sentence}\n${pad}`, sheet);
+    const scatter = ['Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.'];
+    const median = ['Largest change from the median brightness: 30 percent above it.'];
+
+    it('accepts every closed scatter form and full printed list', () => {
+        for (const values of [['1.2'], ['1.2', '2.0'], ['1.2', '2.0', '3.4']]) {
+            const n = values.length;
+            const sheet = [`Reference stars: ${n} with available scatter. Scatter of each: ${values.join(', ')} percent.`];
+            const list = n === 1 ? values[0] : `${values.slice(0, -1).join(', ')} and ${values[n - 1]}`;
+            const oxford = n > 2 ? `${values.slice(0, -1).join(', ')}, and ${values[n - 1]}` : list;
+            for (const subject of ['reference', 'comparison']) {
+                for (const count of ['', ` ${n}`]) {
+                    for (const verb of n === 1 ? ['scatters by', 'has a scatter of'] : ['scatter by', 'have a scatter of']) {
+                        for (const printed of [list, oxford]) {
+                            const sentence = `The${count} ${subject} ${n === 1 ? 'star' : 'stars'} ${verb} ${printed} percent.`;
+                            expect(check(sentence, sheet).dropped, sentence).toBe(0);
+                        }
+                    }
+                }
+            }
+        }
+    });
+    it('mutant: scatter must match the whole sentence, list, order and count', () => {
+        for (const sentence of [
+            'The reference stars scatter by 1.2 percent.', 'The reference stars scatter by 2.0 and 1.2 percent.',
+            'The 3 reference stars scatter by 1.2 and 2.0 percent.', 'The 2 reference stars show a spread of 1.2 and 2.0 percent.',
+            'Its scatter is 1.2 percent, smaller than the reference stars.', "The star's scatter is 1.2 percent compared with the reference stars.",
+            'Its scatter is at least 1.2 percent compared with the reference stars.', 'Its scatter is 1.2 percent, unlike the reference stars.',
+            'The reference stars scatter by no more than 1.2 and 2.0 percent.', 'The reference stars scatter within 1.2 and 2.0 percent.',
+            'The reference stars scatter by only 1.2 and 2.0 percent.', 'The reference stars scatter by just 1.2 and 2.0 percent.',
+            'The reference stars have a scatter of around 1.2 and 2.0 percent.',
+            'Compared with the reference stars and their scatter, the star swelled by 1.2 percent.',
+            'Compared with the reference stars and their scatter, it swelled by 1.2 percent.',
+            'Compared with the reference stars and their scatter, it waned by 2.0 percent.',
+            'The 2 reference stars scatter by 1.2 and under 2.0 percent.',
+            'The 2 reference stars scatter by 1.2 percent and under 2.0 percent.',
+            'The reference stars have a scatter of at least 1.2 or 2.0 percent.',
+            'The reference stars have a scatter of below 1.2, 2.0 percent.',
+            'The star scatters by 1.2 and 2.0 percent against the reference stars.',
+            "Barnard's Star shows a scatter of 1.2 and 2.0 percent against the reference stars.",
+            "Against the reference stars' scatter, the star swelled by 2.0 percent.",
+            'The reference stars scatter by 1.2 and 2.0 percent, while the star faded.',
+        ]) { expect(check(sentence, scatter).dropped, sentence).toBe(1); }
+    });
+    it('mutant: median direction requires its referent', () => {
+        expect(check('The largest change from the median brightness is 30 percent above.', median).dropped).toBe(1);
+    });
+    it('mutant: median requires is or was', () => {
+        expect(check('The largest change from the median brightness became 30 percent above it.', median).dropped).toBe(1);
+    });
+    it('mutant: scatter final full stop is required', () => {
+        expect(check('The 2 reference stars scatter by 1.2 and 2.0 percent', scatter).dropped).toBe(1);
+    });
+    it('mutant: scatter list cannot be reordered or shortened', () => {
+        expect(check('The reference stars scatter by 2.0 and 1.2 percent.', scatter).dropped).toBe(1);
+        expect(check('The reference stars scatter by 1.2 percent.', scatter).dropped).toBe(1);
+    });
+    it('mutant: scatter count must match the sheet', () => {
+        expect(check('The 3 reference stars scatter by 1.2 and 2.0 percent.', scatter).dropped).toBe(1);
+    });
+    it('checks unrecognized labels and both fragments of a broken line', () => {
+        for (const label of ['Reference stars', 'Fading', 'Sky background', 'At the first visit']) {
+            expect(check(`${label}: The largest change from the median brightness is 30 percent above the median.`, median).dropped, label).toBe(1);
+        }
+        expect(check('The largest change from the median brightness is 30 percent above the median\nat the first visit, before it faded.', median).dropped).toBe(2);
+    });
+    it('mutant: count facts require a counting noun', () => {
+        const sheet = ['Visits: 3. Frames in each visit: 30, 31.', 'Lowest signal-to-noise among the points: 30.', 'Brightness relative to the reference stars, in time order: 1.00, 1.01, 1.00.'];
+        for (const sentence of ['The brightness rose by 30 across the frames.', 'The brightness rose by 30 in the frames of each visit.', 'The brightness rose by 30 in frames of each visit.', 'Over 3 visits the brightness rose 3 above the median.', 'The brightness dropped by 1.0 between visits.']) {
+            expect(check(sentence, sheet).dropped, sentence).toBe(1);
+        }
+        for (const sentence of ['The visit had 30 frames.', 'There were 3 visits.', 'Each visit had 30 and 31 frames.']) {
+            expect(check(sentence, sheet).dropped, sentence).toBe(0);
+        }
+    });
+    it('mutant: signal-to-noise needs immediate context', () => {
+        const sheet = ['Lowest signal-to-noise among the points: 30.'];
+        for (const sentence of ['The brightness rose by 30 above the noise.', 'Against the noise, the brightness is 30 above the median.']) {
+            expect(check(sentence, sheet).dropped, sentence).toBe(1);
+        }
+        for (const sentence of ['The lowest signal-to-noise is 30.', 'It has a signal-to-noise of 30.']) {
+            expect(check(sentence, sheet).dropped, sentence).toBe(0);
+        }
+    });
+    it('keeps an elapsed-time preposition', () => {
+        const sheet = ['Visits: 3. Frames in each visit: 30, 31.', 'Shift in position: 10.4 arcsec over 20.0 days.'];
+        expect(check('It shifted 10.4 arcsec over 20.0 days.', sheet).dropped).toBe(0);
+    });
+    it('keeps all three paragraphs of eight prompt-shaped notes', () => {
+        const scenarios = [
+            { values: [1, 1, 1.3], refs: [0.012, 0.02], summary: 'The brightness rose over the visits.', comparison: 'The change is several times larger than that scatter.' },
+            { values: [1.3, 1, 1], refs: [0.012, 0.02], summary: 'The brightness fell over the visits.', comparison: 'The change is several times larger than that scatter.' },
+            { values: [1, 1, 1], refs: [0.012, 0.02], summary: 'The brightness stayed level over the visits.', comparison: 'The change is no larger than that scatter, so it may be noise.' },
+            { values: [0.81, 1, 1.19], refs: [0.012, 0.02], summary: 'The brightness rose across the visits.', comparison: 'The change is several times larger than that scatter.' },
+            { values: [0.999, 1, 1.001], refs: [0.012, 0.02], summary: 'The brightness was nearly level over the visits.', comparison: 'The change is no larger than that scatter, so it may be noise.' },
+            { values: [1, 1, 1.3], refs: [0.012], summary: 'The brightness rose over the visits.', comparison: 'The change is several times larger than that scatter.' },
+            { values: [1, 1, 1.3], refs: [], summary: 'The brightness rose over the visits.', comparison: 'Reference star scatter is unavailable, so this needs caution.' },
+            { values: [1, 1.01], refs: [0.012, 0.02], summary: 'The brightness rose across the visits.', comparison: 'The change is no larger than that scatter, so it may be noise.' },
+        ];
+        for (const { values, refs, summary, comparison } of scenarios) {
+            const sheet = factSheet({ ...facts, visits: values.map((_, i) => ({ mjd: 61000 + i * 10, frames: 3 + i })), lightCurve: { points: values.map((relative, i) => ({ mjd: 61000 + i * 10, relative, snr: 10 })), refScatter: refs, dropped: 0 } });
+            const scatterSentence = refs.length === 2 ? 'The 2 reference stars scatter by 1.2 and 2.0 percent. ' : refs.length === 1 ? 'The 1 reference star scatters by 1.2 percent. ' : '';
+            const note = `What this shows: ${summary}\nHow far to trust it: ${scatterSentence}${comparison}\nWhat to check next: Compare another visit when available.`;
+            const result = checkNote(note, sheet);
+            expect(result.text, note).toBe(note);
+            expect(result.dropped, note).toBe(0);
+        }
+    });
+});
 const note = 'What this shows: The wavelength is 4.270 micron. The position is -38.0000 degrees.\nHow far to trust it: More data helps.';
 function createHandlers(deps: Pick<InsightDeps, 'apiKey' | 'model' | 'complete' | 'now'> & Partial<InsightDeps>)
 {
@@ -112,11 +233,12 @@ function request(value: unknown, headers: Record<string, string> = {}): Request
     return new Request('https://example.test/api/insight', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(value) });
 }
 describe('round four corpus', () => {
-    const sheet = ["Target: Barnard's Star.", 'Position: RA 269.4521 deg, Dec 4.6934 deg.', 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Lowest signal-to-noise among the points: 48.', 'Reference stars: 3. Scatter of each: 1.2, 1.8, 2.5 percent.', 'Frames left out because their wavelength did not match: 0.', 'Difference image at the target: 3.4 sigma, brighter in the later visit.', 'Shift in position: 10.4 arcsec over 182.5 days.', "Frames came from: NASA's live archive."];
-    const good = ["Barnard's Star was seen in 3 visits spread over 182.5 days.", 'The visits hold 14, 12 and 16 frames.', 'Its brightness relative to the reference stars went from 1.00 to 0.97 and then 1.12.', 'The largest change from the median brightness is 12 percent brighter.', 'The 3 reference stars scatter by 1.2, 1.8 and 2.5 percent, so the 12 percent change stands out.', 'The lowest signal-to-noise among the points is 48.', 'The difference image shows 3.4 sigma at the target, brighter in the later visit.', 'The star shifted 10.4 arcsec over 182.5 days.', 'The frames were taken at 4.270 micron, close to the carbon dioxide ice feature at 4.27 micron.', 'Its position is RA 269.4521 deg, Dec 4.6934 deg.', 'SPHEREx pixels are about 6.2 arcsec wide, so a 10.4 arcsec shift is larger than one pixel.', 'With only 3 visits, the trend is thinly sampled.', 'The 12 percent brightening is larger than the 2.5 percent scatter of the least steady reference star.', 'A shift of 10.4″ in 182.5 days and a 3.4σ difference both point the same way.', 'Compare the frames at 4.270 µm with a second wavelength in Slowsky.', 'This is a candidate change, and CO2 ice absorbs near this wavelength.'];
+    const sheet = ["Target: Barnard's Star.", 'Position: RA 269.4521 deg, Dec 4.6934 deg.', 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent above it.', 'Lowest signal-to-noise among the points: 48.', 'Reference stars: 3. Scatter of each: 1.2, 1.8, 2.5 percent.', 'Frames left out because their wavelength did not match: 0.', 'Difference image at the target: 3.4 sigma, brighter in the later visit.', 'Shift in position: 10.4 arcsec over 182.5 days.', "Frames came from: NASA's live archive."];
+    const good = ["Barnard's Star was seen in 3 visits spread over 182.5 days.", 'The visits hold 14, 12 and 16 frames.', 'Its brightness relative to the reference stars went from 1.00 to 0.97 and then 1.12.', 'The largest change from the median brightness is 12 percent above it.', 'The 3 reference stars scatter by 1.2, 1.8 and 2.5 percent, so the 12 percent change stands out.', 'The lowest signal-to-noise among the points is 48.', 'The difference image shows 3.4 sigma at the target, brighter in the later visit.', 'The star shifted 10.4 arcsec over 182.5 days.', 'The frames were taken at 4.270 micron, close to the carbon dioxide ice feature at 4.27 micron.', 'Its position is RA 269.4521 deg, Dec 4.6934 deg.', 'SPHEREx pixels are about 6.2 arcsec wide, so a 10.4 arcsec shift is larger than one pixel.', 'With only 3 visits, the trend is thinly sampled.', 'The 12 percent brightening is larger than the 2.5 percent scatter of the least steady reference star.', 'A shift of 10.4″ in 182.5 days and a 3.4σ difference both point the same way.', 'Compare the frames at 4.270 µm with a second wavelength in Slowsky.', 'This is a candidate change, and CO2 ice absorbs near this wavelength.'];
     const bad = ['SPHEREx returns about every 6 months, so a later visit would test it.', 'The reference stars scatter by 12 percent.', 'The star moved 10.4 arcmin.', 'The star moved 10.4 milliarcsec.', 'The frames were taken at 4.270 nm.', 'Its position is RA 269.4521 hours.', 'It moved 10.4 arcsec per day.', 'It moved 10.4 arcsec a day.', 'It moved 10.4 arcsec/day.', 'Its position is RA 269.4521 deg, Dec -4.6934 deg.', '12 of the 14 frames were left out.', '1 in 3 frames was sharp.', 'The fourth visit was the brightest.', 'It brightened by a factor of 12.', 'The change is an order of magnitude larger than the scatter.', 'The visit was on 14 March.', 'The star is at 48 °C.', 'It lies 182.5 trillion kilometres away.', 'The star is 48 light-years away.', 'The signal-to-noise reached 48 percent.', 'The 3 visits each lasted 3.4 days.', 'The scatter is 2.5 sigma.', 'It brightened 1.12 times.', 'The star moved 16 arcsec.', 'The difference is 12 sigma.', 'There were 48 visits.', 'The brightness fell to 0.97 percent.', 'The wavelength is 3.4 micron.', 'It was 3/W2/12 brighter.', 'It is half as bright.', 'The star is 1 of a kind.'];
-    it.each(good)('keeps %s', (sentence) => { expect(checkNote(`${sentence} Plain sentence.`, sheet).dropped).toBe(0); });
-    it.each(bad)('drops %s', (sentence) => { expect(checkNote(`${sentence} Plain sentence. Another plain sentence.`, sheet).dropped).toBe(1); });
+    const unsafeMedian = ['The 3 reference stars scatter by 1.2, 1.8 and 2.5 percent, so the 12 percent change stands out.', 'The 12 percent brightening is larger than the 2.5 percent scatter of the least steady reference star.'];
+    it.each(good.filter((sentence) => !unsafeMedian.includes(sentence)))('keeps %s', (sentence) => { expect(checkNote(`${sentence} Plain sentence.`, sheet).dropped).toBe(0); });
+    it.each([...bad, ...unsafeMedian])('drops %s', (sentence) => { expect(checkNote(`${sentence} Plain sentence. Another plain sentence.`, sheet).dropped).toBe(1); });
     it('derives and recognizes the actual WISE short name', () => {
         const wise = factSheet({ ...facts, targetId: 'wise0855' });
         expect(wise[0]).toBe('Target: WISE J085510.83-071442.5, also written WISE 0855-0714.');
@@ -279,7 +401,7 @@ describe('round two regressions', () => {
         for (const value of bad) {
             expect(checkNote(`Value ${value}. Safe sentence. Another safe sentence.`, ['Value 6.']).dropped, value).toBe(1);
         }
-        expect(checkNote('Double-check the second visit. There are fewer than 3 visits. SPHEREx has 6 detectors. The scatter is 1.2 percent.', ['Scatter: 1.2, 1.8, 2.5 percent.']).dropped).toBe(0);
+        expect(checkNote('Double-check the second visit. There are fewer than 3 visits. SPHEREx has 6 detectors. The scatter is 1.2 percent.', ['Visits: 2.', 'Scatter: 1.2, 1.8, 2.5 percent.']).dropped).toBe(0);
         expect(SYSTEM_PROMPT).not.toContain('about every 6 months');
         expect(SYSTEM_PROMPT).toContain('fewer than 3 visits');
         expect(SYSTEM_PROMPT).toContain('Write every number in digits');
@@ -600,7 +722,7 @@ describe('insight facts and guard', () => {
     it('removes unverified sentences and requires two survivors', () => {
         expect(checkNote(note, lines)).toEqual({ text: note, dropped: 0 });
         expect(checkNote('Label: Value 0.85 is real. Invented 9999. Discovery happened. More follows.', ['Value: 0.85.'])).toEqual({ text: 'Label: Value 0.85 is real. More follows.', dropped: 2 });
-        expect(checkNote('Made up 9999: First sentence. Second sentence.\nSafe: Third sentence. Fourth sentence.', [])).toEqual({ text: 'Safe: Third sentence. Fourth sentence.', dropped: 2 });
+        expect(checkNote('Made up 9999: First sentence. Second sentence.\nSafe: Third sentence. Fourth sentence.', [])).toEqual({ text: 'Second sentence.\nSafe: Third sentence. Fourth sentence.', dropped: 1 });
         expect(() => checkNote('One sentence. Invented 9999.', [])).toThrowError(expect.objectContaining({ code: 'unverified' }));
     });
 });
@@ -707,7 +829,7 @@ describe('browser client', () => {
 // Sentences a second reviewer (Grok 4.7) got past round 3. Each must fail without the rule that now drops it.
 describe('checkNote: names and words used as numbers', () => {
     const pad = 'Safe sentence. Another safe sentence.';
-    const barnard = ["Target: Barnard's Star.", 'Position: RA 269.4521 deg, Dec 4.6934 deg.', 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
+    const barnard = ["Target: Barnard's Star.", 'Position: RA 269.4521 deg, Dec 4.6934 deg.', 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent above it.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
     const wise = factSheet({ targetId: 'wise0855', ra: 133.7953, dec: -7.2451, lambdaUm: 4.67, visits: [{ mjd: 61000, frames: 3 }, { mjd: 61010, frames: 4 }, { mjd: 61180, frames: 5 }], motion: { arcsec: 4.1, days: 180 }, snapshot: false });
     function dropped(sentence: string, sheet: string[]): number { return checkNote(`${sentence} ${pad}`, sheet).dropped; }
 
@@ -737,7 +859,7 @@ describe('checkNote: names and words used as numbers', () => {
 });
 
 describe('checkNote: round five', () => {
-    const sheet = ["Target: Barnard's Star.", 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Reference stars: 3.', 'Frames left out because their wavelength did not match: 3.', 'Difference image at the target: 1 sigma, brighter.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
+    const sheet = ["Target: Barnard's Star.", 'Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16. Time from first to last visit: 182.5 days.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent above it.', 'Reference stars: 3.', 'Frames left out because their wavelength did not match: 3.', 'Difference image at the target: 1 sigma, brighter.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
     const pad = 'Safe sentence. Another safe sentence.';
     it.each([
         "Barnard's Star moves about 10.4 arcsec in a year.", 'It shifts 10.4 arcsec annually.', 'That is 10.4 arcsec per annum.',
@@ -753,7 +875,7 @@ describe('checkNote: round five', () => {
         expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
     });
     it.each([
-        'A rise from 0.97 to 1.12 is the main change.', "The star's light went up by 12 percent.",
+        'A rise from 0.97 to 1.12 is the main change.',
         'The visits held 14, 12 and 16 frames per visit.', 'A fourth visit would show whether the brightening holds.',
         'SPHEREx sees 102 colours, so try another wavelength.', 'SPHEREx has 6 detectors.',
         'The difference image shows one sigma.', 'The difference image shows one standard deviation.',
@@ -808,7 +930,7 @@ describe('checkNote: round five', () => {
 });
 
 describe('checkNote: round six', () => {
-    const sheet = ['Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Difference image at the target: 3.4 sigma.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
+    const sheet = ['Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent above it.', 'Difference image at the target: 3.4 sigma.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
     const pad = 'Safe sentence. Another safe sentence.';
     it.each([
         'It moves 10.4 arcsec per yr.', 'It moves 10.4 arcsec a yr.', 'The difference is a one-sigma bump.',
@@ -821,10 +943,29 @@ describe('checkNote: round six', () => {
     it.each([
         'The frames were taken in the 4.270 micron band.', 'Water ice absorbs near the 3.05 micron band.',
         'The 4.270 micron images show the star.', 'A 3.4 sigma point at the target is brighter in the later visit.',
-        'SPHEREx has 102 spectral channels.', 'The brightness was 12 per cent higher.',
-        'The second-brightest reading was 1.00.', 'There are fewer than 3 visits.', 'There are fewer than three visits.',
+        'SPHEREx has 102 spectral channels.',
+        'The second-brightest reading was 1.00.',
         'A fourth visit might show it brighter.',
     ])('keeps supported: %s', (sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(0);
+    });
+    // Round 10 (F5): the prompt's own "fewer than 3 visits" is kept only when the sheet counts fewer than 3, and a
+    // bound the sheet does not give is refused.
+    it.each(['There are fewer than 3 visits.', 'There are fewer than three visits.'])('keeps on a 2-visit sheet, drops on 3 or "at least": %s', (sentence) => {
+        const two = sheet.map((line) => line.replace('Visits: 3. Frames in each visit: 14, 12, 16.', 'Visits: 2. Frames in each visit: 14, 12.'));
+        const atLeast = sheet.map((line) => line.replace('Visits: 3.', 'Visits: at least 2.'));
+        expect(checkNote(`${sentence} ${pad}`, two).dropped).toBe(0);
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+        expect(checkNote(`${sentence} ${pad}`, atLeast).dropped).toBe(1);
+        expect(checkNote(`${sentence} ${pad}`, ['Scatter: 1.2, 1.8, 2.5 percent.']).dropped).toBe(1);
+    });
+    it.each([
+        'There are fewer than 14 frames in the first visit.', 'There are at least 3 visits.', 'It was seen in more than 3 visits.',
+        'The difference is over 3.4 sigma.', 'The difference is under 3.4 sigma.', 'The reading stayed below 1.12.',
+    ])('drops a bound the sheet does not give: %s', (sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+    });
+    it.each(['It shifted 10.4 arcsec over 182.5 days.', 'There are 3 visits.', 'The first visit has 14 frames.'])('keeps the exact fact: %s', (sentence) => {
         expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(0);
     });
     it('checks rank against the readings and requires a future cue for visits', () => {
@@ -847,7 +988,7 @@ describe('checkNote: round six', () => {
 });
 
 describe('checkNote: round seven', () => {
-    const sheet = ['Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent brighter.', 'Reference stars: 3.', 'Frames left out: 3.', 'Difference image at the target: 3.4 sigma.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
+    const sheet = ['Wavelength: 4.270 micron.', 'Visits: 3. Frames in each visit: 14, 12, 16.', 'Brightness relative to the reference stars, in time order: 1.00, 0.97, 1.12.', 'Largest change from the median brightness: 12 percent above it.', 'Reference stars: 3.', 'Frames left out: 3.', 'Difference image at the target: 3.4 sigma.', 'Shift in position: 10.4 arcsec over 182.5 days.'];
     const pad = 'Safe sentence. Another safe sentence.';
     it.each([
         'The visits span about a year.', 'RW Aur faded by about a magnitude.', 'RW Aur fades by a full magnitude in its dimming events.',
@@ -866,12 +1007,218 @@ describe('checkNote: round seven', () => {
         expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
     });
     it.each([
-        'With a degree of caution, call it a candidate change of 12 percent.', '3 of the frames were left out.',
+        '3 of the frames were left out.',
         'A later fourth visit could test it.', 'A fourth visit would show whether the brightening holds.',
-        'It would help if a fourth visit were taken.', 'In one visit the star was 12 percent brighter.',
-        'The brightness went up by 12 percent.', 'One more visit would help.', 'The star is 12 percent brighter in the third visit.',
+        'It would help if a fourth visit were taken.', 'One more visit would help.',
         'There are 3 reference stars.', 'Each of the 3 visits has 14, 12 and 16 frames.', 'The shift may be real.',
     ])('keeps: %s', (sentence) => {
         expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(0);
+    });
+    it('drops the former candidate paraphrase under the closed median form', () => {
+        expect(checkNote(`With a degree of caution, call it a candidate change from the median of 12 percent. ${pad}`, sheet).dropped).toBe(1);
+    });
+    it.each(["The star's light went up by 12 percent.", 'The brightness was 12 per cent higher.', 'In one visit the star was 12 percent brighter.', 'The brightness went up by 12 percent.', 'The star is 12 percent brighter in the third visit.'])('drops a median distance described as a time change: %s', (sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+    });
+});
+
+describe('checkNote: median distance', () => {
+    const makeSheet = (values: number[]) => factSheet({ ...facts, lightCurve: { points: values.map((relative, i) => ({ mjd: 61000 + i, relative, snr: 10 })), refScatter: [0.012, 0.02], dropped: 0 } });
+    const flat = makeSheet([1, 1.004, 1]);
+    const above = makeSheet([1.3, 1, 1]);
+    const below = makeSheet([1, 1, 0.77]);
+    const either = makeSheet([0.81, 1, 1.19]);
+    const pad = 'Safe sentence. Another safe sentence.';
+    it.each([
+        [flat, 'The reference star scatter is below 1 percent.'],
+        [flat, 'The noise is below 1 percent.'],
+        [flat, 'Each frame is accurate to below 1 percent.'],
+        [above, 'The reference stars scatter 30 percent above normal.'],
+        [flat, 'The comparison scatter is below 1 percent.'],
+        [above, 'The noise is 30 percent above normal.'],
+        [above, 'The star got 30 percent brighter.'],
+        [above, 'The largest change from the median brightness is 30 percent below it.'],
+        [above, 'The star faded by 30 percent.'],
+        [below, 'It is 23 percent above the median at its largest.'],
+        [either, 'The largest change from the median is 19 percent above it.'],
+        [flat, 'The largest change from the median is below 1 percent.'],
+    ])('drops unsupported %s %s', (sheet, sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+    });
+    it.each([
+        [above, 'The largest change from the median brightness is 30 percent above it.'],
+        [below, 'The largest change from the median is 23 percent below it.'],
+        [either, 'The largest change from the median is 19 percent either side.'],
+        [flat, 'The largest change from the median brightness is less than 1 percent.'],
+        [above, 'The brightness went from 1.30 to 1.00.'],
+    ])('keeps supported %s %s', (sheet, sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).text).toBe(`${sentence} ${pad}`);
+    });
+    it.each(['got', 'became', 'grew', 'rose', 'rise', 'rising', 'risen', 'climbed', 'increased', 'brightened', 'gained', 'fell', 'fall', 'falling', 'dropped', 'faded', 'fading', 'dimmed', 'decreased', 'declined', 'lost', 'went'])('drops a median distance with the time word %s', (word) => {
+        expect(checkNote(`The median brightness ${word} by 30 percent. ${pad}`, above).dropped).toBe(1);
+    });
+    it('does not apply the median rule to a number supported by another sheet line', () => {
+        const shared = [...above, 'Reference stars: 1 with available scatter. Scatter of each: 30 percent.'];
+        const sentence = 'The reference star scatters by 30 percent.';
+        expect(checkNote(`${sentence} ${pad}`, shared).text).toBe(`${sentence} ${pad}`);
+    });
+});
+
+describe('checkNote: round eight', () => {
+    const makeSheet = (values: number[], refScatter = [0.012, 0.02]) => factSheet({ ...facts, visits: [{ mjd: 61000, frames: 3 }, { mjd: 61182.5, frames: 4 }], lightCurve: { points: values.map((relative, i) => ({ mjd: 61000 + i, relative, snr: 10 })), refScatter, dropped: 0 } });
+    const above = makeSheet([1.3, 1, 1]);
+    const below = makeSheet([0.77, 1, 1]);
+    const dip = makeSheet([1, 0.7, 1]);
+    const either = makeSheet([0.81, 1, 1.19]);
+    const flat = makeSheet([1, 1.004, 1]);
+    const pad = 'Safe sentence. Another safe sentence.';
+    it.each([
+        [above, 'The brightness in the third visit is 30 percent above the median.'],
+        [above, 'The brightness surged 30 percent above the median.'],
+        [above, 'The brightness is now 30 percent above the median.'],
+        [above, 'The star jumped 30 percent above the median.'],
+        [above, 'The brightness dipped 30 percent from the median.'],
+        [below, 'The brightness dims to 23 percent below the median.'],
+        [dip, 'By the last visit the brightness was 30 percent below the median.'],
+    ])('D1 drops time claim: %s %s', (sheet, sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+    });
+    it.each([
+        [either, 'The reference stars sit 19 percent either side of the median.'],
+        [above, 'The difference image shows the target 30 percent above the median.'],
+        [flat, "The reference stars' brightness varies by less than 1 percent around the median."],
+        [below, 'The noise is 23 percent below the median.'],
+        [above, 'The reference stars scatter 30 percent above the median.'],
+    ])('D2 drops another subject: %s %s', (sheet, sentence) => {
+        expect(checkNote(`${sentence} ${pad}`, sheet).dropped).toBe(1);
+    });
+    it('D2 drops a distant reference to scatter under the closed form', () => {
+        const sentence = 'The largest change from the median is 30 percent above it, far more than the 1.2 and 2.0 percent scatter of the reference stars.';
+        expect(checkNote(`${sentence} ${pad}`, above).dropped).toBe(1);
+    });
+    it('D3 distinguishes elapsed time from direction', () => {
+        const sentence = 'Over 182.5 days, the largest change from the median brightness is 23 percent below it.';
+        expect(checkNote(`${sentence} ${pad}`, below).dropped).toBe(1);
+        expect(checkNote(`It is 23 percent over the median at its largest. ${pad}`, below).dropped).toBe(1);
+    });
+    it('D4 does not use scatter to support a brightness change', () => {
+        const shared = [...above, 'Scatter of each: 1.2, 30 percent.'];
+        expect(checkNote(`Compared with the reference stars, the target faded by 30 percent. ${pad}`, shared).dropped).toBe(1);
+        const sentence = 'The 2 reference stars scatter by 1.2 and 2.0 percent.';
+        expect(checkNote(`${sentence} ${pad}`, above).text).toBe(`${sentence} ${pad}`);
+    });
+    it('C1 does not accept above normal as a largest-change context', () => {
+        const sentence = 'The median is irrelevant to an unrelated reading which is 30 percent above normal.';
+        expect(checkNote(`${sentence} ${pad}`, above).dropped).toBe(1);
+    });
+});
+
+describe('checkNote: round nine closed forms', () => {
+    const sheets = {
+        above: ['Largest change from the median brightness: 1 percent above it.'],
+        below: ['Largest change from the median brightness: 1 percent below it.'],
+        either: ['Largest change from the median brightness: 1 percent either side.'],
+        less: ['Largest change from the median brightness: less than 1 percent.'],
+    };
+    const pad = 'Safe sentence. Another safe sentence.';
+    const check = (sentence: string, sheet: string[]) => checkNote(`${sentence} ${pad}`, sheet).dropped;
+    const referents = ['it', 'the median', 'its median'];
+    for (const start of ['The', 'Its']) {
+        for (const possessive of ['the', 'its']) {
+            for (const brightness of ['', ' brightness']) {
+                for (const verb of ['is', 'was']) {
+                    const prefix = `${start} largest change from ${possessive} median${brightness} ${verb}`;
+                    for (const [direction, endings] of Object.entries({
+                        above: referents.map((ref) => `1 percent above ${ref}`),
+                        below: referents.map((ref) => `1 percent below ${ref}`),
+                        either: ['1 percent either side', ...referents.map((ref) => `1 percent either side of ${ref}`)],
+                        less: ['less than 1 percent', ...referents.map((ref) => `less than 1 percent from ${ref}`)],
+                    })) {
+                        for (const ending of endings) {
+                            const sentence = `${prefix} ${ending}.`;
+                            it(`matches only ${direction}: ${sentence}`, () => {
+                                for (const [sheetDirection, sheet] of Object.entries(sheets)) {
+                                    expect(check(sentence, sheet), sheetDirection).toBe(sheetDirection === direction ? 0 : 1);
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    it('accepts case and whitespace but requires a final full stop', () => {
+        expect(checkNote(`  ITS LARGEST CHANGE FROM ITS MEDIAN WAS 1 PERCENT ABOVE IT.  \n${pad}`, sheets.above).dropped).toBe(0);
+        expect(checkNote(`ITS LARGEST CHANGE FROM ITS MEDIAN WAS 1 PERCENT ABOVE IT\n${pad}`, sheets.above).dropped).toBe(1);
+    });
+    it('rejects a different printed number and noncanonical number spelling', () => {
+        for (const number of ['2', '01', '1.0']) {
+            expect(check(`The largest change from the median is ${number} percent above it.`, sheets.above), number).toBe(1);
+        }
+    });
+    it('rejects leading, trailing, subject and joined clauses', () => {
+        for (const sentence of [
+            'For this target, the largest change from the median brightness is 1 percent above the median.',
+            'The largest change from the median brightness is 1 percent above the median, far more than the scatter.',
+            "The sky background's largest change from the median brightness is 1 percent above the median.",
+            'The largest change from the median is 1 percent above it and the largest change from the median is 1 percent above it.',
+        ]) { expect(check(sentence, sheets.above), sentence).toBe(1); }
+    });
+    it('does not restrict independently supported frame and signal-to-noise numbers', () => {
+        const shared = [...sheets.above, 'Visits: 2. Frames in each visit: 30, 31.', 'Lowest signal-to-noise among the points: 30.'];
+        for (const sentence of ['The first visit had 30 frames.', 'The signal-to-noise is 30.']) {
+            expect(check(sentence, shared), sentence).toBe(0);
+        }
+    });
+    const scatter = ['Reference stars: 2 with available scatter. Scatter of each: 1.2, 2.0 percent.'];
+    it('accepts the complete reference scatter sentence', () => {
+        for (const sentence of ['The 2 reference stars scatter by 1.2 and 2.0 percent.', 'The reference stars have a scatter of 1.2 and 2.0 percent.']) {
+            expect(check(sentence, scatter), sentence).toBe(0);
+        }
+    });
+    it('requires both scatter and reference across the whole sentence', () => {
+        for (const sentence of ['The reference stars have 2.0 percent.', 'The scatter is 2.0 percent.', 'The target and reference stars scatter by 2.0 percent.']) {
+            expect(check(sentence, scatter), sentence).toBe(1);
+        }
+    });
+    it('rejects every scatter bound immediately before the number', () => {
+        for (const bound of ['below', 'under', 'above', 'over', 'less than', 'more than', 'at least', 'at most', 'up to']) {
+            expect(check(`The reference star scatter is ${bound} 2.0 percent.`, scatter), bound).toBe(1);
+        }
+    });
+    it('rejects scatter change and comparison terms anywhere in the sentence', () => {
+        for (const word of ['faded', 'brighter', 'fainter', 'dimmer', 'higher', 'lower', 'changed', 'varied', 'fluctuated', 'peaked', 'differed', 'now']) {
+            expect(check(`The reference stars scatter by 2.0 percent and ${word}.`, scatter), word).toBe(1);
+        }
+    });
+    it('rejects reviewer scatter claims even when the verb is outside the word window', () => {
+        for (const sentence of ['The reference star scatter is below 2.0 percent.', 'Compared with the reference stars, the target is 30 percent brighter.', 'Compared with the reference stars, the target is 30 percent fainter.', 'Compared with the reference stars, the target changed by 30 percent.', 'Compared with the reference stars, the target varied by 30 percent.', 'The target faded when measured against the steady reference stars by 30 percent.', 'Compared with the reference stars, the target by 30 percent in brightness faded.', 'Compared with the reference stars, the target swelled by 2.0 percent.', 'The target faded, and against the reference stars that change came to 2.0 percent.', 'Against the reference stars, the target is 1.2 percent brighter now.']) {
+            expect(check(sentence, scatter), sentence).toBe(1);
+        }
+    });
+    it('rejects the reviewers’ quoted median claims and wrong directions', () => {
+        const sheet = ['Largest change from the median brightness: 30 percent above it.'];
+        for (const sentence of [
+            'The brightness swelled to 30 percent above the median.', 'The brightness is down 30 percent from the median.',
+            'The readings sit 30 percent either side of the median.', 'The minimum brightness is 30 percent less than the median.',
+            'The largest change from the median brightness is 30 percent down from it.', 'The lowest brightness is 30 percent short of the median.',
+            'The brightness is 30 percent under median.', 'The largest change from the median brightness is 30 percent in the reference stars.',
+            'The largest change from the median brightness is 30 percent due to noise.', 'The largest change from the median brightness is 30 percent across the frames.',
+            'Between epochs, the brightness varied by 30 percent from the median.', 'At the beginning, the brightness was 30 percent above the median.',
+            'The brightness peaked at 30 percent above the median during the middle epoch.', 'The sky background brightness is 30 percent above the median.',
+            "The sky background's largest change from the median brightness is 30 percent above the median.",
+            'The uncertainty in brightness is 30 percent of the median.', 'A nearby companion star is 30 percent brighter than the median.',
+            'The largest change from the median is 30 percent above it, far more than the 1.2 and 2.0 percent scatter of the reference stars.',
+        ]) { expect(check(sentence, sheet), sentence).toBe(1); }
+        expect(check('It exceeds the median by 23 percent.', ['Largest change from the median brightness: 23 percent below it.'])).toBe(1);
+        expect(check('The brightness waned to 23 percent below the median.', ['Largest change from the median brightness: 23 percent below it.'])).toBe(1);
+        expect(check('The sky background sits 19 percent either side of the median.', ['Largest change from the median brightness: 19 percent either side.'])).toBe(1);
+    });
+    it('keeps three prompt-shaped notes for rising, falling and flat sheets', () => {
+        for (const [values, median] of [[[1, 1, 1.3], '30 percent above the median'], [[1.3, 1, 1], '30 percent above the median'], [[1, 1, 1], 'less than 1 percent from the median']] as const) {
+            const sheet = factSheet({ ...facts, visits: [{ mjd: 61000, frames: 3 }, { mjd: 61010, frames: 4 }, { mjd: 61020, frames: 5 }], lightCurve: { points: values.map((relative, i) => ({ mjd: 61000 + i * 10, relative, snr: 10 })), refScatter: [0.012, 0.02], dropped: 0 } });
+            const note = `Across 3 visits the brightness was ${values.map((n) => n.toFixed(2)).join(', ')}. The largest change from the median brightness is ${median}. The 2 reference stars scatter by 1.2 and 2.0 percent.`;
+            expect(checkNote(note, sheet).dropped).toBeLessThanOrEqual(1);
+        }
     });
 });

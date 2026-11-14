@@ -194,6 +194,7 @@ export function pickLines(replyText: string, sheet: string[]): { kind: 'answer' 
     if (picked.some((n) => !Number.isInteger(n) || n < 1 || n > sheet.length) || new Set(picked).size !== picked.length) { return null; }
     picked.sort((a, b) => a - b);
     const rows = askRows(sheet, picked);
+    if (picked.some((n) => !rows.lines.includes(n) && !rows.trust.includes(n))) { return null; }
     return { kind: 'answer', text: joinRows(sheet, rows.lines), picked, ...rows };
 }
 export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Response>; POST(r: Request): Promise<Response> }
