@@ -48,6 +48,9 @@ button { cursor: pointer; }
 }
 .sk ::selection { background: var(--ink); color: var(--void); }
 .sk :focus-visible { outline: 1.5px solid #fff; outline-offset: 3px; }
+.sk-skip { position: absolute; z-index: 30; left: 12px; top: -60px; padding: 10px 14px; border-radius: 3px; background: #fff; color: #000; font-size: 14px; text-decoration: none; transition: top 160ms var(--ease); }
+.sk-skip:focus { top: 12px; }
+.sk-mh:focus { outline: none; }
 .sk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---------- columns ---------- */

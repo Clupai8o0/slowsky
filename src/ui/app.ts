@@ -221,6 +221,7 @@ function shell(): string
 <button type="button" class="sk-mini sk-mini-l" data-act="fold-left" aria-controls="sk-left" aria-label="Show the targets panel" title="Show the targets panel"><span class="ic">${ICON.panelL}</span><span class="t">Target</span><span class="v" data-bind="name"></span></button>
 <button type="button" class="sk-mini sk-mini-r" data-act="fold-right" aria-controls="sk-right" aria-label="Show the colour panel" title="Show the colour panel"><span class="t">Colour</span><span class="v"><span data-bind="lam"></span> µm</span><span class="ic">${ICON.panelR}</span></button>
 <aside class="sk-rail sk-left" id="sk-left">
+  <a class="sk-skip" href="#sk-h2">Skip to the sky</a>
   <div class="sk-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span><span class="sk-tag">Watch the sky change.</span><span class="sk-sub2">Infrared frames from NASA’s SPHEREx</span></div>
   <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
     <h2 class="sk-mh" id="sk-h1"><i>01</i>Choose a target</h2>
@@ -247,7 +248,7 @@ function shell(): string
 <main class="sk-mid">
   <section class="sk-mod sk-m-watch" aria-labelledby="sk-h2">
     <div class="sk-mhrow">
-      <h2 class="sk-mh" id="sk-h2"><i>02</i><span class="w">Watch it change</span></h2>
+      <h2 class="sk-mh" id="sk-h2" tabindex="-1"><i>02</i><span class="w">Watch it change</span></h2>
       <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
       <button type="button" class="sk-focus" data-act="focus" aria-pressed="false" title="Fold both panels (F)"><span class="ic">${ICON.focus}</span><span>Focus</span></button>
     </div>
@@ -258,7 +259,7 @@ function shell(): string
       <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
       <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
       <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
-      <div class="sk-err" data-ref="err" hidden><p data-bind="err"></p><button type="button" class="sk-btn2" data-act="retry"><span class="ic">${ICON.retry}</span>Try again</button></div>
+      <div class="sk-err" data-ref="err" hidden><p data-bind="err" role="alert"></p><button type="button" class="sk-btn2" data-act="retry"><span class="ic">${ICON.retry}</span>Try again</button></div>
     </div>
     <div class="sk-ctrl">
     <div class="sk-legrow">
@@ -287,7 +288,7 @@ function shell(): string
   <button type="button" class="sk-fold" data-act="fold-right" aria-controls="sk-right" aria-expanded="true" aria-label="Fold the colour panel" title="Fold or open the colour panel"><span class="ic">${ICON.next}</span></button>
 </div>
 <aside class="sk-rail sk-right" id="sk-right">
-  <div class="sk-status"><p><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span></p><div class="sk-acts"><button type="button" class="sk-btn2 sk-golive" data-act="live" data-ref="golive" hidden><i aria-hidden="true"></i>Go live</button><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div></div>
+  <div class="sk-status"><p><span class="dot" aria-hidden="true"></span><span data-bind="statusShort" aria-live="polite">Connecting to the archive</span></p><div class="sk-acts"><button type="button" class="sk-btn2 sk-golive" data-act="live" data-ref="golive" hidden><i aria-hidden="true"></i>Go live</button><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div></div>
   <section class="sk-mod sk-m-colour" aria-labelledby="sk-h3">
     <h2 class="sk-mh" id="sk-h3"><i>03</i>Change the colour</h2>
     <div class="sk-readout"><p><b data-bind="lam"></b><small>µm</small></p><span data-bind="det"></span></div>
@@ -713,7 +714,7 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('lcx').innerHTML = `<span>${monthYear(t0)}</span><span class="b"><i></i>band: ${c.refs} comparison stars</span><span>${monthYear(t1)}</span>`;
         const min = Math.min(...ys);
         const max = Math.max(...ys);
-        ref<SVGSVGElement>('lc').setAttribute('aria-label', `Brightness over ${pts.length} looks, from ${pct(min)} to ${pct(max)} of the median. Comparison stars nearby vary by about ${(noise * 100).toFixed(1)}%.`);
+        ref<SVGSVGElement>('lc').setAttribute('aria-label', `Brightness over ${pts.length} looks, from ${pct(min)} to ${pct(max)} of the median. Estimated comparison noise about ${(noise * 100).toFixed(1)}%.`);
         const off = c.lc.dropped > 0 ? ` ${c.lc.dropped} ${c.lc.dropped === 1 ? 'frame was' : 'frames were'} too far off this colour.` : '';
         const bad = c.lc.points.length - pts.length;
         const left = off + (bad > 0 ? ` ${bad} ${bad === 1 ? 'look' : 'looks'} could not be measured.` : '');
@@ -1026,8 +1027,12 @@ export function mount(root: HTMLElement): void
                 : 'Simulated sky for building the page. Not real data.';
         bind('status', status);
         ref<HTMLElement>('notes').innerHTML = [...extraNotes, ...result.notes].map((t) => `<li>${esc(t)}</li>`).join('');
-        ref<HTMLElement>('live').textContent = `${q<HTMLElement>('[data-bind="frame"]').textContent}, ${q<HTMLElement>('[data-bind="when"]').textContent}`;
-        canvas.setAttribute('aria-label', `Sky image. ${ref<HTMLElement>('live').textContent}, ${lam.toFixed(2)} µm`);
+        const nowShowing = `${q<HTMLElement>('[data-bind="frame"]').textContent}, ${q<HTMLElement>('[data-bind="when"]').textContent}`;
+        // While it plays, a frame changes every 0.7 s: announcing each would drown a screen reader. Say it when it stops.
+        if (!st.playing) {
+            ref<HTMLElement>('live').textContent = nowShowing;
+        }
+        canvas.setAttribute('aria-label', `Sky image. ${nowShowing}, ${lam.toFixed(2)} µm`);
     }
 
     // ---------- playback ----------
@@ -1120,6 +1125,7 @@ export function mount(root: HTMLElement): void
                 draw();
             }
             timer = window.setTimeout(tick, frameDelayMs(FPS));
+            ref<HTMLElement>('live').textContent = `Playing ${result!.frames.length} frames. Space pauses.`;
         }
         renderText();
         if (!on) {
