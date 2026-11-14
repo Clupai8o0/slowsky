@@ -505,6 +505,8 @@ button { cursor: pointer; }
     .sk-tr { flex: 1; }
     .sk-tr .sk-btn.go { flex: 1; }
     .sk-seg { flex: 1 1 100%; }
+    /* Labels wrap before values do, so a file name or date stays on one line. */
+    .sk-m-details dl { grid-template-columns: fit-content(40%) minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
     .sk, .sk *, .sk *::before, .sk *::after { animation: none !important; transition: none !important; }
