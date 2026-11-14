@@ -844,7 +844,8 @@ export function mount(root: HTMLElement): void
             }
             input.value = '';
             input.blur();
-            setSpot({ ra: a.ra, dec: a.dec }, text);
+            // Same as the listed targets: centre where the star is in SPHEREx's time, not in the catalogue's epoch.
+            setSpot(positionAt(a, SKY_EPOCH_MJD), text);
         } catch {
             if (mine.signal.aborted) {
                 return;
