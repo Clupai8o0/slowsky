@@ -180,17 +180,46 @@ describe('slots for modules still in their lanes', () => {
     });
 });
 
-function colourHarness(enabled = true)
+function colourHarness(enabled = true, readingEnabled = true)
 {
     const calls: { req: SkyRequest; resolve: (result: SkyResult) => void; reject: (error: Error) => void }[] = [];
     const paint = vi.fn();
     const onChange = vi.fn();
     const source = { load: (req: SkyRequest) => new Promise<SkyResult>((resolve, reject) => calls.push({ req, resolve, reject })) };
-    const slot = mountFalseColour({} as HTMLElement, onChange, { enabled, source, paint });
+    const slot = mountFalseColour({} as HTMLElement, onChange, { enabled, readingEnabled, source, paint });
     return { slot, calls, paint, onChange };
 }
 
 describe('false colour slot', () => {
+    it('defaults both switches off and accepts fcReading in preview features', () => {
+        expect(DEFAULT_FEATURES.falseColour).toBe(false);
+        expect(DEFAULT_FEATURES.fcReading).toBe(false);
+        expect(featuresFrom('falseColour,fcReading')).toMatchObject({ falseColour: true, fcReading: true });
+        expect(featuresFrom('fcReading,-fcReading')).toMatchObject({ falseColour: false, fcReading: false });
+        for (const reading of [false, true]) {
+            const h = colourHarness(false, reading);
+            expect(JSON.stringify(h.slot.update(view(sky([frame('a')])), true))).toBe('{"key":false,"layer":false,"note":""}');
+            expect(h.calls).toHaveLength(0);
+            expect(h.paint).not.toHaveBeenCalled();
+        }
+    });
+
+    it('shows only picture text with fcReading off, retaining the warning in the lead', async () => {
+        const h = colourHarness(true, false);
+        const a = frame('a');
+        const b = frame('b');
+        b.lambdaAtCenter = 4.6;
+        const v = view(sky([a]), 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([b]));
+        await flush();
+        const state = h.slot.update(v, true);
+        expect(state.layer).toBe(true);
+        expect(state.note).not.toMatch(/At the centre|signal-to-noise|seen at|The reading|Position is compared|count as one visit/);
+        expect(state.note).toContain('Blue:');
+        expect(state.note).toContain('Hatched areas have no colour:');
+        expect(state.split?.lead).toContain('a detector hit would show as a coloured point');
+    });
     it('does not request a partner when the current view has no frames', () => {
         const h = colourHarness();
         const state = h.slot.update(view(sky([]), 0, { mode: 'stack' }), true);

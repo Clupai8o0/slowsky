@@ -13,6 +13,12 @@ export class FalseColourError extends Error {
     }
 }
 
+// Dark olive hatch colours, deliberately outside the map's green = (red + blue) / 2 line.
+export const NO_COLOUR_HATCH = Object.freeze([
+    Object.freeze([24, 40, 20, 255] as const),
+    Object.freeze([55, 66, 32, 255] as const),
+]);
+
 export interface PairStretch {
     sShort: Stretch;
     sLong: Stretch;
@@ -112,13 +118,14 @@ export function pairStretch(
     };
 }
 
-// RGBA pixels for canvas putImageData: blue for short, orange for long, grey where equal, transparent if non-finite.
+// RGBA pixels: blue for short, orange for long, grey where equal, opaque hatch where either band is missing.
 export function falseColourRgba(
     short: Float32Array,
     long: Float32Array,
     sShort: Stretch,
     sLong: Stretch,
     out?: Uint8ClampedArray,
+    width = short.length,
 ): Uint8ClampedArray
 {
     if (short.length !== long.length) {
@@ -135,14 +142,17 @@ export function falseColourRgba(
         const vl = long[i];
         const o = i * 4;
         if (vs === undefined || vl === undefined || !Number.isFinite(vs) || !Number.isFinite(vl)) {
-            px[o] = 0;
-            px[o + 1] = 0;
-            px[o + 2] = 0;
-            px[o + 3] = 0;
+            const x = i % width;
+            const y = Math.floor(i / width);
+            px.set(NO_COLOUR_HATCH[(x + y) % 4 === 0 ? 1 : 0]!, o);
             continue;
         }
-        const s = stretchValue(vs, sShort);
-        const l = stretchValue(vl, sLong);
+        // The same pre-curve position for linear and asinh stretches; leave the unsaturated path byte-identical.
+        const ts = Math.max(0, (vs - sShort.lo) / (sShort.hi - sShort.lo));
+        const tl = Math.max(0, (vl - sLong.lo) / (sLong.hi - sLong.lo));
+        const scale = Math.max(ts, tl);
+        const s = scale > 1 ? stretchValue(ts / scale, { lo: 0, hi: 1, kind: sShort.kind }) : stretchValue(vs, sShort);
+        const l = scale > 1 ? stretchValue(tl / scale, { lo: 0, hi: 1, kind: sLong.kind }) : stretchValue(vl, sLong);
         px[o] = 255 * l;
         px[o + 1] = 255 * (s + l) / 2;
         px[o + 2] = 255 * s;

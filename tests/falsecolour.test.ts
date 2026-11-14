@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    FalseColourError, centroidOffset, colourAt, falseColourLegend, falseColourRgba, pairStretch,
+    FalseColourError, NO_COLOUR_HATCH, centroidOffset, colourAt, falseColourLegend, falseColourRgba, pairStretch,
 } from '../src/lib/falsecolour';
 import type { ColourAt, PairStretch } from '../src/lib/falsecolour';
 import { centroid } from '../src/lib/photometry';
@@ -219,6 +219,51 @@ describe('pairStretch', () => {
 describe('falseColourRgba', () => {
     const lin: Stretch = { lo: 0, hi: 1, kind: 'linear' };
 
+    it.each(['linear', 'asinh'] as const)('keeps a saturated core blue at every brightness with %s stretches', kind => {
+        const s: Stretch = { lo: 2, hi: 12, kind };
+        const l: Stretch = { lo: 7, hi: 17, kind };
+        const colours = [1, 10, 100].map(factor => falseColourRgba(
+            Float32Array.of(2 + 330 * factor), Float32Array.of(7 + 100 * factor), s, l));
+        for (const colour of colours) {
+            expect(colour[2]).toBe(255);
+            expect(colour[2]!).toBeGreaterThan(colour[0]!);
+            expect(Math.abs(colour[0]! - colours[0]![0]!)).toBeLessThanOrEqual(2);
+        }
+        const equal = falseColourRgba(Float32Array.of(332), Float32Array.of(337), s, l);
+        expect(Array.from(equal)).toEqual([255, 255, 255, 255]);
+    });
+
+    it.each(['linear', 'asinh'] as const)('preserves all unsaturated bytes from stretchValue for %s', kind => {
+        const s: Stretch = { lo: 2, hi: 12, kind };
+        const l: Stretch = { lo: 7, hi: 17, kind };
+        const short = Float32Array.from({ length: 101 }, (_, i) => 1 + i / 10);
+        const long = Float32Array.from({ length: 101 }, (_, i) => 17 - i / 10);
+        const before = new Uint8ClampedArray(short.length * 4);
+        for (let i = 0; i < short.length; i++) {
+            const blue = stretchValue(short[i]!, s);
+            const red = stretchValue(long[i]!, l);
+            before.set([255 * red, 255 * (red + blue) / 2, 255 * blue, 255], 4 * i);
+        }
+        expect(falseColourRgba(short, long, s, l)).toEqual(before);
+    });
+
+    it('keeps the paired-stretch star core blue from 330/100 through 33000/10000', () => {
+        const centres: number[][] = [];
+        for (const factor of [1, 10, 100]) {
+            const short = makePatch([{ ...CENTER, flux: 330 * factor }]);
+            const long = makePatch([{ ...CENTER, flux: 100 * factor }], 2);
+            const stretch = pairStretch(short, long);
+            const rgba = falseColourRgba(short, long, stretch.sShort, stretch.sLong);
+            const p = (CENTER.y * SIZE + CENTER.x) * 4;
+            const centre = Array.from(rgba.slice(p, p + 4));
+            expect(centre[2]!).toBeGreaterThan(centre[0]!);
+            centres.push(centre);
+        }
+        for (let channel = 0; channel < 3; channel++) {
+            expect(Math.abs(centres[0]![channel]! - centres[2]![channel]!)).toBeLessThanOrEqual(2);
+        }
+    });
+
     it('maps orange to long-only, blue to short-only, and grey/white/black to equal channels', () => {
         const short = Float32Array.from([0, 1, 1, 0, 0.5]);
         const long = Float32Array.from([1, 0, 1, 0, 0.5]);
@@ -239,11 +284,11 @@ describe('falseColourRgba', () => {
         expect(a).toBe(255);
     });
 
-    it('renders non-finite values in either channel transparent, clamps finite range and overwrites reused out', () => {
+    it('hatches non-finite values, preserves saturated ratios and overwrites reused out', () => {
         expectPixelNear(
             falseColourRgba(Float32Array.from([Number.POSITIVE_INFINITY]), Float32Array.from([0]), lin, lin),
             0,
-            [0, 0, 0, 0],
+            [...NO_COLOUR_HATCH[1]!],
             0,
         );
 
@@ -266,21 +311,21 @@ describe('falseColourRgba', () => {
         expect(px).toBe(out);
 
         for (let i = 0; i < 5; i++) {
-            expectPixelNear(px, i, [0, 0, 0, 0], 0);
+            expectPixelNear(px, i, [...NO_COLOUR_HATCH[i % 4 === 0 ? 1 : 0]!], 0);
         }
         expectPixelNear(px, 5, [0, 0, 0, 255], 0);
-        expectPixelNear(px, 6, [255, 255, 255, 255], 0);
+        expectPixelNear(px, 6, [94, 174, 255, 255], 0);
         expectPixelNear(px, 7, [255, 128, 0, 255], 1);
         expectPixelNear(px, 8, [0, 128, 255, 255], 1);
     });
 
-    it('agrees with stretchValue across 50 values for the asinh stretch', () => {
+    it('agrees with stretchValue across 50 unsaturated values for the asinh stretch', () => {
         const n = 50;
         const short = new Float32Array(n);
         const long = new Float32Array(n);
         for (let i = 0; i < n; i++) {
-            short[i] = -1 + i * 0.35;
-            long[i] = -2 + (n - 1 - i) * 0.6;
+            short[i] = -1 + i * 0.2;
+            long[i] = -2 + (n - 1 - i) * 0.4;
         }
         const sShort: Stretch = { lo: 0.5, hi: 12, kind: 'asinh' };
         const sLong: Stretch = { lo: 1, hi: 24, kind: 'asinh' };
