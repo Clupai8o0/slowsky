@@ -58,14 +58,14 @@ describe('sentences', () => {
     const cases: [string, Partial<UpTonight>, string, string][] = [
         ['never rises', { maxAltDeg: -2 }, 'This spot never rises above the horizon from Melbourne.', ''],
         ['below', { bestAltDeg: -2 }, 'Tonight from Melbourne: below the horizon while it is dark.', note],
-        ['horizon', { bestAltDeg: -0.4 }, 'Tonight from Melbourne: at the horizon at best, at 21:14, facing north.', note],
-        ['horizon sinking', { bestAltDeg: 0, inside: true, sinking: true }, 'For the rest of tonight from Melbourne: at the horizon now and getting lower, facing north.', note],
+        ['horizon', { bestAltDeg: -0.4 }, 'Tonight from Melbourne: gets no higher than the horizon, at 21:14, facing north.', note],
+        ['horizon sinking', { bestAltDeg: 0, inside: true, sinking: true }, 'For the rest of the night from Melbourne: at the horizon now, and lower after that, facing north.', note],
         ['low', { bestAltDeg: 5 }, 'Tonight from Melbourne: very low, at most about 5° above the horizon, at 21:14, facing north.', note],
-        ['low sinking', { bestAltDeg: 5, inside: true, sinking: true }, 'For the rest of tonight from Melbourne: very low, about 5° above the horizon now and getting lower, facing north.', note],
+        ['low sinking', { bestAltDeg: 5, inside: true, sinking: true }, 'For the rest of the night from Melbourne: very low, about 5° above the horizon now, and lower after that, facing north.', note],
         ['high', {}, 'Tonight from Melbourne: highest in the dark at 21:14, about 15° above the horizon, facing north.', note],
-        ['high sinking', { inside: true, sinking: true }, 'For the rest of tonight from Melbourne: about 15° above the horizon now and getting lower, facing north.', note],
+        ['high sinking', { inside: true, sinking: true }, 'For the rest of the night from Melbourne: about 15° above the horizon now, and lower after that, facing north.', note],
         ['overhead', { bestAltDeg: 85 }, 'Tonight from Melbourne: highest in the dark at 21:14, about 85° above the horizon, almost overhead.', note],
-        ['overhead sinking', { bestAltDeg: 85, inside: true, sinking: true }, 'For the rest of tonight from Melbourne: about 85° above the horizon now, almost overhead, and getting lower.', note],
+        ['overhead sinking', { bestAltDeg: 85, inside: true, sinking: true }, 'For the rest of the night from Melbourne: about 85° above the horizon now, almost overhead, and lower after that.', note],
     ];
     it.each(cases)('prints %s exactly', (_name, changes, line, expectedNote) => {
         const text = upTonightText({ ...base, ...changes })!;
@@ -75,11 +75,11 @@ describe('sentences', () => {
     });
     it('handles null, horizon tolerance and rounded branch boundaries', () => {
         expect(upTonightText(null)).toBeNull();
-        expect(upTonightText({ ...base, maxAltDeg: -0.5, bestAltDeg: -0.4 })!.line).toBe('Tonight from Melbourne: at the horizon at best, at 21:14, facing north.');
+        expect(upTonightText({ ...base, maxAltDeg: -0.5, bestAltDeg: -0.4 })!.line).toBe('Tonight from Melbourne: gets no higher than the horizon, at 21:14, facing north.');
         expect(upTonightText({ ...base, bestAltDeg: 79.6 })!.line).toBe('Tonight from Melbourne: highest in the dark at 21:14, about 80° above the horizon, almost overhead.');
         expect(upTonightText({ ...base, bestAltDeg: 9.6 })!.line).toBe('Tonight from Melbourne: highest in the dark at 21:14, about 10° above the horizon, facing north.');
         expect(upTonightText({ ...base, bestAltDeg: -0.4 })!.line).not.toContain('-0');
-        expect(upTonightText({ ...base, bestAltDeg: -2, inside: true })!.line).toBe('For the rest of tonight from Melbourne: below the horizon while it is dark.');
+        expect(upTonightText({ ...base, bestAltDeg: -2, inside: true })!.line).toBe('For the rest of the night from Melbourne: below the horizon while it is dark.');
     });
     it('clamps rounded times within the remaining window', () => {
         const end = new Date('2026-11-14T18:12:59.400Z');
@@ -91,8 +91,44 @@ describe('sentences', () => {
     it('describes the real sinking case as now', () => {
         const r = upTonight(348.5, -39.58, new Date('2026-11-14T16:00:00Z'))!;
         const text = upTonightText(r)!;
-        expect(text.line).toContain('now and getting lower');
+        expect(text.line).toContain('now, and lower after that');
         expect(text.line).not.toContain('21:14');
+    });
+    it('says "now" for a spot going down in the last seconds of the dark, never "highest"', () => {
+        const first = upTonight(331.04414658852124, -56.782844195116105, new Date('2026-11-15T16:00:00Z'))!;
+        for (const left of [5000, 30000, 90000, 9 * 60000]) {
+            const r = upTonight(331.04414658852124, -56.782844195116105, new Date(+first.darkEnd - left))!;
+            expect(r.inside, String(left)).toBe(true);
+            expect(r.sinking, String(left)).toBe(true);
+            const line = upTonightText(r)!.line;
+            expect(line, String(left)).toContain('now, and lower after that');
+            expect(line, String(left)).not.toContain('highest');
+        }
+    });
+    it('"now, and lower after that" holds for every later minute, also for a spot that dips and comes part of the way back', () => {
+        const night = upTonight(0, -70, new Date('2026-11-15T16:00:00Z'))!;
+        let said = 0;
+        for (let ra = 0; ra < 360; ra += 7.5) {
+            for (const dec of [-89.5, -80, -70, -60, -53, -20, 10]) {
+                for (const left of [39 * 60000, 3 * 3600000]) {
+                    const now = new Date(+night.darkEnd - left);
+                    const r = upTonight(ra, dec, now)!;
+                    const line = upTonightText(r)!.line;
+                    const here = altAz(ra, dec, now).altDeg;
+                    let later = -Infinity;
+                    for (let at = +now + 60000; at <= +r.darkEnd; at += 60000) {
+                        later = Math.max(later, altAz(ra, dec, new Date(at)).altDeg);
+                    }
+                    if (line.includes('lower after that')) {
+                        said++;
+                        expect(later, `${ra} ${dec} ${left}`).toBeLessThan(here);
+                    } else if (line.includes('highest in the dark')) {
+                        expect(later, `${ra} ${dec} ${left}`).toBeGreaterThan(here - 1e-6);
+                    }
+                }
+            }
+        }
+        expect(said).toBeGreaterThan(100);
     });
     it('formats daylight saving, directions and rounded zero', () => {
         expect(upTonightText(base)!.line).toContain('21:14');
@@ -102,7 +138,7 @@ describe('sentences', () => {
             expect(upTonightText({ ...base, bestAzDeg: 22.4 + i * 45 })!.line).toContain(`facing ${dirs[i]}.`);
             expect(upTonightText({ ...base, bestAzDeg: 22.6 + i * 45 })!.line).toContain(`facing ${dirs[i + 1]}.`);
         }
-        expect(upTonightText({ ...base, bestAltDeg: -0 })!.line).toContain('at the horizon');
+        expect(upTonightText({ ...base, bestAltDeg: -0 })!.line).toContain('no higher than the horizon');
         expect(upTonightText({ ...base, bestAltDeg: 15 })!.line).not.toContain('very low');
     });
 });

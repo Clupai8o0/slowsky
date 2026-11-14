@@ -162,7 +162,9 @@ export function upTonight(raDeg: number, decDeg: number, now: Date, observer: Ob
     const position = altAz(raDeg, decDeg, bestDate, observer);
     const dateDec = precess(raDeg, decDeg, +bestDate).decDeg;
     const maxAltDeg = 90 - Math.abs(observer.latDeg - dateDec);
-    const sinking = inside && best - from <= 1000 && altitude(from) - altitude(Math.min(from + 600000, end)) > 0.01;
+    // Highest right now for what is left of the dark, and lower a minute on. The slope is read one minute ahead whatever
+    // is left of the window, so the last minutes before dawn are judged like any others.
+    const sinking = inside && best - from <= 1000 && altitude(from + 60000) < altitude(from) - 1e-9;
     if (![start, end, +bestDate, position.altDeg, position.azDeg, maxAltDeg].every(Number.isFinite)) {
         return null;
     }
