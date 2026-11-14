@@ -1,0 +1,1 @@
+{"macroF1":0.919857745099171,"accuracy":0.9200799999999999,"worstFold":{"target":"barnard","macroF1":0.9030869063440958},"treesMacroF1":0.8761895680923256,"treesNote":"Trees trained on fewer stamps (600 per class per target vs 2,500 for the CNN)","evalSha256":"c1d7eb0bca5254124793d25a42bc596e98180e2b8fae3c3dc434c3ced0893858","seed":20261114}
