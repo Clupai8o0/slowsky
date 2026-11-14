@@ -1,4 +1,5 @@
 import type { Detector, FrameQuery, FrameRecord } from './types';
+import { parseRegion } from './footprint';
 import { parseVotable, type VoRow } from './votable';
 
 export const ALLOWED_COLLECTIONS = ['spherex_dr1', 'spherex_dr1_deep', 'spherex_qr3', 'spherex_qr3_deep'] as const;
@@ -161,6 +162,10 @@ export function rowToFrame(row: VoRow): FrameRecord | null
     const dec = numeric('s_dec');
     if (Number.isFinite(ra) && Number.isFinite(dec)) {
         frame.center = { ra, dec };
+    }
+    const footprint = parseRegion(row.s_region);
+    if (footprint) {
+        frame.footprint = footprint;
     }
     const size = numeric('access_estsize');
     if (Number.isFinite(size) && size >= 0) {
