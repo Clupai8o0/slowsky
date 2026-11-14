@@ -235,18 +235,18 @@ function fmt(v: number): string
 }
 
 // Within the visit that holds the brightest core: how few minutes its frames started in, and its highest and
-// lowest values with their wavelengths (no direction is claimed). The span is rounded up, never down.
+// lowest values with their wavelengths. No direction and no cause is claimed. The span is rounded up, never down.
 function groupSentence(doc: CometDoc, top: CometPoint): string
 {
     const group = timeGroups(doc).find(g => g.some(f => f.wavelength === top.wavelength)) ?? [];
     if (group.length < 2) {
-        return 'Frames taken minutes apart change wavelength, not much else.';
+        return 'The brightest frame has no neighbour taken within minutes of it, so this card cannot tell colour from time.';
     }
     const minutes = Math.max(1, Math.ceil(((group[group.length - 1] as CometFrame).mjdStart - (group[0] as CometFrame).mjdStart) * 1440 - 1e-6));
     const ws = group.map(f => f.wavelength);
     const low = group.reduce((a, f) => (f.coreMean - f.borderMedian < a.coreMean - a.borderMedian ? f : a));
     return `The ${group.length} frames from ${Math.min(...ws).toFixed(2)} to ${Math.max(...ws).toFixed(2)} µm started within ${minutes} minutes of each other.`
-        + ` Among them the core reads ${fmt(top.value)} MJy/sr at ${top.wavelength.toFixed(2)} µm and ${fmt(low.coreMean - low.borderMedian)} at ${low.wavelength.toFixed(2)} µm, so there most of the change is colour, not time.`;
+        + ` Among them the core reads ${fmt(top.value)} MJy/sr at ${top.wavelength.toFixed(2)} µm and ${fmt(low.coreMean - low.borderMedian)} at ${low.wavelength.toFixed(2)} µm. They are close in time, but this card still cannot fully separate colour from time, and the box may sit a little differently on the comet in each frame.`;
 }
 
 export function spanText(doc: CometDoc): string

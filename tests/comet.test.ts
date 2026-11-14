@@ -158,12 +158,13 @@ describe('comet: labels, chart, caption', () => {
         }
     });
 
-    it('caption says colour not time, 3x3 mean not calibrated, shared scale, and who reported the coma', () => {
+    it('caption claims no cause for the change, says 3x3 mean not calibrated, shared scale, and who reported the coma', () => {
         const text = cometCaption(doc).join(' ');
         expect(text).toMatch(/mixes colour and time/);
         expect(text).toMatch(/4\.25 to 4\.36 µm started within 7 minutes/);
         expect(text).toMatch(/39\.2 MJy\/sr at 4\.25 µm and 1\.03 at 4\.36 µm/);
-        expect(text).toMatch(/there most of the change is colour, not time/);
+        expect(text).toMatch(/close in time, but this card still cannot fully separate colour from time/);
+        expect(text).not.toMatch(/most of the change|colour, not time/);
         expect(text).toMatch(/not on the brightest pixel/);
         expect(text).toMatch(/border is not empty sky: the coma the SPHEREx team reports \(about 3 arcminutes in radius\) is wider than these pictures \(about 4 arcminutes across\)/);
         expect(text).toMatch(/its top is the brightest pixel in any of the 3×3 boxes/);
