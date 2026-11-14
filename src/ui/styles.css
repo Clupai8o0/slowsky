@@ -409,6 +409,13 @@ button { cursor: pointer; }
 .sk-gk .sk-src { font: 10px/24px var(--mono); color: var(--faint); }
 .sk-notes { margin: 0; padding: 0 0 0 14px; font-size: 12px; line-height: 1.5; color: var(--mute); }
 .sk-notes:empty { display: none; }
+/* Candidate changes (FEATURES.changes): the finder's own sentences, then its notes. */
+.sk-chg { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--ink2); }
+.sk-chg b { display: block; font: 10.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); font-weight: 400; }
+.sk-chg-lead { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink2); }
+.sk-chg-notes { margin: 12px 0 0; padding: 0 0 0 14px; font-size: 12px; line-height: 1.5; color: var(--mute); }
+.sk-chg-marks circle { fill: none; stroke: #fff; stroke-width: 1.5px; vector-effect: non-scaling-stroke; stroke-dasharray: 3 2; }
+.sk-chg-marks text { fill: #fff; font-family: var(--mono); text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 2px; vector-effect: non-scaling-stroke; }
 .sk-credit { margin-top: auto; padding-top: 28px; font: 10px/1.6 var(--mono); color: var(--faint); flex: none; }
 .sk-credit p { margin: 0; }
 .sk-credit p + p { margin-top: 4px; }
