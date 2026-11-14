@@ -266,6 +266,14 @@ button { cursor: pointer; }
 .sk-key.c .sw { width: 10px; height: 10px; border-radius: 1px; background: linear-gradient(90deg, #4f8bff, #ff7a45); }
 .sk-key.c[aria-pressed=false] .sw { opacity: .5; }
 .sk-flagnote { margin: 2px 0 6px; font-size: 12px; line-height: 1.5; color: var(--ink2); }
+.sk-more { display: inline; }
+.sk-more summary { display: none; }
+@media (max-width: 1080px) {
+    .sk-more { display: block; margin-top: 4px; color: var(--mute); }
+    .sk-more summary { display: flex; align-items: center; min-height: 44px; width: max-content; color: var(--ink2); cursor: pointer;
+        text-decoration: underline dotted; text-underline-offset: 3px; }
+    .sk-more summary:focus-visible { outline: 2px solid rgba(255, 255, 255, .6); outline-offset: 2px; border-radius: 2px; }
+}
 .sk-key .ring, .sk-key.t::before { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--gold); }
 .sk-key.t { align-items: flex-start; color: var(--ink2); }
 .sk-key.t::before { content: ""; flex: none; border-width: 2px; margin-top: 4px; }

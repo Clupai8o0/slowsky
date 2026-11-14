@@ -80,6 +80,8 @@ export interface LayerState {
     key: boolean; // show the key in the sky legend
     layer: boolean; // show the layer over the sky
     note: string; // the line under the legend ('' hides it)
+    // Optional split of `note` for small screens: `lead` always shows, `more` goes behind "How to read this colour".
+    split?: { lead: string; more: string };
 }
 
 export type FlagsState = LayerState;
@@ -356,7 +358,10 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                     paint(layer, picture.rgba, picture.width, picture.height);
                     painted = true;
                 }
-                return { key: true, layer: true, note: entry.picture.sentence };
+                const parts = entry.picture.parts;
+                const join = (xs: string[]) => xs.filter(Boolean).join(' ');
+                return { key: true, layer: true, note: entry.picture.sentence,
+                    split: { lead: join([parts.reading, parts.warning]), more: join([parts.labels, parts.note, parts.method]) } };
             } catch {
                 entry = { status: 'failed', note: FALSE_COLOUR_TEXT.picture };
                 return { key: true, layer: false, note: FALSE_COLOUR_TEXT.picture };
