@@ -1186,7 +1186,8 @@ export function mount(root: HTMLElement): void
             bind('when', `${monthYear(first.tMin)} – ${monthYear(last.tMin)}`);
         } else if (st.mode === 'diff' && pair) {
             bind('frame', st.subOp === 'sum' ? 'A + B' : 'B − A');
-            const [da, db] = headerDates(pair.a, pair.b);
+            // No break inside a date, so a narrow header wraps only at the − or +.
+            const [da, db] = headerDates(pair.a, pair.b).map((d) => d.replace(/ /g, '\u00a0'));
             bind('when', st.subOp === 'sum' ? `${da} + ${db}` : `${db} − ${da}`);
         } else if (first && last) {
             bind('frame', 'Last − first');

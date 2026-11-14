@@ -67,7 +67,7 @@ export const CUSTOM_COPY = {
 export const MODE_HINT = {
     blink: 'Blink flips between dates. Things that move or change are easier to spot.',
     stack: 'Stack averages every frame. Faint things appear; moving things smear.',
-    diff: 'Subtract: last look minus first. Blue was there then, orange is there now.',
+    diff: 'Subtract: last look minus first. Blue marks more light earlier, orange more light later.',
 } as const;
 
 export const STAGE_TEXT = {
