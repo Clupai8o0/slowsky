@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ChangeInputError } from '../src/lib/change-input';
-import type { ChangeCandidate, ChangeResult } from '../src/lib/changes';
+import { hasSnrFigure, stripSnr, type ChangeCandidate, type ChangeResult } from '../src/lib/changes';
 import type { SkyResult } from '../src/lib/source';
 import { changesHtml, changesMarks, changesView, EMPTY_LEAD } from '../src/ui/changes-view';
 import { changesFor, DEFAULT_FEATURES } from '../src/ui/slots';
@@ -173,6 +173,21 @@ describe('round 11: groups from the review', () => {
 });
 
 describe('plain list (compareVisits plain: true)', () => {
+    it('P2 prints each new sentence exactly and strips only its S/N figure', () => {
+        const ending = "a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
+        for (const [reading, start] of [
+            ['moreLater', 'Compared with the sky around it, there is more light here in the later visit than in the earlier one'],
+            ['lessLater', 'Compared with the sky around it, there is less light here in the later visit than in the earlier one'],
+            ['unclear', 'The light here differs between the two visits, and which visit has more is not clear'],
+        ] as const) {
+            const sentence = `${start}; ${ending} (S/N 9.0; candidate). A catalogue star lies 8.0″ away.`;
+            expect(stripSnr(sentence)).toBe(`${start}; ${ending} (candidate). A catalogue star lies 8.0″ away.`);
+            expect(hasSnrFigure(sentence)).toBe(true);
+            expect(hasSnrFigure(stripSnr(sentence))).toBe(false);
+            const c = { ...cand('p', 10, 10, sentence), reading, sentence };
+            expect(changesHtml(changesView(found([c], [])))).toBe(`<ol class="sk-chg"><li><b>Candidate 1</b> ${sentence}</li></ol>`);
+        }
+    });
     it('places the confirmation note before the shared caveat and list', () => {
         const c = { ...cand('p', 10, 10, 'The light differs (candidate).'), reading: 'unclear' as const,
             caveat: 'Each visit has fewer than 3 frames, so a detector hit cannot be ruled out.' };

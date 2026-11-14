@@ -3,9 +3,9 @@ import { findChanges } from '../src/lib/change-input';
 import { gridPixToSky, gridSkyToPix } from '../src/lib/regrid';
 import type { GaiaStar, SkyResult } from '../src/lib/source';
 import { positionAt } from '../src/lib/targets';
-import type { FrameRecord, OutputGrid, RegriddedFrame } from '../src/lib/types';
+import type { FrameRecord, OutputGrid, RangeReader, RegriddedFrame, Wcs } from '../src/lib/types';
 // The page's change list goes through changesFor (src/ui/slots.ts), which must ask for the plain list only.
-import { changesFor, PAGE_CHANGE_OPTIONS } from '../src/ui/slots';
+import { changesFor, mountChanges, PAGE_CHANGE_OPTIONS } from '../src/ui/slots';
 // Fixtures as in tests/change-input.test.ts.
 
 const grid: OutputGrid = { center: { ra: 20, dec: 30 }, fovDeg: 0.1, pixelArcsec: 1.5375, width: 121, height: 121 };
@@ -67,6 +67,52 @@ function star(sourceId: string, ra = grid.center.ra, dec = grid.center.dec): Gai
     return { sourceId, ra, dec, g: 10, epochJyear: 2016, pix: gridSkyToPix(grid, { ra, dec }) };
 }
 
+function livePair(): SkyResult
+{
+    seed = 918273;
+    const a = noise(grid), b = noise(grid);
+    point(b, 30, 30, 1000);
+    point(b, 90, 90, 100);
+    const frames = [frame('a', 60000, 2, a), frame('b', 60030, 2, b)];
+    for (const f of frames) {
+        f.variance = new Float32Array(f.data.length).fill(1);
+        f.context = { url: f.frame.obsId, box: { x0: 0, y0: 0, x1: grid.width, y1: grid.height },
+            wcs: { skyToPix: (s) => gridSkyToPix(grid, s) } as Wcs,
+            flags: { layout: {} as never, names: [{ bit: 0, name: 'TRANSIENT' }, { bit: 1, name: 'OVERFLOW' }] } };
+    }
+    return { ...sky(frames), source: 'live' };
+}
+
+async function screenedPage(result: SkyResult, flagged: (x: number, y: number) => number): Promise<string>
+{
+    const frames = new Map(result.frames.map(f => [f.frame.frame.obsId, f.frame]));
+    const reader = { index: async (url: string) => ({ url }),
+        readFloat32: async (index: { url: string }, name: string) => name === 'IMAGE' ? frames.get(index.url)!.data : new Float32Array(grid.width * grid.height),
+    } as unknown as RangeReader;
+    const read = vi.fn(async (url: string) => {
+        const data = new Int32Array(grid.width * grid.height);
+        if (url === 'b') {
+            for (let y = 0; y < grid.height; y++) {
+                for (let x = 0; x < grid.width; x++) { data[y * grid.width + x] = flagged(x, y); }
+            }
+        }
+        return { data, width: grid.width, height: grid.height };
+    });
+    const onChange = vi.fn(), box = {} as HTMLElement, marks = {} as HTMLElement;
+    const slot = mountChanges(onChange, { reader, read, variance: async f => f.variance ?? null });
+    const view = { source: 'live' as const, result, index: 0, mode: 'blink' as const };
+    slot.render(box, marks, view);
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
+    slot.render(box, marks, view);
+    return box.innerHTML;
+}
+
+function pageNotes(html: string): string[]
+{
+    const list = /<ul class="sk-chg-notes">(.*?)<\/ul>/.exec(html)?.[1] ?? '';
+    return [...list.matchAll(/<li>(.*?)<\/li>/g)].map(m => m[1]!.replaceAll('&quot;', '"').replaceAll('&gt;', '>').replaceAll('&lt;', '<').replaceAll('&amp;', '&'));
+}
+
 
 describe('page change list is the plain list', () => {
     beforeEach(() => { seed = 918273; });
@@ -79,6 +125,47 @@ describe('page change list is the plain list', () => {
         expect(find).toHaveBeenCalledTimes(1);
         expect(find.mock.calls[0]![2]).toEqual({ plain: true });
         expect(PAGE_CHANGE_OPTIONS).toEqual({ plain: true });
+    });
+
+    it('P7 removes catalogue and ordering notes when archive flags remove the entire real list', async () => {
+        const html = await screenedPage(livePair(), () => 1);
+        expect(pageNotes(html)).toEqual([
+            'Earlier visit at 2.000 µm, later at 2.000 µm.',
+            "Noise estimated using the frames' pixel uncertainty maps.",
+            'No source above 5 times the noise at the centre of the view in either visit.',
+            '2 candidates are not listed: for each, in at least one frame of a checked visit, that frame’s brightest pixel within 12″ of its spot carries the archive flag TRANSIENT.',
+        ]);
+        expect(html.includes('Every spot listed')).toBe(false);
+    });
+
+    it('P9 re-sorts the real list after overflow removes the strongest spot S/N', async () => {
+        const html = await screenedPage(livePair(), x => x < 60 ? 2 : 0);
+        const lines = [...html.matchAll(/<li><b>Candidate \d+<\/b> (.*?)<\/li>/g)].map(m => m[1]!);
+        expect(lines).toEqual([
+            "Compared with the sky around it, there is more light here in the later visit than in the earlier one; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N &gt; 50; candidate).",
+            "The light here differs between the two visits, and which visit has more is not clear; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (candidate). In at least one frame of the later visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW; an overflowing pixel can make the reading here unreliable.",
+        ]);
+        expect(pageNotes(html)).toEqual([
+            'Earlier visit at 2.000 µm, later at 2.000 µm.',
+            "Noise estimated using the frames' pixel uncertainty maps.",
+            'No source above 5 times the noise at the centre of the view in either visit.',
+            'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise; spots with no S/N figure come after those with one.',
+            'No catalogue stars for this view: every spot is listed without a catalogue match.',
+        ]);
+    });
+
+    it('P9 real finder metadata rebuilds stale S/N counts after the flag screen', async () => {
+        const result = livePair();
+        for (const f of result.frames) { f.frame.variance![30 * grid.width + 30] = NaN; }
+        const html = await screenedPage(result, x => x < 60 ? 1 : 0);
+        expect(pageNotes(html)).toEqual([
+            'Earlier visit at 2.000 µm, later at 2.000 µm.',
+            "Noise estimated using the frames' pixel uncertainty maps.",
+            'No source above 5 times the noise at the centre of the view in either visit.',
+            'Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.',
+            'No catalogue stars for this view: every spot is listed without a catalogue match.',
+            '1 candidate is not listed: in at least one frame of a checked visit, that frame’s brightest pixel within 12″ of its spot carries the archive flag TRANSIENT.',
+        ]);
     });
 
     it('only lists plain readings on the cases the classifier names', () => {

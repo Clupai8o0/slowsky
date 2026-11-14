@@ -393,24 +393,24 @@ describe('error maps for the compared visits (C6)', () => {
 describe('plain list (compareVisits plain: true)', () => {
     const at = (x: number, names: string[]) => ({ obsId: '', names: (p: { x: number }) => (p.x === x ? names : []) });
     const plain = { ...candidate, id: 'q', kind: 'unknown' as const, snr: 9, reading: 'moreLater' as const, lightVisit: 'later' as const, x: 1, y: 1,
-        sentence: 'More light here in the later visit than in the earlier one; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate).',
-        neutral: 'The light here differs between the two visits, and which visit has more is not clear; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate).',
+        sentence: 'Compared with the sky around it, there is more light here in the later visit than in the earlier one; a change in a source\'s brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate).',
+        neutral: 'The light here differs between the two visits, and which visit has more is not clear; a change in a source\'s brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate).',
         ends: [{ visit: 'later' as const, x: 1, y: 1, radiusPix: 2 }] };
 
     it('withdraws plain direction when either visit has OVERFLOW', () => {
         for (const visit of ['earlier', 'later'] as const) {
             const flags = new Map([['early', at(1, visit === 'earlier' ? ['OVERFLOW'] : [])], ['late', at(1, visit === 'later' ? ['OVERFLOW'] : [])]]);
             const kept = screen([plain], { earlier: [earlier], later: [later] }, flags, []).kept[0]!;
-            expect(kept.line).toBe(`The light here differs between the two visits, and which visit has more is not clear; a real change, a moving source, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (candidate). In at least one frame of the ${visit} visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW; an overflowing pixel can make the reading here unreliable.`);
+            expect(kept.line).toBe(`The light here differs between the two visits, and which visit has more is not clear; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (candidate). In at least one frame of the ${visit} visit, the archive flags that frame’s brightest pixel within 12″ of the spot as OVERFLOW; an overflowing pixel can make the reading here unreliable.`);
             expect(kept.reading).toBe('unclear');
             expect(kept.kind).toBe('unknown');
         }
     });
 
-    it('does not call mapped ordering difference-image noise when overflow hides every S/N', () => {
+    it('keeps mapped ordering explained when overflow hides every S/N', () => {
         const flags = new Map([['early', at(1, ['OVERFLOW'])], ['late', at(1, [])]]);
         const kept = screen([plain], { earlier: [earlier], later: [later] }, flags, []).kept;
-        expect(plainListNotes(kept, true, 6)).toEqual([]);
+        expect(plainListNotes(kept, true, 6)).toEqual(['Listed with spots that have no catalogue star within 6″ first, then by how far each stands out from the noise.']);
     });
 
     it('truncates S/N for overflowed comparison readings', () => {
@@ -445,6 +445,18 @@ describe('plain list (compareVisits plain: true)', () => {
         expect(out.allUnread).toBe(false);
         expect(out.kept[0]!.line).toBe(`${plain.sentence} Some of the archive flags for this spot could not be read, so that check is incomplete.`);
         expect(screen([plain], { earlier: [earlier], later: [later] }, new Map(), []).allUnread).toBe(true);
+    });
+
+    it('P8 two unreadable earlier frames and a readable later frame leave a partial check', () => {
+        const early2 = { frame: { obsId: 'early2' } } as RegriddedFrame;
+        const c = { ...plain, reading: 'lessLater' as const,
+            sentence: "Compared with the sky around it, there is less light here in the later visit than in the earlier one; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate).",
+            ends: [{ visit: 'earlier' as const, x: 1, y: 1, radiusPix: 2 }] };
+        const flags = new Map([['early', null], ['early2', null], ['late', at(1, [])]]);
+        const out = screen([c], { earlier: [earlier, early2], later: [later] }, flags, []);
+        expect(out.allUnread).toBe(false);
+        expect(out.lead).toEqual([]);
+        expect(out.kept[0]!.line).toBe("Compared with the sky around it, there is less light here in the later visit than in the earlier one; a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (S/N 9.0; candidate). Some of the archive flags for this spot could not be read, so that check is incomplete.");
     });
 
     it('does not claim a direction when a drop flag and OVERFLOW occur in opposite visits', () => {
