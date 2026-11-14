@@ -25,7 +25,7 @@ import { mountEpoch } from './epoch-view';
 import { mountSpectrum } from './spectrum-view';
 import { mountUpTonight } from './uptonight-slot';
 import { attachGestures } from './gestures';
-import { createHoldCompare } from './gesture-hold';
+import { createHoldCompare, HOLD_LINE } from './gesture-hold';
 import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
 
@@ -1597,7 +1597,7 @@ export function mount(root: HTMLElement): void
         if (st.target) {
             v.target = st.target;
         }
-        const f = result?.frames[st.index];
+        const f = result?.frames[holdCompare?.heldIndex() ?? st.index];
         if (withFrame && f && st.mode === 'blink') {
             v.frame = f.frame.frame.obsId;
         }
@@ -1621,6 +1621,7 @@ export function mount(root: HTMLElement): void
     // ---------- events ----------
 
     root.addEventListener('click', (e) => {
+        holdCompare?.end();
         const b = (e.target as Element).closest('button');
         if (!b || !root.contains(b)) {
             return;
@@ -1799,6 +1800,7 @@ export function mount(root: HTMLElement): void
     const layout = initLayout(root);
 
     document.addEventListener('keydown', (e) => {
+        holdCompare?.end();
         const el = e.target as HTMLElement;
         if (el.closest?.('input, textarea, select, [contenteditable], [role=separator]') || e.metaKey || e.ctrlKey || e.altKey) {
             return;
@@ -1825,6 +1827,8 @@ export function mount(root: HTMLElement): void
         const loadEl = ref<HTMLElement>('load');
         const errEl = ref<HTMLElement>('err');
         const epochEl = ref<HTMLElement>('epoch');
+        const vv = window.visualViewport;
+        const zoomed = (): boolean => !!vv && vv.scale > 1.01;
         const hold = createHoldCompare({
             // False colour and the older picture cover the frame, so a hold there would change nothing a visitor can see.
             canHold: () => !!(result && stretch && result.frames.length >= 2 && st.mode === 'blink' && !fcState.layer
@@ -1837,7 +1841,9 @@ export function mount(root: HTMLElement): void
             },
             pause: () => play(false),
             say: (text) => {
-                live.textContent = text;
+                if (text || live.textContent === HOLD_LINE) {
+                    live.textContent = text;
+                }
             },
         });
         holdCompare = hold;
@@ -1846,7 +1852,16 @@ export function mount(root: HTMLElement): void
             next: () => step(1),
             holdStart: () => hold.start(),
             holdEnd: () => hold.end(),
-        }, { touchAction: 'pan-y pinch-zoom' });
+        }, {
+            touchAction: 'pan-y pinch-zoom',
+            ignore: (event) => zoomed() || (event instanceof Event && event.target instanceof Element
+                && !!event.target.closest('button, a, input, select, textarea, label, [role="button"]')),
+        });
+        const syncTouchAction = (): void => {
+            sky.style.touchAction = zoomed() ? 'auto' : 'pan-y pinch-zoom';
+        };
+        syncTouchAction();
+        vv?.addEventListener('resize', syncTouchAction);
         sky.classList.add('sk-gest');
         if (matchMedia('(pointer: coarse)').matches) {
             q<HTMLElement>('.sk-gest-hint').hidden = false;

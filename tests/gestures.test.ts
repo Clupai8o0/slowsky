@@ -389,6 +389,36 @@ describe('createGestures state machine', () => {
 });
 
 describe('attachGestures binder', () => {
+    it('leaves an ignored press alone and accepts the next normal press', () => {
+        const target = createFakeTarget();
+        const root = createFakeTarget();
+        const timers = createFakeTimers();
+        const { log, handlers } = recordHandlers();
+        const captures: number[] = [];
+        target.target.setPointerCapture = (id) => captures.push(id);
+        const ignored = pointerEvent(100, 50, 0);
+        const detach = attachGestures(target.target, handlers, {
+            ...timers,
+            root: root.target,
+            ignore: (event) => event === ignored,
+        });
+
+        target.emit('pointerdown', ignored);
+        expect.soft(captures).toEqual([]);
+        expect.soft(root.listenerCount()).toBe(0);
+        expect.soft(timers.scheduled).toHaveLength(0);
+        target.emit('pointermove', pointerEvent(40, 50, 30));
+        target.emit('pointerup', pointerEvent(40, 50, 60));
+        expect.soft(log).toEqual([]);
+
+        target.emit('pointerdown', pointerEvent(100, 50, 100, { pointerId: 2 }));
+        expect(captures).toEqual([2]);
+        expect(root.listenerCount()).toBeGreaterThan(0);
+        expect(timers.active.size).toBe(1);
+        root.emit('pointerup', pointerEvent(40, 50, 150, { pointerId: 2 }));
+        expect(log).toEqual(['next']);
+        detach();
+    });
     it('tracks outside moves and releases and ignores bubbling duplicates', () => {
         const target = createFakeTarget();
         const root = createFakeTarget();

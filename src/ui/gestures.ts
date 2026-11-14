@@ -192,6 +192,7 @@ export function attachGestures(target: GestureTarget, handlers: GestureHandlers,
     setTimer?: (fn: () => void, ms: number) => unknown;
     clearTimer?: (handle: unknown) => void;
     root?: GestureTarget;
+    ignore?: (event: unknown) => boolean;
 }): () => void
 {
     const machine = createGestures(opts);
@@ -279,6 +280,9 @@ export function attachGestures(target: GestureTarget, handlers: GestureHandlers,
     function handleEvent(kind: PointerSample['kind'], event: PointerEventLike | null | undefined): void
     {
         if (detached || !event || event.pointerType === 'mouse') {
+            return;
+        }
+        if (kind === 'down' && machine.isIdle() && opts?.ignore?.(event)) {
             return;
         }
         const sample: PointerSample = {

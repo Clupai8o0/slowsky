@@ -98,7 +98,7 @@ describe('createHoldCompare', () => {
         expect(fake.said).toEqual([]);
     });
 
-    it('restores the remembered index and clears the live region on end, then stays inactive', () => {
+    it('restores the remembered index without clearing the redraw announcement, then stays inactive', () => {
         const fake = createFakeHoldView({ index: 3 });
         const hold = createHoldCompare(fake.view);
 
@@ -111,11 +111,11 @@ describe('createHoldCompare', () => {
         expect(fake.state.index).toBe(3);
         expect(fake.pauses()).toBe(1);
         expect(fake.shown).toEqual([0, 3]);
-        expect(fake.said).toEqual([HOLD_TEXT, '']);
-        expect(fake.events).toEqual(['show:3', 'say:']);
+        expect(fake.said).toEqual([HOLD_TEXT]);
+        expect(fake.events).toEqual(['show:3']);
 
         hold.end();
-        expect(fake.events).toEqual(['show:3', 'say:']);
+        expect(fake.events).toEqual(['show:3']);
     });
 
     it('does not restore on end after the token changed', () => {
@@ -129,7 +129,7 @@ describe('createHoldCompare', () => {
 
         expect(hold.active()).toBe(false);
         expect(fake.shown).toEqual([0]);
-        expect(fake.said).toEqual([HOLD_TEXT]);
+        expect(fake.said).toEqual([HOLD_TEXT, '']);
     });
 
     it('does not restore on end after the index moved off 0', () => {
@@ -158,7 +158,35 @@ describe('createHoldCompare', () => {
 
         expect(hold.active()).toBe(false);
         expect(fake.shown).toEqual([0]);
-        expect(fake.said).toEqual([HOLD_TEXT]);
+        expect(fake.said).toEqual([HOLD_TEXT, '']);
+    });
+
+    it('exposes the real index only during a hold and forgets it on end or cancel', () => {
+        const fake = createFakeHoldView({ index: 3 });
+        const hold = createHoldCompare(fake.view);
+        expect(hold.heldIndex()).toBeNull();
+        hold.start();
+        expect(hold.heldIndex()).toBe(3);
+        hold.end();
+        expect(hold.heldIndex()).toBeNull();
+        hold.start();
+        expect(hold.heldIndex()).toBe(3);
+        hold.cancel();
+        expect(hold.heldIndex()).toBeNull();
+    });
+
+    it('clears the hold before restoring so redraw sees the real index', () => {
+        const fake = createFakeHoldView({ index: 3 });
+        const hold = createHoldCompare(fake.view);
+        const activeDuringShow: boolean[] = [];
+        const show = fake.view.show;
+        fake.view.show = (index) => {
+            activeDuringShow.push(hold.active());
+            show(index);
+        };
+        hold.start();
+        hold.end();
+        expect(activeDuringShow).toEqual([true, false]);
     });
 
     it('forgets the hold on cancel so a following end does nothing', () => {

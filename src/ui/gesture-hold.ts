@@ -1,4 +1,4 @@
-const HOLD_LINE = 'Showing the first frame. Lift your finger to go back.';
+export const HOLD_LINE = 'Showing the first frame. Lift your finger to go back.';
 
 export interface HoldView {
     canHold(): boolean;
@@ -14,6 +14,7 @@ export function createHoldCompare(view: HoldView): {
     end(): void;
     cancel(): void;
     active(): boolean;
+    heldIndex(): number | null;
 }
 {
     let held: { index: number; token: unknown } | null = null;
@@ -41,8 +42,10 @@ export function createHoldCompare(view: HoldView): {
         }
         const prev = held;
         held = null;
-        if (view.token() === prev.token && view.canHold() && view.index() === 0) {
+        const sameView = view.token() === prev.token && view.canHold();
+        if (sameView && view.index() === 0) {
             view.show(prev.index);
+        } else if (!sameView) {
             view.say('');
         }
     }
@@ -57,5 +60,10 @@ export function createHoldCompare(view: HoldView): {
         return held !== null;
     }
 
-    return { start, end, cancel, active };
+    function heldIndex(): number | null
+    {
+        return held?.index ?? null;
+    }
+
+    return { start, end, cancel, active, heldIndex };
 }
