@@ -82,13 +82,14 @@ export function regridNorthUp(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float
     return resample(cutout, wcs, grid, 'image');
 }
 
-// Relative noise map, not a calibrated variance. Per pixel it overstates the true
-// variance by 1.3 to 4 times (sigma up to 2 times), because the image is
-// interpolated with weights w and this map uses sum(w V), not sum(w^2 V).
-// Oversampled output pixels share input pixels, so a sum over neighbouring pixels
-// understates the noise. Rescale it against measured scatter before reading it as
-// a sigma. The map is NaN wherever data is NaN or a file variance is invalid,
-// even when the image value is finite.
+// The detector pixels' variance under each output pixel, mixed with the same bilinear
+// weights w as the image: sum(w V), in (MJy/sr)^2. It is not the variance of the
+// resampled value, which is sum(w^2 V): per pixel this map is 1 to 4 times that.
+// Output pixels share detector pixels, so they are not independent. The variance of
+// a sum over an aperture is about (6.15 / pixelArcsec)^2 times the summed map (16x at
+// the 0.1 deg view). Never add output pixels as independent, and rescale against
+// measured scatter before reading the map as a sigma. NaN wherever data is NaN or a
+// file variance is invalid, even when the image value is finite.
 export function regridVariance(cutout: Cutout, wcs: Wcs, grid: OutputGrid): Float32Array | undefined
 {
     if (!cutout.variance) {
