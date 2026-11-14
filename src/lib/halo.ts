@@ -439,10 +439,10 @@ export function haloCurve(
     }
     const refScatter = refRatios.map((ratios) => {
         const middle = median(ratios);
-        if (!Number.isFinite(middle) || middle === 0) {
+        if (ratios.length < 2 || !Number.isFinite(middle) || middle === 0) {
             return Number.NaN;
         }
-        return Math.sqrt(ratios.reduce((sum, ratio) => sum + (ratio / middle - 1) ** 2, 0) / ratios.length);
+        return Math.sqrt(ratios.reduce((sum, ratio) => sum + (ratio / middle - 1) ** 2, 0) / (ratios.length - 1));
     });
     return { points, dropped: frames.length - kept.length, refScatter, lambda: reference };
 }
