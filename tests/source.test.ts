@@ -5,6 +5,7 @@ import {
 } from '../src/lib/source';
 import { makeWcs, wcsFromHeader } from '../src/lib/wcs';
 import { gridSkyToPix } from '../src/lib/regrid';
+import * as regrid from '../src/lib/regrid';
 import { flagNames, parseFlagsLayout } from '../src/lib/flags';
 import type {
     CardValue, FitsHeader, FitsIndex, FrameRecord, PixelBox, RangeReader, SkyCoord, WaveGrid,
@@ -1209,7 +1210,7 @@ describe('live Gaia catalogue (fake hosts)', () => {
 });
 
 describe('snapshot source (fake site)', () => {
-    function site(fakes = FAKES.slice(0, 2), planes = ['IMAGE', 'ZODI', 'VARIANCE']): typeof fetch
+    function site(fakes = FAKES.slice(0, 2), planes = ['IMAGE', 'ZODI', 'VARIANCE'], imageValue?: (id: string, i: number) => number): typeof fetch
     {
         const box: PixelBox = { x0: 960, y0: 960, x1: 1080, y1: 1080 };
         const frames = fakes.map((f) => ({
@@ -1227,7 +1228,7 @@ describe('snapshot source (fake site)', () => {
             const view = new DataView(buf);
             for (const [k, name] of planes.entries()) {
                 for (let i = 0; i < n; i++) {
-                    const value = name === 'IMAGE' ? 1 + (i % 7) : name === 'ZODI' ? 0.5 : (1 + (i % 7)) - 0.5 + 10;
+                    const value = name === 'IMAGE' ? (imageValue?.(f.record.obsId, i) ?? 1 + (i % 7)) : name === 'ZODI' ? 0.5 : (1 + (i % 7)) - 0.5 + 10;
                     view.setFloat32((k * n + i) * 4, value, true);
                 }
             }
@@ -1253,6 +1254,100 @@ describe('snapshot source (fake site)', () => {
             return file ? new Response(file) : new Response('missing', { status: 404 });
         }) as typeof fetch;
     }
+
+    it('leaves out frames with no finite regridded pixels and counts them', async () => {
+        const frames = [fakeBand('aD1', 60900, 1), fakeBand('bD1', 61080, 1), fakeBand('cD1', 61260, 1)];
+        const req = { center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur', lambda: 1 } as const;
+        const one = await createSnapshotSource({ fetch: site(frames, ['IMAGE'], (id) => id === 'bD1' ? NaN : 1) }).load(req);
+        expect(one.frames).toHaveLength(2);
+        expect(one.unusable).toBe(1);
+        expect(one.notes).toContain('1 frame had no usable pixels here and was left out.');
+        const all = await createSnapshotSource({ fetch: site(frames, ['IMAGE'], () => NaN) }).load(req);
+        expect(all.frames).toHaveLength(0);
+        expect(all.unusable).toBe(3);
+    });
+
+    it('keeps a frame with a single finite output pixel', async () => {
+        const f = fakeBand('singleD1', 60900, 1);
+        const spy = vi.spyOn(regrid, 'regridNorthUp').mockImplementation((_cutout, _wcs, grid) => {
+            const pixels = new Float32Array(grid.width * grid.height).fill(NaN);
+            pixels[0] = 1;
+            return pixels;
+        });
+        try {
+            const result = await createSnapshotSource({ fetch: site([f]) })
+                .load({ center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur', lambda: 1 });
+            expect(result.frames).toHaveLength(1);
+            expect(result.frames[0]!.frame.data.filter(Number.isFinite)).toHaveLength(1);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('rejects positive and negative infinity in regridded output', async () => {
+        const f = fakeBand('infiniteD1', 60900, 1);
+        const spy = vi.spyOn(regrid, 'regridNorthUp').mockReturnValue(new Float32Array([Infinity, -Infinity]));
+        try {
+            const result = await createSnapshotSource({ fetch: site([f]) })
+                .load({ center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur', lambda: 1 });
+            expect(result.frames).toHaveLength(0);
+            expect(result.unusable).toBe(1);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('times out stalled snapshot headers and body reads', async () => {
+        const req = { center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur' } as const;
+        const stalled = () => new Promise<never>(() => {});
+        await expect(createSnapshotSource({ fetch: stalled, timeoutMs: 5 }).load(req)).rejects.toBeInstanceOf(SkyUnavailable);
+        const fetcher: typeof fetch = async () => ({ ok: true, json: stalled }) as unknown as Response;
+        await expect(createSnapshotSource({ fetch: fetcher, timeoutMs: 5 }).load(req)).rejects.toBeInstanceOf(SkyUnavailable);
+    });
+
+    it('aborts promptly and clears snapshot deadline timers on fast responses', async () => {
+        vi.useFakeTimers();
+        try {
+            const ctl = new AbortController();
+            const reason = new Error('cancelled');
+            const pending = createSnapshotSource({ fetch: () => new Promise(() => {}), timeoutMs: 15 }).load({ center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur', signal: ctl.signal });
+            const rejected = expect(pending).rejects.toBe(reason);
+            ctl.abort(reason);
+            await rejected;
+            await vi.advanceTimersByTimeAsync(15);
+            expect(vi.getTimerCount()).toBe(0);
+            await createSnapshotSource({ fetch: site(), timeoutMs: 15 }).load({ center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur' });
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('times out a stalled pixel body and aborts a stalled pixel request immediately', async () => {
+        const siteFetch = site();
+        const req = { center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur' } as const;
+        const stalled = () => new Promise<never>(() => {});
+        const bodyFetch: typeof fetch = async (input, init) => String(input).endsWith('.f32')
+            ? ({ ok: true, arrayBuffer: stalled }) as unknown as Response : siteFetch(input, init);
+        await expect(createSnapshotSource({ fetch: bodyFetch, timeoutMs: 5 }).load(req)).rejects.toBeInstanceOf(SkyUnavailable);
+
+        const ctl = new AbortController();
+        const reason = new Error('pixel request cancelled');
+        let start!: () => void;
+        const started = new Promise<void>((resolve) => { start = resolve; });
+        const fetcher: typeof fetch = async (input, init) => {
+            if (String(input).endsWith('.f32')) {
+                start();
+                return stalled();
+            }
+            return siteFetch(input, init);
+        };
+        const pending = createSnapshotSource({ fetch: fetcher, timeoutMs: 1000 }).load({ ...req, signal: ctl.signal });
+        const rejected = expect(pending).rejects.toBe(reason);
+        await started;
+        ctl.abort(reason);
+        await rejected;
+    });
 
     it('attaches snapshot variance only when requested, finite wherever the image is finite', async () => {
         const source = createSnapshotSource({ fetch: site([FAKES[0]!, FAKES[3]!]) });

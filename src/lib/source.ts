@@ -69,6 +69,7 @@ export interface SkyResult {
     track?: TrackPoint[]; // same order as frames; only with a target
     credits: string[]; // data credits to show under the player
     notes: string[]; // plain-language notes, e.g. "2 visits dropped: no frame within 0.02 µm"
+    unusable?: number; // frames with no finite output pixels
 }
 
 export interface SkySource {
@@ -102,6 +103,7 @@ export interface LiveOptions extends SourceOptions {
 export interface SnapshotOptions extends SourceOptions {
     baseUrl?: string; // where public/ is served (default '' = same site)
     fetch?: typeof fetch;
+    timeoutMs?: number;
 }
 
 const NATIVE_ARCSEC = 6.15;
@@ -320,6 +322,7 @@ async function assemble(
 
     const total = locked.length;
     let done = 0;
+    let unusable = 0;
     req.onProgress?.({ stage: 'pixels', done, total });
     const regridded = await mapLimit(locked, opts.concurrency ?? 4, async (l) => {
         req.signal?.throwIfAborted();
@@ -335,6 +338,10 @@ async function assemble(
         const atCentre = inside(centrePix, info.wcs.params.naxis, 0) ? sampleWave(info.wave, centrePix) : undefined;
         done++;
         req.onProgress?.({ stage: 'regrid', done, total });
+        if (!data.some(Number.isFinite)) {
+            unusable++;
+            return undefined;
+        }
         const frame: RegriddedFrame = {
             frame: l.frame,
             grid,
@@ -354,8 +361,11 @@ async function assemble(
     });
 
     const kept = regridded.filter((r): r is NonNullable<typeof r> => r !== undefined);
-    if (kept.length < locked.length) {
-        notes.push(`${plural(locked.length - kept.length, 'frame')} left out: the view is off the detector.`);
+    if (kept.length + unusable < locked.length) {
+        notes.push(`${plural(locked.length - kept.length - unusable, 'frame')} left out: the view is off the detector.`);
+    }
+    if (unusable > 0) {
+        notes.push(`${plural(unusable, 'frame')} had no usable pixels here and ${unusable === 1 ? 'was' : 'were'} left out.`);
     }
     if (req.withVariance) {
         const missing = kept.filter((r) => !r.frame.variance).length;
@@ -370,6 +380,7 @@ async function assemble(
         locked: kept.map((r) => r.l),
         lambda: chosen,
         notes,
+        ...(unusable > 0 ? { unusable } : {}),
     };
     if (range) {
         result.lambdaRange = range;
@@ -1038,6 +1049,8 @@ function optionalNumber(v: number | null | undefined): number | undefined
 }
 
 const SNAPSHOT_MAX_FOV_DEG = 0.1;
+// Bound each saved-copy request, including its body read.
+const SNAPSHOT_TIMEOUT_MS = 15_000;
 
 export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
 {
@@ -1045,13 +1058,37 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
     const fetcher = opts.fetch ?? globalThis.fetch.bind(globalThis);
     const indexCache = new Map<string, Promise<SnapshotIndexJson>>();
 
+    async function getBody<T>(path: string, read: (response: Response) => Promise<T>, signal?: AbortSignal): Promise<T>
+    {
+        signal?.throwIfAborted();
+        const controller = new AbortController();
+        let onAbort!: () => void;
+        let timer!: ReturnType<typeof setTimeout>;
+        const interrupted = new Promise<never>((_resolve, reject) => {
+            onAbort = () => { controller.abort(signal?.reason); reject(signal?.reason); };
+            signal?.addEventListener('abort', onAbort, { once: true });
+            timer = setTimeout(() => {
+                controller.abort();
+                reject(new SkyUnavailable(`The saved copy timed out reading ${path}.`));
+            }, opts.timeoutMs ?? SNAPSHOT_TIMEOUT_MS);
+        });
+        try {
+            return await Promise.race([interrupted, (async () => {
+                const response = await fetcher(`${base}${path}`, { signal: controller.signal });
+                if (!response.ok) {
+                    throw new SkyUnavailable(`Snapshot file ${path} answered ${response.status}`);
+                }
+                return await read(response);
+            })()]);
+        } finally {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
+        }
+    }
+
     async function getJson<T>(path: string, signal?: AbortSignal): Promise<T>
     {
-        const response = await fetcher(`${base}${path}`, { signal });
-        if (!response.ok) {
-            throw new SkyUnavailable(`Snapshot file ${path} answered ${response.status}`);
-        }
-        return await response.json() as T;
+        return getBody(path, async (response) => await response.json() as T, signal);
     }
 
     async function getIndex(id: TargetId, signal?: AbortSignal): Promise<SnapshotIndexJson>
@@ -1144,11 +1181,7 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
                     async loadCutout(_box: PixelBox, signal?: AbortSignal): Promise<Cutout>
                     {
                         // The baked box is fixed; regrid leaves NaN where the view runs past it.
-                        const response = await fetcher(`${base}/snapshot/${req.target}/${f.file}`, { signal });
-                        if (!response.ok) {
-                            throw new SkyUnavailable(`Snapshot file ${f.file} answered ${response.status}`);
-                        }
-                        const buf = await response.arrayBuffer();
+                        const buf = await getBody(`/snapshot/${req.target}/${f.file}`, (response) => response.arrayBuffer(), signal);
                         const width = stored.x1 - stored.x0;
                         const height = stored.y1 - stored.y0;
                         const n = width * height;

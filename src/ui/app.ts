@@ -575,7 +575,7 @@ export function mount(root: HTMLElement): void
                 if (kind === 'snapshot' && savedFirst) {
                     const wanted = wantFrame;
                     if (res.frames.length === 0 || (wanted !== undefined && !res.frames.some((f) => f.frame.frame.obsId === wanted))) {
-                        spare = res.frames.length > 0 ? res : null;
+                        spare = res;
                         res = null;
                         continue;
                     }
@@ -621,7 +621,9 @@ export function mount(root: HTMLElement): void
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             paintGlow();
             renderText();
-            const why = res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${plainError(lastErr)}`;
+            const why = res?.unusable ? 'SPHEREx has frames of this spot at this colour, but none has usable pixels here.'
+                : res && failedLive && got !== 'live' ? `Couldn’t reach the live SPHEREx archive, and the saved copy has no frames at this colour. ${plainError(lastErr)}`
+                : res ? 'SPHEREx has no frames of this spot at this colour yet.' : `Couldn’t load the frames. ${plainError(lastErr)}`;
             bind('err', why);
             ref<HTMLElement>('err').hidden = false;
             writeUrl();
@@ -873,7 +875,7 @@ export function mount(root: HTMLElement): void
         const off = c.lc.dropped > 0 ? ` ${c.lc.dropped} ${c.lc.dropped === 1 ? 'frame was' : 'frames were'} too far off this colour.` : '';
         const bad = c.lc.points.length - pts.length;
         const left = off + (bad > 0 ? ` ${bad} ${bad === 1 ? 'look' : 'looks'} could not be measured.` : '');
-        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} nearby comparison stars from Gaia. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%); the bar on each dot adds the star’s own noise. A change inside its bar may be noise.${left}${blendAt ? ` ${blendAt}, too close for SPHEREx to split, so the curve includes its light.` : ''}`);
+        bind('lcNote', `At ${c.lc.lambda.toFixed(2)} µm, measured against ${c.refs} nearby comparison stars from Gaia. The band shows how much they wobble (±${(noise * 100).toFixed(1)}%); the bar on each dot adds the noise of the sky around the star. The star’s own photon noise is not included, so the real uncertainty may be larger. A change inside its bar may be noise.${left}${blendAt ? ` ${blendAt}, too close for SPHEREx to split, so the curve includes its light.` : ''}`);
     }
 
     // A tiny copy of the sky, blurred by CSS behind the image: the glow follows what is on screen.
