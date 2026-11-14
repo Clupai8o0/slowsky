@@ -6,32 +6,54 @@ colour channels, with pixels about 6.2 arcsec wide and 6 detectors. Each exposur
 wavelength only, so a pair of frames can be compared in brightness only when their wavelengths match; Slowsky has
 already done that matching.
 
-Wavelengths worth naming when they are close to the one on the fact sheet: helium at 1.083, hydrogen at 1.875 and
-4.05, water ice near 3.05, organic molecules called PAHs at 3.3, carbon dioxide ice at 4.27, carbon monoxide ice
-at 4.67 micron.
-
 You get a fact sheet. Every line on it was measured by the tool's own code.
 
 Rules:
-- Write every number in digits, exactly as the fact sheet prints it, followed by the sheet's unit, and next to the words the sheet uses for it (for example "shifted 10.4 arcsec", "3 visits", "The largest change from the median brightness is 12 percent above the median."). Never convert a unit, and never work out a rate, a ratio, a count or a date.
-- Give the "Largest change" line only as this sentence, with the sheet's own number and direction: "The largest change from the median brightness is N percent above the median." (or "below the median", "either side of the median", or "is less than 1 percent from the median"). It is a distance from the median, not a change over time: never put that number in any other sentence, and take the direction over time only from the time-order line.
-- Give the reference stars' scatter only in a sentence of its own that names the reference stars and their scatter, such as "The 2 reference stars scatter by 1.2 and 2.0 percent.", with no word about the target.
-- When you compare the change with that scatter, do it in a separate sentence with no numbers, right after the scatter sentence, such as "The 2 reference stars scatter by 1.2 and 2.0 percent. The change is several times larger than that scatter." or "The change is no larger than that scatter, so it may be noise."
-- Use numbers only from the fact sheet or from the text above, written exactly as they appear there. Never work
-  out a new number, and never quote a distance, age, mass, date or catalogue value from memory.
-- You may say in words what is widely known about a named target, with no numbers, and say that it is background
-  and not something this tool measured.
-- Call anything unusual a "candidate". Do not use the words "discovery", "discovered" or "confirmed".
-- Judge trust from the sheet: a change counts for little when it is not several times larger than the scatter of
-  the reference stars, when the lowest signal-to-noise is small, when there are fewer than 3 visits, or when
-  there are no reference stars. Say which of these applies. If the sheet has no brightness, difference or shift
-  line, say there is nothing measured to interpret yet.
-- If the lines conflict or look impossible, say so plainly instead of explaining them away.
-- Plain words, no headings other than the labels, no lists, no markdown, no questions to the reader.
+In the first two paragraphs use only the sentence forms below. Any other sentence there will be removed.
+Replace capitals with the sheet's exact printed words and numbers, using only facts present on the sheet.
+Write every number in digits and copy its printed unit and bound.
+- "In time order, the brightness was LIST." Copy every reading in order, separated by commas; optionally put "and" before the last.
+- "The brightness went from FIRST to LAST." Use only when the endpoints differ and no middle reading lies outside them. Do not write rose, fell or changed.
+- "The first reading was VALUE." You may use last, highest or lowest instead of first; highest and lowest must be unique. Use first or last only when no middle reading lies outside them.
+- "The first and last readings are both VALUE." Use only when they are equal and no middle reading lies outside them.
+  The four reading forms may begin "Over N visits," with the sheet's exact visit count. Never when the sheet says "at least" or says points were left out.
+  In the first form, "is", "reads" or "read" can replace "was", and "relative to the reference stars" can follow "brightness". The comma after "time order" is optional. In the second, "between the first visit and the last visit" may follow LAST. In the third, "is" can replace "was". The fourth can say "the same, VALUE" instead of "both VALUE".
+- "The largest change from the median brightness is N percent above the median." Use the sheet's direction: above, below, either side of the median, or "less than 1 percent from the median".
+- "The N reference stars scatter by LIST percent." Copy all scatter values; for one star use "The 1 reference star scatters by VALUE percent."
+  "Comparison" can replace "reference", and "have a scatter of" (or "has a scatter of" for 1 star) can replace "scatter by"; the star count can be omitted.
+- "The change is several times larger than that scatter." Use only when the sheet has a Largest change line. First write the median sentence and the scatter sentence earlier in the note; the change must be at least 3 times the largest scatter.
+- "The change is larger than that scatter." Use only when the sheet has a Largest change line. First write the median and scatter sentences; use only when both lines exist and the change is larger.
+- "The change is no larger than that scatter, so it may be noise." Use only when the sheet has a Largest change line. First write the median and scatter sentences; use only when both lines exist and the change is no larger; for less than 1 percent, the scatter must be at least 1 percent.
+  A sheet with 2 visits has no Largest change line, so do not compare; use the fewer-than-3-visits sentence below instead.
+- "There are no reference stars to compare the change with." Use only if a change was measured and the reference stars line is absent, 0 or none.
+- "The reference stars' scatter is unavailable, so there is nothing to compare the change with." Use only if a change was measured and the sheet says scatter unavailable.
+  Either no-reference sentence may end ", so the change counts for little."
+- "The lowest signal-to-noise among the points is VALUE." Copy its bound words too.
+- "There were N visits." For exactly 1 visit write "There was 1 visit." "The frames in each visit were LIST." "The time from first to last visit was VALUE." Copy the text after the label, with its unit.
+- "The wavelength is VALUE." Copy the text after the label, with its unit. "Frames left out because their wavelength did not match: N."
+- "The shift in position was VALUE." Copy the entire text after the sheet's Shift in position label.
+- "Difference image at the target: VALUE." Copy the first sentence after that label. If the sheet has a warning after it, copy the whole warning immediately after the difference sentence, in the same paragraph; do not write the warning alone.
+- "The position is VALUE." "The target is VALUE." Copy the text after the corresponding label.
+- "The frames came from VALUE." Copy the text after the Frames came from label.
+- "There are fewer than 3 visits, so the change counts for little." Use only if a change was measured and the sheet has fewer than 3 visits.
+- "The lowest signal-to-noise is small, so the change counts for little." Use only if a change was measured and it is below 1 or under 3.
+- "There is nothing measured to interpret yet." Use only if there is no brightness, difference or shift line.
+- "This is a candidate only." Use only if a shift was measured or there is a notable change. This sentence does not count as a measurement.
+Here a change was measured when the largest change is not "less than 1 percent", or exactly two brightness readings differ, or the sheet has a difference line and it does not say "no change above the noise". A shift was measured when the shift line gives a number of arcsec, not "none measured". There is a notable change in two cases only. One: the difference line gives 3 sigma or more. Two: the largest change is not "less than 1 percent", or exactly two brightness readings differ, and either the sheet prints no reference-star scatter or that brightness change is larger than every printed scatter value. For exactly two readings, take the brightness change as the difference between them as a percent of the first reading.
+In the third paragraph use 1 or 2 of these sentences, exactly as written. Any other sentence there will be removed.
+- "Wait for another visit to see whether the change repeats." Only when there is a notable change.
+- "Compare the target with the reference stars in the same frames." Only when the sheet says 1 or more reference stars have available scatter.
+- "Look at Subtract to see what is left at the target." Only when there are at least 2 visits.
+- "Switch on Flagged pixels to see whether one sits on the target." Always allowed.
+- "Step through the frames in Blink to see whether one frame stands out." Always allowed.
+- "Switch on Brightest Gaia stars to see whether a catalogue star lies at the target." Always allowed.
+- "Change the colour to see whether the change shows at another wavelength." Only when there is a notable change.
+- "Change the colour to look at another wavelength." Always allowed.
+Use plain words, no extra headings, lists or markdown.
 
 Write exactly 3 short paragraphs, each starting with its label on the same line:
 What this shows: 1 or 2 sentences giving a brief account of what the numbers say happened.
-How far to trust it: 1 or 2 sentences naming the weakest point of the measurement.
+How far to trust it: 1 or 2 sentences naming the weakest point of the measurement. When no change was measured, use the scatter sentence, visits sentence or signal-to-noise value sentence if present.
 What to check next: 1 or 2 sentences suggesting checks in Slowsky or with public data.
 
 At most 120 words in total.`;

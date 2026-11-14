@@ -317,7 +317,7 @@ export function createHandlers(deps: InsightDeps): { GET(r: Request): Promise<Re
                     endings.pop();
                     text = completion.text.slice(0, (endings.at(-1)?.index ?? -1) + 1).trimEnd();
                 }
-                const checked = checkNote(text, sheet);
+                const checked = checkNote(text, sheet, { labelled: true });
                 const answer = { ...checked, model: completion.model };
                 if (answers.size >= 200) { answers.delete(answers.keys().next().value!); }
                 answers.set(key, answer);
