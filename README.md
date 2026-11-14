@@ -260,6 +260,11 @@ shows nothing.
 - A Spectrum panel: after a press it reads one spot's 102 colours from the SPHEREx all-sky cube in the public
   archive and draws a small chart (`src/lib/cube.ts`, `src/ui/spectrum-view.ts`). While it is switched off the
   page does not show it and reads nothing from the cube. A preview build can switch it on in the same way.
+- A "Tonight's sky" line under the sky map (`upTonight`): when the spot on screen stands highest in tonight's dark
+  hours as seen from Melbourne, about how high, and facing which way. It says where the spot is in the sky, never
+  whether anything can be seen there. The sums run in the browser (`src/lib/uptonight.ts`), ask the visitor for
+  nothing, and are checked against astropy 8.0.2 (`tests/fixtures/uptonight-astropy.json`, made by
+  `scripts/uptonight_fixture.py`).
 
 **The change sort hint.** A small neural network (`public/models/change-classifier.json`, run by
 `src/lib/classify.ts`). Its card is `public/models/change-classifier.card.json`; its test results are in `models/`.
