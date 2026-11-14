@@ -1,5 +1,7 @@
-// Slowsky UI shell ("Spectrum+" direction): black, Swiss type; the sky on the left, time as a frame
-// strip under it, colour (wavelength) as the big number on the right. The UI only talks to SkySource.
+// Slowsky UI shell. Three columns read left to right as three steps:
+// 1 pick a target (left), 2 watch it change (the sky, centre), 3 try another colour (right).
+// Nothing is drawn over the sky except the data itself and the simulated-sky warning.
+// The UI only talks to SkySource.
 import './fonts/fonts.css';
 import './styles.css';
 import targetsJson from '../data/targets.json';
@@ -100,65 +102,91 @@ function isNotImplemented(e: unknown): boolean
     return e instanceof NotImplemented || (e instanceof Error && e.name === 'NotImplemented');
 }
 
+// Full SPHEREx range on the colour slider, and the axis drawn under it (visible light on the left).
+const LAM_MIN = (DETECTORS[0] as [number, number])[0];
+const LAM_MAX = (DETECTORS[DETECTORS.length - 1] as [number, number])[1];
+const AXIS_MIN = 0.4;
+const axisPct = (lam: number) => ((lam - AXIS_MIN) / (LAM_MAX - AXIS_MIN)) * 100;
+
 function shell(): string
 {
-    const targets = ORDER.map((id) => `<button type="button" data-target="${id}" aria-pressed="false">${esc(COPY[id].display)}</button>`).join('');
-    const dets = DETECTORS.map((d, i) => `<button type="button" data-det="${i + 1}" style="flex:${(d[1] - d[0]).toFixed(2)}" title="Detector ${i + 1}: ${d[0].toFixed(2)} to ${d[1].toFixed(2)} µm" aria-pressed="false">D${i + 1}</button>`).join('');
+    const targets = ORDER.map((id) => `<button type="button" data-target="${id}" aria-pressed="false"><b>${esc(COPY[id].display)}</b><small>${esc(COPY[id].short)}</small></button>`).join('');
     const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
+    const ticks = [0.4, 1, 2, 3, 4, 5].map((t) => `<span style="left:${axisPct(t).toFixed(2)}%">${t}</span>`).join('');
     return `
-<div class="sk-l">
-  <div class="sk-skyw">
+<aside class="sk-rail sk-left">
+  <div class="sk-brand"><span class="sk-word">slowsky</span><span class="sk-tag">Watch the infrared sky change, with NASA’s SPHEREx</span></div>
+  <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
+    <h2 class="sk-mh" id="sk-h1"><i>1</i>Pick a target</h2>
+    <nav class="sk-tg" aria-label="Targets">${targets}</nav>
+    <form class="sk-search" data-ref="search" role="search"><span class="ic">${ICON.search}</span><input name="q" placeholder="Or any star, or RA, Dec" autocomplete="off" aria-label="Search the sky: a star name, or RA and Dec"></form>
+  </section>
+  <section class="sk-mod sk-m-about" aria-labelledby="sk-h4">
+    <h2 class="sk-mh plain" id="sk-h4">What to look for</h2>
+    <p class="sk-h" data-bind="headline"></p>
+    <p class="sk-coord"><span data-bind="name"></span><span data-bind="coords"></span></p>
+    <p class="sk-body" data-bind="show"></p>
+    <h3 class="sk-sub">What this can’t tell you</h3>
+    <p class="sk-body mute" data-bind="not"></p>
+  </section>
+</aside>
+<main class="sk-mid">
+  <section class="sk-mod sk-m-watch" aria-labelledby="sk-h2">
+    <div class="sk-mhrow">
+      <h2 class="sk-mh" id="sk-h2"><i>2</i>Watch it change</h2>
+      <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
+    </div>
+    <p class="sk-hint" data-bind="hint"></p>
     <div class="sk-sky" data-ref="sky">
       <canvas data-ref="canvas" role="img" aria-label="Sky image"></canvas>
       <svg class="sk-ov" data-ref="ov" aria-hidden="true" preserveAspectRatio="none"></svg>
+      <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
+      <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
+      <div class="sk-err" data-ref="err" hidden><p data-bind="err"></p><button type="button" class="sk-btn2" data-act="retry">Try again</button></div>
     </div>
-    <div class="sk-hud tl"><b data-bind="name"></b><span data-bind="coords"></span></div>
-    <div class="sk-hud tr"><b data-bind="frame"></b><span data-bind="when"></span></div>
-    <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
-    <div class="sk-leg" aria-hidden="true">
-      <span class="t" data-bind="trackLeg"></span><span class="g">Stars in ESA’s Gaia catalogue</span>
-      <span class="d"><i class="b"></i>there then<i class="o"></i>there now</span>
+    <div class="sk-legrow">
+      <div class="sk-leg">
+        <button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Stars in ESA’s Gaia catalogue</button>
+        <span class="sk-key t" data-bind="trackLeg"></span>
+        <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
+      </div>
+      <div class="sk-scale">
+        <label class="sk-fov">Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
+        <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
+      </div>
     </div>
-    <div class="sk-bar" data-ref="bar"><i></i><b data-bind="bar"></b></div>
-    <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
-    <div class="sk-err" data-ref="err" hidden><p data-bind="err"></p><button type="button" class="sk-chip" data-act="retry">Try again</button></div>
-  </div>
-  <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
-</div>
-<header class="sk-top">
-  <span class="sk-word">slowsky</span>
-  <form class="sk-search" data-ref="search" role="search"><span class="ic">${ICON.search}</span><input name="q" placeholder="Go anywhere: a star, or RA, Dec" autocomplete="off" aria-label="Search the sky: a star name, or RA and Dec"></form>
-</header>
-<main class="sk-p">
-  <nav class="sk-tg" aria-label="Targets">${targets}</nav>
-  <h1 class="sk-h" data-bind="headline"></h1>
-  <div class="sk-ctl">
-    <div class="sk-tr">
-      <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
-      <button type="button" class="sk-btn go" data-act="play" aria-label="Play"></button>
-      <button type="button" class="sk-btn" data-act="next" aria-label="Next frame"><span class="ic">${ICON.next}</span></button>
+    <div class="sk-player">
+      <div class="sk-tr">
+        <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
+        <button type="button" class="sk-btn go" data-act="play" aria-label="Play"></button>
+        <button type="button" class="sk-btn" data-act="next" aria-label="Next frame"><span class="ic">${ICON.next}</span></button>
+      </div>
+      <div class="sk-seg" role="group" aria-label="View"><button type="button" data-mode="blink">Blink</button><button type="button" data-mode="stack">Stack</button><button type="button" data-mode="diff">Subtract</button></div>
     </div>
-    <div class="sk-seg" role="group" aria-label="View"><button type="button" data-mode="blink">Blink</button><button type="button" data-mode="stack">Stack</button><button type="button" data-mode="diff">Subtract</button></div>
-  </div>
-  <p class="sk-hint" data-bind="hint"></p>
-  <section class="sk-col" aria-label="Colour">
-    <div class="sk-lab"><span>Colour · wavelength</span><span data-bind="det"></span></div>
-    <div class="sk-num"><b data-bind="lam"></b><small>µm</small></div>
-    <div class="sk-numsub"><span>Your eyes stop at 0.70 µm. All of this is infrared.</span></div>
-    <div class="sk-dets" role="group" aria-label="Detector">${dets}</div>
-    <input class="sk-rng" type="range" data-ref="lam" step="0.005" aria-label="Wavelength in micrometres">
-    <div class="sk-rngl"><span data-bind="lamLo"></span><span>Fine colour within this detector</span><span data-bind="lamHi"></span></div>
+    <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
   </section>
-  <div class="sk-text"><p data-bind="show"></p><p data-bind="not"></p></div>
-  <div class="sk-foot">
-    <button type="button" class="sk-chip" data-act="gaia" aria-pressed="true">Gaia rings</button>
-    <button type="button" class="sk-chip" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button>
-    <label class="sk-chip sk-fov">Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
-    <details class="sk-det"><summary>Frame details</summary><dl data-ref="dl"></dl></details>
-  </div>
-  <ul class="sk-notes" data-ref="notes"></ul>
-  <footer class="sk-credit"><p data-bind="status"></p><p data-bind="credits"></p></footer>
 </main>
+<aside class="sk-rail sk-right">
+  <div class="sk-status"><span class="dot" aria-hidden="true"></span><span data-bind="statusShort">Connecting to the archive</span><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div>
+  <section class="sk-mod sk-m-colour" aria-labelledby="sk-h3">
+    <h2 class="sk-mh" id="sk-h3"><i>3</i>Try another colour</h2>
+    <div class="sk-readout"><p><b data-bind="lam"></b><small>µm</small></p><span data-bind="det"></span></div>
+    <p class="sk-body mute">All of this is infrared. Your eyes stop at 0.70 µm.</p>
+    <div class="sk-spec">
+      <div class="sk-axis"><i class="vis" style="width:${axisPct(0.7).toFixed(2)}%" title="Visible light"></i>
+        <input class="sk-rng" type="range" data-ref="lam" min="${LAM_MIN}" max="${LAM_MAX}" step="0.01" style="left:${axisPct(LAM_MIN).toFixed(2)}%" aria-label="Wavelength in micrometres"></div>
+      <div class="sk-ticks" aria-hidden="true">${ticks}</div>
+      <div class="sk-axl" aria-hidden="true"><span>your eyes</span><span>SPHEREx sees · µm</span></div>
+    </div>
+    <p class="sk-note">Drag, then let go to load that colour.</p>
+  </section>
+  <section class="sk-mod sk-m-details" aria-labelledby="sk-h5">
+    <h2 class="sk-mh plain" id="sk-h5">Frame details</h2>
+    <dl data-ref="dl"></dl>
+    <ul class="sk-notes" data-ref="notes"></ul>
+  </section>
+  <footer class="sk-credit"><p data-bind="status"></p><p data-bind="credits"></p></footer>
+</aside>
 <p class="sk-sr" aria-live="polite" data-ref="live"></p>
 <div class="sk-toast" data-ref="toast" role="status"></div>`;
 }
@@ -469,7 +497,7 @@ export function mount(root: HTMLElement): void
             const t = f.frame.frame.tMin;
             const months = Math.round((t - firstVisit) / 30.44);
             return `<button type="button" data-k="${i}" aria-label="Frame ${i + 1}: ${niceDate(t)}"><canvas width="${width}" height="${height}"></canvas>
-                <small><b>${monthYear(t)}</b>${i === 0 ? 'first look' : `+${months} months`}</small></button>`;
+                <small><b>${monthYear(t)}</b>${i === 0 ? 'first look' : `+${months} mo`}</small></button>`;
         }).join('');
         const s = stretch;
         qa<HTMLButtonElement>('.sk-strip button').forEach((b, i) => {
@@ -490,6 +518,33 @@ export function mount(root: HTMLElement): void
                 b.removeAttribute('aria-current');
             }
         });
+    }
+
+    // The slider track shows the six detectors; the one in use is lit.
+    function paintTrack(active: Detector): void
+    {
+        const span = LAM_MAX - LAM_MIN;
+        const stops: string[] = [];
+        DETECTORS.forEach(([lo, hi], i) => {
+            const a = (((lo - LAM_MIN) / span) * 100).toFixed(2);
+            const b = (((hi - LAM_MIN) / span) * 100).toFixed(2);
+            const c = i + 1 === active ? 'var(--trk-on)' : 'var(--trk)';
+            stops.push(`transparent ${a}%`, `${c} ${a}%`, `${c} ${b}%`, `transparent ${b}%`);
+        });
+        lamInput.style.setProperty('--track', `linear-gradient(90deg, ${stops.join(', ')})`);
+    }
+
+    // Scale bar sized in pixels from the sky's on-screen width.
+    function sizeBar(): void
+    {
+        if (!result) {
+            return;
+        }
+        const skyPx = ref<HTMLElement>('sky').clientWidth;
+        const fovArcsec = result.grid.pixelArcsec * result.grid.width;
+        const bar = st.fovDeg >= 0.5 ? 600 : 60;
+        ref<HTMLElement>('bar').style.width = `${Math.max(12, (bar / fovArcsec) * skyPx).toFixed(1)}px`;
+        bind('bar', `${bar / 60}′`);
     }
 
     function renderText(): void
@@ -513,27 +568,20 @@ export function mount(root: HTMLElement): void
         for (const b of qa<HTMLButtonElement>('[data-mode]')) {
             b.setAttribute('aria-pressed', String(b.dataset.mode === st.mode));
         }
-        for (const b of qa<HTMLButtonElement>('[data-det]')) {
-            b.setAttribute('aria-pressed', String(Number(b.dataset.det) === st.detector));
-        }
         const play = q<HTMLButtonElement>('[data-act="play"]');
         play.innerHTML = `<span class="ic">${st.playing ? ICON.pause : ICON.play}</span>`;
         play.setAttribute('aria-label', st.playing ? 'Pause' : 'Play');
         q<HTMLButtonElement>('[data-act="gaia"]').setAttribute('aria-pressed', String(st.gaia));
         fovSelect.value = String(st.fovDeg);
-        bind('det', `Detector ${st.detector} of 6`);
+        bind('det', `Detector ${lamDraft === null ? st.detector : detectorOf(lamDraft)} of 6`);
 
         const band = DETECTORS[st.detector - 1] as [number, number];
-        const range = result?.lambdaRange ?? band;
-        lamInput.min = range[0].toFixed(3);
-        lamInput.max = range[1].toFixed(3);
-        const lam = lamDraft ?? st.lambda ?? (range[0] + range[1]) / 2;
+        const lam = lamDraft ?? st.lambda ?? (band[0] + band[1]) / 2;
         if (lamDraft === null) {
-            lamInput.value = lam.toFixed(3);
+            lamInput.value = lam.toFixed(2);
         }
         bind('lam', lam.toFixed(2));
-        bind('lamLo', `${range[0].toFixed(2)}`);
-        bind('lamHi', `${range[1].toFixed(2)}`);
+        paintTrack(lamDraft === null ? st.detector : detectorOf(lam));
 
         if (!result) {
             bind('frame', '');
@@ -555,10 +603,7 @@ export function mount(root: HTMLElement): void
             bind('frame', 'Last look minus first');
             bind('when', `${monthYear(last.tMin)} minus ${monthYear(first.tMin)}`);
         }
-        const fovArcsec = result.grid.pixelArcsec * result.grid.width;
-        const bar = st.fovDeg >= 0.5 ? 600 : 60;
-        ref<HTMLElement>('bar').style.width = `${(bar / fovArcsec * 100).toFixed(2)}%`;
-        bind('bar', bar >= 60 ? `${bar / 60}′` : `${bar}″`);
+        sizeBar();
 
         if (f && lf) {
             const rec = f.frame.frame;
@@ -588,6 +633,8 @@ export function mount(root: HTMLElement): void
             }
             ref<HTMLElement>('dl').innerHTML = html;
         }
+        bind('statusShort', sourceKind === 'live' ? 'Live from NASA’s SPHEREx archive'
+            : sourceKind === 'snapshot' ? 'Saved copy of SPHEREx frames' : 'Simulated sky · not real data');
         const status = sourceKind === 'live' ? 'Live: read straight from NASA’s SPHEREx archive on Amazon S3.'
             : sourceKind === 'snapshot' ? 'Saved copy of NASA SPHEREx frames (the live archive did not answer).'
                 : 'Simulated sky for building the page. Not real data.';
@@ -691,13 +738,6 @@ export function mount(root: HTMLElement): void
             st.index = Number(b.dataset.k);
             draw();
             writeUrl();
-        } else if (b.dataset.det) {
-            const d = Number(b.dataset.det) as Detector;
-            if (d !== st.detector) {
-                st.detector = d;
-                st.lambda = undefined;
-                void load();
-            }
         } else if (b.dataset.act === 'play') {
             play(!st.playing);
         } else if (b.dataset.act === 'prev' || b.dataset.act === 'next') {
@@ -718,12 +758,16 @@ export function mount(root: HTMLElement): void
     lamInput.addEventListener('input', () => {
         lamDraft = Number(lamInput.value);
         bind('lam', lamDraft.toFixed(2));
+        bind('det', `Detector ${detectorOf(lamDraft)} of 6`);
+        paintTrack(detectorOf(lamDraft));
     });
     lamInput.addEventListener('change', () => {
         st.lambda = Number(lamInput.value);
+        st.detector = detectorOf(st.lambda);
         lamDraft = null;
         void load();
     });
+    new ResizeObserver(() => sizeBar()).observe(ref<HTMLElement>('sky'));
     fovSelect.addEventListener('change', () => {
         st.fovDeg = Number(fovSelect.value);
         void load();

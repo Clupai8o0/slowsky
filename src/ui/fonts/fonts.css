@@ -1,8 +1,6 @@
-/* Self-hosted (CSP font-src 'self'). Geist and Geist Mono: Vercel; Big Shoulders Display: Patric King.
+/* Self-hosted (CSP font-src 'self'). Geist and Geist Mono (Vercel).
    All under the SIL Open Font License 1.1, see OFL.txt. Latin subset from fontsource. */
 @font-face { font-family: "Geist"; font-weight: 300; font-style: normal; font-display: swap; src: url("./geist-300.woff2") format("woff2"); }
 @font-face { font-family: "Geist"; font-weight: 400; font-style: normal; font-display: swap; src: url("./geist-400.woff2") format("woff2"); }
 @font-face { font-family: "Geist"; font-weight: 500; font-style: normal; font-display: swap; src: url("./geist-500.woff2") format("woff2"); }
 @font-face { font-family: "Geist Mono"; font-weight: 400; font-style: normal; font-display: swap; src: url("./geist-mono-400.woff2") format("woff2"); }
-@font-face { font-family: "Big Shoulders Display"; font-weight: 200; font-style: normal; font-display: swap; src: url("./big-shoulders-display-200.woff2") format("woff2"); }
-@font-face { font-family: "Big Shoulders Display"; font-weight: 500; font-style: normal; font-display: swap; src: url("./big-shoulders-display-500.woff2") format("woff2"); }

@@ -6,6 +6,7 @@ export type TargetKind = 'mover' | 'variable' | 'spectrum' | 'cold' | 'saturated
 
 export interface TargetCopy {
     display: string; // name on the button
+    short: string; // one line under the name in the target list
     kind: TargetKind;
     headline: string;
     show: string; // what to look for
@@ -17,6 +18,7 @@ export const ORDER: TargetId[] = ['barnard', 'rwaur', 'epsindb', 'wise0855', 'rd
 export const COPY: Record<TargetId, TargetCopy> = {
     barnard: {
         display: 'Barnard’s Star',
+        short: 'Moves fastest across our sky',
         kind: 'mover',
         headline: 'Barnard’s Star, walking north',
         show: 'The fastest-moving star in our sky. Gold rings mark where ESA’s Gaia says it should be on each date. Watch it step from ring to ring.',
@@ -24,6 +26,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
     },
     rwaur: {
         display: 'RW Aurigae',
+        short: 'Changes its brightness',
         kind: 'variable',
         headline: 'RW Aurigae, changing its light',
         show: 'A young star still wrapped in dust. Compare it with its neighbours: they hold steady, it does not.',
@@ -31,6 +34,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
     },
     epsindb: {
         display: 'Epsilon Indi B',
+        short: 'Fades at some colours',
         kind: 'spectrum',
         headline: 'Epsilon Indi B, missing colours',
         show: 'Two brown dwarfs, too cold to be stars. Change the colour: they fade where methane and water soak up light.',
@@ -38,6 +42,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
     },
     wise0855: {
         display: 'WISE 0855−0714',
+        short: 'The coldest brown dwarf known',
         kind: 'cold',
         headline: 'WISE 0855, the coldest neighbour',
         show: 'The coldest brown dwarf known. At short colours the light at this spot is a background star. At the longest colours, WISE 0855 takes over.',
@@ -45,6 +50,7 @@ export const COPY: Record<TargetId, TargetCopy> = {
     },
     rdra: {
         display: 'R Draconis',
+        short: 'Too bright to measure',
         kind: 'saturated',
         headline: 'R Draconis, too bright to measure',
         show: 'A giant star that swells and shrinks. Look at the glow around it, not the centre.',
