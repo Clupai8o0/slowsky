@@ -170,7 +170,11 @@ export interface AiNoteDeps {
     fetcher?: typeof fetch; // the network under insightStatus, wrapped to tell "off" from "unreachable"
     storage?: PassStore | null; // defaults to sessionStorage; never localStorage
     doc?: Doc;
+    now?: () => number; // ms clock, for spacing out status re-checks
 }
+
+// After a status check that never reached the server, a later view change tries again, at most this often.
+export const RECHECK_MS = 30_000;
 
 function defaultStore(): PassStore | null
 {
@@ -188,6 +192,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     const net: typeof fetch = deps.fetcher ?? ((input, init) => fetch(input, init));
     const store = deps.storage === undefined ? defaultStore() : deps.storage;
     const doc: Doc = deps.doc ?? document;
+    const now = deps.now ?? Date.now;
     const q = <T extends Element>(name: string) => panel.querySelector(`[data-ai="${name}"]`) as T;
     const head = panel.querySelector('h2') as HTMLElement;
     const lock = q<HTMLFormElement>('lock');
@@ -241,7 +246,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         const watched: typeof fetch = async (input, init) => {
             try {
                 const r = await net(input, init);
-                if (r.status >= 500 && r.status <= 504) {
+                if (r.status >= 500) {
                     reached = false;
                 }
                 if (r.status === 204 || r.status === 304) {
@@ -464,15 +469,30 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         }
     });
 
-    const first = passcode();
-    const mine = ++tries;
-    void check(first).then(({ s, reached }) => {
-        if (mine !== tries) {
-            return; // an Unlock answered first and is newer
-        }
-        if (!reached) {
-            return; // the panel was never on: stay hidden rather than guess
-        }
+    // The first status check. If it never reaches the server the panel stays hidden, and update() tries again
+    // later (RECHECK_MS apart) so one blip at page load does not hide it for the whole visit.
+    let firstBusy = false;
+    let firstFailedAt = -Infinity;
+    function firstCheck(): void
+    {
+        firstBusy = true;
+        const first = passcode();
+        const mine = ++tries;
+        void check(first).then(({ s, reached }) => {
+            firstBusy = false;
+            if (mine !== tries) {
+                return; // an Unlock answered first and is newer
+            }
+            if (!reached) {
+                firstFailedAt = now();
+                return; // the panel was never on: stay hidden rather than guess
+            }
+            onFirst(first, s);
+        });
+    }
+
+    function onFirst(first: string | undefined, s: InsightStatus): void
+    {
         if (first !== undefined && s.enabled && s.locked && !s.unlocked) {
             savePass(undefined); // stale: don't spend a guess on it at every reload
         }
@@ -486,11 +506,16 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
             }
         }
         show();
-    });
+    }
+
+    firstCheck();
 
     return {
         update(v: NoteView | null): void
         {
+            if (!st && !firstBusy && v && now() - firstFailedAt >= RECHECK_MS) {
+                firstCheck();
+            }
             const next = v ? [v.result, v.targetId, v.center.ra, v.center.dec, v.curve, v.shift] : [];
             const changed = next.length !== sig.length || next.some((x, i) => !Object.is(x, sig[i]));
             view = v;

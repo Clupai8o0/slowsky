@@ -431,6 +431,7 @@ button { cursor: pointer; }
 .sk-ai-lock label:focus-within { border-color: rgba(255, 255, 255, .5); outline: 2px solid rgba(255, 255, 255, .85); outline-offset: 2px; }
 /* The ring is drawn on the framed label around the field (above), so the field itself needs none. */
 .sk-ai-lock input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font-size: 13.5px; }
+.sk .sk-ai-lock input:focus-visible { outline: none; } /* the label's ring already shows focus */
 .sk-ai-msg { margin: 0; font-size: 12.5px; color: var(--ink2); }
 .sk-ai-out { display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.55; color: var(--ink2); }
 .sk-ai-out p { margin: 0; }

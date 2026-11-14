@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { busyText, disclaimer, factsInput, leftText, modelName, mountAiNote, PASS_KEY, retryText, visitGroups, type AiNoteDeps, type NoteView } from '../src/ui/ai-note';
+import { busyText, disclaimer, factsInput, leftText, modelName, mountAiNote, MSG, PASS_KEY, RECHECK_MS, retryText, visitGroups, type AiNoteDeps, type NoteView } from '../src/ui/ai-note';
 import { InsightError, type InsightStatus } from '../src/lib/insight';
 import { buildFacts } from '../src/lib/insight-facts';
 import { validateFacts } from '../src/lib/insight';
@@ -575,3 +575,150 @@ describe('mountAiNote', () => {
         expect(doc.el('go').disabled).toBe(false);
     });
 });
+
+describe('mountAiNote, review round 2', () => {
+    // A status function shaped like insightStatus: it reads through the fetcher and calls a failure "off".
+    const viaFetcher: StatusFn = async (o) => {
+        try {
+            const r = await o!.fetcher!('/api/insight');
+            return r.ok ? ((await r.json()) as InsightStatus) : { enabled: false, locked: false, unlocked: false };
+        } catch {
+            return { enabled: false, locked: false, unlocked: false };
+        }
+    };
+
+    it('tries the status again on a later view when the first check never reached the server', async () => {
+        const doc = new FakeDoc();
+        let clock = 1_000;
+        let down = true;
+        let calls = 0;
+        const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+            status: viaFetcher,
+            fetcher: async () => {
+                calls++;
+                if (down) {
+                    throw new TypeError('network');
+                }
+                return new Response(JSON.stringify(OPEN), { status: 200 });
+            },
+            storage: new MemStore(),
+            doc: doc as never,
+            now: () => clock,
+        });
+        await flush();
+        ai.update(noteView());
+        expect(doc.panel.hidden).toBe(true);
+        expect(calls).toBe(1);
+        down = false;
+        clock += RECHECK_MS - 1;
+        ai.update(noteView());
+        await flush();
+        expect(calls).toBe(1);
+        clock += 1;
+        ai.update(noteView());
+        ai.update(noteView());
+        await flush();
+        expect(calls).toBe(2);
+        expect(doc.panel.hidden).toBe(false);
+    });
+
+    it('counts any 5xx as unreachable, on load and on Unlock', async () => {
+        for (const code of [502, 520]) {
+            const doc = new FakeDoc();
+            let reply = code;
+            let clock = 0;
+            const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                status: viaFetcher,
+                fetcher: async () => new Response(reply === 200 ? JSON.stringify(LOCKED) : '{}', { status: reply }),
+                storage: new MemStore(),
+                doc: doc as never,
+                now: () => clock,
+            });
+            await flush();
+            ai.update(noteView());
+            expect(doc.panel.hidden, String(code)).toBe(true);
+            reply = 200;
+            clock += RECHECK_MS;
+            ai.update(noteView());
+            await flush();
+            expect(doc.panel.hidden, String(code)).toBe(false);
+            reply = code;
+            doc.el('pass').value = 'moon';
+            await doc.el('lock').fire('submit');
+            expect(doc.panel.hidden, String(code)).toBe(false);
+            expect(doc.el('msg').textContent, String(code)).toBe(MSG.unreachable);
+        }
+    });
+
+    it('asks for a passcode on an empty Unlock without calling the server, and empties the field after one', async () => {
+        let calls = 0;
+        const { doc, ai } = setup({ status: async (o) => {
+            calls++;
+            return o?.passcode === 'moon' ? { enabled: true, locked: true, unlocked: true } : LOCKED;
+        } });
+        await flush();
+        ai.update(noteView());
+        await doc.el('lock').fire('submit');
+        expect(doc.el('msg').textContent).toBe(MSG.enter);
+        expect(calls).toBe(1);
+        doc.el('pass').value = 'moon';
+        await doc.el('lock').fire('submit');
+        expect(doc.el('pass').value).toBe('');
+        expect(doc.el('lock').hidden).toBe(true);
+    });
+
+    it('shows the label, the disclaimer and this view\'s facts with every note', async () => {
+        const { doc, ai } = setup({ fetch: async () => ({ text: 'What this shows: a star.\nA plain line with no label.', model: 'claude-opus-5-5', dropped: 0, cached: false }) });
+        await flush();
+        ai.update(noteView());
+        await doc.el('go').fire('click');
+        expect(doc.el('disc').hidden).toBe(false);
+        expect(doc.el('out').children.map((c) => c.textContent)).toEqual(['What this shows: a star.', 'A plain line with no label.']);
+        expect(doc.el('givenList').textContent).toContain('Visits: 2.');
+        const one: NoteView = { result: sky([61000]), targetId: 'barnard', center: { ra: 269.45, dec: 4.74 }, curve: null };
+        ai.update(one);
+        await doc.el('go').fire('click');
+        expect(doc.el('givenList').textContent).toContain('Visits: 1.');
+        expect(doc.el('givenList').textContent).not.toContain('Visits: 2.');
+    });
+
+    it('treats a new measured shift alone as a new view', async () => {
+        const { doc, ai } = setup();
+        await flush();
+        const v = noteView();
+        ai.update(v);
+        await doc.el('go').fire('click');
+        expect(doc.el('out').textContent).not.toBe('');
+        ai.update({ ...v, shift: { significant: true } as unknown as Shift });
+        expect(doc.el('out').textContent).toBe('');
+    });
+
+    it('hides the panel when the view has no facts to send', async () => {
+        const { doc, ai } = setup();
+        await flush();
+        ai.update({ result: sky([]), targetId: 'barnard', center: { ra: 269.45, dec: 4.74 }, curve: null });
+        expect(doc.panel.hidden).toBe(true);
+    });
+
+    it('drops an "off" re-check that ends after the view changed', async () => {
+        const d = deferred<InsightStatus>();
+        let n = 0;
+        const { doc, ai } = setup({
+            fetch: async () => {
+                throw new InsightError('off');
+            },
+            status: async () => (n++ === 0 ? OPEN : d.promise),
+        });
+        await flush();
+        ai.update(noteView());
+        const pending = doc.el('go').fire('click');
+        await flush();
+        ai.update(noteView(61010));
+        d.resolve({ enabled: true, locked: false, unlocked: false, busy: true, retryAfter: 60 });
+        await pending;
+        expect(doc.el('msg').textContent).toBe('');
+        expect(doc.el('go').disabled).toBe(false);
+        expect(doc.panel.hidden).toBe(false);
+    });
+});
+
