@@ -40,7 +40,8 @@ describe('false colour page', () => {
         const colour = await render(true);
         expect(colour.values).toMatchObject({ frame: 'False colour', when: 'May 2025 – Sep 2026', dlh: 'These frames' });
         for (const text of ['False colour from 2 wavelengths', '1 May 2025 to 1 Sep 2026', '0.85 µm and 4.60 µm',
-            '4 at 0.85 µm, 3 at 4.60 µm', 'D1, D6', 'SPHEREx DR1', 'SPHEREx QR3', 'Files (0.85 µm only)', 'Open (0.85 µm only)']) {
+            '4 at 0.85 µm, 3 at 4.60 µm', 'D1, D6', 'SPHEREx DR1', 'SPHEREx QR3',
+            '<dt>Files</dt><dd><span class="sk-only">0.85 µm only</span>4, a0 to a3</dd>', '<dt>Open</dt><dd><span class="sk-only">0.85 µm only</span>']) {
             expect(colour.html).toContain(text);
         }
         const stack = await render(false);
@@ -56,16 +57,16 @@ describe('false colour page', () => {
     it('counts frames used of those on screen when some are left out, and names a single file as one file', async () => {
         const partly = await render(true, 2);
         expect(partly.html).toContain('2 of 4 at 0.85 µm, 3 at 4.60 µm');
-        expect(partly.html).toContain('Files (0.85 µm only)');
+        expect(partly.html).toContain('<dt>Files</dt><dd><span class="sk-only">0.85 µm only</span>');
         expect(partly.html).toContain('4, a0 to a3');
         const single = await render(true, 0, 1);
         expect(single.html).toContain('1 at 0.85 µm, 3 at 4.60 µm');
-        expect(single.html).toContain('<dt>File (0.85 µm only)</dt>');
+        expect(single.html).toContain('<dt>File</dt><dd><span class="sk-only">0.85 µm only</span>a0</dd>');
         expect(single.html).not.toContain('a0 to a0');
         // The wavelength on screen has no used frame: the Files row still says which wavelength it lists.
         const none = await render(true, 4);
         expect(none.html).toContain('0 of 4 at 0.85 µm');
-        expect(none.html).toContain('Files (0.85 µm only)');
+        expect(none.html).toContain('<dt>Files</dt><dd><span class="sk-only">0.85 µm only</span>');
     });
 
     it('creates a closed disclosure at either width and leaves the visible warning outside', async () => {

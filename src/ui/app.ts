@@ -1350,7 +1350,8 @@ export function mount(root: HTMLElement): void
             // The Files and Open rows list the frames of the wavelength on screen only; say which one that is.
             const fileBand = colourPicture?.find(band => band.records.some(record => fileRecs.includes(record)))
                 ?? colourPicture?.reduce((a, b) => (Math.abs(b.lambda - result!.lambda) < Math.abs(a.lambda - result!.lambda) ? b : a));
-            const only = fileBand ? ` (${fileBand.lambda.toFixed(2)} µm only)` : '';
+            // Said inside the value, on its own line: a longer label would squeeze every value in the box.
+            const only = fileBand ? `<span class="sk-only">${fileBand.lambda.toFixed(2)} µm only</span>` : '';
             if (!many) {
                 rows.push(['File', rec.obsId]);
             } else if (diffPair) {
@@ -1358,7 +1359,7 @@ export function mount(root: HTMLElement): void
             } else if (st.mode === 'diff') {
                 rows.push(['Files', `${last!.obsId} − ${first!.obsId}`]);
             } else {
-                rows.push(n === 1 ? [`File${only}`, first!.obsId] : [`Files${only}`, `${n}, ${first!.obsId} to ${last!.obsId}`]);
+                rows.push(n === 1 ? ['File', first!.obsId] : ['Files', `${n}, ${first!.obsId} to ${last!.obsId}`]);
             }
             if (rec.pipelineVersion && !many) {
                 rows.push(['Pipeline', rec.pipelineVersion]);
@@ -1389,7 +1390,7 @@ export function mount(root: HTMLElement): void
             }).join(', ');
             let html = rows.map(([k, v]) => {
                 const val = k === 'Release' ? release : esc(v);
-                return `<dt>${k}</dt><dd>${val}</dd>`;
+                return `<dt>${k}</dt><dd>${k === 'File' || k === 'Files' ? only : ''}${val}</dd>`;
             }).join('');
             const links: string[] = [];
             if (many) {
@@ -1405,7 +1406,7 @@ export function mount(root: HTMLElement): void
                 links.push(`<a href="${esc(rec.irsaUrl)}" rel="noopener" target="_blank"><span class="ic">${ICON.out}</span>IRSA</a>`);
             }
             if (links.length) {
-                html += `<dt>Open${esc(only)}</dt><dd>${links.join(' · ')}</dd>`;
+                html += `<dt>Open</dt><dd>${only}${links.join(' · ')}</dd>`;
             }
             ref<HTMLElement>('dl').innerHTML = html;
         }

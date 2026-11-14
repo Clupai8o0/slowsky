@@ -488,6 +488,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-m-details dl:empty::before { content: "Appears when the frames load."; grid-column: 1 / -1; font-family: "Geist", system-ui, sans-serif; font-size: var(--fs-small); color: var(--mute); }
 .sk-m-details dt { color: var(--mute); overflow-wrap: break-word; }
 .sk-m-details dd { margin: 0; text-align: right; color: var(--ink); overflow-wrap: break-word; }
+.sk-m-details dd .sk-only { display: block; color: var(--mute); }
 .sk-m-details a { color: var(--ink); text-decoration-color: rgba(255, 255, 255, .35); text-underline-offset: 3px; }
 .sk-m-details a:hover { text-decoration-color: #fff; }
 /* A source sits on the fact it backs: a quiet underlined link with the full citation in its title. */
