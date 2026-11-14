@@ -3,7 +3,7 @@ import { StackError, stackVisit, subtract } from '../src/lib/stack';
 import type { SkyResult } from '../src/lib/source';
 import type { FrameRecord, OutputGrid, RegriddedFrame } from '../src/lib/types';
 import { frameMjd, visitsOf } from '../src/ui/measure';
-import { combineVisits, defaultPicks, subtractText, visitDates, visitGroups, visitImage, visitLabel, type Visit } from '../src/ui/subtract';
+import { combineVisits, defaultPicks, headerDates, subtractText, visitDates, visitGroups, visitImage, visitLabel, type Visit } from '../src/ui/subtract';
 
 const W = 4;
 const grid: OutputGrid = { center: { ra: 10, dec: 20 }, fovDeg: 0.1, pixelArcsec: 6.15, width: W, height: W };
@@ -168,6 +168,17 @@ describe('subtractText and visitLabel', () => {
         expect(visitDates(visitD2)).toBe('1 Jun 2026');
     });
 
+    it('writes header months, or full dates when the two visits share a month', () => {
+        expect(headerDates(visitA1, visitB3)).toEqual(['Jul 2025', 'Jul 2026']);
+        expect(headerDates(visitA2, visitC2)).toEqual(['Dec 2024–Jan 2025', 'Apr–May 2026']);
+        const may25: Visit = { ks: [0], mjd: at(2025, 5, 2), end: at(2025, 5, 2), n: 1 };
+        const late: Visit = { ks: [1, 2], mjd: at(2025, 5, 20), end: at(2025, 5, 27), n: 2 };
+        const aprMay: Visit = { ks: [0, 1], mjd: at(2025, 4, 28), end: at(2025, 5, 5), n: 2 };
+        const mid: Visit = { ks: [2], mjd: at(2025, 5, 16), end: at(2025, 5, 16), n: 1 };
+        expect(headerDates(may25, late)).toEqual(['2 May 2025', '20–27 May 2025']);
+        expect(headerDates(aprMay, mid)).toEqual(['28 Apr – 5 May 2025', '16 May 2025']);
+    });
+
     it('formats option labels with singular and plural look counts', () => {
         expect(visitLabel(visitA1)).toBe('18 Jul 2025 · 1 look');
         expect(visitLabel(visitB3)).toBe('9–14 Jul 2026 · 3 looks');
@@ -175,13 +186,13 @@ describe('subtractText and visitLabel', () => {
 
     it('formats both diff and sum sentences exactly', () => {
         expect(subtractText(visitA1, visitB3, 'diff')).toBe(
-            `Later minus earlier: 9–14 Jul 2026 (3 looks, averaged) minus 18 Jul 2025 (1 look). Blue marks more light in the earlier visit, orange more in the later one.${AVG}`,
+            `Later minus earlier: 9–14 Jul 2026 (3 looks, averaged) minus 18 Jul 2025 (1 look). Blue marks more light in the earlier visit, orange more in the later one. Pixels blank in either visit show black.${AVG}`,
         );
         expect(subtractText(visitA2, visitB1, 'diff')).toBe(
-            `Later minus earlier: 20 Nov 2026 (1 look) minus 28 Dec 2024 – 3 Jan 2025 (2 looks, averaged). Blue marks more light in the earlier visit, orange more in the later one.${AVG}`,
+            `Later minus earlier: 20 Nov 2026 (1 look) minus 28 Dec 2024 – 3 Jan 2025 (2 looks, averaged). Blue marks more light in the earlier visit, orange more in the later one. Pixels blank in either visit show black.${AVG}`,
         );
         expect(subtractText(visitA1, visitB1, 'diff')).toBe(
-            'Later minus earlier: 20 Nov 2026 (1 look) minus 18 Jul 2025 (1 look). Blue marks more light in the earlier visit, orange more in the later one.',
+            'Later minus earlier: 20 Nov 2026 (1 look) minus 18 Jul 2025 (1 look). Blue marks more light in the earlier visit, orange more in the later one. Pixels blank in either visit show black.',
         );
         expect(subtractText(visitA1, visitB3, 'sum')).toBe(
             `Sum of the two visits, 18 Jul 2025 (1 look) plus 9–14 Jul 2026 (3 looks, averaged): the pictures are added pixel by pixel, so light in both visits adds up and light in only one counts once. Pixels blank in either visit show black.${AVG}`,

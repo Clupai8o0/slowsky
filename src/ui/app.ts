@@ -21,7 +21,7 @@ import { coreBlank, curveFor, frameMjd, ringsOn, shiftFor, visitsOf, type Curve 
 import { mountAiNote } from './ai-note';
 import { FEATURES, mountFalseColour, mountFlags, renderChanges, renderHalo, renderSpectrum, type LayerState } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
-import { combineVisits, defaultPicks, subtractText, visitDates, visitGroups, visitImage, visitLabel, type SubOp, type Visit } from './subtract';
+import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, type SubOp, type Visit } from './subtract';
 
 type Mode = 'blink' | 'stack' | 'diff';
 type SourceKind = 'live' | 'snapshot' | 'demo';
@@ -1164,9 +1164,7 @@ export function mount(root: HTMLElement): void
             bind('when', `${monthYear(first.tMin)} – ${monthYear(last.tMin)}`);
         } else if (st.mode === 'diff' && pair) {
             bind('frame', st.subOp === 'sum' ? 'A + B' : 'B − A');
-            // Months, or days when both visits fall in one month.
-            const same = monthYear(pair.a.mjd) === monthYear(pair.b.mjd);
-            const [da, db] = [pair.a, pair.b].map((v) => same ? visitDates({ ...v, end: v.mjd }) : monthYear(v.mjd));
+            const [da, db] = headerDates(pair.a, pair.b);
             bind('when', st.subOp === 'sum' ? `${da} + ${db}` : `${db} − ${da}`);
         } else if (first && last) {
             bind('frame', 'Last − first');

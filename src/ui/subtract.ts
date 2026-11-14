@@ -114,9 +114,32 @@ export function subtractText(a: Visit, b: Visit, op: SubOp): string
     // A plain average keeps a spot that was in only one of its looks, at a fraction of its level.
     const avg = a.n > 1 || b.n > 1 ? ' An averaged visit can show a spot that was in only one of its looks.' : '';
     if (op === 'diff') {
-        return `Later minus earlier: ${dateB} (${looksB}) minus ${dateA} (${looksA}). Blue marks more light in the earlier visit, orange more in the later one.${avg}`;
+        return `Later minus earlier: ${dateB} (${looksB}) minus ${dateA} (${looksA}). Blue marks more light in the earlier visit, orange more in the later one. Pixels blank in either visit show black.${avg}`;
     }
     return `Sum of the two visits, ${dateA} (${looksA}) plus ${dateB} (${looksB}): the pictures are added pixel by pixel, so light in both visits adds up and light in only one counts once. Pixels blank in either visit show black.${avg}`;
+}
+
+// The months a visit covers: "Jul 2026", "Apr–May 2026", "Dec 2025–Jan 2026".
+function visitMonths(v: Visit): string
+{
+    const a = new Date((v.mjd - 40587) * 86400000);
+    const b = new Date((v.end - 40587) * 86400000);
+    const my = (d: Date) => `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+    if (my(a) === my(b)) {
+        return my(a);
+    }
+    return a.getUTCFullYear() === b.getUTCFullYear() ? `${MONTHS[a.getUTCMonth()]}–${my(b)}` : `${my(a)}–${my(b)}`;
+}
+
+// The short header dates for A and B: months, or the full dates when the two visits share a month.
+export function headerDates(a: Visit, b: Visit): [string, string]
+{
+    const month = (mjd: number) => {
+        const d = new Date((mjd - 40587) * 86400000);
+        return d.getUTCFullYear() * 12 + d.getUTCMonth();
+    };
+    const share = month(a.end) >= month(b.mjd) && month(b.end) >= month(a.mjd);
+    return share ? [visitDates(a), visitDates(b)] : [visitMonths(a), visitMonths(b)];
 }
 
 export function visitLabel(v: Visit): string
