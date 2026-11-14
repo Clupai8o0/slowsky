@@ -188,6 +188,7 @@ const EVENT_KINDS: ReadonlyArray<readonly [string, PointerSample['kind']]> = [
 ];
 
 export function attachGestures(target: GestureTarget, handlers: GestureHandlers, opts?: GestureOptions & {
+    touchAction?: string;
     setTimer?: (fn: () => void, ms: number) => unknown;
     clearTimer?: (handle: unknown) => void;
     root?: GestureTarget;
@@ -203,7 +204,7 @@ export function attachGestures(target: GestureTarget, handlers: GestureHandlers,
     const hadTouchAction = style ? 'touchAction' in style : false;
     const prevTouchAction = style?.touchAction;
     if (style) {
-        style.touchAction = 'pan-y';
+        style.touchAction = opts?.touchAction ?? 'pan-y';
     }
 
     let detached = false;

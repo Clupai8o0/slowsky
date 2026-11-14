@@ -1,0 +1,212 @@
+import { describe, expect, it } from 'vitest';
+import { createHoldCompare, type HoldView } from '../src/ui/gesture-hold';
+import { DEFAULT_FEATURES, featuresFrom } from '../src/ui/slots';
+
+const HOLD_TEXT = 'Showing the first frame. Lift your finger to go back.';
+
+function createFakeHoldView(init?: { canHold?: boolean; token?: unknown; index?: number })
+{
+    const state = {
+        canHold: init?.canHold ?? true,
+        token: init && 'token' in init ? init.token : { id: 1 },
+        index: init?.index ?? 2,
+    };
+    const shown: number[] = [];
+    const said: string[] = [];
+    const events: string[] = [];
+    let pauses = 0;
+
+    const view: HoldView = {
+        canHold: () => state.canHold,
+        token: () => state.token,
+        index: () => state.index,
+        show: (index: number) => {
+            state.index = index;
+            shown.push(index);
+            events.push(`show:${index}`);
+        },
+        pause: () => {
+            pauses += 1;
+            events.push(`pause@${state.index}`);
+        },
+        say: (text: string) => {
+            said.push(text);
+            events.push(`say:${text}`);
+        },
+    };
+
+    return {
+        view,
+        state,
+        shown,
+        said,
+        events,
+        pauses: () => pauses,
+    };
+}
+
+describe('gestures feature switch', () => {
+    it('is switched off by default, and a preview build can switch it on', () => {
+        expect(DEFAULT_FEATURES.gestures).toBe(false);
+        expect(featuresFrom('gestures').gestures).toBe(true);
+    });
+});
+
+describe('createHoldCompare', () => {
+    it('pauses on the real frame, shows frame 0, and announces the hold on start', () => {
+        const fake = createFakeHoldView({ index: 2 });
+        const hold = createHoldCompare(fake.view);
+
+        expect(hold.active()).toBe(false);
+        hold.start();
+
+        expect(hold.active()).toBe(true);
+        expect(fake.state.index).toBe(0);
+        expect(fake.pauses()).toBe(1);
+        expect(fake.shown).toEqual([0]);
+        expect(fake.said).toEqual([HOLD_TEXT]);
+        expect(fake.events).toEqual([
+            'pause@2',
+            'show:0',
+            `say:${HOLD_TEXT}`,
+        ]);
+    });
+
+    it('does nothing when started on frame 0', () => {
+        const fake = createFakeHoldView({ index: 0 });
+        const hold = createHoldCompare(fake.view);
+
+        hold.start();
+
+        expect(hold.active()).toBe(false);
+        expect(fake.pauses()).toBe(0);
+        expect(fake.shown).toEqual([]);
+        expect(fake.said).toEqual([]);
+        expect(fake.events).toEqual([]);
+    });
+
+    it('does nothing when canHold() is false on start', () => {
+        const fake = createFakeHoldView({ canHold: false, index: 3 });
+        const hold = createHoldCompare(fake.view);
+
+        hold.start();
+
+        expect(hold.active()).toBe(false);
+        expect(fake.state.index).toBe(3);
+        expect(fake.pauses()).toBe(0);
+        expect(fake.shown).toEqual([]);
+        expect(fake.said).toEqual([]);
+    });
+
+    it('restores the remembered index and clears the live region on end, then stays inactive', () => {
+        const fake = createFakeHoldView({ index: 3 });
+        const hold = createHoldCompare(fake.view);
+
+        hold.start();
+        fake.events.length = 0;
+
+        hold.end();
+
+        expect(hold.active()).toBe(false);
+        expect(fake.state.index).toBe(3);
+        expect(fake.pauses()).toBe(1);
+        expect(fake.shown).toEqual([0, 3]);
+        expect(fake.said).toEqual([HOLD_TEXT, '']);
+        expect(fake.events).toEqual(['show:3', 'say:']);
+
+        hold.end();
+        expect(fake.events).toEqual(['show:3', 'say:']);
+    });
+
+    it('does not restore on end after the token changed', () => {
+        const fake = createFakeHoldView({ token: { result: 'a' }, index: 2 });
+        const hold = createHoldCompare(fake.view);
+
+        hold.start();
+        fake.state.token = { result: 'b' };
+
+        hold.end();
+
+        expect(hold.active()).toBe(false);
+        expect(fake.shown).toEqual([0]);
+        expect(fake.said).toEqual([HOLD_TEXT]);
+    });
+
+    it('does not restore on end after the index moved off 0', () => {
+        const fake = createFakeHoldView({ index: 2 });
+        const hold = createHoldCompare(fake.view);
+
+        hold.start();
+        fake.state.index = 1;
+
+        hold.end();
+
+        expect(hold.active()).toBe(false);
+        expect(fake.state.index).toBe(1);
+        expect(fake.shown).toEqual([0]);
+        expect(fake.said).toEqual([HOLD_TEXT]);
+    });
+
+    it('does not restore on end when canHold() turned false', () => {
+        const fake = createFakeHoldView({ index: 4 });
+        const hold = createHoldCompare(fake.view);
+
+        hold.start();
+        fake.state.canHold = false;
+
+        hold.end();
+
+        expect(hold.active()).toBe(false);
+        expect(fake.shown).toEqual([0]);
+        expect(fake.said).toEqual([HOLD_TEXT]);
+    });
+
+    it('forgets the hold on cancel so a following end does nothing', () => {
+        const fake = createFakeHoldView({ index: 2 });
+        const hold = createHoldCompare(fake.view);
+
+        hold.start();
+        expect(hold.active()).toBe(true);
+
+        hold.cancel();
+        expect(hold.active()).toBe(false);
+        expect(fake.shown).toEqual([0]);
+        expect(fake.said).toEqual([HOLD_TEXT]);
+
+        hold.end();
+        expect(hold.active()).toBe(false);
+        expect(fake.shown).toEqual([0]);
+        expect(fake.said).toEqual([HOLD_TEXT]);
+    });
+
+    it('keeps the first remembered index when start is called again while active', () => {
+        const fake = createFakeHoldView({ index: 3 });
+        const hold = createHoldCompare(fake.view);
+
+        hold.start();
+        fake.state.index = 2;
+        hold.start();
+
+        expect(hold.active()).toBe(true);
+        expect(fake.pauses()).toBe(1);
+        expect(fake.shown).toEqual([0]);
+        expect(fake.said).toEqual([HOLD_TEXT]);
+
+        fake.state.index = 0;
+        hold.end();
+        expect(fake.state.index).toBe(3);
+        expect(fake.shown).toEqual([0, 3]);
+    });
+
+    it('does nothing when end is called without start', () => {
+        const fake = createFakeHoldView({ index: 0 });
+        const hold = createHoldCompare(fake.view);
+
+        hold.end();
+
+        expect(hold.active()).toBe(false);
+        expect(fake.pauses()).toBe(0);
+        expect(fake.shown).toEqual([]);
+        expect(fake.said).toEqual([]);
+    });
+});

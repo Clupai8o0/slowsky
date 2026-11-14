@@ -599,6 +599,23 @@ describe('attachGestures binder', () => {
         detachStyleless();
     });
 
+    it('accepts a custom touchAction option and restores the previous value on detach', () => {
+        const existing = createFakeTarget({ touchAction: 'none' });
+        const { handlers } = recordHandlers();
+
+        const detachExisting = attachGestures(existing.target, handlers, { touchAction: 'pan-y pinch-zoom' });
+        expect(existing.target.style?.touchAction).toBe('pan-y pinch-zoom');
+        detachExisting();
+        expect(existing.target.style?.touchAction).toBe('none');
+
+        const emptyStyle: { touchAction?: string } = {};
+        const fresh = createFakeTarget(emptyStyle);
+        const detachFresh = attachGestures(fresh.target, handlers, { touchAction: 'pan-y pinch-zoom' });
+        expect(emptyStyle.touchAction).toBe('pan-y pinch-zoom');
+        detachFresh();
+        expect('touchAction' in emptyStyle).toBe(false);
+    });
+
     it('clears the hold timer on up, on cancel, on slop exit, and on detach, leaving no listeners after detach', () => {
         const { target, emit, listenerCount } = createFakeTarget({ touchAction: '' });
         const timers = createFakeTimers();

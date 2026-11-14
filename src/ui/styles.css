@@ -136,6 +136,7 @@ button { cursor: pointer; }
     .sk[data-side] .sk-seg { flex: none; }
     .sk[data-side] .sk-seg .ic { display: inline-block; }
     .sk[data-side] .sk-sub, .sk[data-side] .sk-hint { order: 2; margin-top: 12px; }
+    .sk[data-side] .sk-gest-hint { order: 2; }
     .sk[data-side] .sk-strip { order: 3; flex-wrap: wrap; padding-top: 16px; }
     .sk[data-side] .sk-legrow { order: 4; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 18px; padding-top: 0; }
     .sk[data-side] .sk-legrow > .sk-fov { margin-left: 0; }
@@ -269,8 +270,10 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-seg2 button[aria-pressed=true] { background: #fff; border-color: #fff; color: #000; }
 /* Two lines reserved, so a longer hint never shoves the frames below it. */
 .sk-hint { margin: 8px 0 0; font-size: var(--fs-small); line-height: 20px; color: var(--mute); min-height: 40px; text-wrap: pretty; }
+.sk-gest-hint { margin: 6px 0 0; font-size: var(--fs-small); line-height: 20px; color: var(--mute); text-wrap: pretty; }
 
 .sk-sky { position: relative; width: 100%; aspect-ratio: 1 / 1; background: #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, .06); }
+.sk-sky.sk-gest { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 /* The halo sits behind everything: a shadow on the sky itself would paint over the controls below it. */
 .sk-sky::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; box-shadow: 0 0 110px rgba(44, 86, 235, .26), 0 0 260px rgba(36, 70, 210, .14); }
 /* A 24 px copy of the frame, blown up and blurred: the glow follows the stars on screen. Tinted blue, faded round.
@@ -660,6 +663,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
     .sk-coord span:first-child { display: inline; color: var(--ink2); }
     .sk-body { max-width: 68ch; }
     .sk-hint { min-height: 42px; font-size: 14px; line-height: 21px; }
+    .sk-gest-hint { padding-left: 18px; padding-right: 18px; font-size: 14px; line-height: 21px; }
     .sk-m-details dl { grid-template-columns: minmax(0, 47%) minmax(0, 1fr); gap: 2px 14px; }
     .sk-m-details dd { text-align: left; }
 }
