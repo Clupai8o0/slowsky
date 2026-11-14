@@ -135,8 +135,12 @@ Sam chose the idea and makes every product decision (see `DECISIONS.md`).
   spread evenly across visits, and says so when it does.
 - At very busy spots, such as near the ecliptic poles, the archive can cut its frame list short. The page then
   says some visits may be missing.
-- Gaia rings sit at the stars' Gaia positions for 2016 and are not moved to each frame's date. Live views show
-  them only within 0.2° of the centre, and skip them if the catalogue is slow to answer.
+- Gaia rings are moved from the 2016 catalogue to each frame's date using the stars' proper motion (Stack uses
+  the middle date). The source keeps only stars that were on the field in 2016, so a fast star that walked in
+  from just outside it since then has no ring. Live views show rings only within 0.2° of the centre, and skip them
+  if the catalogue is slow to answer.
+- The brightness curve (RW Aurigae, Epsilon Indi B, WISE 0855) divides the target by two to four steady Gaia stars
+  in the field and shows how much those stars wobble. It is a rough check, not calibrated photometry.
 - The offline copy has only the five preset targets, one detector each, and a field of at most 0.1°.
 - Each view uses one detector. A star found by name is placed at its catalogue position; motion is applied only
   for the presets.
