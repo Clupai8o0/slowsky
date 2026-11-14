@@ -154,9 +154,9 @@ describe('spectrum panel', () => {
         expect(css).toMatch(/\.sk-sp-link:hover,\s*\.sk-sp-link:focus-visible/);
         expect(css).toMatch(/@media \(max-width: 720px\)[\s\S]*?\.sk-sp-link[^}]*\{[^}]*44px/);
     });
-    it('is off by default and adds no listener or read when disabled', () => {
-        expect(DEFAULT_FEATURES.spectrum).toBe(false);
-        expect(featuresFrom('spectrum').spectrum).toBe(true);
+    it('is on by default and adds no listener or read when disabled', () => {
+        expect(DEFAULT_FEATURES.spectrum).toBe(true);
+        expect(featuresFrom('-spectrum').spectrum).toBe(false);
         const addEventListener = vi.fn();
         const section = { hidden: false, addEventListener };
         const read = vi.fn();

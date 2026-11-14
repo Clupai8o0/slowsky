@@ -14,7 +14,7 @@ export const SPECTRUM_TEXT = Object.freeze({
     spot: 'This is the spot at the centre of the view, not a named object: a star that moves, or a neighbour inside the same pixels, changes what is read.',
     reference: 'The labelled wavelengths are where well-known features fall. A label does not mean the feature is present here.',
     link: 'the cube tile',
-    linkEnd: ' (SPHEREx DR1)',
+    linkEnd: ' (SPHEREx DR1 all-sky cube, doi:10.26131/IRSA679)',
 });
 
 export interface SpectrumView {

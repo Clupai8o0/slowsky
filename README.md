@@ -55,6 +55,12 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   looking, not a measurement: it comes from a different telescope at a different wavelength (2.16 µm), its
   brightness cannot be compared with SPHEREx, and the night it was taken on is not known (`src/lib/epoch.ts`,
   `src/ui/epoch-view.ts`).
+- Below the colour step, in the **Spectrum** panel, press **Read the spectrum here** to read the light of the spot at
+  the centre of the view in SPHEREx's 102 colours, from the archive's all-sky cube. Nothing is read until you
+  press. A small chart shows the result, with a shaded band for the scatter of the sky around the spot, a gold
+  line at the colour on screen, and labels at seven wavelengths where well-known features fall. It is a quick
+  look, not a measurement: it reads a spot, not a named object, and a label does not mean that feature is there.
+  It is not offered on the simulated sky (`src/lib/cube.ts`, `src/ui/spectrum-view.ts`).
 - Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode, and in Subtract the two
@@ -99,6 +105,16 @@ The snapshot holds 24 frames for each of the 5 targets, as 112 × 112 pixel cuto
 plus Gaia DR3 stars brighter than magnitude 19 within 0.1° (counts from `public/snapshot/manifest.json` and the
 files in each target folder).
 
+**The spectrum.** The Spectrum panel reads a different product: the SPHEREx DR1 all-sky cube. It was made in
+SPHEREx's first-year reprocessing from the first year of calibrated frames, with the zodiacal light taken out: each pixel
+of each colour is the average of the good frame pixels that landed on it. The sky is cut into 12,288 tiles, and each
+tile is one FITS file of 512 × 512 pixels (12.9 arcsec each) by 102 colours, in MJy/sr, in the same S3 bucket (under
+`dr1/hips5_cube/`). After the press, the page works out which tile and pixel hold the centre of the view, reads that
+file's headers and wavelength table, and then, for each colour, reads with range requests only the rows that hold an
+11 × 11 pixel patch around the spot. A colour's value is the mean of the 3 × 3 pixels at the spot minus the median
+of the patch pixels 3 or more pixels away (the local background). A colour has no value where any of the nine pixels
+is blank, or the whole background is. Nothing is read before the press.
+
 ## Run it
 
 ```sh
@@ -142,13 +158,17 @@ More on the scripts: [scripts/README.md](scripts/README.md).
   epochs (`tests/regrid.test.ts`).
 
 Other tests cover the archive proxy, the snapshot files, coordinate input, the player, stacking and the link
-format.
+format. For the Spectrum panel, `tests/cube.test.ts` checks the cube reader against spectra worked out
+separately with numpy from small byte ranges of real cube tiles (`tests/fixtures/cube/`), and
+`tests/spectrum-chart.test.ts` and `tests/spectrum-view.test.ts` cover the chart, its text and the panel.
 
 ## Data and credits
 
 The frames are from NASA's SPHEREx mission (DR1 and QR3), served by the NASA/IPAC Infrared Science Archive.
 Star rings use ESA's Gaia DR3 (credit: ESA, Gaia DPAC), read through STScI's Gaia cone service with the CfA
 VizieR mirror as a fallback. Names and target positions come from the SIMBAD database through the CfA mirror.
+The Spectrum panel reads the SPHEREx DR1 all-sky cube (doi:10.26131/IRSA679), served by IRSA from the same
+bucket.
 The older picture is from the Two Micron All Sky Survey (2MASS; University of Massachusetts and IPAC/Caltech,
 funded by NASA and the National Science Foundation), as image tiles made by CDS (CNRS/Unistra) and served by IRSA.
 The full list, with licences and credit lines: [DATA-LICENSES.md](DATA-LICENSES.md).
@@ -216,6 +236,24 @@ in it.
 - The picture's brightness scale is for viewing. The brightness curve is relative to nearby stars, not in physical
   units. The centre of R Draconis is too bright for the camera in every saved frame, and Barnard's Star's in most
   of them, so neither gets a curve.
+- The Spectrum panel is a quick look, not a measurement. IRSA's own guide to the cube says spectra taken from it
+  are for display only, and points to its photometry tool for science.
+  - It reads the spot at the centre of the view, not a named object. A star that moves, or a neighbour within the
+    same pixels (each about 13 arcsec wide), changes what is read.
+  - A spot's colours were not all observed at the same time: SPHEREx takes a few neighbouring colours in a row
+    and the rest hours to weeks later, and the cube averages each colour over the first year. A star that varies
+    can look jagged.
+  - Some spots have data in only a few colours: Barnard's Star had 9 of 102 in our read, and we have not checked
+    why. A faint target reads near zero, with noise (WISE 0855−0714: a flat line near zero with one spike near
+    1.1 µm; we have not checked what the spike is). Two colours near 2.4 µm,
+    where a beam splitter divides the light between the two sets of detectors, are blank everywhere in this
+    version of the cube.
+  - The seven labels mark where features fall; a label does not mean the feature is there. The helium label at
+    1.083 µm is also where the strongest glow from Earth's upper atmosphere falls, and IRSA says that glow leaves
+    stripes in the cube, so a bump there may not come from the spot. Bright lines in nebulae, such as Brackett α
+    at 4.05 µm, can leave stripes too.
+  - In our six reads on 15 Nov 2026 (three targets, each at desktop and phone size), each read took 34 to 36
+    seconds and about 2.1 MB in 110 requests. It depends on the connection and on the archive.
 - Stack is a plain average of all frames, pixel by pixel, with nothing thrown out, so a cosmic-ray hit or a trail
   in one frame still shows, only fainter. A pixel that is blank in some frames is the average of the frames that
   have it. Subtract compares two visits at a time (the first and last frame when there is only one visit). A
@@ -225,8 +263,9 @@ in it.
 ## In the repository but not switched on
 
 These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
-`src/ui/slots.ts`; Flagged pixels, False colour and Older picture are on). A preview build can switch the first
-three on with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to the page, so its switch shows nothing.
+`src/ui/slots.ts`; Flagged pixels, False colour, Older picture and Spectrum are on). A preview build can switch the
+first three below on, or any of those four off, with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to the
+page, so its switch shows nothing.
 
 - A list of candidate changes between the first and the last visit, with numbered marks on the sky
   (`src/lib/changes.ts`).
@@ -235,8 +274,6 @@ three on with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to the pag
 - For R Draconis, the light in a ring around its too-bright centre, look by look, as a line or a table
   (`src/lib/halo.ts`, `src/ui/halo-view.ts`).
 - A machine-learning sort hint for each candidate change, described below.
-- Code that reads one spot's spectrum from the SPHEREx cube tiles in the public archive (`src/lib/cube.ts`). No
-  part of the page calls it.
 
 **The change sort hint.** A small neural network (`public/models/change-classifier.json`, run by
 `src/lib/classify.ts`). Its card is `public/models/change-classifier.card.json`; its test results are in `models/`.
