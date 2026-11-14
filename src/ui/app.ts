@@ -575,6 +575,8 @@ export function mount(root: HTMLElement): void
         play(false);
         // Drop the previous view so nothing (play, strip, details) acts on frames of another spot.
         result = null;
+        // The change list stops reading error maps and flags for that view, so they do not run beside the new load.
+        changesSlot.stop();
         visits = [];
         subBox.hidden = true;
         curve = null;
