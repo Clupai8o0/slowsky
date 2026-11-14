@@ -70,6 +70,8 @@ export const MODE_HINT = {
     diff: 'Subtract: last look minus first. Blue marks more light earlier, orange more light later.',
 } as const;
 
+export const FALSE_COLOUR_HINT = 'False colour shows two wavelengths as one picture, for looking, not measuring. It is not the Stack average: the note under the picture says how the frames were combined.';
+
 export const STAGE_TEXT = {
     search: 'Asking NASA’s archive for its looks at this spot',
     headers: 'Reading the files',

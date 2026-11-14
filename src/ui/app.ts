@@ -21,7 +21,7 @@ import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, visitsOf, typ
 import { mountAiNote } from './ai-note';
 import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, renderSpectrum, type LayerState } from './slots';
 import { mountEpoch } from './epoch-view';
-import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
+import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, type SubOp, type Visit } from './subtract';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -386,7 +386,7 @@ export function mount(root: HTMLElement): void
     const aiNote = mountAiNote(ref<HTMLElement>('ai'));
     const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
     const changesSlot = mountChanges(() => renderSlots());
-    const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderSlots());
+    const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderText());
     // Older picture (2MASS): off unless FEATURES.epoch; the logic lives in epoch-view.ts. Play switches it off.
     const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),
         note: ref<HTMLElement>('epochNote'), thenHides: [ref<HTMLElement>('flags'), ref<HTMLElement>('changesMarks')] }, { enabled: FEATURES.epoch, pause: () => play(false) });
@@ -406,7 +406,9 @@ export function mount(root: HTMLElement): void
     const narrow = matchMedia('(max-width: 1080px)');
     narrow.addEventListener('change', () => {
         root.querySelectorAll<HTMLDetailsElement>('details.sk-more').forEach((d) => {
-            d.open = !narrow.matches;
+            if (!ref<HTMLElement>('fcNote').contains(d)) {
+                d.open = !narrow.matches;
+            }
         });
     });
     const params = new URLSearchParams(location.search);
@@ -445,6 +447,8 @@ export function mount(root: HTMLElement): void
     let lamDraft: number | null = null;
     let flagsOn = false; // the Flags layer over the sky
     let fcOn = false; // the False colour layer over the sky (slot, off until its lane lands)
+    let fcState: LayerState = { key: false, layer: false, note: '' };
+    let fcFailure: { result: SkyResult; mode: Mode; source: SourceKind; note: string } | null = null;
     let lookup: AbortController | null = null; // pending name lookup; any newer navigation cancels it
 
     function activeVisits(): { a: Visit; b: Visit } | null
@@ -1097,8 +1101,12 @@ export function mount(root: HTMLElement): void
     }
 
     // Feature-flagged slots (src/ui/slots.ts): hidden unless the flag is on and the module has something to show.
-    function renderSlots(): void
+    function renderSlots(refreshText = false): void
     {
+        if (refreshText) {
+            renderText();
+            return;
+        }
         const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode, source: sourceKind } : null;
         const spec = ref<HTMLElement>('spec');
         spec.hidden = !(FEATURES.spectrum && view && renderSpectrum(ref<HTMLElement>('specBox'), view));
@@ -1106,7 +1114,18 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('changes').hidden = !changes;
         ref<HTMLElement>('changesMarks').hidden = !changes;
         ref<HTMLElement>('halo').hidden = !(FEATURES.halo && view && renderHalo(ref<HTMLElement>('haloBox'), view));
-        layerSlot(fcLayer.update(view, fcOn), fcOn, 'fcKey', 'fc', 'fcNote');
+        if (fcFailure && (!view || fcFailure.result !== view.result || fcFailure.mode !== view.mode || fcFailure.source !== view.source)) {
+            fcFailure = null;
+        }
+        fcState = fcLayer.update(view, fcOn);
+        if (fcState.failed && view) {
+            fcOn = false;
+            fcFailure = { result: view.result, mode: view.mode, source: view.source, note: fcState.note };
+            fcLayer.update(view, false);
+        } else if (!fcOn && fcFailure) {
+            fcState = { ...fcState, note: fcFailure.note };
+        }
+        layerSlot(fcState, fcOn, 'fcKey', 'fc', 'fcNote');
         // FLAGS are read only once the key is switched on (Blink, live frames); a finished read renders again.
         layerSlot(flagLayer.update(view, flagsOn), flagsOn, 'flagsKey', 'flags', 'flagsNote');
         const shown = result?.frames[st.index];
@@ -1130,7 +1149,7 @@ export function mount(root: HTMLElement): void
                 note.replaceChildren(split.lead, ' ');
                 const more = document.createElement('details');
                 more.className = 'sk-more';
-                more.open = !narrow.matches;
+                more.open = noteRef !== 'fcNote' && !narrow.matches;
                 const sum = document.createElement('summary');
                 sum.textContent = 'How to read this colour';
                 more.append(sum, split.more);
@@ -1179,7 +1198,7 @@ export function mount(root: HTMLElement): void
         bind('not', card.not ?? (copy ? copy.not : CUSTOM_COPY.not));
         bind('fact', card.fact ?? '');
         ref<HTMLElement>('fact').hidden = !card.fact;
-        bind('hint', st.mode === 'diff' && pair ? subtractText(pair.a, pair.b, st.subOp) : MODE_HINT[st.mode]);
+        bind('hint', fcState.layer ? FALSE_COLOUR_HINT : st.mode === 'diff' && pair ? subtractText(pair.a, pair.b, st.subOp) : MODE_HINT[st.mode]);
         subBox.hidden = !(st.mode === 'diff' && pair !== null);
         if (pair) {
             const aHtml = visits.slice(0, -1).map((v, i) => `<option value="${i}">${esc(visitLabel(v))}</option>`).join('');
@@ -1245,12 +1264,17 @@ export function mount(root: HTMLElement): void
         const lf = result.locked[st.index];
         const first = result.frames[0]?.frame.frame;
         const last = result.frames[n - 1]?.frame.frame;
+        const colourPicture = fcState.layer ? fcState.picture : undefined;
+        const colourTimes = colourPicture?.flatMap(band => band.times.flat());
+        const colourDates = colourTimes?.length && colourTimes.every(Number.isFinite)
+            ? [Math.min(...colourTimes), Math.max(...colourTimes)] : undefined;
         if (st.mode === 'blink' && f) {
             bind('frame', `Frame ${st.index + 1} of ${n}`);
             bind('when', niceDate(f.frame.frame.tMin));
         } else if (st.mode === 'stack' && first && last) {
-            bind('frame', `Average of ${n}`);
-            bind('when', `${monthYear(first.tMin)} – ${monthYear(last.tMin)}`);
+            bind('frame', colourPicture ? 'False colour' : `Average of ${n}`);
+            bind('when', colourPicture ? colourDates ? `${monthYear(colourDates[0]!)} – ${monthYear(colourDates[1]!)}` : 'Dates unavailable'
+                : `${monthYear(first.tMin)} – ${monthYear(last.tMin)}`);
         } else if (st.mode === 'diff' && pair) {
             bind('frame', st.subOp === 'sum' ? 'A + B' : 'B − A');
             // No break inside a date, so a narrow header wraps only at the − or +.
@@ -1261,7 +1285,7 @@ export function mount(root: HTMLElement): void
             bind('when', `${monthYear(last.tMin)} − ${monthYear(first.tMin)}`);
         }
         sizeBar();
-        bind('dlh', st.mode === 'blink' || n < 2 ? 'This frame' : 'These frames');
+        bind('dlh', !colourPicture && (st.mode === 'blink' || n < 2) ? 'This frame' : 'These frames');
 
         const extraNotes: string[] = [];
         if (cored) {
@@ -1270,7 +1294,7 @@ export function mount(root: HTMLElement): void
         if (f && lf) {
             // Blink describes the frame on screen; Stack and Subtract describe the frames they combine.
             const diffPair = st.mode === 'diff' ? pair : null;
-            const many = st.mode !== 'blink' && (diffPair !== null || n > 1);
+            const many = !!colourPicture || (st.mode !== 'blink' && (diffPair !== null || n > 1));
             const shown = !many
                 ? [st.index]
                 : st.mode === 'stack'
@@ -1284,12 +1308,13 @@ export function mount(root: HTMLElement): void
             const firstA = diffPair ? result.frames[diffPair.a.ks[0]!]?.frame.frame : undefined;
             const firstB = diffPair ? result.frames[diffPair.b.ks[0]!]?.frame.frame : undefined;
             const showsText = st.mode === 'stack'
-                ? `Average of all ${n} frames`
+                ? colourPicture ? 'False colour from 2 wavelengths' : `Average of all ${n} frames`
                 : diffPair
                     ? (st.subOp === 'sum' ? 'Visit A plus visit B' : 'Visit B minus visit A')
                     : `Frame ${n} minus frame 1`;
             const takenText = st.mode === 'stack'
-                ? `${niceDate(first!.tMin)} to ${niceDate(last!.tMin)}`
+                ? colourPicture ? colourDates ? `${niceDate(colourDates[0]!)} to ${niceDate(colourDates[1]!)}` : 'Dates unavailable'
+                    : `${niceDate(first!.tMin)} to ${niceDate(last!.tMin)}`
                 : diffPair && firstA && firstB
                     ? (st.subOp === 'sum' ? `${utc(firstA.tMin)} + ${utc(firstB.tMin)}` : `${utc(firstB.tMin)} − ${utc(firstA.tMin)}`)
                     : `${utc(last!.tMin)} − ${utc(first!.tMin)}`;
@@ -1297,7 +1322,8 @@ export function mount(root: HTMLElement): void
                 ? [
                     ['Shows', showsText],
                     ['Taken', takenText],
-                    ['Colour', lams.length ? `${Math.min(...lams).toFixed(3)} to ${Math.max(...lams).toFixed(3)} µm` : '—'],
+                    ['Colour', colourPicture ? colourPicture.map(band => `${band.lambda.toFixed(2)} µm`).join(' and ')
+                        : lams.length ? `${Math.min(...lams).toFixed(3)} to ${Math.max(...lams).toFixed(3)} µm` : '—'],
                 ]
                 : [
                     ['Taken', utc(rec.tMin)],
@@ -1305,7 +1331,11 @@ export function mount(root: HTMLElement): void
                     ['Colour here', `${lf.lambda.toFixed(3)} µm (${lf.dLambda >= 0 ? '+' : '−'}${Math.abs(lf.dLambda).toFixed(3)})`],
                 ];
             // Stack and Subtract can mix detectors or releases (e.g. QR3 and DR1), so list every one they use.
-            const recs = shown.map((i) => result!.frames[i]!.frame.frame);
+            if (colourPicture) {
+                rows.push(['Frames', colourPicture.map(band => `${band.used} at ${band.lambda.toFixed(2)} µm`).join(', ')]);
+            }
+            const fileRecs = shown.map((i) => result!.frames[i]!.frame.frame);
+            const recs = colourPicture ? colourPicture.flatMap(band => band.records) : fileRecs;
             const relRecs = recs.filter((r, i) => recs.findIndex((o) => o.collection === r.collection) === i);
             const dets = [...new Set(recs.map((r) => r.detector))].sort((a, b) => a - b);
             rows.push(
@@ -1314,8 +1344,10 @@ export function mount(root: HTMLElement): void
                 ['Field', `${Number(result.grid.fovDeg.toFixed(3))}° · ${result.grid.width} × ${result.grid.height} px`],
                 ['Scale', `${result.grid.pixelArcsec.toFixed(2)}″ per pixel`],
             );
-            const firstRec = recs[0]!;
-            const lastRec = recs[recs.length - 1]!;
+            const firstRec = fileRecs[0]!;
+            const lastRec = fileRecs[fileRecs.length - 1]!;
+            const fileBand = colourPicture?.find(band => band.records.some(record => fileRecs.includes(record)));
+            const only = fileBand ? ` (${fileBand.lambda.toFixed(2)} µm only)` : '';
             if (!many) {
                 rows.push(['File', rec.obsId]);
             } else if (diffPair) {
@@ -1323,7 +1355,7 @@ export function mount(root: HTMLElement): void
             } else if (st.mode === 'diff') {
                 rows.push(['Files', `${last!.obsId} − ${first!.obsId}`]);
             } else {
-                rows.push(['Files', `${n}, ${first!.obsId} to ${last!.obsId}`]);
+                rows.push([`Files${only}`, `${n}, ${first!.obsId} to ${last!.obsId}`]);
             }
             if (rec.pipelineVersion && !many) {
                 rows.push(['Pipeline', rec.pipelineVersion]);
@@ -1370,7 +1402,7 @@ export function mount(root: HTMLElement): void
                 links.push(`<a href="${esc(rec.irsaUrl)}" rel="noopener" target="_blank"><span class="ic">${ICON.out}</span>IRSA</a>`);
             }
             if (links.length) {
-                html += `<dt>Open</dt><dd>${links.join(' · ')}</dd>`;
+                html += `<dt>Open${esc(only)}</dt><dd>${links.join(' · ')}</dd>`;
             }
             ref<HTMLElement>('dl').innerHTML = html;
         }
@@ -1388,7 +1420,8 @@ export function mount(root: HTMLElement): void
         if (!st.playing) {
             ref<HTMLElement>('live').textContent = nowShowing;
         }
-        canvas.setAttribute('aria-label', `Sky image. ${nowShowing}, ${lam.toFixed(2)} µm`);
+        const skyColour = colourPicture ? colourPicture.map(band => `${band.lambda.toFixed(2)} µm`).join(' and ') : `${lam.toFixed(2)} µm`;
+        canvas.setAttribute('aria-label', `Sky image. ${nowShowing}, ${skyColour}`);
     }
 
     // ---------- playback ----------
@@ -1576,19 +1609,23 @@ export function mount(root: HTMLElement): void
                 epochSlot.off();
             }
             flagsOn = !flagsOn;
-            renderSlots();
+            fcOn = false;
+            fcFailure = null;
+            renderSlots(true);
         } else if (b.dataset.act === 'falsecolour') {
             if (FEATURES.epoch) {
                 epochSlot.off();
             }
+            fcFailure = null;
             fcOn = !fcOn;
-            renderSlots();
+            renderSlots(true);
         } else if (b.dataset.act === 'epoch' || b.dataset.act === 'epoch-tag') {
             if (b.dataset.act === 'epoch') {
-                if (FEATURES.epoch && !epochSlot.on && (fcOn || flagsOn)) {
+                if (FEATURES.epoch && !epochSlot.on && (fcOn || flagsOn || fcFailure)) {
                     fcOn = false;
                     flagsOn = false;
-                    renderSlots();
+                    fcFailure = null;
+                    renderSlots(true);
                 }
                 epochSlot.press();
             } else {

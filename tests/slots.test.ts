@@ -265,6 +265,61 @@ function colourHarness(enabled = true, readingEnabled = true)
 }
 
 describe('false colour slot', () => {
+    it('reports the chosen picture frames and keeps labels and warning visible', async () => {
+        const h = colourHarness(true, true);
+        const a = frame('a');
+        const excluded = frame('excluded');
+        const b = frame('b');
+        a.lambdaAtCenter = 0.85;
+        b.lambdaAtCenter = 4.6;
+        excluded.data.fill(NaN);
+        a.frame = { tMin: 60857, tMax: 60858, detector: 1, collection: 'spherex_dr1', release: 'dr1' } as RegriddedFrame['frame'];
+        b.frame = { tMin: 61000, tMax: 61001, detector: 6, collection: 'spherex_qr3', release: 'qr3' } as RegriddedFrame['frame'];
+        const v = view(sky([a, excluded]), 0, { mode: 'stack' });
+        expect(h.slot.update(v, true).picture).toBeUndefined();
+        h.calls[0]!.resolve(sky([b]));
+        await flush();
+        const state = h.slot.update(v, true);
+        expect(state.picture).toEqual([
+            { lambda: 0.85, used: 1, leftOut: 1, times: [[60857, 60858]], records: [a.frame] },
+            { lambda: 4.6, used: 1, leftOut: 0, times: [[61000, 61001]], records: [b.frame] },
+        ]);
+        expect(state.split?.lead).toContain('Blue: 0.85 µm');
+        expect(state.split?.lead).toContain('Orange: 4.60 µm');
+        expect(state.split?.lead).toContain('False colour, not what an eye would see.');
+        expect(state.split?.lead).toContain('a detector hit can show as a coloured point');
+        const all = `${state.split?.lead} ${state.split?.more}`;
+        for (const sentence of state.note.split(/(?<=\.)\s+/)) {
+            expect(all).toContain(sentence);
+        }
+    });
+
+    it('reports a picture only while the colour layer is actually on screen', async () => {
+        for (const leave of ['off', 'blink', 'subtract', 'snapshot', 'target', 'field', 'colour', 'play'] as const) {
+            const h = colourHarness();
+            const primary = sky([frame('primary')]);
+            const partner = frame('partner');
+            partner.lambdaAtCenter = 4.6;
+            const active = view(primary, 0, { mode: 'stack' });
+            expect(h.slot.update(active, true).picture).toBeUndefined();
+            h.calls[0]!.resolve(sky([partner]));
+            await flush();
+            expect(h.slot.update(active, true).picture).toBeDefined();
+            let next = active;
+            if (leave === 'blink' || leave === 'play') {
+                next = view(primary, 0, { mode: 'blink' });
+            } else if (leave === 'subtract') {
+                next = view(primary, 0, { mode: 'diff' });
+            } else if (leave === 'snapshot') {
+                next = view(primary, 0, { mode: 'stack', source: 'snapshot' });
+            } else if (leave === 'target' || leave === 'field' || leave === 'colour') {
+                next = view(sky([frame(leave)]), 0, { mode: 'stack' });
+            }
+            const state = h.slot.update(next, leave !== 'off');
+            expect(state.layer).toBe(false);
+            expect(state.picture).toBeUndefined();
+        }
+    });
     it('shows the reason when less than half the view can be coloured', async () => {
         const h = colourHarness();
         const a = frame('a');
@@ -539,6 +594,7 @@ describe('false colour slot', () => {
             await flush();
             const state = h.slot.update(v, true);
             expect(state.layer).toBe(false);
+            expect(state.failed).toBe(true);
             expect(state.note).toMatch(failure === 'empty' ? /4\.60 µm/ : failure === 'grid' ? /grid/i : /read/i);
             expect(h.paint).not.toHaveBeenCalled();
         }
@@ -590,6 +646,7 @@ describe('false colour slot', () => {
         const v = view(r, 0, { mode: 'stack' });
         const sync = mountFalseColour({} as HTMLElement, () => {}, { enabled: true, source: { load: () => { throw new Error(); } } });
         expect(sync.update(v, true).layer).toBe(false);
+        expect(sync.update(v, true).failed).toBe(true);
         const h = colourHarness();
         h.slot.update(v, true);
         const bad = frame('bad');
@@ -597,6 +654,7 @@ describe('false colour slot', () => {
         h.calls[0]!.resolve(sky([bad]));
         await flush();
         expect(h.slot.update(v, true).layer).toBe(false);
+        expect(h.slot.update(v, true).failed).toBe(true);
         const p = colourHarness();
         p.paint.mockImplementation(() => { throw new Error(); });
         p.slot.update(v, true);
@@ -605,6 +663,7 @@ describe('false colour slot', () => {
         p.calls[0]!.resolve(sky([partner]));
         await flush();
         expect(p.slot.update(v, true).layer).toBe(false);
+        expect(p.slot.update(v, true).failed).toBe(true);
     });
 
     it('says nothing on the saved copy until the toggle is on', () => {

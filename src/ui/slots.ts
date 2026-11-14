@@ -93,6 +93,8 @@ export interface LayerState {
     note: string; // the line under the legend ('' hides it)
     // Optional split of `note` for small screens: `lead` always shows, `more` goes behind "How to read this colour".
     split?: { lead: string; more: string };
+    picture?: ReturnType<typeof falseColourView>['picture'];
+    failed?: boolean;
 }
 
 export type FlagsState = LayerState;
@@ -582,13 +584,14 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                 return { key: true, layer: false, note };
             }
             if (!view.result.frames.length) {
-                return { key: true, layer: false, note: FALSE_COLOUR_TEXT.empty };
+                return { key: true, layer: false, note: FALSE_COLOUR_TEXT.empty, failed: true };
             }
             if (!entry) {
                 start(view);
             }
             if (!entry || entry.status !== 'ready') {
-                return { key: true, layer: false, note: entry?.note ?? FALSE_COLOUR_TEXT.failed };
+                return { key: true, layer: false, note: entry?.note ?? FALSE_COLOUR_TEXT.failed,
+                    ...(entry?.status === 'failed' || !entry ? { failed: true } : {}) };
             }
             try {
                 if (!painted) {
@@ -598,11 +601,15 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                 }
                 const parts = (deps.readingEnabled ?? FEATURES.fcReading) ? entry.picture.parts : pictureOnlyParts(entry.picture.parts);
                 const join = (xs: string[]) => xs.filter(Boolean).join(' ');
-                return { key: true, layer: true, note: join(Object.values(parts)),
-                    split: { lead: join([parts.reading, parts.warning]), more: join([parts.labels, parts.note, parts.method]) } };
+                // The note's opening sentence stays visible; the rest folds. If the note ever starts differently, all of it folds.
+                const opening = 'False colour, not what an eye would see.';
+                const first = parts.note.startsWith(opening) ? opening : '';
+                return { key: true, layer: true, note: join(Object.values(parts)), picture: entry.picture.picture,
+                    split: { lead: join([parts.reading, parts.labels, parts.warning, first]),
+                        more: join([parts.note.slice(first.length).trim(), parts.method]) } };
             } catch {
                 entry = { status: 'failed', note: FALSE_COLOUR_TEXT.picture };
-                return { key: true, layer: false, note: FALSE_COLOUR_TEXT.picture };
+                return { key: true, layer: false, note: FALSE_COLOUR_TEXT.picture, failed: true };
             }
         },
     };
