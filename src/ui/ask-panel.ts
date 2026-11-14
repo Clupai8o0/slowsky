@@ -12,7 +12,8 @@ export interface AskPanelDeps {
     doc?: Doc; // the same fake-document type ai-note.ts uses
     onRequestStart?: () => AiRequest | undefined;
     onRemaining?: (n: number, request?: AiRequest) => void;
-    onDailyLimit?: (request?: AiRequest) => void;
+    onDailyLimit?: (request?: AiRequest, current?: boolean) => void;
+    onChargeUnknown?: (request: AiRequest | undefined, sent: string | undefined) => void;
     onLocked?: (request?: AiRequest) => void;
 }
 
@@ -150,11 +151,12 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
 
         try {
             const answer = await ask(reqFacts, question, {
-                signal: c.signal,
                 ...(sentPass !== undefined ? { passcode: sentPass } : {}),
             });
             if ((answer.kind === 'answer' || answer.kind === 'none') && typeof answer.remaining === 'number' && Number.isFinite(answer.remaining)) {
                 deps.onRemaining?.(answer.remaining, request);
+            } else {
+                deps.onChargeUnknown?.(request, sentPass);
             }
             if (c.signal.aborted || ctrl !== c || !ready || currentKey !== sentKey) {
                 if (ctrl === c) {
@@ -170,8 +172,11 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
                 render({ kind: 'failed' });
             }
         } catch (err) {
+            if (!(err instanceof InsightError) || err.code === 'failed' || err.code === 'unverified') {
+                deps.onChargeUnknown?.(request, sentPass);
+            }
             if (err instanceof InsightError && err.code === 'busy' && err.reason === 'daily') {
-                deps.onDailyLimit?.(request);
+                deps.onDailyLimit?.(request, ctrl === c && !c.signal.aborted && ready && currentKey === sentKey);
             }
             if (ctrl !== c) {
                 return;

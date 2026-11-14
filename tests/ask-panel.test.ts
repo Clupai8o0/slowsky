@@ -345,7 +345,7 @@ describe('mountAsk', () => {
         expect(await btn.fire('click', 0)).toBe(false);
         const next = form.fire('submit');
         expect(calls).toHaveLength(2);
-        expect(calls[0]?.signal?.aborted).toBe(true);
+        expect(calls[0]?.signal).toBeUndefined();
         first.resolve(noneReply());
         await pending;
         expect(btn.getAttribute('aria-disabled')).toBe('true');
@@ -472,7 +472,7 @@ describe('mountAsk', () => {
         expect(calls[0]?.facts).toBe(FACTS_A);
         expect(calls[0]?.question).toBe('Did it get brighter?');
         expect(calls[0]?.passcode).toBe('moon-pass');
-        expect(calls[0]?.signal?.aborted).toBe(false);
+        expect(calls[0]?.signal).toBeUndefined();
 
         gate.resolve(answerReply([5, 6], [4, 7, 8], 'Invented sky claim from model'));
         await pending;
@@ -548,16 +548,16 @@ describe('mountAsk', () => {
 
         q.value = 'What wavelength is this?';
         const pending = form.fire('submit');
-        expect(calls[0]?.signal?.aborted).toBe(false);
+        expect(calls[0]?.signal).toBeUndefined();
 
         // Identical facts keep the request and output alive.
         askPanel.sync({ ready: true, facts: { ...FACTS_A } });
-        expect(calls[0]?.signal?.aborted).toBe(false);
+        expect(calls[0]?.signal).toBeUndefined();
         expect(out.innerHTML).toBe(askViewHtml({ kind: 'loading' }));
 
         // Different facts abort immediately, clear output, re-enable button, and keep input value.
         askPanel.sync({ ready: true, facts: FACTS_B });
-        expect(calls[0]?.signal?.aborted).toBe(true);
+        expect(calls[0]?.signal).toBeUndefined();
         expect(out.innerHTML).toBe('');
         expect(btn.disabled).toBe(false);
         expect(q.value).toBe('What wavelength is this?');
@@ -592,7 +592,7 @@ describe('mountAsk', () => {
         const second = form.fire('submit');
         expect(btn.getAttribute('aria-disabled')).toBe('true');
         askPanel.sync({ ready: false, facts: null });
-        expect(calls[1]?.signal?.aborted).toBe(true);
+        expect(calls[1]?.signal).toBeUndefined();
         expect(btn.disabled).toBe(false);
         expect(out.innerHTML).toBe('');
         gate.resolve(answerReply([1], []));
@@ -615,8 +615,8 @@ describe('mountAsk', () => {
         q.value = 'Second question?';
         const second = form.fire('submit');
         expect(calls).toHaveLength(2);
-        expect(calls[0]?.signal?.aborted).toBe(true);
-        expect(calls[1]?.signal?.aborted).toBe(false);
+        expect(calls[0]?.signal).toBeUndefined();
+        expect(calls[1]?.signal).toBeUndefined();
 
         const abortErr = new Error('Aborted');
         abortErr.name = 'AbortError';

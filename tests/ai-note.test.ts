@@ -323,7 +323,7 @@ describe('mountAiNote', () => {
         expect(fetchCalls.at(-1)?.passcode).toBeUndefined();
     });
 
-    it('drops the note, and aborts the request, when the view changes', async () => {
+    it('drops the note while allowing the request to finish when the view changes', async () => {
         const d = deferred<{ text: string; model: string; dropped: number; cached: boolean }>();
         let signal: AbortSignal | undefined;
         const { doc, ai } = setup({ fetch: (_f, o) => {
@@ -334,7 +334,7 @@ describe('mountAiNote', () => {
         ai.update(noteView());
         const pending = doc.el('go').fire('click');
         ai.update(noteView(61010));
-        expect(signal?.aborted).toBe(true);
+        expect(signal).toBeUndefined();
         d.resolve({ text: NOTE_TEXT, model: 'm', dropped: 0, cached: false });
         await pending;
         expect(doc.el('out').textContent).toBe('');
@@ -362,7 +362,7 @@ describe('mountAiNote', () => {
         expect(doc.el('left').textContent).toBe('5 AI notes left today');
     });
 
-    it('keeps note-only count and abort behavior when Ask is off', async () => {
+    it('keeps the lower count and collects superseded replies when Ask is off', async () => {
         const late = deferred<InsightNote>();
         let calls = 0;
         const { doc, ai, fetchCalls } = setup({ fetch: async () => {
@@ -375,14 +375,14 @@ describe('mountAiNote', () => {
         ai.update(noteView());
         await doc.el('go').fire('click');
         await doc.el('go').fire('click');
-        expect(doc.el('left').textContent).toBe('4 AI notes left today');
+        expect(doc.el('left').textContent).toBe('2 AI notes left today');
         const pending = doc.el('go').fire('click');
         ai.update(noteView(61010));
         late.resolve({ text: NOTE_TEXT, model: 'm', dropped: 0, cached: false, remaining: 1 });
         await pending;
-        expect(doc.el('left').textContent).toBe('4 AI notes left today');
+        expect(doc.el('left').textContent).toBe('1 AI note left today');
         expect(fetchCalls).toHaveLength(3);
-        expect(fetchCalls.every((call) => call.signal instanceof AbortSignal)).toBe(true);
+        expect(fetchCalls.every((call) => call.signal === undefined)).toBe(true);
     });
 
     it('unlocks into sessionStorage only, never localStorage', async () => {
@@ -840,7 +840,7 @@ describe('mountAiNote onState', () => {
             ai.setRemaining(1);
             expect(doc.el('left').textContent).toBe(askOn ? '1 AI note or question left today' : '1 AI note left today');
             ai.setRemaining(3);
-            expect(doc.el('left').textContent).toBe(askOn ? '1 AI note or question left today' : '3 AI notes left today');
+            expect(doc.el('left').textContent).toBe(askOn ? '1 AI note or question left today' : '1 AI note left today');
         }
     });
 
@@ -922,7 +922,7 @@ describe('mountAiNote onState', () => {
 });
 
 describe('note and question coordination', () => {
-    function pair(note: FetchFn, question: () => Promise<InsightAnswer>)
+    function pair(note: FetchFn, question: () => Promise<InsightAnswer>, status: StatusFn = async () => ({ enabled: true, locked: true, unlocked: true, remaining: 5 }))
     {
         const doc = new FakeDoc();
         const store = new MemStore();
@@ -932,12 +932,13 @@ describe('note and question coordination', () => {
             enabled: true, doc: doc as never, ask: question,
             onRequestStart: () => ai.startRequest(),
             onRemaining: (n, request) => ai.setRemaining(n, request),
-            onDailyLimit: (request) => ai.exhaustRemaining(request),
+            onDailyLimit: (request, current) => ai.exhaustRemaining(request, current),
+            onChargeUnknown: (request, sent) => ai.recheckRemaining(request, sent),
             onLocked: (request) => ai.relock(request),
         });
         ai = mountAiNote(doc.panel as unknown as HTMLElement, {
             askOn: true, doc: doc as never, storage: store,
-            status: async () => ({ enabled: true, locked: true, unlocked: true, remaining: 5 }),
+            status,
             fetch: note, onState: (state) => ask.sync(state),
         });
         return { doc, store, ai, form: doc.panel.querySelector('[data-ask="form"]')!, input: doc.panel.querySelector('[data-ask="q"]')! };
@@ -946,7 +947,283 @@ describe('note and question coordination', () => {
     const noteReply = (remaining: number): InsightNote => ({ text: NOTE_TEXT, model: 'm', dropped: 0, cached: false, remaining });
     const answer = (remaining: number): InsightAnswer => ({ ...noteReply(remaining), cached: false, kind: 'none', picked: [], lines: [], trust: [] });
 
-    it('aborts the old note on question lock and accepts a new lock after unlock', async () => {
+    it('keeps the period when an off re-check precedes a question count', async () => {
+        const recheck = deferred<InsightStatus>();
+        const q = deferred<InsightAnswer>();
+        let checks = 0;
+        const { doc, ai, form, input } = pair(async () => { throw new InsightError('off'); }, () => q.promise, async () => checks++ === 0 ? OPEN : recheck.promise);
+        await flush();
+        ai.update(noteView());
+        const note = doc.el('go').fire('click');
+        input.value = 'What changed?';
+        const question = form.fire('submit');
+        recheck.resolve({ ...OPEN, remaining: 4 });
+        await note;
+        q.resolve(answer(3));
+        await question;
+        expect(doc.el('left').textContent).toBe('3 AI notes or questions left today');
+    });
+
+    it('shows the shared daily message when a question is limited without a note pending', async () => {
+        const { doc, ai, form, input } = pair(async () => { throw new InsightError('busy', 30); }, async () => { throw new InsightError('busy', undefined, 'daily'); });
+        await flush();
+        ai.update(noteView());
+        await doc.el('go').fire('click');
+        input.value = 'What changed?';
+        await form.fire('submit');
+        expect(doc.el('msg').textContent).toBe('Today’s AI notes and questions are used up. Try again tomorrow.');
+        expect(doc.panel.querySelector('[data-ask="out"]')!.innerHTML).toContain('Today’s AI notes and questions are used up. Try again tomorrow.');
+    });
+
+    it('does not move focus from the question field into the passcode on a note lock', async () => {
+        const n = deferred<InsightNote>();
+        const { doc, ai, input } = pair(() => n.promise, async () => answer(4));
+        await flush();
+        ai.update(noteView());
+        const pending = doc.el('go').fire('click');
+        input.focus();
+        n.reject(new InsightError('locked'));
+        await pending;
+        expect(doc.activeElement).toBe(doc.head);
+    });
+
+    for (const target of ['button', 'outside'] as const) {
+        it(`moves focus appropriately from ${target} on a question lock`, async () => {
+            const q = deferred<InsightAnswer>();
+            const { doc, ai, form, input } = pair(async () => noteReply(4), () => q.promise);
+            await flush();
+            ai.update(noteView());
+            input.value = 'What changed?';
+            const outside = doc.createElement('aside');
+            const focused = target === 'button' ? form.querySelector('button')! : outside;
+            focused.focus();
+            const pending = form.fire('submit');
+            q.reject(new InsightError('locked'));
+            await pending;
+            expect(doc.activeElement === (target === 'button' ? doc.el('pass') : outside)).toBe(true);
+        });
+    }
+
+    it('moves focus from the note button to the passcode after a note lock', async () => {
+        const n = deferred<InsightNote>();
+        const { doc, ai } = pair(() => n.promise, async () => answer(4));
+        await flush();
+        ai.update(noteView());
+        doc.el('go').focus();
+        const pending = doc.el('go').fire('click');
+        expect(doc.activeElement === doc.head).toBe(true);
+        n.reject(new InsightError('locked'));
+        await pending;
+        expect(doc.activeElement === doc.el('pass')).toBe(true);
+    });
+
+    it('leaves the note outcome in control of its message while a note is pending', async () => {
+        const n = deferred<InsightNote>();
+        const { doc, ai, form, input } = pair(() => n.promise, async () => { throw new InsightError('busy', undefined, 'daily'); });
+        await flush();
+        ai.update(noteView());
+        const pending = doc.el('go').fire('click');
+        input.value = 'What changed?';
+        await form.fire('submit');
+        expect(doc.el('msg').textContent).toBe(MSG.writing);
+        n.resolve(noteReply(3));
+        await pending;
+        expect(doc.el('msg').textContent).toBe(MSG.written);
+        expect(doc.el('left').hidden).toBe(true);
+    });
+
+    for (const askOn of [false, true]) {
+        it(`keeps a daily limit sticky after a later note success (Ask ${askOn})`, async () => {
+            let notes = 0;
+            const doc = new FakeDoc();
+            const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                askOn, doc: doc as never, storage: new MemStore(), status: async () => OPEN,
+                fetch: async () => { if (notes++ === 0) { throw new InsightError('busy', undefined, 'daily'); } return noteReply(3); },
+            });
+            await flush();
+            ai.update(noteView());
+            await doc.el('go').fire('click');
+            await doc.el('go').fire('click');
+            expect(doc.el('left').hidden).toBe(true);
+        });
+
+        it(`keeps counts monotonic and rechecks charged note failures (Ask ${askOn})`, async () => {
+            const check = deferred<InsightStatus>();
+            let calls = 0;
+            const doc = new FakeDoc();
+            const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                askOn, doc: doc as never, storage: new MemStore(),
+                status: async () => calls++ === 0 ? OPEN : check.promise,
+                fetch: async () => { throw new InsightError('failed'); },
+            });
+            await flush();
+            ai.update(noteView());
+            ai.setRemaining(4);
+            ai.setRemaining(5);
+            expect(doc.el('left').textContent).toContain('4 AI notes');
+            await doc.el('go').fire('click');
+            expect(calls).toBe(2);
+            check.resolve({ ...OPEN, remaining: 3 });
+            await flush();
+            expect(doc.el('left').textContent).toContain('3 AI notes');
+        });
+
+        it(`retains or hides the count for an off re-check busy result (Ask ${askOn})`, async () => {
+            for (const daily of [false, true]) {
+                let calls = 0;
+                const doc = new FakeDoc();
+                const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                    askOn, doc: doc as never, storage: new MemStore(),
+                    status: async () => calls++ === 0 ? OPEN : { ...OPEN, remaining: undefined, busy: true, ...(daily ? { reason: 'daily' } : {}) },
+                    fetch: async () => { throw new InsightError('off'); },
+                });
+                await flush();
+                ai.update(noteView());
+                await doc.el('go').fire('click');
+                expect(doc.el('left').hidden).toBe(daily);
+                if (!daily) { expect(doc.el('left').textContent).toContain('5 AI notes'); }
+            }
+        });
+
+        it(`hides an unknown count for the period after a failed re-check (Ask ${askOn})`, async () => {
+            let calls = 0;
+            let notes = 0;
+            const doc = new FakeDoc();
+            const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                askOn, doc: doc as never, storage: new MemStore(),
+                status: async () => calls++ === 0 ? OPEN : LOCKED,
+                fetch: async () => { if (notes++ === 0) { throw new InsightError('failed'); } return noteReply(3); },
+            });
+            await flush();
+            ai.update(noteView());
+            await doc.el('go').fire('click');
+            await flush();
+            expect(doc.el('left').hidden).toBe(true);
+            expect(doc.el('lock').hidden).toBe(true);
+            expect(doc.el('msg').textContent).toBe(MSG.failed);
+            await doc.el('go').fire('click');
+            expect(doc.el('left').hidden).toBe(true);
+        });
+
+        it(`hides the count when the after-check cannot reach the server (Ask ${askOn})`, async () => {
+            let checks = 0;
+            let notes = 0;
+            const doc = new FakeDoc();
+            const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                askOn, doc: doc as never, storage: new MemStore(),
+                status: async (opts) => {
+                    if (checks++ === 0) { return OPEN; }
+                    try { await opts!.fetcher!('/api/insight'); } catch { return { enabled: false, locked: false, unlocked: false }; }
+                    return OPEN;
+                },
+                fetcher: async () => { throw new Error('offline'); },
+                fetch: async () => { if (notes++ === 0) { throw new InsightError('failed'); } return noteReply(2); },
+            });
+            await flush();
+            ai.update(noteView());
+            await doc.el('go').fire('click');
+            await flush();
+            expect(doc.el('left').hidden).toBe(true);
+            expect(doc.el('msg').textContent).toBe(MSG.failed);
+            expect(doc.el('lock').hidden).toBe(true);
+            await doc.el('go').fire('click');
+            expect(doc.el('left').hidden).toBe(true);
+        });
+
+        it(`rechecks an uncached note success without a count (Ask ${askOn})`, async () => {
+            let checks = 0;
+            const doc = new FakeDoc();
+            const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                askOn, doc: doc as never, storage: new MemStore(),
+                status: async () => checks++ === 0 ? OPEN : { ...OPEN, remaining: 3 },
+                fetch: async () => ({ ...noteReply(4), remaining: undefined }),
+            });
+            await flush();
+            ai.update(noteView());
+            await doc.el('go').fire('click');
+            await flush();
+            expect(checks).toBe(2);
+            expect(doc.el('left').textContent).toContain('3 AI notes');
+        });
+
+        it(`keeps an unknown count hidden after a busy after-check (Ask ${askOn})`, async () => {
+            let checks = 0;
+            const doc = new FakeDoc();
+            const ai = mountAiNote(doc.panel as unknown as HTMLElement, {
+                askOn, doc: doc as never, storage: new MemStore(),
+                status: async () => checks++ === 0 ? OPEN : { ...OPEN, busy: true, remaining: undefined },
+                fetch: async () => { throw new InsightError('unverified'); },
+            });
+            await flush();
+            ai.update(noteView());
+            await doc.el('go').fire('click');
+            await flush();
+            expect(doc.el('left').hidden).toBe(true);
+            expect(doc.el('msg').textContent).toBe(MSG.unverified);
+        });
+    }
+
+    it('coalesces failures while a status check is pending into one further check', async () => {
+        const firstCheck = deferred<InsightStatus>();
+        const secondCheck = deferred<InsightStatus>();
+        const q = deferred<InsightAnswer>();
+        let checks = 0;
+        const { doc, ai, form, input } = pair(async () => { throw new InsightError('failed'); }, () => q.promise,
+            async () => { checks++; return checks === 1 ? OPEN : checks === 2 ? firstCheck.promise : secondCheck.promise; });
+        await flush();
+        ai.update(noteView());
+        await doc.el('go').fire('click');
+        input.value = 'What changed?';
+        const pending = form.fire('submit');
+        q.reject(new InsightError('failed'));
+        await pending;
+        expect(checks).toBe(2);
+        firstCheck.resolve({ ...OPEN, remaining: 4 });
+        await flush();
+        expect(checks).toBe(3);
+        secondCheck.resolve({ ...OPEN, remaining: 3 });
+        await flush();
+        expect(doc.el('left').textContent).toBe('3 AI notes or questions left today');
+    });
+
+    it('rechecks a superseded question failure using its sent passcode without changing the new output', async () => {
+        const first = deferred<InsightAnswer>();
+        const second = deferred<InsightAnswer>();
+        const check = deferred<InsightStatus>();
+        const codes: (string | undefined)[] = [];
+        let calls = 0;
+        const { doc, ai, form, input } = pair(async () => noteReply(4), () => calls++ === 0 ? first.promise : second.promise,
+            async (opts) => { codes.push(opts?.passcode); return codes.length === 1 ? OPEN : check.promise; });
+        await flush();
+        ai.update(noteView());
+        input.value = 'What changed?';
+        const a = form.fire('submit');
+        const b = form.fire('submit');
+        first.reject(new InsightError('unverified'));
+        await a;
+        expect(codes).toEqual(['old', 'old']);
+        expect(doc.panel.querySelector('[data-ask="out"]')!.innerHTML).toContain('Picking lines');
+        check.resolve({ ...OPEN, remaining: 3 });
+        await flush();
+        expect(doc.el('left').textContent).toBe('3 AI notes or questions left today');
+        second.resolve(answer(4));
+        await b;
+    });
+
+    it('rechecks an uncached question success without a count', async () => {
+        let checks = 0;
+        const { doc, ai, form, input } = pair(async () => noteReply(4), async () => ({ ...answer(4), remaining: undefined }),
+            async () => checks++ === 0 ? OPEN : { ...OPEN, remaining: 3 });
+        await flush();
+        ai.update(noteView());
+        input.value = 'What changed?';
+        await form.fire('submit');
+        await flush();
+        expect(checks).toBe(2);
+        expect(doc.el('left').textContent).toBe('3 AI notes or questions left today');
+    });
+
+    it('supersedes the old note on question lock and accepts a new lock after unlock', async () => {
         const old = deferred<InsightNote>();
         const next = deferred<InsightNote>();
         const question = deferred<InsightAnswer>();
@@ -966,7 +1243,7 @@ describe('note and question coordination', () => {
         const pendingQuestion = form.fire('submit');
         question.reject(new InsightError('locked'));
         await pendingQuestion;
-        expect(oldSignal?.aborted).toBe(true);
+        expect(oldSignal).toBeUndefined();
         doc.el('pass').value = 'new';
         await doc.el('lock').fire('submit');
         old.reject(new InsightError('locked'));
@@ -1101,7 +1378,7 @@ describe('note and question coordination', () => {
         await pendingNote;
         q.resolve(answer(3));
         await pendingQuestion;
-        expect(doc.el('msg').textContent).toBe(busyText({ reason: 'daily' }));
+        expect(doc.el('msg').textContent).toBe('Today’s AI notes and questions are used up. Try again tomorrow.');
         expect(doc.el('left').hidden).toBe(true);
     });
 
@@ -1206,7 +1483,7 @@ describe('note and question coordination', () => {
         expect(doc.el('left').hidden).toBe(false);
     });
 
-    it('moves focus from the question to the lock field on a 401', async () => {
+    it('moves focus from the question to the heading on a 401', async () => {
         const q = deferred<InsightAnswer>();
         const { doc, ai, form, input } = pair(async () => noteReply(4), () => q.promise);
         await flush();
@@ -1216,7 +1493,7 @@ describe('note and question coordination', () => {
         const pending = form.fire('submit');
         q.reject(new InsightError('locked'));
         await pending;
-        expect(doc.activeElement).toBe(doc.el('pass'));
+        expect(doc.activeElement).toBe(doc.head);
     });
 
     it('leaves the count alone for missing counts and non-daily busy responses', async () => {

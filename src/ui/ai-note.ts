@@ -116,6 +116,8 @@ export function busyText(e: { retryAfter?: number; reason?: string }): string
     return `Too many requests. ${retryText(e.retryAfter)}`;
 }
 
+export const SHARED_DAILY = 'Today’s AI notes and questions are used up. Try again tomorrow.';
+
 export const MSG = {
     unreachable: 'Couldn’t reach the server. Try again.',
     wrong: 'Wrong passcode.',
@@ -170,7 +172,8 @@ export interface AiNote {
     update(view: NoteView | null): void;
     startRequest(): AiRequest;
     setRemaining(n: number, request?: AiRequest): void;
-    exhaustRemaining(request?: AiRequest): void;
+    exhaustRemaining(request?: AiRequest, fromQuestion?: boolean): void;
+    recheckRemaining(request: AiRequest | undefined, sent: string | undefined): void;
     relock(request?: AiRequest): void;
 }
 
@@ -229,10 +232,11 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     let notice = ''; // a busy reply that came before any view: shown with the first view, then dropped
     let generation = 0;
     let requestOrder = 0;
-    let latestRemainingOrder = 0;
     let remaining: number | undefined;
     let period = 0;
     let exhausted = false;
+    let checkingCharge = false;
+    let queuedCharge: { request: AiRequest; sent: string | undefined } | undefined;
     const askOn = deps.askOn ?? ASK_ENABLED;
 
     function startRequest(): AiRequest
@@ -310,28 +314,56 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function setRequestRemaining(n: number, request: AiRequest): void
     {
-        if (request.generation !== generation || (askOn && request.period !== period)) {
+        if (request.generation !== generation || request.period !== period) {
             return;
         }
-        if (askOn) {
-            if (!exhausted && (remaining === undefined || n < remaining)) {
-                setLeft(n);
-            }
-            return;
-        }
-        if (request.order >= latestRemainingOrder || remaining === undefined || n < remaining) {
+        if (!exhausted && Number.isFinite(n) && (remaining === undefined || n < remaining)) {
             setLeft(n);
-            latestRemainingOrder = Math.max(latestRemainingOrder, request.order);
         }
     }
 
-    function exhaustRemaining(request?: AiRequest): void
+    function exhaustRemaining(request?: AiRequest, fromQuestion = false): void
     {
-        if (request && (request.generation !== generation || (askOn && request.period !== period))) {
+        if (request && (request.generation !== generation || request.period !== period)) {
             return;
         }
         exhausted = true;
         setLeft(undefined);
+        if (fromQuestion && askOn && !ctrl) {
+            setMsg(SHARED_DAILY);
+        }
+    }
+
+    function recheckRemaining(request: AiRequest | undefined, sent: string | undefined): void
+    {
+        if (!request || request.generation !== generation || request.period !== period) {
+            return;
+        }
+        queuedCharge = { request, sent };
+        if (checkingCharge) {
+            return;
+        }
+        checkingCharge = true;
+        void (async () => {
+            while (queuedCharge) {
+                const pending = queuedCharge;
+                queuedCharge = undefined;
+                try {
+                    const { s, reached } = await check(pending.sent);
+                    if (pending.request.generation !== generation || pending.request.period !== period) {
+                        continue;
+                    }
+                    if (!reached || s.busy || !s.enabled || (s.locked && !s.unlocked) || typeof s.remaining !== 'number' || !Number.isFinite(s.remaining)) {
+                        exhaustRemaining(pending.request);
+                    } else {
+                        setRequestRemaining(s.remaining, pending.request);
+                    }
+                } catch {
+                    exhaustRemaining(pending.request);
+                }
+            }
+            checkingCharge = false;
+        })();
     }
 
     function startPeriod(n: number | undefined): void
@@ -351,7 +383,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function busy(e: { retryAfter?: number; reason?: string }): void
     {
-        setMsg(busyText(e));
+        setMsg(askOn && e.reason === 'daily' ? SHARED_DAILY : busyText(e));
         if (e.reason === 'daily') {
             exhaustRemaining();
         }
@@ -389,12 +421,16 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     function showLock(text: string): void
     {
         generation++;
+        const questionInput = askOn ? panel.querySelector('[data-ask="q"]') : null;
+        const typingQuestion = questionInput !== null && doc.activeElement === questionInput;
         const hadFocus = doc.activeElement === go || doc.activeElement === head
             || (askOn && Boolean(panel.querySelector('[data-ask="form"]')?.contains(doc.activeElement)));
         lock.hidden = false;
         go.hidden = true;
         setMsg(text);
-        if (hadFocus) {
+        if (typingQuestion) {
+            head.focus();
+        } else if (hadFocus) {
             pass.focus();
         }
         deps.onState?.({ ready: false, facts: null, passcode: passcode() });
@@ -474,9 +510,13 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         const sent = passcode();
         const request = startRequest();
         try {
-            const note = await fetchNote(f, { signal: c.signal, ...(sent !== undefined ? { passcode: sent } : {}) });
-            if (askOn && note.remaining !== undefined && !note.cached) {
-                setRequestRemaining(note.remaining, request);
+            const note = await fetchNote(f, { ...(sent !== undefined ? { passcode: sent } : {}) });
+            if (!note.cached) {
+                if (typeof note.remaining === 'number' && Number.isFinite(note.remaining)) {
+                    setRequestRemaining(note.remaining, request);
+                } else {
+                    recheckRemaining(request, sent);
+                }
             }
             if (c.signal.aborted || ctrl !== c || request.generation !== generation) {
                 return;
@@ -490,18 +530,17 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
             given.hidden = false;
             disc.textContent = disclaimer(note.model);
             setMsg(MSG.written, true);
-            // A cached note carries the allowance from when it was written, so it can't update the count.
-            if (!askOn && note.remaining !== undefined && !note.cached) {
-                setRequestRemaining(note.remaining, request);
-            }
         } catch (err) {
-            if (askOn && err instanceof InsightError && err.code === 'busy' && err.reason === 'daily') {
+            const code = err instanceof InsightError ? err.code : 'failed';
+            if (code === 'failed' || code === 'unverified') {
+                recheckRemaining(request, sent);
+            }
+            if (err instanceof InsightError && err.code === 'busy' && err.reason === 'daily') {
                 exhaustRemaining(request);
             }
             if (c.signal.aborted || ctrl !== c || request.generation !== generation) {
                 return;
             }
-            const code = err instanceof InsightError ? err.code : 'failed';
             if (code === 'off') {
                 // Only the route's own "off" hides the panel; a gateway error looks the same, so ask again.
                 const mine = ++tries;
@@ -509,8 +548,8 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 if (mine !== tries || ctrl !== c || request.generation !== generation) {
                     return;
                 }
-                if (reached && askOn) {
-                    startPeriod(s.remaining);
+                if (reached && !s.busy && s.remaining !== undefined) {
+                    setRequestRemaining(s.remaining, request);
                 }
                 if (!reached) {
                     setMsg(MSG.unreachable);
@@ -586,7 +625,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         if (s.busy) {
             busy(s); // shown once; the next view or note clears it
             if (!view) {
-                notice = busyText(s);
+                notice = askOn && (s as InsightStatus & { reason?: string }).reason === 'daily' ? SHARED_DAILY : busyText(s);
             }
         }
         show();
@@ -601,6 +640,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
             setRequestRemaining(n, request);
         },
         exhaustRemaining,
+        recheckRemaining,
         relock(request?: AiRequest): void
         {
             if (request && request.generation !== generation) {
