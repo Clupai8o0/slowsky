@@ -127,8 +127,12 @@ describe('change finder', () => {
                         // Round 6: two stars changing the opposite way and a source moving between them look the
                         // same here, so the finder says either/or and quotes no percentage.
                         expect(r.candidates.length, label).toBeGreaterThan(0);
-                        expect(r.candidates.every((c) => c.fracChange === undefined
-                            && /Either a source moved|or a source moved between|could not be measured/.test(c.reason)), label).toBe(true);
+                        expect(r.candidates.every((c) => c.fracChange === undefined && c.kind === 'unknown'
+                            && /^Either a source moved|either both stars changed or a source moved between them|could not be measured/
+                                .test(c.reason)), label).toBe(true);
+                        if (r.candidates.length === 2) {
+                            expect(r.candidates.map((c) => c.sign).sort(), label).toEqual([-1, 1]);
+                        }
                     } else {
                         // Without ids two stars cannot always be told from one moving star; the result must say so.
                         expect(r.candidates.length, label).toBeGreaterThan(0);
@@ -696,7 +700,6 @@ describe('change finder', () => {
             }
         }
         expect(claims).toEqual([]);
-        console.log(`Mover off the line: ${lost.length} of 54 lost: ${lost.join(', ')}`);
         // Lost: a faint source on 500-count stars 10″ apart whose two positions are only 2-4″ apart (under the
         // 3″ shift needed to pair, and under 10% of the stars' light). A miss, not a wrong label.
         expect(lost.length, lost.join(', ')).toBeLessThanOrEqual(2);
@@ -1105,4 +1108,162 @@ describe('real snapshot changes', () => {
             }
         }, 60000);
     }
+});
+
+// Round 7 (Opus and Argon round 6 reviews): a percentage or a confident label only for an isolated change;
+// everything else gets one hedged sentence.
+describe('change finder, round 7: no number where a neighbour or an edge is in the aperture', () => {
+    beforeEach(() => { seed = 918273; });
+    const P = grid.pixelArcsec;
+    const pct = /\d+% (brighter|fainter)/;
+    const numbered = (r: ReturnType<typeof compareVisits>) => r.candidates
+        .filter((c) => c.fracChange !== undefined || pct.test(c.reason)).map((c) => c.reason);
+
+    it('quotes no percentage for two steady stars 11″ apart under a 1.4″ wobble, 8 directions (Opus High 1)', () => {
+        const claims: string[] = [];
+        for (let k = 0; k < 8; k++) {
+            const t = k * Math.PI / 4, wx = 1.4 * Math.cos(t) / P, wy = 1.4 * Math.sin(t) / P;
+            const a = noise(grid), b = noise(grid);
+            const x1 = 60 - 5.5 / P, x2 = 60 + 5.5 / P;
+            point(a, grid, x1, 60, 3000); point(a, grid, x2, 60, 1500);
+            point(b, grid, x1 + wx, 60 + wy, 3000); point(b, grid, x2 + wx, 60 + wy, 1500);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }]);
+            claims.push(...numbered(r).map((s) => `${k * 45}°: ${s}`));
+        }
+        expect(claims).toEqual([]);
+    });
+
+    it('quotes no percentage and no "appeared" for an uncatalogued mover 15-24″ from the edge (Opus High 3, G1)', () => {
+        const claims: string[] = [];
+        for (const edge of [15, 18, 21, 24]) {
+            for (const step of [8, 12]) {
+                const a = noise(grid), b = noise(grid);
+                point(a, grid, edge / P, 60, 1000); point(b, grid, (edge + step) / P, 60, 1000);
+                const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
+                claims.push(...r.candidates.filter((c) => c.fracChange !== undefined || pct.test(c.reason) || /appeared/.test(c.reason))
+                    .map((c) => `${edge}″ +${step}″: ${c.reason}`));
+            }
+        }
+        expect(claims).toEqual([]);
+    });
+
+    it('quotes no percentage on either star when one brightens 50% beside an equal steady star 12″ away (Opus High 2)', () => {
+        const a = noise(grid), b = noise(grid);
+        const x1 = 60 - 6 / P, x2 = 60 + 6 / P;
+        point(a, grid, x1, 60, 2000); point(b, grid, x1, 60, 3000);
+        point(a, grid, x2, 60, 2000); point(b, grid, x2, 60, 2000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }]);
+        expect(r.candidates.length).toBeGreaterThan(0);
+        expect(numbered(r)).toEqual([]);
+    });
+
+    it('does not offer "the other got fainter" when one star brightens beside a steady wobbling one (Argon H1)', () => {
+        const a = noise(grid), b = noise(grid);
+        const x1 = 60, x2 = 60 + 10 / P, w = 1.2 / P;
+        point(a, grid, x1, 60, 1000); point(b, grid, x1 + w, 60, 2500);
+        point(a, grid, x2, 60, 1500); point(b, grid, x2 + w, 60, 1500);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }]);
+        expect(r.candidates.some((c) => near(x1, 60, c, 6))).toBe(true);
+        expect(r.candidates.map((c) => c.reason).filter((s) => /^Either|the other fainter|opposite at a nearby/.test(s))).toEqual([]);
+    });
+
+    it('quotes no percentage for a mover 5.4″ off the line between two steady stars 8″ apart (Argon H2)', () => {
+        const claims: string[] = [];
+        for (const off of [4.5, 5.4, 5.9]) {
+            for (const amp of [170, 400]) {
+                const a = noise(grid), b = noise(grid);
+                const xa = 60 - 4 / P, xb = 60 + 4 / P;
+                point(a, grid, xa, 60, 1000); point(b, grid, xa, 60, 1000);
+                point(a, grid, xb, 60, 1000); point(b, grid, xb, 60, 1000);
+                point(a, grid, xa, 60 + off / P, amp); point(b, grid, xb, 60 + off / P, amp);
+                const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: xa, y: 60, id: 'a' }, { x: xb, y: 60, id: 'b' }]);
+                claims.push(...numbered(r).map((s) => `${off}″ ${amp}: ${s}`));
+            }
+        }
+        expect(claims).toEqual([]);
+    });
+
+    it('quotes no percentage for an uncatalogued source that moves 16-22″ (Argon M4)', () => {
+        const claims: string[] = [];
+        for (const step of [16, 19, 22]) {
+            const a = noise(grid), b = noise(grid);
+            point(a, grid, 60 - step / 2 / P, 60, 1000); point(b, grid, 60 + step / 2 / P, 60, 1000);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
+            claims.push(...numbered(r).map((s) => `${step}″: ${s}`));
+        }
+        expect(claims).toEqual([]);
+    });
+
+    it('quotes no percentage when the earlier background has no scatter (Argon M4, noise 0)', () => {
+        const a = new Float32Array(grid.width * grid.height), b = noise(grid);
+        point(a, grid, 60, 60, 1e-3);
+        point(b, grid, 60, 60, 300);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
+        expect(r.candidates.filter((c) => c.fracChange !== undefined).map((c) => c.reason)).toEqual([]);
+    });
+
+    it('does not offer the either/or for two catalogue stars 0.5″ apart that a source crosses (Argon M5)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60 - 3 / P, 60, 1000); point(b, grid, 60 + 3.5 / P, 60, 1000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60, id: 'a' }, { x: 60 + 0.5 / P, y: 60, id: 'b' }]);
+        expect(r.candidates.map((c) => c.reason).filter((s) => /0\.5″ apart/.test(s))).toEqual([]);
+    });
+
+    it('quotes no percentage on a faint star 8″ from a 100x brighter one under a 1.4″ wobble (Argon M6)', () => {
+        const claims: string[] = [];
+        for (let k = 0; k < 8; k++) {
+            const t = k * Math.PI / 4, wx = 1.4 * Math.cos(t) / P, wy = 1.4 * Math.sin(t) / P;
+            const a = noise(grid), b = noise(grid);
+            const x2 = 60 + 8 / P;
+            point(a, grid, 60, 60, 5000); point(b, grid, 60 + wx, 60 + wy, 5000);
+            point(a, grid, x2, 60, 50); point(b, grid, x2 + wx, 60 + wy, 50);
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }]);
+            claims.push(...numbered(r).map((s) => `${k * 45}°: ${s}`));
+        }
+        expect(claims).toEqual([]);
+    });
+
+    it('does not say "appeared" for a new source 20″ from a catalogue star (Argon L7)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 3000); point(b, grid, 60, 60, 3000);
+        point(b, grid, 60 + 20 / P, 60, 300);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60, id: 's' }]);
+        const spot = r.candidates.filter((c) => near(60 + 20 / P, 60, c, 6));
+        expect(spot).toHaveLength(1);
+        expect(spot[0]!.reason).not.toMatch(/appeared|\d+% (brighter|fainter)/);
+    });
+
+    it('quotes a percentage beside a steady neighbour only within 15% of the true change, and keeps it for faint ones', () => {
+        // Pins the crowd rule's NEIGHBOUR = 0.25 from both sides: at 0.5 a 0.3x neighbour 8″ away lets "41%"
+        // through for a 50% change; at 0.05 a 0.1x neighbour already hides a measurable change.
+        const wrong: string[] = [];
+        for (const ratio of [0.05, 0.1, 0.2, 0.3, 0.4]) {
+            for (const d of [8, 12, 18]) {
+                const a = noise(grid), b = noise(grid);
+                const x1 = 60 - d / 2 / P, x2 = 60 + d / 2 / P;
+                point(a, grid, x1, 60, 2000); point(b, grid, x1, 60, 3000);
+                point(a, grid, x2, 60, 2000 * ratio); point(b, grid, x2, 60, 2000 * ratio);
+                const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: x1, y: 60, id: 'a' }, { x: x2, y: 60, id: 'b' }]);
+                const quoted = r.candidates.filter((c) => c.fracChange !== undefined);
+                for (const c of quoted) {
+                    if (!near(x1, 60, c, 6) || Math.abs(c.fracChange! - 0.5) > 0.075) {
+                        wrong.push(`${ratio}x at ${d}″: ${c.reason}`);
+                    }
+                }
+                if (ratio <= 0.1 && quoted.length !== 1) {
+                    wrong.push(`${ratio}x at ${d}″: percentage lost`);
+                }
+            }
+        }
+        expect(wrong).toEqual([]);
+    });
+
+    it('still quotes the percentage for an isolated star that brightens 50%', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60, id: 'a' }]);
+        expect(r.candidates).toHaveLength(1);
+        expect(r.candidates[0]!.fracChange!).toBeGreaterThan(0.4);
+        expect(r.candidates[0]!.fracChange!).toBeLessThan(0.6);
+    });
 });

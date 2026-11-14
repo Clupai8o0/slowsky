@@ -578,7 +578,7 @@ function fractionalChange(earlier: Float32Array, later: Float32Array, pix: Pixel
     // The regridded pixels are correlated on the scale of one native pixel.
     const k = Math.max(1, Math.round(NATIVE / grid.pixelArcsec));
     const noise = backgroundA.sigma * Math.sqrt(count) * k;
-    if (!(sumA > 0) || !(sumB > 0) || !Number.isFinite(noise) || sumA < 5 * noise) {
+    if (!(sumA > 0) || !(sumB > 0) || !(noise > 0) || !Number.isFinite(noise) || sumA < 5 * noise) {
         return undefined;
     }
     const frac = (sumB - sumA) / sumA;
@@ -657,7 +657,8 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         }
         // Partners in order: the same catalogue star first, then nearest. The first that passes the shift test
         // is the mover; a nearer partner that fails it must not hide a real one further out. Spots on two
-        // different catalogue stars never pair. Edge spots never pair; each is judged on its own below.
+        // different catalogue stars pair into the either/or candidate below. Edge spots never pair; each is
+        // judged on its own below.
         const positiveStar = nearestStar(positive.pix);
         const partners: { j: number; d: number; same: boolean; blocked: boolean }[] = [];
         for (let j = 0; j < found.length; j++) {
@@ -667,8 +668,11 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             }
             const d = distance(positive.pix, negative.pix, grid);
             const negativeStar = nearestStar(negative.pix);
+            // Two stars closer than minShiftArcsec cannot move the light centre by the shift a pair needs, so
+            // such a pair is a mover, not the either/or (Argon M5: "0.5″ apart" for a source crossing a close pair).
             const blocked = positiveStar !== undefined && negativeStar !== undefined && !sameStar(positiveStar, negativeStar)
-                && (positiveStar.id !== undefined || negativeStar.id !== undefined);
+                && (positiveStar.id !== undefined || negativeStar.id !== undefined)
+                && distance(positiveStar, negativeStar, grid) >= opt.minShiftArcsec;
             if (d <= opt.dipoleArcsec && Math.max(positive.area, negative.area) <= 3 * Math.min(positive.area, negative.area)) {
                 partners.push({ j, d, blocked, same: positiveStar !== undefined && negativeStar !== undefined
                     && positiveStar.id !== undefined && positiveStar.id === negativeStar.id });
@@ -696,7 +700,6 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 // fit could not tell them apart (round 5 review: 8-44 false movers in 135), so do not choose.
                 const apart = distance(positiveStar!, nearestStar(negative.pix)!, grid);
                 c.kind = 'unknown';
-                delete c.fracChange;
                 c.reason = `Either a source moved between two catalogue stars ${apart.toFixed(1)}″ apart, or one got brighter `
                     + `and the other fainter; these look the same here (${snrText(c.snr)}; candidate).`;
             } else {
@@ -726,8 +729,8 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             }
         }
     });
-    // Spots that survive the floor. A spot on one of two catalogue stars whose partner failed the shift test
-    // is worded by the blend rule (no percentage); a pair that passed it is the either/or candidate above.
+    // Spots that survive the floor. A pair on two catalogue stars that passed the shift test is the either/or
+    // candidate above; a spot whose partner failed it is judged here like any other (blend, crowd, edge rules).
     const kept = found.map((b, i) => {
         if (used.has(i)) {
             return undefined;
@@ -742,6 +745,44 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         }
         return { b, star, isBlended, floor, mismatch };
     });
+    // Peak above the local background (24-36″ ring) in the earlier image, to compare a star with its neighbours.
+    const level = (p: PixelCoord): number => {
+        const x = Math.round(p.x), y = Math.round(p.y);
+        if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) {
+            return NaN;
+        }
+        const inner = 24 / grid.pixelArcsec, outer = 36 / grid.pixelArcsec, ring: number[] = [];
+        for (let j = Math.max(0, Math.floor(p.y - outer)); j <= Math.min(grid.height - 1, Math.ceil(p.y + outer)); j++) {
+            for (let i = Math.max(0, Math.floor(p.x - outer)); i <= Math.min(grid.width - 1, Math.ceil(p.x + outer)); i++) {
+                const r = Math.hypot(i - p.x, j - p.y), v = earlier.data[j * grid.width + i]!;
+                if (r >= inner && r <= outer && Number.isFinite(v)) {
+                    ring.push(v);
+                }
+            }
+        }
+        return ring.length ? earlier.data[y * grid.width + x]! - median(ring) : NaN;
+    };
+    // Another catalogue star 6-24″ away with at least NEIGHBOUR of this one's peak puts its own light (and its
+    // wobble) in the 12″ aperture, so the fraction is not this star's alone (Opus round 6 High 1 and 2: 13% on
+    // a steady star, 35% for a 50% change). A neighbour inside the 6″ core is measured together with it (a
+    // close pair such as RW Aur A/B), as the blend rule does. Each peak includes the other's wing; the 12″ PSF
+    // model splits the two. A peak that cannot be measured counts as crowded.
+    const NEIGHBOUR = 0.25;
+    const crowded = (star: StarPix): boolean => {
+        const own = level(star), sigma = PSF_FWHM / 2.35482;
+        return stars.some((s) => {
+            if (s === star || !Number.isFinite(s.x) || !Number.isFinite(s.y) || sameStar(s, star)) {
+                return false;
+            }
+            const d = distance(s, star, grid);
+            if (d < CORE_ARCSEC || d > 2 * PSF_FWHM) {
+                return false;
+            }
+            const g = Math.exp(-(d * d) / (2 * sigma * sigma)), other = level(s);
+            const mine = (own - g * other) / (1 - g * g), theirs = (other - g * own) / (1 - g * g);
+            return !(theirs < NEIGHBOUR * mine);
+        });
+    };
     kept.forEach((k) => {
         if (!k) {
             return;
@@ -751,8 +792,15 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         // quote no percentage and do not say "appeared" (round 6 item 3).
         const wing = star === undefined && stars.some((s) => Number.isFinite(s.x) && Number.isFinite(s.y)
             && distance(b.pix, s, grid) <= 2 * PSF_FWHM);
+        // An opposite spot within dipoleArcsec dropped at the edge (G1), or, for a spot with no catalogue star,
+        // any unpaired opposite spot within 2 FWHM (a source that moved 16-22″, Argon M4): the earlier light here
+        // may be that source's, so quote no percentage and do not say "appeared".
+        const opposite = found.some((o) => o !== b && o.sign !== b.sign && (o.edge
+            ? distance(o.pix, b.pix, grid) <= opt.dipoleArcsec
+            : star === undefined && distance(o.pix, b.pix, grid) <= 2 * PSF_FWHM));
+        const crowd = star !== undefined && crowded(star);
         const signMismatch = mismatch && !isBlended;
-        const frac = isBlended || mismatch || wing ? undefined : floor;
+        const frac = isBlended || mismatch || wing || opposite || crowd ? undefined : floor;
         const c = candidate(b, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
         if (frac !== undefined) {
             c.fracChange = frac;
@@ -761,11 +809,13 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 ? `A catalogue star here is ${change} than in the earlier image (candidate).`
                 : `A source here is ${change} than in the earlier image, with no catalogue star here (candidate).`;
         } else if (isBlended) {
-            c.reason = `A catalogue star here is ${b.sign === 1 ? 'brighter' : 'fainter'} than in the earlier image; `
-                + `by how much could not be measured, because a nearby catalogue star changed the other way (${snrText(c.snr)}; candidate).`;
+            // Opposite spots on two nearby stars: both changing and a source moving between them look alike.
+            c.kind = 'unknown';
+            c.reason = `${b.sign === 1 ? 'Brighter' : 'Fainter'} at this catalogue star and the opposite at a nearby one: either both `
+                + `stars changed or a source moved between them; by how much could not be measured (${snrText(c.snr)}; candidate).`;
         } else {
             c.kind = 'unknown';
-            c.reason = b.sign === 1 && !c.gaiaMatch && !signMismatch && !wing
+            c.reason = b.sign === 1 && !c.gaiaMatch && !signMismatch && !wing && !opposite
                 ? `A source appeared here (candidate); ${snrText(c.snr)}.`
                 : `Changed at ${snrText(c.snr)}; brightness change could not be measured here (candidate).`;
         }
