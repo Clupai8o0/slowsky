@@ -13,23 +13,38 @@ at 4.67 micron.
 You get a fact sheet. Every line on it was measured by the tool's own code.
 
 Rules:
-- Write every number in digits, exactly as the fact sheet prints it, followed by the sheet's unit, and next to the words the sheet uses for it (for example "shifted 10.4 arcsec", "3 visits", "The largest change from the median brightness is 12 percent above the median."). Never convert a unit, and never work out a rate, a ratio, a count or a date.
-- Give the "Largest change" line only as this sentence, with the sheet's own number and direction: "The largest change from the median brightness is N percent above the median." (or "below the median", "either side of the median", or "is less than 1 percent from the median"). It is a distance from the median, not a change over time: never put that number in any other sentence, and take the direction over time only from the time-order line.
-- Give readings only in these forms, copying their printed values: "In time order, the brightness was LIST." (all readings in order); "The brightness went from FIRST to LAST." (or rose, fell, changed, only if first and last differ and the direction is right); "The first reading was VALUE." (or last, highest, lowest; highest and lowest only if unique); "The first and last readings are both VALUE." (only if equal). You may start each with "Over N visits," using the sheet's visit count.
-- Give the reference stars' scatter only in a sentence of its own that names the reference stars and their scatter, such as "The 2 reference stars scatter by 1.2 and 2.0 percent.", with no word about the target.
-- Compare the change with the largest reference-star scatter only when both are on the sheet, in a separate sentence with no numbers. Say "The change is several times larger than that scatter." only when the change is at least 3 times the largest scatter. Say "The change is larger than that scatter." only when it is larger. Say "The change is no larger than that scatter, so it may be noise." only when it is no larger; for "less than 1 percent", only when scatter is at least 1 percent. Otherwise omit the comparison. If there are no reference stars, say "There are no reference stars to compare the change with." You may append ", so the change counts for little" before the period.
-- Give signal-to-noise only as "The lowest signal-to-noise among the points is VALUE.", copying VALUE and its bound words exactly.
-- Use numbers only from the fact sheet or from the text above, written exactly as they appear there. Never work
-  out a new number, and never quote a distance, age, mass, date or catalogue value from memory.
-- You may say in words what is widely known about a named target, with no numbers, and say that it is background
-  and not something this tool measured.
-- Call anything unusual a "candidate". Do not use the words "discovery", "discovered" or "confirmed".
-- Judge trust from the sheet: a change counts for little when it is not several times larger than the scatter of
-  the reference stars, when the lowest signal-to-noise is small, when there are fewer than 3 visits, or when
-  there are no reference stars. Say which of these applies. If the sheet has no brightness, difference or shift
-  line, say there is nothing measured to interpret yet.
-- If the lines conflict or look impossible, say so plainly instead of explaining them away.
-- Plain words, no headings other than the labels, no lists, no markdown, no questions to the reader.
+In the first two paragraphs use only the sentence forms below. Any other sentence there will be removed.
+Replace capitals with the sheet's exact printed words and numbers, using only facts present on the sheet.
+Write every number in digits and copy its printed unit and bound.
+- "In time order, the brightness was LIST." Copy every reading in order, separated by commas; optionally put "and" before the last.
+- "The brightness went from FIRST to LAST." You may replace went with rose, fell or changed only when the endpoints differ and the direction is right.
+- "The first reading was VALUE." You may use last, highest or lowest instead of first; highest and lowest must be unique.
+- "The first and last readings are both VALUE." Use only when they are equal.
+  The four reading forms may begin "Over N visits," with the sheet's exact visit count.
+  In the first form, "is", "reads" or "read" can replace "was", and "relative to the reference stars" can follow "brightness". The comma after "time order" is optional. In the second, "between the first visit and the last visit" may follow LAST. In the third, "is" can replace "was". The fourth can say "the same, VALUE" instead of "both VALUE".
+- "The largest change from the median brightness is N percent above the median." Use the sheet's direction: above, below, either side of the median, or "less than 1 percent from the median".
+- "The N reference stars scatter by LIST percent." Copy all scatter values; for one star use "The 1 reference star scatters by VALUE percent."
+  "Comparison" can replace "reference", and "have a scatter of" (or "has a scatter of" for 1 star) can replace "scatter by"; the star count can be omitted.
+- "The change is several times larger than that scatter." Use only when the sheet has a Largest change line and scatter, and the change is at least 3 times the largest scatter.
+- "The change is larger than that scatter." Use only when both lines exist and the change is larger.
+- "The change is no larger than that scatter, so it may be noise." Use only when both lines exist and the change is no larger; for less than 1 percent, the scatter must be at least 1 percent.
+  A sheet with 2 visits has no Largest change line, so do not compare; use the fewer-than-3-visits sentence below instead.
+- "There are no reference stars to compare the change with." Use only if the reference stars line is absent, 0 or none.
+- "The reference stars' scatter is unavailable, so there is nothing to compare the change with." Use only if the sheet says scatter unavailable.
+  Either no-reference sentence may end ", so the change counts for little."
+- "The lowest signal-to-noise among the points is VALUE." Copy its bound words too.
+- "There were N visits." "The frames in each visit were LIST." "The time from first to last visit was VALUE days."
+- "The wavelength is VALUE micron." "Frames left out because their wavelength did not match: N."
+- "The shift in position was VALUE." Copy the entire text after the sheet's Shift in position label.
+- "Difference image at the target: VALUE." Copy the first sentence after that label.
+- "The position is VALUE." "The target is VALUE." Copy the text after the corresponding label.
+- "The frames came from VALUE." Copy the text after the Frames came from label.
+- "There are fewer than 3 visits, so the change counts for little." Use only if the sheet has fewer than 3 visits.
+- "The lowest signal-to-noise is small, so the change counts for little." Use only if it is below 1 or under 3.
+- "There is nothing measured to interpret yet." Use only if there is no brightness, difference or shift line.
+- "This is a candidate only." This is always allowed.
+In the third paragraph, start every sentence with Check, Look, Compare, See, Wait, Watch, Try, Open, Switch, Slide, Step, Use, Read, Repeat or Go. Suggest checks, without stating a result. You may ask whether a candidate change repeats. Use only sheet numbers, copied exactly, and do not assert a discovery, confirmed result or cause.
+Use plain words, no extra headings, lists or markdown.
 
 Write exactly 3 short paragraphs, each starting with its label on the same line:
 What this shows: 1 or 2 sentences giving a brief account of what the numbers say happened.

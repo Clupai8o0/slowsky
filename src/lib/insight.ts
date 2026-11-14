@@ -279,7 +279,7 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
 {
     if (text.length > 8000) {
         const prefix = text.slice(0, 8000);
-        const ends = [...prefix.matchAll(/[.!?](?=\s|$)/g)];
+        const ends = [...text.slice(0, 8001).matchAll(/(?<!\b(?:viz|e\.g|i\.e|approx|cf|vs|etc))[.!?](?=\s)/gi)];
         text = ends.length ? prefix.slice(0, ends[ends.length - 1]!.index! + 1) : '';
     }
     const facts = sheetFacts(sheet);
@@ -312,16 +312,17 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     const scatterText = sheet.join(' ').match(/Scatter of each:\s*([\d.,\s]+)\s*percent/i)?.[1];
     const scatterValues = scatterText?.match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
     const readingValues = facts.find((fact) => fact.readings)?.readings ?? [];
-    const hasShift = sheet.some((line) => /^Shift in position:/i.test(line));
+    const hasShift = sheet.some((line) => /^Shift in position:\s*\d/i.test(line));
     const referenceLine = sheet.find((line) => /^Reference stars:/i.test(line));
     const noReferences = !referenceLine || /^Reference stars:\s*(?:0\b|none\b)/i.test(referenceLine);
+    const noScatter = Boolean(referenceLine && /^Reference stars:\s*scatter unavailable\b/i.test(referenceLine));
     function readingForm(value: string, values: string[]): boolean
     {
         const escape = (part: string) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const lead = exactVisits === null ? '' : `(?:over ${exactVisits} visits,? )?`;
         const first = values[0]!;
         const last = values[values.length - 1]!;
-        const all = values.length === 2 ? values.map(escape).join(' and ') : `${values.slice(0, -1).map(escape).join(', ')},? and ${escape(last)}`;
+        const all = values.length === 2 ? `${escape(first)},? (?:and )?${escape(last)}` : `${values.slice(0, -1).map(escape).join(', ')}(?:,? and|,) ${escape(last)}`;
         if (new RegExp(`^${lead}in time order,? the brightness (?:relative to the reference stars )?(?:is|was|reads|read) ${all}\\.$`, 'i').test(value)) { return true; }
         const ends = value.match(new RegExp(`^${lead}the brightness (went|rose|fell|changed) from ${escape(first)} to ${escape(last)}(?: (?:between|from) the first (?:visit )?(?:and|to) the last(?: visit)?)?\\.$`, 'i'));
         if (ends && Number(first) !== Number(last)) {
@@ -338,32 +339,45 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
     }
     function directionInvalid(value: string): boolean
     {
-        const verdict = /\b(?:variable|variability|real|significan\w*|confirm\w*|flare\w*|flaring|outburst\w*|pulsat\w*|eclips\w*|transit\w*|companion\w*|planet\w*|binary|supernova\w*|nova\w*|quasar\w*|agn|periodic\w*|detected|detection\w*|proves|proof)\b/i;
-        const verdictMatch = value.match(verdict);
-        if (verdictMatch && !/\b(?:may|might|could|whether|if|cannot tell|not enough to say)\b/i.test(value.slice(0, verdictMatch.index))) { return true; }
-        if (/\d/.test(value)) { return false; }
-        if (/\b(?:mov(?:ed|es|ing)|shift(?:ed|s|ing)|drift(?:ed|s|ing)|motion|displaced)\b/i.test(value) && !hasShift) { return true; }
-        if (/\b(?:scatter|noise|errors?)\b/i.test(value) && /\b(?:target|itself)\b|(?<!reference )(?<!comparison )\bstar\b/i.test(value)) { return true; }
-        const up = /\b(?:rose|rises?|risen|rising|increas\w*|brighten\w*|climb\w*|grew|grow\w*|jump\w*|spik\w*|surg\w*|soar\w*)\b/i.test(value);
-        const down = /\b(?:fell|falls?|falling|fallen|drop\w*|decreas\w*|fad(?:e|ed|es|ing)|dimm\w*|declin\w*|dip\w*)\b/i.test(value);
-        const level = /\b(?:brightness|target|star)\b/i.test(value) && !/\breference\b/i.test(value) && /\b(?:level|flat|steady|stable|unchanged|constant|stayed)\b/i.test(value);
+        const verdict = /\b(?:variable|variability|var(?:y|ies|ied|ying)|real|genuine|intrinsic\w*|astrophysical|active|activity|certain(?:ly)?|definite(?:ly)?|evidence|significan\w*|confirm\w*|flare\w*|flaring|outburst\w*|burst\w*|erupt\w*|pulsat\w*|eclips\w*|occult\w*|microlens\w*|transit\w*|companion\w*|\w*planet\w*|binary|supernova\w*|nova\w*|quasar\w*|agn|periodic\w*|detected|detection\w*|proves|proof)\b|\bnot\s+(?:an?\s+)?(?:noise|artefact|artifact|chance)\b/i;
+        if (verdict.test(value)) { return true; }
+        if (readingValues.length >= 2 && readingForm(value, readingValues)) { return false; }
+        if (/^the change is (?:several times larger than|larger than|no larger than) that scatter(?:, so it may be noise)?\.$|^there are no reference stars to compare the change with(?:, so the change counts for little)?\.$|^the reference stars' scatter is unavailable, so there is nothing to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return false; }
+        value = value.replace(/\b(?:brighter|fainter)(?: there)? in the later visit\b|\bno change above the noise\b/gi, '');
+        if (/\b(?:mov(?:ed|es|ing)|shift(?:ed|s|ing)|drift(?:ed|s|ing)|motion|displaced|wander\w*|travel\w*|position changed)\b/i.test(value) && !hasShift) { return true; }
+        if (/\b(?:scatter|noise|noisy|errors?)\b/i.test(value) && /\b(?:target|itself|object)\b|(?<!reference )(?<!comparison )\bstar\b/i.test(value)) { return true; }
+        const up = /\b(?:rose|rises?|risen|rising|increas\w*|brighten\w*|brighter|climb\w*|grew|grow\w*|gain\w*|jump\w*|spik\w*|surg\w*|soar\w*|strengthen\w*|peak\w*|went up|go(?:es)? up)\b/i.test(value);
+        const down = /\b(?:fell|falls?|falling|fallen|drop\w*|decreas\w*|fad(?:e|ed|es|ing)|fainter|dimm\w*|darken\w*|weaken\w*|declin\w*|dip\w*|lost|loss|went down|go(?:es)? down)\b/i.test(value);
+        const negated = /\b(?:not|no|never|nothing|neither|nor|without)\b|n't\b/i.test(value);
+        const level = /\b(?:level|flat|steady|stable|unchanged|constant|stayed|held|stayed the same|the same at every \w+)\b/i.test(value) || (negated && /\b(?:chang\w*|var\w*)\b/i.test(value));
         if (!up && !down && !level) { return false; }
-        if (readingValues.length < 2 || !scatterValues.length || (up && down)) { return true; }
-        const first = Number(readingValues[0]);
-        const last = Number(readingValues[readingValues.length - 1]);
-        if (first <= 0) { return true; }
+        if (negated && (up || down)) { return true; }
+        if (readingValues.length < 2 || !scatterValues.length || (up && down) || (level && (up || down))) { return true; }
+        const readings = readingValues.map(Number);
+        const first = readings[0]!;
+        const last = readings[readings.length - 1]!;
+        if (Math.min(...readings) <= 0) { return true; }
         const percent = (last - first) / first * 100;
         const scatter = Math.max(...scatterValues);
         if (up) { return !(percent > scatter); }
         if (down) { return !(-percent > scatter); }
-        return Math.abs(percent) > scatter || Math.abs(percent) > 1 + 1e-10;
+        const range = (Math.max(...readings) - Math.min(...readings)) / Math.min(...readings) * 100;
+        return range > scatter || range > 1 + 1e-10;
     }
     function comparisonInvalid(value: string): boolean
     {
+        if (sheet.some((line) => {
+            const difference = line.match(/^Difference image at the target: (.+?\.)(?:\s|$)/i)?.[1];
+            return difference && value.toLowerCase() === `difference image at the target: ${difference}`.toLowerCase();
+        })) { return false; }
         if (noReferences && /^there are no reference stars to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return false; }
-        if (!/\b(?:scatter|spread|reference stars?|comparison stars?|(?<!signal-to-)noise|errors?|uncertaint\w*)\b/i.test(value)) { return false; }
-        if (!/\b(?:change|rise|fall|drop|dip|jump|signal|difference|variation|brightening|fading|dimming)\b/i.test(value) && !/\b(?:larger|smaller|bigger|greater|less|more|times|beyond|within|exceeds?|above|below|clear of|compared|comparable|similar)\b|\bmay be noise\b/i.test(value)) { return false; }
-        if (noReferences) { return true; }
+        if (noScatter && /^the reference stars' scatter is unavailable, so there is nothing to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return false; }
+        if (/^(?:the|its) largest change from (?:the|its) median\b/i.test(value)) { return false; }
+        const scatterWord = /\b(?:scatter|spread|reference[\s-]stars?|references|comparison(?:[\s-]stars?)?|other stars|neighbou?rs?|(?<!signal-to-)noise|errors?|uncertaint\w*|precision|jitter|wobble|chance)\b/i.test(value);
+        const changeWord = /\b(?:change|rise|fall|drop|dip|jump|signal(?![\s-]+to[\s-]+noise)|difference|variation|brightening|fading|dimming)\b|\b(?:target|star|brightness)\b.*\b(?:var(?:y|ies|ied)|changed)\b/i.test(value);
+        const comparative = /\b(?:larger|smaller|bigger|greater|less|more|times|beyond|within|exceeds?|above|below|clear|compared|comparable|similar|dwarfs?|towers?|lost|buried|swamp\w*|drown\w*|size)\b|\bmay be noise\b/i.test(value);
+        if (!(scatterWord && (changeWord || comparative)) && !(changeWord && comparative)) { return false; }
+        if (noReferences || noScatter) { return true; }
         if (!change || !scatterValues.length) { return true; }
         const c = change === 'less than 1' ? 1 : Number(change);
         const s = Math.max(...scatterValues);
@@ -372,6 +386,45 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
         if (/^the change is larger than that scatter\.$/i.test(value)) { return change === 'less than 1' || c <= s; }
         return true;
     }
+    // Closed forms are constructed from printed facts, never from a number found elsewhere on the sheet.
+    function closedForm(value: string): boolean
+    {
+        if (/^this is a candidate only\.$/i.test(value)) { return true; }
+        if (readingValues.length >= 2 && readingForm(value, readingValues)) { return true; }
+        if (facts.some((fact) => fact.medianDirection && medianSentence(value, fact))) { return true; }
+        if (facts.some((fact) => fact.scatter && scatterSentence(value, fact.scatter))) { return true; }
+        if (/^the change is (?:several times larger than that scatter|larger than that scatter|no larger than that scatter, so it may be noise)\.$/i.test(value)) { return !comparisonInvalid(value); }
+        if (/^there are no reference stars to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return noReferences; }
+        if (/^the reference stars' scatter is unavailable, so there is nothing to compare the change with(?:, so the change counts for little)?\.$/i.test(value)) { return noScatter; }
+        if (/^there are fewer than 3 visits, so the change counts for little\.$/i.test(value)) { return exactVisits !== null && exactVisits < 3; }
+        const snr = sheet.join('\n').match(/^Lowest signal-to-noise among the points:\s*((?:(?:below|more than) )?\d+(?:\.\d+)?)\./im)?.[1];
+        if (/^the lowest signal-to-noise is small, so the change counts for little\.$/i.test(value)) { return Boolean(snr && (snr === 'below 1' || (!snr.includes('than') && Number(snr) < 3))); }
+        if (/^there is nothing measured to interpret yet\.$/i.test(value)) { return !sheet.some((line) => /^(?:Brightness relative to the reference stars, in time order|Difference image at the target|Shift in position):/i.test(line)); }
+        const forms: string[] = [];
+        if (snr) { forms.push(`The lowest signal-to-noise among the points is ${snr}.`); }
+        for (const line of sheet) {
+            const wavelength = line.match(/^Wavelength: (.+)\.$/i)?.[1];
+            if (wavelength) { forms.push(`The wavelength is ${wavelength}.`); }
+            const visit = line.match(/^Visits: (.+?)\. Frames in each visit: (.+?)\.(?: Time from first to last visit: (.+?)\.)?$/i);
+            if (visit) {
+                forms.push(`There were ${visit[1]} visits.`, `The frames in each visit were ${visit[2]}.`);
+                if (visit[3]) { forms.push(`The time from first to last visit was ${visit[3]}.`); }
+            }
+            const left = line.match(/^Frames left out because their wavelength did not match: (.+)\.$/i)?.[1];
+            if (left) { forms.push(`Frames left out because their wavelength did not match: ${left}.`); }
+            const shift = line.match(/^Shift in position: (.+)\.$/i)?.[1];
+            if (shift) { forms.push(`The shift in position was ${shift}.`); }
+            const difference = line.match(/^Difference image at the target: (.+?\.)(?:\s|$)/i)?.[1];
+            if (difference) { forms.push(`Difference image at the target: ${difference}`); }
+            const position = line.match(/^Position: (.+)\.$/i)?.[1];
+            if (position) { forms.push(`The position is ${position}.`); }
+            const targetName = line.match(/^Target: (.+)\.$/i)?.[1];
+            if (targetName) { forms.push(`The target is ${targetName}.`); }
+            const source = line.match(/^Frames came from: (.+)\.$/i)?.[1];
+            if (source) { forms.push(`The frames came from ${source}.`); }
+        }
+        return forms.some((form) => form.toLowerCase() === value.toLowerCase());
+    }
     function unsupportedNumbers(value: string): boolean
     {
         for (const list of lists(value)) {
@@ -379,10 +432,12 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             const after = value.slice(list.end).match(/[\p{L}]+(?:\/[\p{L}]+)?|[%″°]/gu) ?? [];
             const context = [...before.slice(-8), ...after.slice(0, 3)].join(' ');
             const follower = list.follower.trimStart().replace(/^-\s*/, '');
-            const nounFollower = follower.replace(/^of\s+(?:the|its|their|these|those)\s+/i, '');
+            const nounFollower = follower;
             const followingWords = nounFollower.match(/^[a-z]+(?:-[a-z]+)*(?:\s+[a-z]+(?:-[a-z]+)*)?/i)?.[0].split(/\s+/) ?? [];
             const referenceCount = /\breference stars,?\s*$/i.test(value.slice(0, list.start)) && /^with available scatter\b/i.test(follower);
-            const noun = referenceCount ? 'stars' : list.unit ? undefined : countingNoun.test(followingWords[0] ?? '') ? followingWords[0] : /^(?:in|on|at|by|over|under|above|below|across|through|from|to|of|for|and|or|the)$/i.test(followingWords[0] ?? '') ? undefined : countingNoun.test(followingWords[1] ?? '') ? followingWords[1] : undefined;
+            const frameList = /^the frames in each visit were /i.test(value) && closedForm(value);
+            const frameLeft = /^frames left out because their wavelength did not match:/i.test(value) && closedForm(value);
+            const noun = referenceCount ? 'stars' : frameList || frameLeft ? 'frames' : list.unit ? undefined : countingNoun.test(followingWords[0] ?? '') ? followingWords[0] : /^(?:in|on|at|by|over|under|above|below|across|through|from|to|of|for|and|or|the)$/i.test(followingWords[0] ?? '') ? undefined : countingNoun.test(followingWords[1] ?? '') ? followingWords[1] : undefined;
             const prefix = value.slice(0, list.start);
             const lead = boundBefore(prefix, true);
             const unitlessBlocked = Boolean(list.unit) || /^[°′″$€£±×^/]/.test(follower) || /^[A-Z]/.test(follower) || foreign.test(follower);
@@ -392,19 +447,19 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
                 const integer = !raw.includes('.');
                 if (integer && !lead && !/^\s*(?:detectors?|colou?rs?|channels?|bands?|wavelengths?)?\s*(?:or more|or fewer|or less|and more|plus)\b/i.test(follower) && MISSION_COUNTS.some((entry) => entry.value === val && entry.nouns.test(follower))) { continue; }
                 if (!facts.some((fact) => {
-                    if (/\b(?:signal-to-noise|s\/n|snr)\b/i.test(value) && !fact.snr) { return false; }
+                    if (/\b(?:signal[\s-]+to[\s-]+noise|s\/n|snr)\b/i.test(value) && !fact.snr) { return false; }
                     if (fact.bound && fact.bound !== bound) { return false; }
                     const initialOver = /^over\s*$/i.test(prefix) && /^(?:days?|visits?)\s*(?:,|(?:the|its|this)\s+[a-z]+)/i.test(follower);
                     const preposition = /\b(?:\d+(?:\.\d+)?|days?|arcsec(?:onds?)?|visits?|frames?|points?|readings?|observations?)\s+over\s*$/i.test(prefix) || initialOver;
                     const overUnit = fact.unit === 'days' || Boolean(noun && /^(?:visits?|epochs?|passes?|observations?)$/i.test(noun));
                     if (bound && !fact.bound && !(preposition && overUnit)) { return false; }
                     const noteBound = prefix.match(/\b(?:more than|at least|below|less than|nearly|almost|close to|roughly|about|around|approximately|some|a minimum of|a maximum of|up to|as many as|as few as|no more than|no fewer than|no less than|at most)\s*$/i)?.[0].trim().toLowerCase();
-                    if ((noteBound && noteBound !== fact.boundText) || /^\s*(?:(?:reference|comparison)\s+)?(?:frames?|images?|observations?|epochs?|points?|stars?|visits?|days?|arcsec)?\s*(?:or more|or fewer|or less|and more|plus|or so|at most|at least)\b/i.test(follower)) { return false; }
+                    if ((noteBound && (index === 0 || !frameList) && noteBound !== fact.boundText) || /^\s*(?:(?:reference|comparison)\s+)?(?:frames?|images?|observations?|epochs?|points?|stars?|visits?|days?|arcsec(?:onds?)?|percent|microns?|um|deg|sigma)?\s*(?:or more|or fewer|or less|and more|plus|or so|at most|at least)\b/i.test(follower)) { return false; }
                     if (fact.value !== val || (fact.printed !== raw && !(fact.constant && fact.value === 5 && raw === '5.0')) || !fact.words.test(fact.required && noun ? value : context)) { return false; }
                     if (fact.constant && facts.some((other) => !other.constant && other.unit === list.unit && other.value === val && other.printed !== raw) && !/\b(?:helium|hydrogen|water|ice|pahs|carbon dioxide|carbon monoxide)\b/i.test(context)) { return false; }
                     if (fact.scatter && !scatterSentence(value, fact.scatter)) { return false; }
                     if (fact.medianDirection && !medianSentence(value, fact)) { return false; }
-                    if (fact.frames && /\b(?:each|every|per)\s+visit\b/i.test(value) && !equalFrames) { return false; }
+                    if (fact.frames && /\b(?:each|every|per)\s+visit\b/i.test(value) && !equalFrames && !frameList) { return false; }
                     if (fact.nouns && !noun) { return false; }
                     if (noun && (!fact.nouns?.test(noun) || (fact.required && !fact.required.test(value)))) { return false; }
                     if (fact.unit) { return list.unit === fact.unit; }
@@ -424,8 +479,8 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
         if (/[<>]|:\/\/|www\./i.test(value) || (/\d/.test(value) && /\b(?:years?|yrs?|yearly|annual|annually|annum|decade|century)\b/i.test(value))) { return true; }
         if (namePattern) { value = value.replace(namePattern, 'NAME'); }
         if (/^[\s"'“”‘’\-–—•([{]*\p{Ll}/u.test(value) || comparisonInvalid(value) || directionInvalid(value)) { return true; }
-        if (/\b(?:[A-Za-z]+\d\w*|\d+[A-Za-z]\w*)\s+(?:(?:reference|comparison)\s+)?(?:visits?|frames?|stars?|points?)\b/i.test(value)) { return true; }
-        if (/\b(?:upwards of|just over|just under)\s+\d/i.test(value)) { return true; }
+        if (Array.from(value.matchAll(/\b(?:[A-Za-z]+\d\w*|\d+[A-Za-z]\w*)\s+(?:(?:reference|comparison)\s+)?([a-z]+)\b/gi)).some((match) => countingNoun.test(match[1]!))) { return true; }
+        if (/\b(?:upwards of|just over|just under|more or less|circa|approx\.?|an estimated|almost exactly|barely|close on|at minimum|at maximum)\s+\d|[~≈≥≤]\s*\d|\d[^.!?]*\b(?:give or take|or thereabouts|maybe more|if not more|or so)\b/i.test(value)) { return true; }
         if (/\b[OBAFGKMLTY]\d(?:\.\d)?(?:IV|I{1,3}|V)?[a-z]*\b/.test(value)) { return true; }
         value = value.replace(/\b(?:CO2|H2O|H2|CH4|2MASS|W[1-4]|DR[1-3]|QR3)\b/gi, 'NAME').replace(/−/g, '-');
         // The sheet gives time in days only and never a magnitude, so any other time unit, or a magnitude, is the
@@ -445,14 +500,6 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
         }
         const ordinals = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth'];
         const ordinal = /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+visits?\b/gi;
-        const rank = /\b(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[\s-]+(brightest|faintest)\s+reading\s+was\s+([-−]?\d+(?:\.\d+)?)\b/i;
-        const ranked = value.match(rank);
-        if (ranked) {
-            const readings = sheet.find((line) => /^Brightness relative to the reference stars, in time order:/i.test(line))?.split(':')[1];
-            const values = readings ? lists(readings).flatMap((list) => list.values.map(Number)).sort((a, b) => ranked[2]!.toLowerCase() === 'brightest' ? b - a : a - b) : [];
-            if (values[ordinals.indexOf(ranked[1]!.toLowerCase())] !== Number(ranked[3]!.replace('−', '-'))) { return true; }
-            value = value.replace(rank, `reading was ${ranked[3]}`);
-        }
         return /discover/i.test(value)
             || /\b(?:second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[\s-]+(?:nearest|closest|brightest|faintest|largest|smallest|coldest|coolest|hottest|fastest|most|least)\b/i.test(value)
             || /\b[\p{L}-]*(?:hundredth|thousandth|millionth|billionth)s?\b/iu.test(value)
@@ -472,17 +519,19 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             || /(?:\d\s+May\b|\bMay\s+\d)/.test(value)
             || Array.from(value.matchAll(ordinal)).some((match) => ordinals.indexOf(match[1]!.toLowerCase()) + 1 > visitCount
                 && !/^\s+(?:would|could|will|should|might)\b/i.test(value.slice(match.index + match[0].length))
-                && !/\b(?:would|could|will|should|might|next|later|another|one more)(?:\s+[\p{L}-]+){0,4}\s*$/iu.test(value.slice(0, match.index)))
+                && !/\b(?:would|could|will|should|might|next|later|another|one more|wait|until|await)(?:\s+[\p{L}-]+){0,4}\s*$/iu.test(value.slice(0, match.index)))
             || unsupportedNumbers(value);
     }
     let dropped = 0;
     let count = 0;
+    let activeLabel = '';
     const paragraphs: string[] = [];
     for (const raw of text.split(/\r?\n/)) {
         const line = raw.trim();
         if (!line) { continue; }
         const labelMatch = line.match(/^(?:\*\*)?(What this shows|How far to trust it|What to check next)\s*(?:\*\*)?\s*:(?:\*\*)?/i);
         const label = labelMatch ? `${labelMatch[1]}:` : '';
+        if (label) { activeLabel = label; }
         const body = line.slice(labelMatch?.[0].length ?? 0).trim();
         const chunks = body.match(/.*?(?:[.!?](?=\s|$)|$)/g)?.map((s) => s.trim()).filter(Boolean) ?? [];
         const sentences: string[] = [];
@@ -498,7 +547,11 @@ export function checkNote(text: string, sheet: string[]): { text: string; droppe
             const labeled = `${label} ${sentence}`;
             const pairs = [['(', ')'], ['[', ']'], ['{', '}'], ['“', '”']];
             const unbalanced = pairs.some(([left, right]) => sentence.split(left!).length !== sentence.split(right!).length) || (sentence.match(/"/g)?.length ?? 0) % 2 !== 0;
-            if (!/[.!?]$/.test(sentence) || unbalanced || invalid(sentence) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
+            const closed = /^(?:What this shows|How far to trust it):$/i.test(activeLabel);
+            const next = /^What to check next:$/i.test(activeLabel);
+            const questionOnly = sentence.replace(/^\w+\s+/, '').replace(/\b(?:whether|if)\s+(?:the\s+)?(?:candidate\s+)?(?:change|star|target|brightness|signal-to-noise)\s+(?:(?:is|was|looks|appears)\s+[\w-]+|repeats)(?=[.!?]$)/i, 'question');
+            const assertion = /[;:]|\b(?:is|are|was|were|has|have|had|looks?|appears?|outweighs?|changed|moved|shifted|brightened|faded|rose|fell)\b|\b(?:the|a|an)\s+[a-z-]+\s+(?!in\b|at\b|on\b|to\b|with\b|from\b|near\b|across\b|between\b|again\b|and\b|or\b|for\b|against\b|using\b|position\b|frames?\b|images?\b|brightness\b|readings?\b|data\b|measurements?\b)[a-z]+\b|\b(?!(?:the|a|an|these|those|some)\b)[a-z-]+\s+[a-z-]+(?:s|ed)[.!?]$|\b[a-z-]+s\s+(?!(?:to|for|in|on|at|with|and|or|from|over|across|between|that|which|when|if|whether)\b)[a-z-]+\s+[a-z-]+\b/i.test(questionOnly);
+            if (!/[.!?]$/.test(sentence) || unbalanced || (closed && !closedForm(sentence)) || (next && (!/^(?:Check|Look|Compare|See|Wait|Watch|Try|Open|Switch|Slide|Step|Use|Read|Repeat|Go)\b/i.test(sentence) || assertion)) || invalid(sentence) || (/\d/.test(labeled) && /\b(?:years?|yearly|annual|annually|annum|decade|century)\b/i.test(labeled))) {
                 dropped++;
                 return false;
             }
