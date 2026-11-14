@@ -1317,9 +1317,9 @@ describe('change finder, round 7: no number where a neighbour or an edge is in t
 
     it('quotes no wrong percentage when a faint neighbour changes a lot but stays faint (Codex round 7)', () => {
         // At 8″ the later-visit level check already hides it; at 7″ and 12″ only the change check does (81%, 74%
-        // without it). A neighbour that fades instead is the blend rule's.
+        // without it). One fading 400 -> 10 gave "32% brighter" (Codex round 7).
         const wrong: string[] = [];
-        for (const [d, n0, n1] of [[7, 20, 700], [8, 20, 700], [12, 20, 700], [7, 50, 900], [12, 700, 20], [8, 900, 50]]) {
+        for (const [d, n0, n1] of [[7, 20, 700], [8, 20, 700], [12, 20, 700], [7, 50, 900], [8, 400, 10], [12, 400, 10], [7, 600, 10]]) {
             const a = noise(grid), b = noise(grid);
             const x2 = 60 + d! / P;
             point(a, grid, 60, 60, 2000); point(b, grid, 60, 60, 3000);
