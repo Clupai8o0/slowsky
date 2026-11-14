@@ -95,8 +95,8 @@ export interface LiveOptions extends SourceOptions {
     search?: (q: FrameQuery, signal?: AbortSignal) => Promise<FrameRecord[]>;
     reader?: RangeReader;
     maxHeaders?: number; // most frames whose headers are read (default 60); every visit is kept
-    stallTimeoutMs?: number; // no progress while archive operations are pending (default 20000)
-    loadTimeoutMs?: number; // one complete live load (default 180000)
+    stallTimeoutMs?: number; // no progress while archive operations are pending (default 30000; above the proxy's 25 s limit)
+    loadTimeoutMs?: number; // backstop for a whole load (default 600000); the stall limit is the real limit
 }
 
 export interface SnapshotOptions extends SourceOptions {
@@ -419,13 +419,15 @@ export class ArchiveTimeoutError extends Error {
 }
 
 // One clock follows progress across all pending archive operations in the load.
-function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: number): typeof fetch
+function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: number): { fetch: typeof fetch; dispose: () => void }
 {
     let pending = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
+    const cleanups = new Set<() => void>();
     const arm = (): void => {
         clearTimeout(timer);
-        timer = pending > 0 && !load.signal.aborted
+        timer = pending > 0 && !disposed && !load.signal.aborted
             ? setTimeout(() => load.abort(new ArchiveTimeoutError('stall')), timeoutMs) : undefined;
     };
     const start = (): ((progress: boolean) => void) => {
@@ -444,8 +446,9 @@ function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: n
             }
         };
     };
-    load.signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
-    return async (input, init) => {
+    const stopTimer = (): void => clearTimeout(timer);
+    load.signal.addEventListener('abort', stopTimer, { once: true });
+    const wrapped: typeof fetch = async (input, init) => {
         const request = new AbortController();
         const upstream = init?.signal;
         let bodyReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -455,6 +458,7 @@ function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: n
             load.signal.removeEventListener('abort', onAbort);
             upstream?.removeEventListener('abort', onAbort);
             request.signal.removeEventListener('abort', onRequestAbort);
+            cleanups.delete(cleanup);
         };
         const onAbort = (): void => {
             abort();
@@ -465,6 +469,7 @@ function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: n
         };
         load.signal.addEventListener('abort', onAbort, { once: true });
         upstream?.addEventListener('abort', onAbort, { once: true });
+        cleanups.add(cleanup);
         if (load.signal.aborted || upstream?.aborted) {
             onAbort();
             throw request.signal.reason;
@@ -514,8 +519,13 @@ function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: n
                 async cancel(reason)
                 {
                     cancelling = true;
+                    const finishCancel = start();
                     try {
                         await Promise.race([reader.cancel(reason), cancelled]);
+                        finishCancel(true);
+                    } catch (error) {
+                        finishCancel(false);
+                        throw error;
                     } finally {
                         cleanup();
                     }
@@ -527,6 +537,18 @@ function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: n
             cleanup();
             throw error;
         }
+    };
+    return {
+        fetch: wrapped,
+        dispose()
+        {
+            disposed = true;
+            clearTimeout(timer);
+            load.signal.removeEventListener('abort', stopTimer);
+            for (const cleanup of cleanups) {
+                cleanup();
+            }
+        },
     };
 }
 
@@ -721,8 +743,9 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
             const controller = new AbortController();
             const abort = (): void => controller.abort(callerSignal?.reason);
             callerSignal?.addEventListener('abort', abort, { once: true });
-            const timer = setTimeout(() => controller.abort(new ArchiveTimeoutError('total')), opts.loadTimeoutMs ?? 180000);
-            const timedFetch = archiveFetch(fetcher, controller, opts.stallTimeoutMs ?? 20000);
+            const timer = setTimeout(() => controller.abort(new ArchiveTimeoutError('total')), opts.loadTimeoutMs ?? 600000);
+            const archive = archiveFetch(fetcher, controller, opts.stallTimeoutMs ?? 30000);
+            const timedFetch = archive.fetch;
             const reader = opts.reader ?? createRangeReader({ fetch: timedFetch });
             const search = opts.search ?? ((q: FrameQuery, signal?: AbortSignal) => searchFrames(q, signal, timedFetch));
             const loadReq = { ...req, signal: controller.signal };
@@ -929,13 +952,16 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
             }
             try {
                 return await Promise.race([work(loadReq), cancelled]);
+            } catch (error) {
+                controller.abort(error);
+                throw error;
             } finally {
                 clearTimeout(timer);
                 callerSignal?.removeEventListener('abort', abort);
                 if (onAbort) {
                     controller.signal.removeEventListener('abort', onAbort);
                 }
-                controller.abort();
+                archive.dispose();
             }
         },
     };

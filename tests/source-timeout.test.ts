@@ -119,12 +119,12 @@ function observed<T>(promise: Promise<T>)
 
 describe('live archive deadlines', () => {
     beforeEach(() => { vi.useFakeTimers(); });
-    afterEach(() => { vi.useRealTimers(); });
+    afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
     it.each(['search', 'index', 'wave', 'IMAGE', 'ZODI', 'VARIANCE'] as Stage[])(
         'times out stalled %s response headers', async (stage) => {
             const fake = archive(stage);
-            const source = createLiveSource({ fetch: fake.fetcher, ...(stage === 'search' ? {} : { search: async () => [record] }) });
+            const source = createLiveSource({ fetch: fake.fetcher, stallTimeoutMs: 20000, ...(stage === 'search' ? {} : { search: async () => [record] }) });
             const state = observed(source.load(request));
             await vi.advanceTimersByTimeAsync(20000);
             expect(fake.reached).toContain(stage);
@@ -138,7 +138,7 @@ describe('live archive deadlines', () => {
     it.each(['search', 'index', 'wave', 'IMAGE', 'ZODI', 'VARIANCE'] as Stage[])(
         'times out stalled %s response body', async (stage) => {
             const fake = archive(stage, true);
-            const source = createLiveSource({ fetch: fake.fetcher, ...(stage === 'search' ? {} : { search: async () => [record] }) });
+            const source = createLiveSource({ fetch: fake.fetcher, stallTimeoutMs: 20000, ...(stage === 'search' ? {} : { search: async () => [record] }) });
             const state = observed(source.load(request));
             await vi.advanceTimersByTimeAsync(20000);
             expect(fake.reached).toContain(stage);
@@ -164,7 +164,7 @@ describe('live archive deadlines', () => {
 
     it('aborts all concurrent pixel requests when one times out', async () => {
         const fake = archive(['IMAGE', 'ZODI', 'VARIANCE']);
-        const state = observed(createLiveSource({ fetch: fake.fetcher, search: async () => [record] }).load(request));
+        const state = observed(createLiveSource({ fetch: fake.fetcher, search: async () => [record], stallTimeoutMs: 20000 }).load(request));
         await vi.advanceTimersByTimeAsync(20000);
         expect(state.error).toMatchObject({ name: 'ArchiveTimeoutError' });
         for (const stage of ['IMAGE', 'ZODI', 'VARIANCE'] as Stage[]) {
@@ -236,7 +236,7 @@ describe('live archive deadlines', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('uses the total limit when cancelling an invalid range response hangs', async () => {
+    it('uses the stall limit when cancelling an invalid range response hangs', async () => {
         const fetcher: typeof fetch = async (input) => {
             if (String(input).includes('gsss.stsci.edu') || String(input).includes('vizier.cfa.harvard.edu')) {
                 return new Response('', { status: 503 });
@@ -246,18 +246,106 @@ describe('live archive deadlines', () => {
             }), { status: 200 });
         };
         const state = observed(createLiveSource({ fetch: fetcher, search: async () => [record] }).load(request));
-        await vi.advanceTimersByTimeAsync(180000);
+        await vi.advanceTimersByTimeAsync(29999);
+        expect(state.settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(state.error).toMatchObject({ name: 'ArchiveTimeoutError', reason: 'stall' });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('uses the 600 second default for the whole load', async () => {
+        const fake = archive();
+        const state = observed(createLiveSource({ fetch: fake.fetcher, search: () => new Promise(() => {}) }).load(request));
+        await vi.advanceTimersByTimeAsync(599999);
+        expect(state.settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
         expect(state.error).toMatchObject({ name: 'ArchiveTimeoutError', reason: 'total' });
         expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('uses the 180 second default for the whole load', async () => {
-        const fake = archive();
-        const state = observed(createLiveSource({ fetch: fake.fetcher, search: () => new Promise(() => {}) }).load(request));
-        await vi.advanceTimersByTimeAsync(179999);
+    it('allows a search proxy response after 24 seconds', async () => {
+        const fake = archive(undefined, false, 24000);
+        const state = observed(createLiveSource({ fetch: fake.fetcher }).load(request));
+        await vi.advanceTimersByTimeAsync(24000);
+        expect(state.error).toBeUndefined();
+        expect(state.value?.source).toBe('live');
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('releases unread response listeners without aborting a successful request', async () => {
+        const caller = new AbortController();
+        let requestSignal!: AbortSignal;
+        let loadSignal!: AbortSignal;
+        const signalAdd = vi.spyOn(AbortSignal.prototype, 'addEventListener');
+        const signalRemove = vi.spyOn(AbortSignal.prototype, 'removeEventListener');
+        const fetcher: typeof fetch = async (input, init) => {
+            if (String(input).includes('archive/unread')) {
+                requestSignal = init!.signal!;
+                return new Response(new ReadableStream<Uint8Array>({}));
+            }
+            return new Response('');
+        };
+        const search = async (_query: unknown, signal?: AbortSignal) => {
+            loadSignal = signal!;
+            await capture.fetch!('https://archive/unread', { signal: caller.signal });
+            return [];
+        };
+        const state = observed(createLiveSource({ fetch: fetcher, search }).load({ ...request, signal: caller.signal }));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(state.value?.source).toBe('live');
+        for (const signal of [caller.signal, loadSignal, requestSignal]) {
+            const added = signalAdd.mock.calls.filter((_call, i) => signalAdd.mock.contexts[i] === signal);
+            const removed = signalRemove.mock.calls.filter((_call, i) => signalRemove.mock.contexts[i] === signal);
+            expect(added.length).toBeGreaterThan(0);
+            for (const [event, listener] of added) {
+                expect(removed.some(([e, l]) => e === event && l === listener)).toBe(true);
+            }
+        }
+        expect(loadSignal.aborted).toBe(false);
+        expect(requestSignal.aborted).toBe(false);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('does not treat a rejected cancel as progress for another pending request', async () => {
+        const fetcher: typeof fetch = async (input) => {
+            if (String(input).endsWith('/stuck')) { return new Promise<Response>(() => {}); }
+            if (String(input).endsWith('/cancel')) {
+                return new Response(new ReadableStream<Uint8Array>({
+                    cancel() { return new Promise<void>((_resolve, reject) => setTimeout(() => reject(new Error('cancel failed')), 90)); },
+                }));
+            }
+            return new Response('');
+        };
+        const search = async () => {
+            const response = await capture.fetch!('https://archive/cancel');
+            await Promise.all([capture.fetch!('https://archive/stuck'), response.body!.cancel().catch(() => undefined)]);
+            return [];
+        };
+        const state = observed(createLiveSource({ fetch: fetcher, search, stallTimeoutMs: 100 }).load(request));
+        await vi.advanceTimersByTimeAsync(99);
         expect(state.settled).toBe(false);
         await vi.advanceTimersByTimeAsync(1);
-        expect(state.error).toMatchObject({ name: 'ArchiveTimeoutError' });
+        expect(state.error).toMatchObject({ name: 'ArchiveTimeoutError', reason: 'stall' });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('clears a pending archive timer when a load succeeds', async () => {
+        let signal!: AbortSignal;
+        const fetcher: typeof fetch = (input, init) => {
+            if (String(input).endsWith('/pending')) {
+                signal = init!.signal!;
+                return new Promise<Response>(() => {});
+            }
+            return Promise.resolve(new Response(''));
+        };
+        const search = async () => {
+            void capture.fetch!('https://archive/pending');
+            return [];
+        };
+        const state = observed(createLiveSource({ fetch: fetcher, search }).load(request));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(state.value?.source).toBe('live');
+        expect(signal.aborted).toBe(false);
         expect(vi.getTimerCount()).toBe(0);
     });
 
@@ -335,11 +423,68 @@ describe('live archive deadlines', () => {
             return new Response(null);
         };
         const search = async () => { await Promise.all([capture.fetch!('https://archive/stall'), capture.fetch!('https://archive/progress')]); return []; };
-        const state = observed(createLiveSource({ fetch: fetcher, search }).load(request));
+        const state = observed(createLiveSource({ fetch: fetcher, search, stallTimeoutMs: 20000 }).load(request));
         await vi.advanceTimersByTimeAsync(34999);
         expect(state.settled).toBe(false);
         await vi.advanceTimersByTimeAsync(1);
         expect(state.error).toMatchObject({ name: 'ArchiveTimeoutError', reason: 'stall', message: 'Network request timed out.' });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('starts the stall timer after headers race a request abort', async () => {
+        const upstream = new AbortController();
+        const reason = new Error('sibling failed');
+        const fetcher: typeof fetch = (input) => {
+            if (String(input).endsWith('/race')) {
+                const response = Promise.resolve(new Response(null));
+                queueMicrotask(() => upstream.abort(reason));
+                return response;
+            }
+            if (String(input).endsWith('/stuck')) { return new Promise<Response>(() => {}); }
+            return Promise.resolve(new Response(''));
+        };
+        const search = async () => {
+            await capture.fetch!('https://archive/race', { signal: upstream.signal }).catch(() => undefined);
+            await capture.fetch!('https://archive/stuck');
+            return [];
+        };
+        const state = observed(createLiveSource({ fetch: fetcher, search, stallTimeoutMs: 100, loadTimeoutMs: 1000 }).load(request));
+        await vi.advanceTimersByTimeAsync(100);
+        expect(state.error).toMatchObject({ name: 'ArchiveTimeoutError', reason: 'stall' });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it.each(['body', 'headers'] as const)('does not count a caught %s error as pending', async (kind) => {
+        const failure = new Error('frame failed');
+        const fetcher: typeof fetch = async (input) => {
+            if (!String(input).includes('archive/failure')) { return new Response(''); }
+            if (kind === 'headers') { throw failure; }
+            let first = true;
+            return new Response(new ReadableStream<Uint8Array>({
+                pull(controller) {
+                    if (first) {
+                        first = false;
+                        controller.enqueue(new Uint8Array([1]));
+                    } else {
+                        controller.error(failure);
+                    }
+                },
+            }));
+        };
+        const search = async () => {
+            try {
+                await (await capture.fetch!('https://archive/failure')).arrayBuffer();
+                throw new Error('expected failure');
+            } catch (error) {
+                expect(error).toBe(failure);
+            }
+            await new Promise<void>((resolve) => setTimeout(resolve, 200));
+            return [];
+        };
+        const state = observed(createLiveSource({ fetch: fetcher, search, stallTimeoutMs: 100 }).load(request));
+        await vi.advanceTimersByTimeAsync(200);
+        expect(state.error).toBeUndefined();
+        expect(state.value?.source).toBe('live');
         expect(vi.getTimerCount()).toBe(0);
     });
 
