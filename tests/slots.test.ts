@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { FEATURES, FLAGS_TEXT, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
 import { makeWcs } from '../src/lib/wcs';
 import type { FlagsLayout } from '../src/lib/flags';
-import type { SkyResult } from '../src/lib/source';
+import type { SkyRequest, SkyResult } from '../src/lib/source';
 import type { OutputGrid, PixelBox, RegriddedFrame, WcsParams } from '../src/lib/types';
 
 const angle = 31 * Math.PI / 180;
@@ -167,7 +167,144 @@ describe('slots for modules still in their lanes', () => {
         expect(renderHalo(el, v)).toBe(false);
         const none = { key: false, layer: false, note: '' };
         expect(mountFalseColour(el, () => {}).update(v, true)).toEqual(none);
-        expect(mountFalseColour(el, () => {}, { enabled: true }).update(v, true)).toEqual(none);
         expect(mountFalseColour(el, () => {}, { enabled: true }).update(null, true)).toEqual(none);
+    });
+});
+
+function colourHarness(enabled = true)
+{
+    const calls: { req: SkyRequest; resolve: (result: SkyResult) => void; reject: (error: Error) => void }[] = [];
+    const paint = vi.fn();
+    const onChange = vi.fn();
+    const source = { load: (req: SkyRequest) => new Promise<SkyResult>((resolve, reject) => calls.push({ req, resolve, reject })) };
+    const slot = mountFalseColour({} as HTMLElement, onChange, { enabled, source, paint });
+    return { slot, calls, paint, onChange };
+}
+
+describe('false colour slot', () => {
+    it('hides demo and disabled views, and explains snapshot and Blink', () => {
+        const h = colourHarness();
+        const r = sky([frame('a')]);
+        expect(h.slot.update(view(r, 0, { source: 'demo' }), true)).toEqual({ key: false, layer: false, note: '' });
+        expect(h.slot.update(view(r, 0, { source: 'snapshot' }), true).note).toMatch(/live read/i);
+        expect(h.slot.update(view(r), true).note).toMatch(/Stack/);
+        expect(h.slot.update(view(r), false).note).toBe('');
+        expect(h.calls).toHaveLength(0);
+        const disabled = colourHarness(false);
+        expect(disabled.slot.update(view(r, 0, { mode: 'stack' }), true)).toEqual({ key: false, layer: false, note: '' });
+        expect(disabled.calls).toHaveLength(0);
+    });
+
+    it.each([[2.419, 4.6, 6], [2.42, 1.25, 2]] as const)('requests the partner of %s once', (lambda, partner, detector) => {
+        const h = colourHarness();
+        const r = { ...sky([frame('a')]), lambda };
+        const v = view(r, 0, { mode: 'stack', targetId: 'barnard' });
+        expect(h.slot.update(v, true).note).toMatch(/Reading/);
+        h.slot.update(v, true);
+        expect(h.calls).toHaveLength(1);
+        expect(h.calls[0]!.req).toMatchObject({ center: grid.center, fovDeg: grid.fovDeg, lambda: partner, detector, target: 'barnard' });
+    });
+
+    it('drops stale and switched-off reads', async () => {
+        const h = colourHarness();
+        const a = sky([frame('a')]);
+        const b = sky([frame('b')]);
+        const v = view(b, 0, { mode: 'stack' });
+        h.slot.update(view(a, 0, { mode: 'stack' }), true);
+        h.slot.update(v, true);
+        expect(h.calls[0]!.req.signal?.aborted).toBe(true);
+        h.calls[0]!.resolve(sky([frame('old')]));
+        await flush();
+        expect(h.paint).not.toHaveBeenCalled();
+        expect(h.onChange).not.toHaveBeenCalled();
+        h.slot.update(v, false);
+        expect(h.calls[1]!.req.signal?.aborted).toBe(true);
+        h.calls[1]!.resolve(sky([frame('old')]));
+        await flush();
+        expect(h.paint).not.toHaveBeenCalled();
+    });
+
+    it('reports read failure, no frames and a mismatched grid', async () => {
+        for (const failure of ['reject', 'empty', 'grid'] as const) {
+            const h = colourHarness();
+            const r = sky([frame('a')]);
+            const v = view(r, 0, { mode: 'stack' });
+            h.slot.update(v, true);
+            if (failure === 'reject') {
+                h.calls[0]!.reject(new Error('offline'));
+            } else if (failure === 'empty') {
+                h.calls[0]!.resolve(sky([]));
+            } else {
+                h.calls[0]!.resolve({ ...sky([frame('b')]), grid: { ...grid, width: 98 } });
+            }
+            await flush();
+            const state = h.slot.update(v, true);
+            expect(state.layer).toBe(false);
+            expect(state.note).toMatch(failure === 'empty' ? /4\.60 µm/ : failure === 'grid' ? /grid/i : /read/i);
+            expect(h.paint).not.toHaveBeenCalled();
+        }
+    });
+
+    it.each([false, true])('paints the short band blue whichever band starts the view (long first: %s)', async longFirst => {
+        const h = colourHarness();
+        const short = frame('short');
+        const long = frame('long');
+        short.lambdaAtCenter = 1.234;
+        long.lambdaAtCenter = 4.567;
+        short.data[0] = 100;
+        const initial = sky([longFirst ? long : short]);
+        initial.lambda = longFirst ? 4.6 : 1.25;
+        const partner = sky([longFirst ? short : long]);
+        const v = view(initial, 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(partner);
+        await flush();
+        const state = h.slot.update(v, true);
+        expect(state.layer).toBe(true);
+        expect(state.note).toContain('Blue: 1.23 µm');
+        expect(state.note).toContain('Orange: 4.57 µm');
+        const rgba = h.paint.mock.calls[0]![1] as Uint8ClampedArray;
+        expect(rgba[2]).toBeGreaterThan(rgba[0]!);
+        h.slot.update(v, true);
+        expect(h.paint).toHaveBeenCalledTimes(1);
+        expect(h.calls).toHaveLength(1);
+    });
+
+    it('uses the mean measured wavelengths of all stacked frames', async () => {
+        const h = colourHarness();
+        const first = frame('a');
+        const second = frame('b');
+        const partner = frame('c');
+        first.lambdaAtCenter = 1.1;
+        second.lambdaAtCenter = 1.3;
+        partner.lambdaAtCenter = 4.4;
+        const initial = sky([first, second]);
+        const v = view(initial, 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([partner]));
+        await flush();
+        expect(h.slot.update(v, true).note).toContain('Blue: 1.20 µm');
+    });
+
+    it('turns source, stack and paint exceptions into notes', async () => {
+        const r = sky([frame('a')]);
+        const v = view(r, 0, { mode: 'stack' });
+        const sync = mountFalseColour({} as HTMLElement, () => {}, { enabled: true, source: { load: () => { throw new Error(); } } });
+        expect(sync.update(v, true).layer).toBe(false);
+        const h = colourHarness();
+        h.slot.update(v, true);
+        const bad = frame('bad');
+        bad.data = new Float32Array(1);
+        h.calls[0]!.resolve(sky([bad]));
+        await flush();
+        expect(h.slot.update(v, true).layer).toBe(false);
+        const p = colourHarness();
+        p.paint.mockImplementation(() => { throw new Error(); });
+        p.slot.update(v, true);
+        const partner = frame('p');
+        partner.lambdaAtCenter = 4.5;
+        p.calls[0]!.resolve(sky([partner]));
+        await flush();
+        expect(p.slot.update(v, true).layer).toBe(false);
     });
 });
