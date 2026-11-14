@@ -161,6 +161,7 @@ export interface PassStore {
 export interface AiRequest {
     order: number;
     generation: number;
+    period: number;
 }
 
 export interface AiNote {
@@ -169,6 +170,7 @@ export interface AiNote {
     update(view: NoteView | null): void;
     startRequest(): AiRequest;
     setRemaining(n: number, request?: AiRequest): void;
+    exhaustRemaining(request?: AiRequest): void;
     relock(request?: AiRequest): void;
 }
 
@@ -229,10 +231,13 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     let requestOrder = 0;
     let latestRemainingOrder = 0;
     let remaining: number | undefined;
+    let period = 0;
+    let exhausted = false;
+    const askOn = deps.askOn ?? ASK_ENABLED;
 
     function startRequest(): AiRequest
     {
-        return { order: ++requestOrder, generation };
+        return { order: ++requestOrder, generation, period };
     }
 
     function passcode(): string | undefined
@@ -297,7 +302,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     function setLeft(n: number | undefined): void
     {
         remaining = n;
-        left.textContent = n === undefined ? '' : (deps.askOn ?? ASK_ENABLED)
+        left.textContent = n === undefined ? '' : askOn
             ? n === 1 ? '1 AI note or question left today' : `${n} AI notes or questions left today`
             : leftText(n);
         left.hidden = n === undefined;
@@ -305,13 +310,35 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
 
     function setRequestRemaining(n: number, request: AiRequest): void
     {
-        if (request.generation !== generation) {
+        if (request.generation !== generation || (askOn && request.period !== period)) {
+            return;
+        }
+        if (askOn) {
+            if (!exhausted && (remaining === undefined || n < remaining)) {
+                setLeft(n);
+            }
             return;
         }
         if (request.order >= latestRemainingOrder || remaining === undefined || n < remaining) {
             setLeft(n);
             latestRemainingOrder = Math.max(latestRemainingOrder, request.order);
         }
+    }
+
+    function exhaustRemaining(request?: AiRequest): void
+    {
+        if (request && (request.generation !== generation || (askOn && request.period !== period))) {
+            return;
+        }
+        exhausted = true;
+        setLeft(undefined);
+    }
+
+    function startPeriod(n: number | undefined): void
+    {
+        period++;
+        exhausted = false;
+        setLeft(n);
     }
 
     // The status line stays in the page so screen readers hear each change; empty or `quiet` lines are
@@ -326,7 +353,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     {
         setMsg(busyText(e));
         if (e.reason === 'daily') {
-            setLeft(undefined);
+            exhaustRemaining();
         }
     }
 
@@ -362,7 +389,8 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     function showLock(text: string): void
     {
         generation++;
-        const hadFocus = doc.activeElement === go || doc.activeElement === head;
+        const hadFocus = doc.activeElement === go || doc.activeElement === head
+            || (askOn && Boolean(panel.querySelector('[data-ask="form"]')?.contains(doc.activeElement)));
         lock.hidden = false;
         go.hidden = true;
         setMsg(text);
@@ -422,7 +450,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         pass.value = '';
         st = s;
         setMsg('');
-        setLeft(s.remaining);
+        startPeriod(s.remaining);
         show();
         go.focus();
     });
@@ -447,6 +475,9 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         const request = startRequest();
         try {
             const note = await fetchNote(f, { signal: c.signal, ...(sent !== undefined ? { passcode: sent } : {}) });
+            if (askOn && note.remaining !== undefined && !note.cached) {
+                setRequestRemaining(note.remaining, request);
+            }
             if (c.signal.aborted || ctrl !== c || request.generation !== generation) {
                 return;
             }
@@ -460,10 +491,13 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
             disc.textContent = disclaimer(note.model);
             setMsg(MSG.written, true);
             // A cached note carries the allowance from when it was written, so it can't update the count.
-            if (note.remaining !== undefined && !note.cached) {
+            if (!askOn && note.remaining !== undefined && !note.cached) {
                 setRequestRemaining(note.remaining, request);
             }
         } catch (err) {
+            if (askOn && err instanceof InsightError && err.code === 'busy' && err.reason === 'daily') {
+                exhaustRemaining(request);
+            }
             if (c.signal.aborted || ctrl !== c || request.generation !== generation) {
                 return;
             }
@@ -474,6 +508,9 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 const { s, reached } = await check(sent);
                 if (mine !== tries || ctrl !== c || request.generation !== generation) {
                     return;
+                }
+                if (reached && askOn) {
+                    startPeriod(s.remaining);
                 }
                 if (!reached) {
                     setMsg(MSG.unreachable);
@@ -545,7 +582,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         }
         st = s;
         disc.textContent = disclaimer(s.model);
-        setLeft(s.remaining);
+        startPeriod(s.remaining);
         if (s.busy) {
             busy(s); // shown once; the next view or note clears it
             if (!view) {
@@ -563,6 +600,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         {
             setRequestRemaining(n, request);
         },
+        exhaustRemaining,
         relock(request?: AiRequest): void
         {
             if (request && request.generation !== generation) {

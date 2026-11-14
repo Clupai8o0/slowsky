@@ -12,6 +12,7 @@ export interface AskPanelDeps {
     doc?: Doc; // the same fake-document type ai-note.ts uses
     onRequestStart?: () => AiRequest | undefined;
     onRemaining?: (n: number, request?: AiRequest) => void;
+    onDailyLimit?: (request?: AiRequest) => void;
     onLocked?: (request?: AiRequest) => void;
 }
 
@@ -152,14 +153,14 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
                 signal: c.signal,
                 ...(sentPass !== undefined ? { passcode: sentPass } : {}),
             });
+            if ((answer.kind === 'answer' || answer.kind === 'none') && typeof answer.remaining === 'number' && Number.isFinite(answer.remaining)) {
+                deps.onRemaining?.(answer.remaining, request);
+            }
             if (c.signal.aborted || ctrl !== c || !ready || currentKey !== sentKey) {
                 if (ctrl === c) {
                     out.innerHTML = '';
                 }
                 return;
-            }
-            if ((answer.kind === 'answer' || answer.kind === 'none') && typeof answer.remaining === 'number' && Number.isFinite(answer.remaining)) {
-                deps.onRemaining?.(answer.remaining, request);
             }
             if (answer.kind === 'answer') {
                 render({ kind: 'answer', sheet: factSheet(sentFacts), lines: [...answer.lines].sort((a, b) => a - b), trust: [...answer.trust].sort((a, b) => a - b) });
@@ -169,6 +170,9 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
                 render({ kind: 'failed' });
             }
         } catch (err) {
+            if (err instanceof InsightError && err.code === 'busy' && err.reason === 'daily') {
+                deps.onDailyLimit?.(request);
+            }
             if (ctrl !== c) {
                 return;
             }
