@@ -1158,7 +1158,7 @@ export function mount(root: HTMLElement): void
         if (kind === 'cold') {
             const visits = visitsOf(result).map((v) => `${v.n} in ${monthYear(v.mjd)}`);
             // From earlier telescopes, not measured here, so it sits in the description, not under "Measured here".
-            // Luhman 2014 (arXiv:1404.6501, Table 1): [3.6] 17.44, [4.5] 13.92, W2 (4.6 µm) 13.89 mag. Detector 6
+            // Luhman 2014 (arXiv:1404.6501, Table 1): [3.6] 17.44, [4.5] 13.89, W2 (4.6 µm) 13.89 mag. Detector 6
             // covers 4.42 to 5.00 µm. Other detectors get no sentence here; the card's own line covers 3.6 vs 4.5 µm.
             const colour = st.detector === 6 ? ' WISE measured its light at 4.6 µm, inside this detector’s range (detector 6 of 6).' : '';
             return {
