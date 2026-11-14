@@ -1,3 +1,7 @@
+// Callers must pass stars at both visit dates (join gaia.ts ringsAt results).
+// Gaia coordinates are for 2016; proper motion otherwise moves stars far off.
+// Candidate counts are not science numbers. S/N uses background noise only;
+// displayed S/N is capped at "S/N > 50".
 import { gridPixToSky } from './regrid';
 import type { OutputGrid, PixelCoord, RegriddedFrame, SkyCoord } from './types';
 
@@ -40,9 +44,16 @@ export interface ChangeOptions {
     maxSpeedArcsecPerHour?: number;
     lineTolArcsec?: number;
     minFracChange?: number;
+    minShiftArcsec?: number;
+    maxSpotsPerFrame?: number;
 }
 
-type Image = { data: Float32Array; lambda: number; mjd: number; obsIds: string[] };
+// One visit (a stack or a single frame) on the output grid. `variance` is optional: the per-pixel variance on
+// the same grid (e.g. the VARIANCE plane regridded like the image). With it, noise follows the frames' own
+// error map (scaled once to the difference's measured scatter); without it, noise comes from the difference
+// image alone in 64 arcsec tiles, and a noisy patch smaller than a tile can give false candidates.
+export interface VisitImage { data: Float32Array; lambda: number; mjd: number; obsIds: string[]; variance?: Float32Array; }
+type Image = VisitImage;
 type Settings = Required<ChangeOptions>;
 type Blob = { pix: PixelCoord; snr: number; sign: 1 | -1; area: number };
 type Measurement = { z: Float32Array; sigma: number; k: number; width: number; height: number };
@@ -57,7 +68,8 @@ function settings(opts: ChangeOptions = {}): Settings
         maxDeltaLambda: opts.maxDeltaLambda ?? 0.02, maxCandidates: opts.maxCandidates ?? 50,
         minSpeedArcsecPerHour: opts.minSpeedArcsecPerHour ?? 5,
         maxSpeedArcsecPerHour: opts.maxSpeedArcsecPerHour ?? 4000, lineTolArcsec: opts.lineTolArcsec ?? 4,
-        minFracChange: opts.minFracChange ?? 0.10 };
+        minFracChange: opts.minFracChange ?? 0.10, minShiftArcsec: opts.minShiftArcsec ?? 3,
+        maxSpotsPerFrame: opts.maxSpotsPerFrame ?? 15 };
 }
 
 function validate(data: Float32Array, grid: OutputGrid): void
@@ -93,9 +105,12 @@ function robust(values: number[]): { center: number; sigma: number }
     return { center, sigma: 1.4826 * median(values.map((v) => Math.abs(v - center))) };
 }
 
-function measure(diff: Float32Array, grid: OutputGrid): Measurement
+function measure(diff: Float32Array, grid: OutputGrid, varSum?: Float32Array): Measurement
 {
     validate(diff, grid);
+    if (varSum) {
+        validate(varSum, grid);
+    }
     const k = Math.max(1, Math.round(NATIVE / grid.pixelArcsec));
     const width = Math.ceil(grid.width / k);
     const height = Math.ceil(grid.height / k);
@@ -125,6 +140,42 @@ function measure(diff: Float32Array, grid: OutputGrid): Measurement
         }
     }
     const global = robust(all);
+    // Error map from the frames, binned like the difference, then scaled to the measured scatter.
+    let errorMap: Float32Array | undefined;
+    if (varSum) {
+        errorMap = new Float32Array(width * height).fill(NaN);
+        const ratios: number[] = [];
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                let sum = 0, count = 0, valid = true;
+                for (let j = y * k; j < Math.min((y + 1) * k, grid.height); j++) {
+                    for (let i = x * k; i < Math.min((x + 1) * k, grid.width); i++) {
+                        const v = varSum[j * grid.width + i]!;
+                        if (!Number.isFinite(v) || v <= 0) {
+                            valid = false;
+                        } else {
+                            sum += v;
+                            count++;
+                        }
+                    }
+                }
+                const b = bins[y * width + x]!;
+                if (valid && count && Number.isFinite(b)) {
+                    const e = Math.sqrt(sum / count);
+                    errorMap[y * width + x] = e;
+                    ratios.push((b - global.center) / e);
+                }
+            }
+        }
+        const scale = ratios.length >= 50 ? robust(ratios).sigma : NaN;
+        if (Number.isFinite(scale) && scale > 0) {
+            for (let i = 0; i < errorMap.length; i++) {
+                errorMap[i]! *= scale;
+            }
+        } else {
+            errorMap = undefined;
+        }
+    }
     const tile = Math.max(2, Math.round(64 / (grid.pixelArcsec * k)));
     const tw = Math.ceil(width / tile);
     const th = Math.ceil(height / tile);
@@ -201,7 +252,8 @@ function measure(diff: Float32Array, grid: OutputGrid): Measurement
                 }
                 return weight ? sum / weight : NaN;
             };
-            const noise = Math.exp(interpolate(logNoise));
+            const fromFrames = errorMap ? errorMap[y * width + x]! : NaN;
+            const noise = Number.isFinite(fromFrames) && fromFrames > 0 ? fromFrames : Math.exp(interpolate(logNoise));
             const value = bins[y * width + x]!;
             z[y * width + x] = Number.isFinite(value) && noise > 0 ? (value - interpolate(centers)) / noise : NaN;
         }
@@ -226,9 +278,10 @@ function difference(earlier: Float32Array, later: Float32Array, grid: OutputGrid
     return out;
 }
 
-function blobs(diff: Float32Array, grid: OutputGrid, opt: Settings, result: ChangeResult, support = 3.75): Blob[]
+function blobs(diff: Float32Array, grid: OutputGrid, opt: Settings, result: ChangeResult, support = 3.75,
+    varSum?: Float32Array): Blob[]
 {
-    const m = measure(diff, grid);
+    const m = measure(diff, grid, varSum);
     result.sigma = m.sigma;
     const seen = new Uint8Array(m.z.length);
     const out: Blob[] = [];
@@ -331,7 +384,9 @@ function match(p: PixelCoord, stars: StarPix[], grid: OutputGrid, radius: number
 {
     let best = Infinity;
     for (const star of stars) {
-        best = Math.min(best, distance(p, star, grid));
+        if (Number.isFinite(star.x) && Number.isFinite(star.y)) {
+            best = Math.min(best, distance(p, star, grid));
+        }
     }
     return best <= radius ? best : undefined;
 }
@@ -342,12 +397,18 @@ function empty(opt: Settings): ChangeResult
         threshold: opt.threshold, skipped: [], notes: [] };
 }
 
-function finish(result: ChangeResult, opt: Settings): ChangeResult
+function finish(result: ChangeResult, opt: Settings, singleFrame = false): ChangeResult
 {
-    result.candidates.sort((a, b) => b.snr - a.snr || a.pix.y - b.pix.y || a.pix.x - b.pix.x);
+    result.candidates.sort((a, b) => (singleFrame ? Number(b.gaiaMatch) - Number(a.gaiaMatch) : 0)
+        || b.snr - a.snr || a.pix.y - b.pix.y || a.pix.x - b.pix.x);
     result.candidates = result.candidates.slice(0, Math.max(0, opt.maxCandidates));
     result.candidates.forEach((c, i) => { c.id = `c${i + 1}`; });
     return result;
+}
+
+function snrText(snr: number): string
+{
+    return snr > 50 ? 'S/N > 50' : `S/N ${snr.toFixed(1)}`;
 }
 
 function candidate(blob: Blob, grid: OutputGrid, stars: StarPix[], opt: Settings, frames: string[]): ChangeCandidate
@@ -357,8 +418,31 @@ function candidate(blob: Blob, grid: OutputGrid, stars: StarPix[], opt: Settings
     return { id: '', kind, pix: blob.pix, sky: gridPixToSky(grid, blob.pix), snr: blob.snr, sign: blob.sign,
         gaiaMatch: dist !== undefined, ...(dist === undefined ? {} : { gaiaDistArcsec: dist }), frames,
         reason: kind === 'brightness'
-            ? `A catalogue star here is ${blob.sign === 1 ? 'brighter' : 'fainter'} than in the earlier image, at S/N ${blob.snr.toFixed(1)} (candidate).`
-            : `Changed at S/N ${blob.snr.toFixed(1)} with no catalogue star here (candidate).` };
+            ? `A catalogue star here is ${blob.sign === 1 ? 'brighter' : 'fainter'} than in the earlier image, at ${snrText(blob.snr)} (candidate).`
+            : `Changed at ${snrText(blob.snr)} with no catalogue star here (candidate).` };
+}
+
+function sourceCentroid(data: Float32Array, center: PixelCoord, grid: OutputGrid): PixelCoord | undefined
+{
+    const radius = 12 / grid.pixelArcsec;
+    const ring: number[] = [];
+    for (let y = Math.max(0, Math.floor(center.y - 3 * radius)); y <= Math.min(grid.height - 1, Math.ceil(center.y + 3 * radius)); y++) {
+        for (let x = Math.max(0, Math.floor(center.x - 3 * radius)); x <= Math.min(grid.width - 1, Math.ceil(center.x + 3 * radius)); x++) {
+            const d = Math.hypot(x - center.x, y - center.y), v = data[y * grid.width + x]!;
+            if (d >= 2 * radius && d <= 3 * radius && Number.isFinite(v)) { ring.push(v); }
+        }
+    }
+    if (ring.length < 20) { return undefined; }
+    const background = median(ring);
+    let sx = 0, sy = 0, sum = 0;
+    for (let y = Math.max(0, Math.floor(center.y - radius)); y <= Math.min(grid.height - 1, Math.ceil(center.y + radius)); y++) {
+        for (let x = Math.max(0, Math.floor(center.x - radius)); x <= Math.min(grid.width - 1, Math.ceil(center.x + radius)); x++) {
+            if (Math.hypot(x - center.x, y - center.y) > radius) { continue; }
+            const value = data[y * grid.width + x]! - background;
+            if (Number.isFinite(value) && value > 0) { sx += x * value; sy += y * value; sum += value; }
+        }
+    }
+    return sum > 0 ? { x: sx / sum, y: sy / sum } : undefined;
 }
 
 function fractionalChange(earlier: Float32Array, later: Float32Array, pix: PixelCoord, grid: OutputGrid): number | undefined
@@ -427,22 +511,43 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
 {
     const opt = settings(opts), result = empty(opt);
     const diff = difference(earlier.data, later.data, grid);
+    result.notes.push(`Wavelengths: ${earlier.lambda.toFixed(3)} µm and ${later.lambda.toFixed(3)} µm.`);
+    const singleFrame = earlier.obsIds.length === 1 || later.obsIds.length === 1;
+    const warning = 'each visit is one frame; artefacts not ruled out';
+    if (singleFrame) { result.notes.push(warning); }
     if (!wavelengthsMatch(earlier.lambda, later.lambda, opt.maxDeltaLambda)) {
         result.skipped = later.obsIds.map((obsId) => ({ obsId, reason: `No earlier image within ${opt.maxDeltaLambda} µm.` }));
         result.notes.push(`${later.obsIds.length} frames skipped: no earlier image within ${opt.maxDeltaLambda} µm.`);
         return result;
     }
-    const found = blobs(diff, grid, opt, result);
+    let varSum: Float32Array | undefined;
+    if (earlier.variance && later.variance) {
+        validate(earlier.variance, grid);
+        validate(later.variance, grid);
+        varSum = new Float32Array(diff.length);
+        for (let i = 0; i < varSum.length; i++) {
+            varSum[i] = earlier.variance[i]! + later.variance[i]!;
+        }
+        result.notes.push('Noise from the frames\' own error maps.');
+    } else {
+        result.notes.push('Noise from the difference image only (no error maps given); a noisy patch smaller than about 1′ can give false candidates.');
+    }
+    const found = blobs(diff, grid, opt, result, 3.75, varSum);
     const used = new Set<number>();
+    const nearestStar = (p: PixelCoord): StarPix | undefined => stars
+        .filter((s) => Number.isFinite(s.x) && Number.isFinite(s.y) && distance(p, s, grid) <= opt.matchArcsec)
+        .sort((a, b) => distance(p, a, grid) - distance(p, b, grid))[0];
     for (let i = 0; i < found.length; i++) {
         const positive = found[i]!;
-        if (positive.sign !== 1) {
+        if (positive.sign !== 1 || used.has(i)) {
             continue;
         }
         let best = -1, closest = Infinity;
         for (let j = 0; j < found.length; j++) {
             const negative = found[j]!;
             const d = distance(positive.pix, negative.pix, grid);
+            // Pairs are judged by the measured centroid shift below, not by which catalogue entry is nearest:
+            // the caller passes each star at both visit dates, so one moving star has two entries.
             if (negative.sign === -1 && !used.has(j) && d <= opt.dipoleArcsec && d < closest
                 && Math.max(positive.area, negative.area) <= 3 * Math.min(positive.area, negative.area)) {
                 best = j;
@@ -452,15 +557,39 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         if (best >= 0) {
             used.add(i);
             used.add(best);
+            const negative = found[best]!;
+            const center = { x: (positive.pix.x + negative.pix.x) / 2, y: (positive.pix.y + negative.pix.y) / 2 };
+            const before = sourceCentroid(earlier.data, center, grid), after = sourceCentroid(later.data, center, grid);
+            const shift = before && after ? distance(before, after, grid) : 0;
+            const uncertainty = Math.hypot(PSF_FWHM / (2.35 * positive.snr), PSF_FWHM / (2.35 * negative.snr));
+            if (shift < opt.minShiftArcsec || shift < 3 * uncertainty) {
+                result.rejected.residual += 2;
+                continue;
+            }
             const c = candidate(positive, grid, stars, opt, [...earlier.obsIds, ...later.obsIds]);
             c.kind = 'mover';
-            c.reason = `A spot faded at one place and appeared ${closest.toFixed(1)}″ away: something moved between visits (candidate).`;
+            c.reason = `Source centroids shifted ${shift.toFixed(1)}″ between visits (${snrText(c.snr)}; candidate).`;
             result.candidates.push(c);
         }
     }
+    // Steady catalogue stars: small changes are leftovers, judged after movers are paired.
+    found.forEach((blob, i) => {
+        if (used.has(i)) {
+            return;
+        }
+        const star = nearestStar(blob.pix);
+        if (star) {
+            const frac = fractionalChange(earlier.data, later.data, star, grid);
+            if (frac !== undefined && Math.abs(frac) < opt.minFracChange) {
+                used.add(i); result.rejected.residual++;
+            }
+        }
+    });
     found.forEach((b, i) => {
         if (!used.has(i)) {
-            const frac = fractionalChange(earlier.data, later.data, b.pix, grid);
+            let frac = fractionalChange(earlier.data, later.data, b.pix, grid);
+            const signMismatch = frac !== undefined && Math.sign(frac) !== b.sign;
+            if (signMismatch) { frac = undefined; }
             if (frac !== undefined && Math.abs(frac) < opt.minFracChange) {
                 result.rejected.residual++;
                 return;
@@ -474,7 +603,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                     : `A source here is ${change} than in the earlier image, with no catalogue star here (candidate).`;
             } else {
                 c.kind = 'unknown';
-                c.reason = `Changed at S/N ${c.snr.toFixed(1)}; brightness change could not be measured here (candidate).`;
+                c.reason = b.sign === 1 && !c.gaiaMatch && !signMismatch
+                    ? `A source appeared here (candidate); ${snrText(c.snr)}.`
+                    : `Changed at ${snrText(c.snr)}; brightness change could not be measured here (candidate).`;
             }
             result.candidates.push(c);
         }
@@ -491,13 +622,24 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     });
     const shadows = result.rejected.residual - smallLeftovers;
     if (result.rejected.residual > 0) {
-        result.notes.push(`${smallLeftovers} small leftovers on steady stars ignored (under ${opt.minFracChange * 100}% change); ${shadows} shadows near stronger changes ignored.`);
+        result.notes.push(`${smallLeftovers} small leftovers on steady stars ignored (under ${Math.round(opt.minFracChange * 100)}% change); ${shadows} shadows near stronger changes ignored.`);
     }
-    return finish(result, opt);
+    result.candidates.forEach((c) => {
+        if (c.snr > 50 && !c.reason.includes('S/N > 50')) { c.reason += ' S/N > 50.'; }
+        if (singleFrame) { c.reason += ` ${warning}.`; }
+    });
+    return finish(result, opt, singleFrame);
 }
 
 type Point = { mjd: number; blob: Blob; obsId: string; templateId: string };
-function fit(points: Point[], grid: OutputGrid): { speed: number; pa: number; residual: number; worst: number } | undefined
+// How far a track point may sit from the fitted line: 4 times its own centroid error (PSF FWHM / (2.35 S/N)),
+// at least 1.5″ for regrid leftovers, at most lineTolArcsec. A flat tolerance let random spots line up.
+function pointTolerance(snr: number, lineTolArcsec: number): number
+{
+    return Math.min(lineTolArcsec, Math.max(1.5, 4 * PSF_FWHM / (2.35 * Math.max(snr, 1e-6))));
+}
+
+function fit(points: Point[], grid: OutputGrid, lineTolArcsec = Infinity): { speed: number; pa: number; residual: number; excess: number; worst: number } | undefined
 {
     const base = points[0]!.mjd;
     const times = points.map((p) => (p.mjd - base) * 24);
@@ -516,30 +658,38 @@ function fit(points: Point[], grid: OutputGrid): { speed: number; pa: number; re
     }
     vx /= den;
     vy /= den;
-    let residual = 0, worst = 0;
+    let residual = 0, excess = 0, worst = 0;
     points.forEach((p, i) => {
         const dt = times[i]! - t;
         const d = Math.hypot(p.blob.pix.x - x - vx * dt, p.blob.pix.y - y - vy * dt) * grid.pixelArcsec;
-        if (d > residual) {
-            residual = d;
+        residual = Math.max(residual, d);
+        const ratio = d / pointTolerance(p.blob.snr, lineTolArcsec);
+        if (ratio > excess) {
+            excess = ratio;
             worst = i;
         }
     });
     return { speed: Math.hypot(vx, vy) * grid.pixelArcsec,
-        pa: (Math.atan2(-vx, -vy) * 180 / Math.PI + 360) % 360, residual, worst };
+        pa: (Math.atan2(-vx, -vy) * 180 / Math.PI + 360) % 360, residual, excess, worst };
 }
 
 export function findTracklets(visit: RegriddedFrame[], templates: RegriddedFrame[], grid: OutputGrid,
     stars: StarPix[], opts?: ChangeOptions): ChangeResult
 {
-    const opt = settings(opts), result = empty(opt), groups: Point[][] = [], sigmas: number[] = [];
+    const opt = settings(opts), result = empty(opt), groups: Point[][] = [], sigmas: number[] = [], areas: number[] = [];
     for (const frame of [...visit, ...templates]) {
         if (!sameGrid(frame.grid, grid)) {
             throw new Error('Frame output grid differs from requested grid');
         }
         validate(frame.data, grid);
     }
-    for (const frame of visit.slice().sort((a, b) => a.frame.tMin - b.frame.tMin)) {
+    const seenIds = new Set<string>(), seenTimes = new Set<number>();
+    const uniqueVisit = visit.slice().sort((a, b) => a.frame.tMin - b.frame.tMin).filter((frame) => {
+        if (seenIds.has(frame.frame.obsId) || seenTimes.has(frame.frame.tMin)) { return false; }
+        seenIds.add(frame.frame.obsId); seenTimes.add(frame.frame.tMin); return true;
+    });
+    if (uniqueVisit.length < 3) { result.notes.push('Tracklets need at least 3 frames.'); }
+    for (const frame of uniqueVisit) {
         const template = templates.filter((t) => Math.abs(t.frame.tMin - frame.frame.tMin) >= 5
             && Number.isFinite(t.lambdaAtCenter) && Number.isFinite(frame.lambdaAtCenter))
             .sort((a, b) => Math.abs(a.lambdaAtCenter - frame.lambdaAtCenter) - Math.abs(b.lambdaAtCenter - frame.lambdaAtCenter))[0];
@@ -547,16 +697,58 @@ export function findTracklets(visit: RegriddedFrame[], templates: RegriddedFrame
             result.skipped.push({ obsId: frame.frame.obsId, reason: `No template at least 5 days away within ${opt.maxDeltaLambda} µm.` });
             continue;
         }
-        const found = blobs(difference(template.data, frame.data, grid), grid, opt, result, 2);
+        const diff = difference(template.data, frame.data, grid);
+        let finite = 0;
+        for (let i = 0; i < diff.length; i++) {
+            if (Number.isFinite(diff[i]!)) {
+                finite++;
+            }
+        }
+        areas.push(finite * grid.pixelArcsec * grid.pixelArcsec);
+        const found = blobs(diff, grid, opt, result, 2);
         if (Number.isFinite(result.sigma)) {
             sigmas.push(result.sigma);
         }
-        groups.push(found.filter((b) => b.sign === 1 && match(b.pix, stars, grid, opt.matchArcsec) === undefined)
+        const spots = found.filter((b) => b.sign === 1 && match(b.pix, stars, grid, opt.matchArcsec) === undefined)
+            .sort((a, b) => b.snr - a.snr);
+        const cap = Math.max(0, Math.floor(opt.maxSpotsPerFrame));
+        if (spots.length > cap && !result.notes.includes(`Spots limited to ${cap} brightest per frame for linking.`)) {
+            result.notes.push(`Spots limited to ${cap} brightest per frame for linking.`);
+        }
+        groups.push(spots.slice(0, cap)
             .map((blob) => ({ mjd: frame.frame.tMin, blob, obsId: frame.frame.obsId, templateId: template.frame.obsId })));
     }
     result.sigma = median(sigmas);
     if (result.skipped.length) {
         result.notes.push(`${result.skipped.length} frames skipped: no template at least 5 days away within ${opt.maxDeltaLambda} µm.`);
+    }
+    // Expected number of 3-frame lines that random spots would make by chance: every pair of spots in two frames
+    // that has an allowed speed, times the chance that a spot in a third frame falls within its tolerance of the
+    // predicted place. When that is not small, a track needs 4 frames.
+    let chanceLines = 0;
+    for (let a = 0; a < groups.length; a++) {
+        for (let b = a + 1; b < groups.length; b++) {
+            let pairs = 0;
+            for (const first of groups[a]!) {
+                for (const second of groups[b]!) {
+                    const dt = (second.mjd - first.mjd) * 24;
+                    const speed = dt > 0 ? distance(first.blob.pix, second.blob.pix, grid) / dt : NaN;
+                    if (speed >= opt.minSpeedArcsecPerHour && speed <= opt.maxSpeedArcsecPerHour) {
+                        pairs++;
+                    }
+                }
+            }
+            for (let c = 0; c < groups.length; c++) {
+                if (c !== a && c !== b && areas[c]! > 0) {
+                    chanceLines += pairs * groups[c]!.reduce((sum, p) => sum + Math.PI
+                        * pointTolerance(p.blob.snr, opt.lineTolArcsec) ** 2, 0) / areas[c]!;
+                }
+            }
+        }
+    }
+    const minPoints = chanceLines > 0.05 ? 4 : 3;
+    if (minPoints === 4) {
+        result.notes.push(`Many spots per frame: random spots would make about ${chanceLines.toFixed(1)} 3-frame lines by chance, so tracks here need at least 4 frames.`);
     }
     const tracks: Point[][] = [];
     for (let a = 0; a < groups.length; a++) {
@@ -592,13 +784,17 @@ export function findTracklets(visit: RegriddedFrame[], templates: RegriddedFrame
                         }
                     }
                     points.sort((p, q) => p.mjd - q.mjd);
-                    let motion = fit(points, grid);
-                    while (points.length > 3 && motion && motion.residual > opt.lineTolArcsec) {
+                    let motion = fit(points, grid, opt.lineTolArcsec);
+                    while (points.length > minPoints && motion && motion.excess > 1) {
                         points.splice(motion.worst, 1);
-                        motion = fit(points, grid);
+                        motion = fit(points, grid, opt.lineTolArcsec);
                     }
-                    if (points.length >= 3 && motion && motion.residual <= opt.lineTolArcsec
-                        && motion.speed >= opt.minSpeedArcsecPerHour && motion.speed <= opt.maxSpeedArcsecPerHour) {
+                    if (points.length >= minPoints && motion && motion.excess <= 1
+                        && motion.speed >= opt.minSpeedArcsecPerHour && motion.speed <= opt.maxSpeedArcsecPerHour
+                        && distance(points[0]!.blob.pix, points[points.length - 1]!.blob.pix, grid) >= NATIVE
+                        && distance(points[0]!.blob.pix, points[points.length - 1]!.blob.pix, grid) >= 3 * Math.hypot(
+                            PSF_FWHM / (2.35 * points[0]!.blob.snr), PSF_FWHM / (2.35 * points[points.length - 1]!.blob.snr))
+                        && Math.max(...points.map((p) => p.blob.snr)) <= 3 * Math.min(...points.map((p) => p.blob.snr))) {
                         tracks.push(points);
                     }
                 }
@@ -619,7 +815,7 @@ export function findTracklets(visit: RegriddedFrame[], templates: RegriddedFrame
         c.speedArcsecPerHour = motion.speed;
         c.paDeg = motion.pa;
         c.track = points.map((p) => ({ mjd: p.mjd, pix: p.blob.pix }));
-        c.reason = `Seen in ${points.length} frames along a straight line at ${motion.speed.toFixed(1)}″ per hour (candidate).`;
+        c.reason = `Seen in ${points.length} frames along a straight line at ${motion.speed.toFixed(1)}″ per hour (${snrText(c.snr)}; candidate).`;
         result.candidates.push(c);
     }
     return finish(result, opt);

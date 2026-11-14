@@ -109,6 +109,224 @@ function near(x: number, y: number, a: { pix: { x: number; y: number } }, radius
 
 describe('change finder', () => {
     beforeEach(() => { seed = 918273; });
+    it('rejects sub-threshold catalogue wobble as a mover', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 2000);
+        point(b, grid, 60 + 0.5 / grid.pixelArcsec, 60, 2000);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60 }]);
+        expect(r.candidates.some((c) => c.kind === 'mover')).toBe(false);
+    });
+
+    it('does not pair small changes on different catalogue stars', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 57, 60, 2000); point(a, grid, 63, 60, 2000);
+        point(b, grid, 57, 60, 1990); point(b, grid, 63, 60, 2010);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 57, y: 60 }, { x: 63, y: 60 }]);
+        expect(r.candidates.some((c) => c.kind === 'mover')).toBe(false);
+    });
+
+    it('ignores invalid catalogue coordinates', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 30); point(b, grid, 60, 60, 50);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: NaN, y: 0 }, { x: 60, y: 60 }]);
+        expect(r.candidates[0]?.gaiaMatch).toBe(true);
+    });
+
+    it('reports wavelengths and single-frame limitations', () => {
+        const a = noise(grid), b = noise(grid);
+        point(b, grid, 60, 60, 1000);
+        const r = compareVisits(image(a, 'a', 60000, 2.001), image(b, 'b', 60001, 2.002), grid, []);
+        expect(r.notes.join(' ')).toMatch(/2\.001.*2\.002.*µm/);
+        expect(r.notes.join(' ')).toContain('each visit is one frame; artefacts not ruled out');
+        expect(r.candidates[0]?.reason).toContain('each visit is one frame; artefacts not ruled out');
+        expect(r.candidates[0]?.reason).toContain('S/N > 50');
+        expect(r.candidates[0]?.reason).toContain('appeared here (candidate)');
+    });
+
+    it('does not make a track from a stationary source (finding 4)', () => {
+        const template = noise(grid);
+        const visit = [0, 2.1, 4.2, 6.3].map((minutes, i) => {
+            const data = noise(grid); point(data, grid, 60, 60, 30);
+            return frame(data, grid, `v${i}`, 60010 + minutes / 1440);
+        });
+        expect(findTracklets(visit, [frame(template, grid, 't', 60000)], grid, []).candidates).toHaveLength(0);
+    });
+
+    it('does not count a repeated observation as a new frame (finding 6)', () => {
+        const template = noise(grid);
+        const visit = [0, 20, 40].map((minutes, i) => {
+            const data = noise(grid);
+            injectSnr(template, data, grid, 40 + i * 15, 60, 30);
+            return frame(data, grid, `v${i}`, 60010 + minutes / 1440);
+        });
+        const t = [frame(template, grid, 't', 60000)];
+        expect(findTracklets(visit, t, grid, []).candidates.filter((c) => c.kind === 'mover')).toHaveLength(1);
+        const repeated = findTracklets([visit[0]!, visit[1]!, visit[1]!], t, grid, []);
+        expect(repeated.candidates).toHaveLength(0);
+        const sameTime = findTracklets([visit[0]!, visit[1]!, { ...visit[2]!, frame: { ...visit[2]!.frame,
+            tMin: visit[1]!.frame.tMin, tMax: visit[1]!.frame.tMax } }], t, grid, []);
+        expect(sameTime.candidates).toHaveLength(0);
+    });
+
+    it('notes that tracklets need at least 3 frames (finding 15)', () => {
+        const template = noise(grid);
+        const visit = [0, 2.1].map((minutes, i) => frame(noise(grid), grid, `v${i}`, 60010 + minutes / 1440));
+        const r = findTracklets(visit, [frame(template, grid, 't', 60000)], grid, []);
+        expect(r.candidates).toHaveLength(0);
+        expect(r.notes.join(' ')).toMatch(/at least 3 frames/);
+    });
+
+    it('never reports a brightness change whose sign disagrees with the spot (finding 5)', () => {
+        // The core fades but a ring of light inside the aperture adds more: the spot is negative, the flux grows.
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 200); point(b, grid, 60, 60, 150);
+        for (let q = 0; q < 12; q++) {
+            point(b, grid, 60 + 6 * Math.cos(q * Math.PI / 6), 60 + 6 * Math.sin(q * Math.PI / 6), 10);
+        }
+        const r = compareVisits(image(a, 'a'), { ...image(b, 'b'), obsIds: ['b', 'b2'] }, grid, [{ x: 60, y: 60 }]);
+        const negative = r.candidates.find((c) => c.sign === -1);
+        expect(negative).toBeDefined();
+        expect(negative!.fracChange).toBeUndefined();
+        expect(negative!.reason).toMatch(/could not be measured/);
+        for (const c of r.candidates) {
+            if (c.fracChange !== undefined) {
+                expect(Math.sign(c.fracChange)).toBe(c.sign);
+            }
+            expect(c.sign === -1 && /brighter/.test(c.reason)).toBe(false);
+            expect(c.sign === 1 && /fainter/.test(c.reason)).toBe(false);
+        }
+    });
+
+    it('says a new source appeared (finding 14)', () => {
+        const a = noise(grid), b = noise(grid);
+        injectSnr(a, b, grid, 60, 60, 20);
+        const r = compareVisits({ ...image(a, 'a'), obsIds: ['a', 'a2'] }, { ...image(b, 'b'), obsIds: ['b', 'b2'] }, grid, []);
+        expect(r.candidates).toHaveLength(1);
+        expect(r.candidates[0]!.reason).toContain('appeared here (candidate)');
+        expect(r.candidates[0]!.reason).not.toMatch(/could not be measured/);
+        expect(r.candidates[0]!.reason).not.toContain('artefacts not ruled out');
+    });
+
+    it('writes S/N > 50 in every kind of reason (finding 9)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 30, 30, 200); point(b, grid, 30, 30, 120);           // fade, catalogue star
+        point(a, grid, 90, 30, 300); point(b, grid, 96, 30, 300);           // mover, 9″
+        point(b, grid, 60, 90, 300);                                         // appeared
+        const stars = [{ x: 30, y: 30 }, { x: 90, y: 30 }, { x: 96, y: 30 }];
+        const r = compareVisits({ ...image(a, 'a'), obsIds: ['a', 'a2'] }, { ...image(b, 'b'), obsIds: ['b', 'b2'] }, grid, stars);
+        const g = { ...grid, width: 241, height: 241 };
+        const template = noise(g);
+        const visit = [0, 20, 40, 60].map((minutes, i) => {
+            const data = noise(g);
+            injectSnr(template, data, g, 60 + 80 * (minutes / 60) / g.pixelArcsec, 120, 80);
+            return frame(data, g, `v${i}`, 60010 + minutes / 1440);
+        });
+        const t = findTracklets(visit, [frame(template, g, 't', 60000)], g, []);
+        const all = [...r.candidates, ...t.candidates];
+        const kinds = new Set(all.filter((c) => c.snr > 50).map((c) => c.kind + (c.track ? '-track' : '')));
+        expect([...kinds].sort()).toEqual(['brightness', 'mover', 'mover-track', 'unknown']);
+        for (const c of all.filter((c) => c.snr > 50)) {
+            expect(c.reason).toContain('S/N > 50');
+            expect(c.reason).not.toMatch(/S\/N (5\d|[6-9]\d|\d{3,})/);
+        }
+    });
+
+    it('ranks catalogue stars above unmatched spots when each visit is one frame (finding 10)', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 30, 60, 40); point(b, grid, 30, 60, 40);
+        injectSnr(a, b, grid, 30, 60, 10);
+        injectSnr(a, b, grid, 90, 60, 30);
+        const one = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 30, y: 60 }]);
+        expect(one.candidates.map((c) => c.gaiaMatch)).toEqual([true, false]);
+        expect(one.candidates[0]!.snr).toBeLessThan(one.candidates[1]!.snr);
+        const many = compareVisits({ ...image(a, 'a'), obsIds: ['a', 'a2'] }, { ...image(b, 'b'), obsIds: ['b', 'b2'] }, grid, [{ x: 30, y: 60 }]);
+        expect(many.candidates.map((c) => c.gaiaMatch)).toEqual([false, true]);
+    });
+
+    it('keeps random one-frame clutter from linking into tracks (finding 8)', () => {
+        const g = { ...grid, width: 241, height: 241 };
+        for (const cadence of [[0, 2.1, 98, 100.1], [0, 2.1, 4.2, 6.3]]) {
+        let tracks = 0;
+        for (let v = 0; v < 20; v++) {
+            const template = noise(g);
+            const visit = cadence.map((minutes, i) => {
+                const data = noise(g);
+                for (let j = 0; j < 20; j++) {
+                    injectSnr(template, data, g, 15 + random() * (g.width - 30), 15 + random() * (g.height - 30), 6 + random() * 10);
+                }
+                return frame(data, g, `v${v}-${i}`, 60010 + v + minutes / 1440);
+            });
+            tracks += findTracklets(visit, [frame(template, g, `t${v}`, 60000)], g, []).candidates.length;
+        }
+        console.log(`Clutter: ${tracks / 20} false tracklets per visit (20 spots per frame, 20 visits, frames at ${cadence.join(', ')} min)`);
+        expect(tracks / 20).toBeLessThanOrEqual(0.1);
+        }
+    }, 60000);
+
+    it('suppresses false detections in a small noisy patch when error maps are given', () => {
+        // Review finding 3: a 37″ patch with 5x noise is smaller than a noise tile. Only the frames' own
+        // error maps can see it; without them the module says so in its notes.
+        const variance = new Float32Array(grid.width * grid.height).fill(1);
+        for (let y = 48; y <= 71; y++) {
+            for (let x = 48; x <= 71; x++) {
+                variance[y * grid.width + x] = 25;
+            }
+        }
+        let count = 0;
+        let blind = 0;
+        let notes = '';
+        for (let trial = 0; trial < 30; trial++) {
+            const a = noise(grid), b = noise(grid);
+            for (let y = 48; y <= 71; y++) {
+                for (let x = 48; x <= 71; x++) {
+                    a[y * grid.width + x]! *= 5; b[y * grid.width + x]! *= 5;
+                }
+            }
+            count += compareVisits({ ...image(a, 'a'), variance }, { ...image(b, 'b'), variance }, grid, []).candidates.length;
+            const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, []);
+            blind += r.candidates.length;
+            notes = r.notes.join(' ');
+        }
+        console.log(`Noisy patch, 30 trials: ${count} candidates with error maps, ${blind} without`);
+        expect(count).toBeLessThanOrEqual(1);
+        expect(notes).toMatch(/difference image only.*noisy patch/);
+    });
+
+    it('keeps sensitivity with flat error maps', () => {
+        const variance = new Float32Array(grid.width * grid.height).fill(1);
+        let recovered = 0;
+        for (let i = 0; i < 20; i++) {
+            const a = noise(grid), b = noise(grid);
+            const x = 35 + (i % 5) * 12, y = 35 + Math.floor(i / 5) * 12;
+            injectSnr(a, b, grid, x, y, 10);
+            const r = compareVisits({ ...image(a, 'a'), variance }, { ...image(b, 'b'), variance }, grid, []);
+            if (r.candidates.some((c) => near(x, y, c, 6))) {
+                recovered++;
+            }
+        }
+        expect(recovered).toBeGreaterThanOrEqual(18);
+    });
+
+    it('reports rounded cutoff percentages', () => {
+        const a = noise(grid), b = noise(grid);
+        point(a, grid, 60, 60, 200); point(b, grid, 60, 60, 210);
+        const r = compareVisits(image(a, 'a'), image(b, 'b'), grid, [{ x: 60, y: 60 }], { minFracChange: 0.07 });
+        expect(r.notes.join(' ')).toContain('under 7% change');
+    });
+
+    it('limits the number of spots used for track linking', () => {
+        const g = { ...grid, width: 361, height: 361 };
+        const template = noise(g);
+        const visit = [0, 20, 40].map((minutes, i) => {
+            const data = noise(g);
+            for (let j = 0; j < 20; j++) {
+                point(data, g, 30 + (j % 5) * 65, 30 + Math.floor(j / 5) * 90, 50 + j);
+            }
+            return frame(data, g, `v${i}`, 60010 + minutes / 1440);
+        });
+        const r = findTracklets(visit, [frame(template, g, 't', 60000)], g, [], { maxSpotsPerFrame: 3 });
+        expect(r.notes.join(' ')).toMatch(/spots.*3/i);
+    });
     it('rejects a weak wing leftover near a much stronger change', () => {
         const earlier = noise(grid), later = noise(grid);
         point(later, grid, 55, 60, 1000);
@@ -128,7 +346,8 @@ describe('change finder', () => {
         expect(change).toBeDefined();
         expect(change!.fracChange).toBeUndefined();
         expect(change!.kind).toBe('unknown');
-        expect(change!.reason).toBe(`Changed at S/N ${change!.snr.toFixed(1)}; brightness change could not be measured here (candidate).`);
+        expect(change!.reason).toContain(`brightness change could not be measured here (candidate).`);
+        expect(change!.reason).toContain('each visit is one frame; artefacts not ruled out');
     });
 
     it('ignores small changes in bright sources and measures substantial changes', () => {
@@ -333,6 +552,45 @@ describe('change finder', () => {
         expect(r.candidates.some((c) => c.track?.length === 3 && !c.frames.includes('v1'))).toBe(true);
     });
 
+    it('still links a real four-frame mover among 20 clutter spots per frame', () => {
+        const g = { ...grid, width: 241, height: 241 };
+        const template = noise(g);
+        const visit = [0, 2.1, 98, 100.1].map((minutes, i) => {
+            const data = noise(g);
+            for (let j = 0; j < 20; j++) {
+                injectSnr(template, data, g, 15 + random() * (g.width - 30), 15 + random() * (g.height - 30), 6 + random() * 10);
+            }
+            // Brighter than the clutter, so the 15-spot cap keeps it.
+            injectSnr(template, data, g, 60 + 100 * (minutes / 60) / g.pixelArcsec, 120, 25);
+            return frame(data, g, `v${i}`, 60010 + minutes / 1440);
+        });
+        const r = findTracklets(visit, [frame(template, g, 't', 60000)], g, []);
+        expect(r.notes.join(' ')).toMatch(/at least 4 frames/);
+        const movers = r.candidates.filter((c) => c.kind === 'mover');
+        expect(movers).toHaveLength(1);
+        expect(movers[0]!.track).toHaveLength(4);
+        expect(Math.abs(movers[0]!.speedArcsecPerHour! - 100)).toBeLessThan(10);
+    });
+
+    for (const spots of [40, 80]) {
+        it(`links 24 large frames with ${spots} spots each in under 1.5 s (finding 12)`, () => {
+            const g = { ...grid, width: 721, height: 721 };
+            const template = noise(g);
+            const visit = Array.from({ length: 24 }, (_, i) => {
+                const data = noise(g);
+                for (let j = 0; j < spots; j++) {
+                    point(data, g, 15 + random() * (g.width - 30), 15 + random() * (g.height - 30), 8 + random() * 20);
+                }
+                return frame(data, g, `v${i}`, 60010 + i / 720);
+            });
+            const start = performance.now();
+            findTracklets(visit, [frame(template, g, 'template', 60000)], g, []);
+            const elapsed = performance.now() - start;
+            console.log(`24 frames x ${spots} spots: ${elapsed.toFixed(0)} ms`);
+            expect(elapsed).toBeLessThan(1500);
+        }, 60000);
+    }
+
     it('processes 24 large frames within a generous timing limit', () => {
         const g = { ...grid, width: 721, height: 721 };
         const template = frame(noise(g), g, 'template', 60000);
@@ -363,9 +621,9 @@ describe('real snapshot changes', () => {
             const lastFrame = last[last.length - 1]!.frame;
             const lastMjd = (lastFrame.tMin + lastFrame.tMax) / 2;
             const track = gridSkyToPix(result.grid, positionAt(target.astrometry, lastMjd));
-            const stars = result.stars.map((s) => gridSkyToPix(result.grid, positionAt({
+            const stars = [mid(first), mid(last)].flatMap((date) => result.stars.map((s) => gridSkyToPix(result.grid, positionAt({
                 ra: s.ra, dec: s.dec, epochJyear: s.epochJyear, pmRa: s.pmRa ?? 0, pmDec: s.pmDec ?? 0,
-            }, mid(last))));
+            }, date))));
             const a = stackVisit(first), b = stackVisit(last);
             const changes = compareVisits({ data: a.data, lambda: first[0]!.lambdaAtCenter, mjd: mid(first),
                 obsIds: first.map((f) => f.frame.obsId) },
@@ -374,9 +632,12 @@ describe('real snapshot changes', () => {
             const distance = (p: { x: number; y: number }): number => Math.hypot(p.x - track.x, p.y - track.y) * result.grid.pixelArcsec;
             console.log(`${id}: ${changes.candidates.length} candidates, rejected ${JSON.stringify(changes.rejected)}`);
             for (const c of changes.candidates) {
-                console.log(`  ${c.kind} sign=${c.sign} snr=${c.snr.toFixed(1)} frac=${c.fracChange} distance=${distance(c.pix).toFixed(1)}″`);
+                console.log(`  ${c.kind} sign=${c.sign} snr=${c.snr.toFixed(1)} frac=${c.fracChange} distance=${distance(c.pix).toFixed(1)}″ ${c.reason}`);
                 expect(c.fracChange === undefined || c.fracChange >= -1).toBe(true);
                 expect(c.reason).not.toMatch(/fainter by (1\d\d|[2-9]\d\d)%|\d{3,}% fainter/);
+                if (c.kind === 'mover' && c.gaiaMatch) {
+                    expect(Number(c.reason.match(/shifted ([\d.]+)″/)?.[1])).toBeGreaterThanOrEqual(3);
+                }
             }
             if (id === 'rwaur') {
                 const best = changes.candidates.find((c) => c.kind === 'brightness');
@@ -387,9 +648,12 @@ describe('real snapshot changes', () => {
                 expect(best!.fracChange).toBeLessThan(0.8);
             }
             if (id === 'epsindb') {
-                expect(changes.candidates.some((c) => c.kind === 'mover' && distance(c.pix) < 15)).toBe(true);
+                const mover = changes.candidates.find((c) => c.kind === 'mover' && distance(c.pix) < 15);
+                expect(mover).toBeDefined();
+                const shift = Number(mover!.reason.match(/shifted ([\d.]+)″/)?.[1]);
+                expect(shift).toBeGreaterThanOrEqual(4);
+                expect(shift).toBeLessThanOrEqual(8);
             }
-            expect(changes.candidates.length).toBeLessThanOrEqual(12);
         }, 60000);
     }
 });
