@@ -354,7 +354,7 @@ describe('false colour slot', () => {
         // label describes the picture, which both frames paint: their mean wavelength, not frame a's alone.
         expect(note).toContain('Blue: 1.20 µm (the shorter wavelength), 2 frames');
         expect(note).toContain('Orange: 4.60 µm');
-        expect(note).toContain('1.20 µm cannot be measured here (some frames have blank pixels here)');
+        expect(note).toContain('At the centre: cannot be measured here (blank pixels).');
     });
 
     it('measures a native-width star with the page aperture on the fine grid', async () => {
@@ -381,7 +381,9 @@ describe('false colour slot', () => {
         h.slot.update(v, true);
         h.calls[0]!.resolve(sky([b]));
         await flush();
-        expect(h.slot.update(v, true).note).toContain('At the centre: seen at both wavelengths');
+        expect(h.slot.update(v, true).note).toContain('At the centre: seen at 1.25 µm');
+        expect(h.slot.update(v, true).note).toContain('seen at 4.60 µm');
+        expect(h.slot.update(v, true).note).toContain('one frame only, so a detector hit cannot be ruled out');
         expect(measure).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 97, 97, centre,
             { pixelArcsec: grid.pixelArcsec, ...radii, minSnr: 3 });
         measure.mockRestore();
