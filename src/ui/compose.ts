@@ -1,43 +1,5 @@
-// Stand-in for Stack and Subtract until src/lib/stack.ts lands (v0.2: per-visit stacks with a 4-sigma clip).
-// Plain NaN-aware mean and difference of already-locked, regridded frames.
-import type { RegriddedFrame } from '../lib/types';
-
-export function meanStack(frames: RegriddedFrame[]): Float32Array
-{
-    const first = frames[0];
-    if (!first) {
-        return new Float32Array(0);
-    }
-    const n = first.data.length;
-    const sum = new Float64Array(n);
-    const count = new Uint16Array(n);
-    for (const f of frames) {
-        const d = f.data;
-        for (let i = 0; i < n; i++) {
-            const v = d[i] as number;
-            if (Number.isFinite(v)) {
-                sum[i] = (sum[i] as number) + v;
-                count[i] = (count[i] as number) + 1;
-            }
-        }
-    }
-    const out = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-        const k = count[i] as number;
-        out[i] = k ? (sum[i] as number) / k : NaN;
-    }
-    return out;
-}
-
-// later minus earlier; NaN where either is missing.
-export function difference(later: Float32Array, earlier: Float32Array): Float32Array
-{
-    const out = new Float32Array(later.length);
-    for (let i = 0; i < later.length; i++) {
-        out[i] = (later[i] as number) - (earlier[i] as number);
-    }
-    return out;
-}
+// Colour for difference images: a robust noise floor and a blue/orange ramp.
+// The stacking and subtraction themselves live in src/lib/stack.ts.
 
 export interface DiffScale {
     floor: number; // changes smaller than this are shown black (about 2.5 sigma of the noise)

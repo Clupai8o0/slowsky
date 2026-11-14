@@ -13,7 +13,8 @@ import { drawFrame, frameDelayMs, renderRgba, sharedStretch, stepIndex } from '.
 import { decodeView, encodeView } from '../lib/urlstate';
 import { formatDec, formatRa, parseCoords, resolveName } from '../lib/coords';
 import { createDemoSource } from './demo-source';
-import { meanStack, difference, diffScale, renderDiverging, type DiffScale } from './compose';
+import { diffScale, renderDiverging, type DiffScale } from './compose';
+import { stackVisit, subtract, StackError } from '../lib/stack';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -115,7 +116,7 @@ function shell(): string
     const ticks = [0.4, 1, 2, 3, 4, 5].map((t) => `<span style="left:${axisPct(t).toFixed(2)}%">${t}</span>`).join('');
     return `
 <aside class="sk-rail sk-left">
-  <div class="sk-brand"><span class="sk-word">slowsky</span><span class="sk-tag">Watch the infrared sky change, with NASA’s SPHEREx</span></div>
+  <div class="sk-brand"><span class="sk-word">slowsky</span><span class="sk-tag">Watch the sky change. Infrared frames from NASA’s SPHEREx.</span></div>
   <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
     <h2 class="sk-mh" id="sk-h1"><i>1</i>Pick a target</h2>
     <nav class="sk-tg" aria-label="Targets">${targets}</nav>
@@ -221,7 +222,7 @@ export function mount(root: HTMLElement): void
     let result: SkyResult | null = null;
     let sourceKind: SourceKind = 'live';
     let stretch: ReturnType<typeof sharedStretch> | null = null;
-    let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale } = {};
+    let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale; failed?: boolean } = {};
     let timer = 0;
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
@@ -397,16 +398,25 @@ export function mount(root: HTMLElement): void
             return;
         }
         const regs = result.frames.map((f) => f.frame);
-        if (st.mode === 'stack' && !composed.stack) {
-            composed.stack = meanStack(regs);
-        }
-        if (st.mode === 'diff' && !composed.diff) {
-            const first = regs[0];
-            const last = regs[regs.length - 1];
-            if (first && last) {
-                composed.diff = difference(last.data, first.data);
-                composed.scale = diffScale(composed.diff);
+        try {
+            // Stack here spans every look, so no clipping: a moving star should smear, not vanish.
+            if (st.mode === 'stack' && !composed.stack && !composed.failed) {
+                composed.stack = stackVisit(regs, { clipSigma: Infinity, background: 'none' }).data;
             }
+            if (st.mode === 'diff' && !composed.diff && !composed.failed) {
+                const first = regs[0];
+                const last = regs[regs.length - 1];
+                if (first && last) {
+                    composed.diff = subtract(last.data, first.data).data;
+                    composed.scale = diffScale(composed.diff);
+                }
+            }
+        } catch (e) {
+            if (!(e instanceof StackError)) {
+                throw e;
+            }
+            composed.failed = true;
+            toast(`These frames can’t be combined, so this shows one frame. ${e.message}`);
         }
     }
 
@@ -423,13 +433,18 @@ export function mount(root: HTMLElement): void
             drawFrame(ctx, f, stretch);
         } else {
             compose();
-            const img = ctx.createImageData(result.grid.width, result.grid.height);
-            if (st.mode === 'stack' && composed.stack) {
-                renderRgba(composed.stack, stretch, img.data);
-            } else if (composed.diff) {
-                renderDiverging(composed.diff, composed.scale ?? { floor: 0, limit: 1 }, img.data);
+            const data = st.mode === 'stack' ? composed.stack : composed.diff;
+            if (!data) {
+                drawFrame(ctx, f, stretch);
+            } else {
+                const img = ctx.createImageData(result.grid.width, result.grid.height);
+                if (st.mode === 'stack') {
+                    renderRgba(data, stretch, img.data);
+                } else {
+                    renderDiverging(data, composed.scale ?? { floor: 0, limit: 1 }, img.data);
+                }
+                ctx.putImageData(img, 0, 0);
             }
-            ctx.putImageData(img, 0, 0);
         }
         overlay();
         renderText();
