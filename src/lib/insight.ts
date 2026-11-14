@@ -1,4 +1,5 @@
 import { TARGETS } from './targets.js';
+import { ASK_CANNOT } from './insight-prompt.js';
 
 export const ASK_ENABLED = false;
 
@@ -12,7 +13,7 @@ export interface InsightFacts {
     snapshot: boolean;
 }
 export interface InsightNote { text: string; model: string; dropped: number; cached: boolean; remaining?: number }
-export interface InsightAnswer extends InsightNote { kind: 'answer'; cached: false }
+export interface InsightAnswer extends InsightNote { kind: 'answer'; cached: false; lines: number[] }
 export interface InsightStatus { enabled: boolean; locked: boolean; unlocked: boolean; model?: string; remaining?: number; busy?: boolean; retryAfter?: number }
 export type InsightErrorCode = 'off' | 'locked' | 'invalid' | 'busy' | 'unverified' | 'failed';
 export class InsightError extends Error {
@@ -85,7 +86,7 @@ export function validateFacts(value: unknown): InsightFacts
 }
 export function validateQuestion(value: unknown): string
 {
-    if (typeof value !== 'string' || /[\p{Cc}<>]/u.test(value)) { throw new InsightError('invalid'); }
+    if (typeof value !== 'string' || /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}<>＜＞‹›〈〉⟨⟩﹤﹥«»]|&(?:lt;|gt;|#)/iu.test(value) || !/[\p{L}\p{N}]/u.test(value)) { throw new InsightError('invalid'); }
     const trimmed = value.trim();
     const length = Array.from(trimmed).length;
     if (length < 3 || length > 200) { throw new InsightError('invalid'); }
@@ -399,7 +400,9 @@ export async function askInsight(facts: InsightFacts, question: string, opts: In
     const answer = await requestInsight(clean, opts, normalized);
     return { ...answer, kind: 'answer', cached: false };
 }
-async function requestInsight(clean: InsightFacts, opts: InsightOptions, question?: string): Promise<InsightNote>
+async function requestInsight(clean: InsightFacts, opts: InsightOptions, question: string): Promise<InsightAnswer>;
+async function requestInsight(clean: InsightFacts, opts: InsightOptions): Promise<InsightNote>;
+async function requestInsight(clean: InsightFacts, opts: InsightOptions, question?: string): Promise<InsightNote | InsightAnswer>
 {
     try {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -417,6 +420,12 @@ async function requestInsight(clean: InsightFacts, opts: InsightOptions, questio
         if (!data || typeof data !== 'object' || typeof (data as InsightNote).text !== 'string' || typeof (data as InsightNote).model !== 'string' || typeof (data as InsightNote).dropped !== 'number') { throw new InsightError('failed'); }
         if (question !== undefined && ((data as InsightAnswer).kind !== 'answer' || (data as InsightNote).cached !== false)) { throw new InsightError('failed'); }
         const note: InsightNote = { text: (data as InsightNote).text, model: (data as InsightNote).model, dropped: (data as InsightNote).dropped, cached: (data as InsightNote).cached === true, ...(typeof (data as InsightNote).remaining === 'number' ? { remaining: (data as InsightNote).remaining } : {}) };
+        if (question !== undefined) {
+            const lines: unknown = (data as InsightAnswer).lines;
+            if (!Array.isArray(lines) || !lines.every(Number.isInteger)
+                || (note.text === ASK_CANNOT ? lines.length !== 0 : !note.text.trim() || lines.length === 0)) { throw new InsightError('failed'); }
+            return { ...note, lines, kind: 'answer', cached: false };
+        }
         return note;
     } catch (error) {
         if (opts.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) { throw error; }
