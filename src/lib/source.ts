@@ -4,7 +4,7 @@
 // wavelength lock -> regrid) and snapshot (the same steps on frames baked into public/snapshot).
 // Runs in the page and in Web Workers (no DOM globals).
 import type {
-    CardValue, Cutout, Detector, FitsHeader, FitsIndex, FrameQuery, FrameRecord, OutputGrid, PixelBox, PixelCoord,
+    CardValue, Cutout, Detector, FitsHeader, FitsIndex, FrameContext, FrameQuery, FrameRecord, OutputGrid, PixelBox, PixelCoord,
     PlayerFrame, RangeReader, RegriddedFrame, SkyCoord, Target, TargetId, WaveGrid, Wcs,
 } from './types';
 import { commonRange, lockWavelength, type LockedFrame } from './lock';
@@ -16,6 +16,7 @@ import { pickByWavelength, predictPixel } from './footprint';
 import { gridForView, gridSkyToPix, regridNorthUp } from './regrid';
 import { positionAt, targetById } from './targets';
 import { fetchGaia, type GaiaRow } from './gaia';
+import { flagNames, parseFlagsLayout } from './flags';
 
 export type SkyStage = 'search' | 'headers' | 'pixels' | 'regrid';
 
@@ -113,6 +114,7 @@ interface FrameInfo {
     lambda: number; // at the target (or the view centre)
     bandwidth: number;
     trackSky?: SkyCoord; // target at this frame's time
+    context?: { url: string; flags?: FrameContext['flags'] };
     loadCutout(box: PixelBox, signal?: AbortSignal): Promise<Cutout>;
 }
 
@@ -335,6 +337,7 @@ async function assemble(
             data,
             lambdaAtCenter: atCentre?.lambda ?? l.lambda,
             bandwidthAtCenter: atCentre?.bandwidth ?? info.bandwidth,
+            ...(info.context ? { context: { wcs: info.wcs, box, ...info.context } } : {}),
         };
         return { l, info, frame };
     });
@@ -655,6 +658,15 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
                         req.signal?.throwIfAborted();
                         const index = record.url === probeRead.url && probeRead.index
                             ? probeRead.index : await reader.index(record.url, req.signal);
+                        let flags: FrameContext['flags'];
+                        const flagsHdu = index.hdus.find(hdu => hdu.name === 'FLAGS');
+                        if (flagsHdu) {
+                            try {
+                                flags = { layout: parseFlagsLayout(flagsHdu.header, flagsHdu.dataStart), names: flagNames(flagsHdu.header) };
+                            } catch {
+                                // Unsupported FLAGS must not prevent the image from loading.
+                            }
+                        }
                         const header = index.hdu('IMAGE').header;
                         const wcs = makeWcs(wcsFromHeader(header));
                         const look = lookPoint(target, req, record);
@@ -671,6 +683,7 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
                                 wave,
                                 lambda: sample.lambda,
                                 bandwidth: sample.bandwidth,
+                                context: { url: record.url, ...(flags ? { flags } : {}) },
                                 async loadCutout(box: PixelBox, signal?: AbortSignal): Promise<Cutout>
                                 {
                                     const [image, zodi] = await Promise.all([
