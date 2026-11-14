@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    boxForView, createLiveSource, createSnapshotSource, frameLabel, headerFromCards, mjdToDate, thinFrames,
+    boxForView, createLiveSource, createSnapshotSource, frameLabel, headerFromCards, mjdToDate, SkyUnavailable, thinFrames,
     type SkyProgress,
 } from '../src/lib/source';
 import { makeWcs, wcsFromHeader } from '../src/lib/wcs';
@@ -58,9 +58,17 @@ function lambdaAtCentre(f: Fake): number
     return 0.75 + 0.35 * p.y / 2040;
 }
 
-function fakeReader(): RangeReader & { reads: number }
+function fakeBand(obsId: string, tMin: number, lambda: number, bandwidth = 0.030): Fake
 {
-    const byUrl = new Map(FAKES.map((f) => [f.record.url, f]));
+    const f = fake(obsId, tMin, 0, false);
+    f.wave.lambda = f.wave.ys.map(() => f.wave.xs.map(() => lambda));
+    f.wave.bandwidth = f.wave.ys.map(() => f.wave.xs.map(() => bandwidth));
+    return f;
+}
+
+function fakeReader(fakes = FAKES): RangeReader & { reads: number }
+{
+    const byUrl = new Map(fakes.map((f) => [f.record.url, f]));
     const reader = {
         reads: 0,
         async index(url: string): Promise<FitsIndex>
@@ -141,6 +149,15 @@ describe('helpers', () => {
 });
 
 describe('live source (fake SIA and S3)', () => {
+    it('keeps a visit when only the farther frame contains the chosen wavelength', async () => {
+        const fakes = [fakeBand('narrowD1', 60900, 1.000), fakeBand('wideD1', 60900.1, 1.0303, 0.031)];
+        const source = createLiveSource({ reader: fakeReader(fakes), search: async () => fakes.map((f) => f.record) });
+        const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: 1.0151 });
+        expect(res.frames).toHaveLength(1);
+        expect(res.locked.map((l) => l.frame.obsId)).toEqual(['wideD1']);
+        expect(res.notes.join(' ')).not.toMatch(/visit.*left out/);
+    });
+
     it('locks one frame per visit near the chosen wavelength and keeps stars still', async () => {
         const reader = fakeReader();
         const stages = new Set<string>();
@@ -186,6 +203,29 @@ describe('live source (fake SIA and S3)', () => {
         expect(res.notes.join(' ')).not.toMatch(/visit left out/);
     });
 
+    it('finds a default wavelength between centres in overlapping passbands', async () => {
+        const fakes = [fakeBand('firstD1', 60900, 1.000), fakeBand('secondD1', 61080, 1.020)];
+        const source = createLiveSource({ reader: fakeReader(fakes), search: async () => fakes.map((f) => f.record) });
+        const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1 });
+        expect(res.lambda).toBeGreaterThanOrEqual(1.005);
+        expect(res.lambda).toBeLessThanOrEqual(1.015);
+        expect(res.frames).toHaveLength(2);
+        expect(res.locked.map((l) => l.frame.obsId)).toEqual(['firstD1', 'secondD1']);
+    });
+
+    it('keeps one frame for a daily visit after thinning to two headers', async () => {
+        const fakes = Array.from({ length: 40 }, (_, i) => fakeBand(`day${i}D1`, 60900 + i, 1.000));
+        const reader = fakeReader(fakes);
+        const source = createLiveSource({
+            reader, search: async () => fakes.map((f) => f.record), visitGapDays: 10, maxHeaders: 2,
+        });
+        const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, lambda: 1.000 });
+        expect(res.frames).toHaveLength(1);
+        expect(res.locked.map((l) => l.frame.obsId)).toEqual(['day10D1']);
+        expect(reader.reads).toBe(2);
+        expect(res.notes.join(' ')).toContain('Read 2 of 40 frames');
+    });
+
     it('reports an empty sky and stops on abort', async () => {
         const empty = createLiveSource({ reader: fakeReader(), search: async () => [] });
         const res = await empty.load({ center: CENTER, fovDeg: 0.05, detector: 2 });
@@ -199,10 +239,10 @@ describe('live source (fake SIA and S3)', () => {
 });
 
 describe('snapshot source (fake site)', () => {
-    function site(): typeof fetch
+    function site(fakes = FAKES.slice(0, 2)): typeof fetch
     {
         const box: PixelBox = { x0: 960, y0: 960, x1: 1080, y1: 1080 };
-        const frames = FAKES.slice(0, 2).map((f) => ({
+        const frames = fakes.map((f) => ({
             record: f.record,
             box,
             planes: ['IMAGE', 'ZODI', 'VARIANCE'],
@@ -211,7 +251,7 @@ describe('snapshot source (fake site)', () => {
             wave: { ...f.wave, pixelOrigin: 0 },
         }));
         const files = new Map<string, ArrayBuffer>();
-        for (const f of FAKES.slice(0, 2)) {
+        for (const f of fakes) {
             const n = 120 * 120;
             const buf = new ArrayBuffer(n * 4 * 3);
             const view = new DataView(buf);
@@ -258,6 +298,61 @@ describe('snapshot source (fake site)', () => {
         expect(res.stars[0]!.pmDec).toBeUndefined();
         expect(res.credits.join(' ')).toContain('Gaia');
         expect(res.track?.length).toBe(res.frames.length);
+    });
+
+    it('shares a slow index fetch without sharing a caller abort', async () => {
+        const fetchSite = site();
+        let releaseIndex!: () => void;
+        let indexFetches = 0;
+        const fetcher: typeof fetch = async (input, init) => {
+            if (String(input) === '/snapshot/rwaur/index.json') {
+                indexFetches++;
+                await new Promise<void>((resolve, reject) => {
+                    releaseIndex = resolve;
+                    init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+                });
+            }
+            return fetchSite(input, init);
+        };
+        const source = createSnapshotSource({ fetch: fetcher });
+        const req = { center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur' } as const;
+        const ctl = new AbortController();
+        const reason = new Error('first load cancelled');
+        const firstAborted = expect(source.load({ ...req, signal: ctl.signal })).rejects.toBe(reason);
+        const second = source.load(req).then((result) => ({ result }), (error: unknown) => ({ error }));
+        ctl.abort(reason);
+        await firstAborted;
+        releaseIndex();
+        expect(await second).toMatchObject({ result: { source: 'snapshot' } });
+        expect(indexFetches).toBe(1);
+    });
+
+    it('skips offline frames without a complete pixel scale and notes their count once', async () => {
+        const noScale = fakeBand('noScaleD1', 60900, 1);
+        const partialScale = fakeBand('partialScaleD1', 61080, 1);
+        const scaled = fakeBand('scaledD1', 61260, 1);
+        for (const f of [noScale, partialScale]) {
+            for (const key of ['CD1_1', 'CD1_2', 'CD2_1', 'CD2_2']) {
+                delete f.cards[key];
+            }
+        }
+        partialScale.cards.CDELT1 = -PX;
+        const source = createSnapshotSource({ fetch: site([noScale, partialScale, scaled]) });
+        const res = await source.load({ center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur', lambda: 1 });
+        expect(res.locked.map((l) => l.frame.obsId)).toEqual(['scaledD1']);
+        expect(res.notes.filter((n) => n.includes('lack a pixel scale'))).toEqual([
+            '2 offline frames lack a pixel scale and were skipped.',
+        ]);
+        expect(Array.from(res.frames[0]!.frame.data).some(Number.isFinite)).toBe(true);
+    });
+
+    it('throws SkyUnavailable when every offline frame lacks a pixel scale', async () => {
+        const f = fakeBand('noScaleD1', 60900, 1);
+        for (const key of ['CD1_1', 'CD1_2', 'CD2_1', 'CD2_2']) {
+            delete f.cards[key];
+        }
+        const source = createSnapshotSource({ fetch: site([f]) });
+        await expect(source.load({ center: CENTER, fovDeg: 0.05, detector: 1, target: 'rwaur' })).rejects.toBeInstanceOf(SkyUnavailable);
     });
 
     it('refuses views without a target and notes a missing detector', async () => {

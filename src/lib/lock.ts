@@ -13,6 +13,8 @@ export interface LockedFrame {
 export interface LockOptions {
     // Drop a visit whose nearest frame is further than this from the chosen wavelength (µm).
     maxDelta?: number;
+    // Only consider frames whose own passband reaches the chosen wavelength (µm).
+    limitOf?: (f: FrameRecord) => number;
 }
 
 // visits: frames grouped by visit (see groupVisits). lambdaOf gives the wavelength at the target
@@ -38,6 +40,9 @@ export function lockWavelength(
                 continue;
             }
             const dLambda = lambda - chosen;
+            if (!(Math.abs(dLambda) <= (opts.limitOf?.(frame) ?? Infinity))) {
+                continue;
+            }
             if (!best || Math.abs(dLambda) < Math.abs(best.dLambda)
                 || (Math.abs(dLambda) === Math.abs(best.dLambda) && frame.tMin < best.frame.tMin)) {
                 best = { frame, lambda, dLambda };
