@@ -633,7 +633,7 @@ export function mount(root: HTMLElement): void
         play.setAttribute('aria-label', st.playing ? 'Pause' : 'Play');
         const gaiaBtn = q<HTMLButtonElement>('[data-act="gaia"]');
         gaiaBtn.setAttribute('aria-pressed', String(st.gaia));
-        // No catalogue stars came back (live Gaia is not wired yet): hide the toggle rather than offer an empty one.
+        // No catalogue stars came back: hide the toggle rather than offer an empty one.
         gaiaBtn.hidden = !result || result.stars.length === 0;
         fovSelect.value = String(st.fovDeg);
         bind('det', `Detector ${lamDraft === null ? st.detector : detectorOf(lamDraft)} of 6`);

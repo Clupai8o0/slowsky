@@ -27,8 +27,8 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 - Change the field of view: 0.1°, 0.25°, 0.5° or 1°.
 - For a preset target, see a marker where the target should be on each frame's date (a ring for Barnard's Star
   and Epsilon Indi B, corner marks for the others).
-- In the offline copy (see below), see rings that mark stars from ESA's Gaia DR3 catalogue, and turn them off
-  or on.
+- See rings that mark stars from ESA's Gaia DR3 catalogue (live within 0.2° of the centre, or from the offline
+  copy), and turn them off or on.
 - Read each frame's details: when it was taken, its wavelength at the centre, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode.
@@ -135,8 +135,8 @@ Sam chose the idea and makes every product decision (see `DECISIONS.md`).
   spread evenly across visits, and says so when it does.
 - At very busy spots, such as near the ecliptic poles, the archive can cut its frame list short. The page then
   says some visits may be missing.
-- Gaia rings appear only in the offline copy. They sit at the stars' Gaia positions for 2016 and are not moved to
-  each frame's date.
+- Gaia rings sit at the stars' Gaia positions for 2016 and are not moved to each frame's date. Live views show
+  them only within 0.2° of the centre, and skip them if the catalogue is slow to answer.
 - The offline copy has only the five preset targets, one detector each, and a field of at most 0.1°.
 - Each view uses one detector. A star found by name is placed at its catalogue position; motion is applied only
   for the presets.

@@ -20,7 +20,7 @@ Where each one is used:
   holds cutouts of the same files, made by `scripts/bake.py`.
 - The SIA search runs through `api/sia.ts` in the site, and directly from `scripts/`.
 - Gaia DR3 rows (`public/snapshot/*/gaia.json`) were fetched at bake time from STScI's Gaia cone service
-  (`gsss.stsci.edu`), with the CfA VizieR mirror as fallback. The page itself does not call either service.
+  (`gsss.stsci.edu`), with the CfA VizieR mirror as fallback. For live views the page calls the same two services.
 - SIMBAD answers name searches typed into the page. `scripts/targets.py` took the five targets' positions and
   proper motions from it into `src/data/targets.json`.
 - QR2 (doi:10.26131/IRSA652) is never used.
