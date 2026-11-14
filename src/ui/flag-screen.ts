@@ -1,12 +1,12 @@
 import { withCaveats, type CandidateEnd, type PanelCandidate, type Reading } from './changes-view';
-import { snrText, stripSnr } from '../lib/changes';
+import { hasSnrFigure, snrText, stripSnr } from '../lib/changes';
 import type { PixelCoord, RangeReader, RegriddedFrame } from '../lib/types';
 import { gridPixToSky } from '../lib/regrid';
 import { readFlags } from '../lib/flags';
 
 export const DROP_FLAGS = ['TRANSIENT', 'OUTLIER', 'NONFUNC', 'SUR_ERROR'] as const;
 export const CORE_FLAG = 'OVERFLOW';
-export type ScreenedCandidate = PanelCandidate & { line: string };
+export type ScreenedCandidate = PanelCandidate & { line: string; snrFlagRemoved?: boolean; unreadVisit?: 'earlier' | 'later' };
 export interface FrameFlags { obsId: string; names: (pix: PixelCoord) => string[] | null; }
 
 export function nativePeak(frame: RegriddedFrame, image: Float32Array, zodi: Float32Array, pix: PixelCoord): PixelCoord | null
@@ -186,7 +186,10 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
         // Classifier ends require a readable frame in their own light visit to count as checked at all.
         const endUnread = plain ? !checked.some(o => o.names.some(n => n !== null)) : own.some(o => !o.names.some(n => n !== null));
         const missing = checked.some(o => o.names.some(n => n === null));
-        kept.push({ ...c, kind, reading, line, unread: endUnread ? 'all' : missing ? 'some' : 'none' });
+        const unreadVisit = plain && !endUnread ? checked.find(o => o.names.length > 0 && o.names.every(n => n === null))?.end.visit : undefined;
+        kept.push({ ...c, kind, reading, line, unread: endUnread ? 'all' : missing ? 'some' : 'none',
+            ...(unreadVisit ? { unreadVisit } : {}),
+            ...(plain && over.size && hasSnrFigure(said) && !hasSnrFigure(line) ? { snrFlagRemoved: true } : {}) });
     }
     const allUnread = kept.length > 0 && kept.every(c => c.unread === 'all');
     const lead: string[] = [];
@@ -197,6 +200,8 @@ export function screen(candidates: PanelCandidate[], visits: { earlier: Regridde
     for (const c of kept) {
         if (!allUnread && c.unread === 'all') {
             c.line += ' The archive flags for this spot could not be read, so it is listed without that check.';
+        } else if (!allUnread && c.unreadVisit) {
+            c.line += ` The archive flags of the ${c.unreadVisit} visit could not be read for this spot, so that visit is not checked.`;
         } else if (!allUnread && c.unread === 'some') {
             c.line += ' Some of the archive flags for this spot could not be read, so that check is incomplete.';
         }

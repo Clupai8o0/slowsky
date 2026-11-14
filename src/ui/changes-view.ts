@@ -141,6 +141,7 @@ export function changesMarks(v: ChangesView, width: number, height: number, all 
     }
     // Text size, and the ring size when the finder gives no aperture.
     const r = Math.max(5, Math.min(width, height) / 40);
+    const boxes: { left: number; right: number; top: number; bottom: number }[] = [];
     // One ring per end (both spots of a pair or mover), each the finder's own reading aperture when round 11 gives
     // it (kept at 3 px or more so it stays visible); every ring of a candidate carries its number.
     const rings = listed(v, all).flatMap((c, i) => {
@@ -151,8 +152,18 @@ export function changesMarks(v: ChangesView, width: number, height: number, all 
             const x = end.x.toFixed(1);
             const y = end.y.toFixed(1);
             const below = end.y - ring - r * 1.2 < 0;
-            const ty = (below ? end.y + ring + r * 1.4 : end.y - ring - r * 0.5).toFixed(1);
-            return `<circle cx="${x}" cy="${y}" r="${ring.toFixed(1)}"/><text x="${x}" y="${ty}" font-size="${(r * 1.6).toFixed(1)}">${i + 1}</text>`;
+            const size = r * 1.6;
+            const halfWidth = size * String(i + 1).length * 0.35 + 1;
+            const box = (px: number, py: number) => ({ left: px - halfWidth, right: px + halfWidth, top: py - size - 1, bottom: py + 1 });
+            const clear = (b: ReturnType<typeof box>) => boxes.every(other => b.right <= other.left || b.left >= other.right || b.bottom <= other.top || b.top >= other.bottom);
+            const free = (b: ReturnType<typeof box>) => b.left >= 0 && b.right <= width && b.top >= 0 && b.bottom <= height && clear(b);
+            const original = { x: end.x, y: below ? end.y + ring + r * 1.4 : end.y - ring - r * 0.5 };
+            const options = [original, { x: end.x, y: end.y + ring + r * 1.4 },
+                { x: end.x - ring - halfWidth, y: end.y + size * 0.35 },
+                { x: end.x + ring + halfWidth, y: end.y + size * 0.35 }];
+            const placed = clear(box(original.x, original.y)) ? original : options.slice(1).find(p => free(box(p.x, p.y))) ?? original;
+            boxes.push(box(placed.x, placed.y));
+            return `<circle cx="${x}" cy="${y}" r="${ring.toFixed(1)}"/><text x="${placed.x.toFixed(1)}" y="${placed.y.toFixed(1)}" font-size="${size.toFixed(1)}">${i + 1}</text>`;
         });
     }).join('');
     return `<svg class="sk-chg-marks" viewBox="0 0 ${width} ${height}" aria-hidden="true">${rings}</svg>`;

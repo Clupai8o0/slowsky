@@ -6,7 +6,7 @@ import { gridPixToSky } from './regrid';
 import type { OutputGrid, PixelCoord, RegriddedFrame, SkyCoord } from './types';
 
 export type ChangeKind = 'mover' | 'brightness' | 'unknown';
-// 'moreLater' / 'lessLater' compare the plain list's core against its surrounding sky in each visit.
+// 'moreLater' / 'lessLater' compare the visits after measuring each core against its surrounding sky.
 export type ChangeReading = 'brighter' | 'fainter' | 'laterOnly' | 'earlierOnly' | 'moved' | 'pair' | 'differs'
     | 'moreLater' | 'lessLater' | 'unclear';
 /** A light-bearing location in output-grid pixels, for checking the corresponding visit. */
@@ -627,7 +627,7 @@ export function stripSnr(text: string): string
     return text.replace(SNR_IN_TEXT, '(candidate)');
 }
 
-export function plainListNotes(candidates: { line?: string; sentence?: string; reason: string; snrMapMissing?: boolean }[],
+export function plainListNotes(candidates: { line?: string; sentence?: string; reason: string; snrMapMissing?: boolean; snrFlagRemoved?: boolean }[],
     usedErrorMap: boolean, matchArcsec: number): string[]
 {
     if (!candidates.length) { return []; }
@@ -638,7 +638,9 @@ export function plainListNotes(candidates: { line?: string; sentence?: string; r
     const hiddenMapped = usedErrorMap && candidates.some(c => !c.snrMapMissing && !hasSnrFigure(c.line ?? c.sentence ?? c.reason));
     const order = !shown && hiddenMapped ? `${base}.` : !shown ? `${base} estimated from the difference image; that figure is used only for this order.`
         : `${base}${shown < candidates.length ? '; spots with no S/N figure come after those with one' : ''}.`;
-    return [order, ...(unmapped ? [`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`] : [])];
+    const flagged = candidates.filter(c => c.snrFlagRemoved).length;
+    return [order, ...(flagged ? [`S/N is left out for ${flagged} ${flagged === 1 ? 'candidate' : 'candidates'} that an archive flag marks, because the reading there can be unreliable.`] : []),
+        ...(unmapped ? [`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`] : [])];
 }
 export function hasSnrFigure(text: string): boolean
 {
@@ -1242,7 +1244,7 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
     return false;
 }
 
-// The plain list: one candidate per kept spot, comparing each visit's light against its surrounding sky, with causes that
+// The plain list: one candidate per kept spot, comparing the visits after measuring each against its surrounding sky, with causes that
 // could do it, and plain lookups (catalogue distance, edge, missing pixels). Pairs are split into their ends, and a
 // spot shared by two candidates is listed once.
 function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image, later: Image, grid: OutputGrid,
@@ -1287,7 +1289,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
             const roundedDistance = starDistance === undefined ? undefined : Number(starDistance.toFixed(1));
             const displayDistance = starDistance !== undefined && starDistance > opt.matchArcsec && roundedDistance! <= opt.matchArcsec
                 ? Math.ceil(starDistance * 10) / 10 : roundedDistance;
-            const facts = (starDistance !== undefined && starDistance <= PLAIN_STAR_FACT_ARCSEC ? ` A catalogue star lies ${starDistance < 1 ? 'less than 1″' : `${displayDistance!.toFixed(1)}″`} away.` : '')
+            let facts = (starDistance !== undefined && starDistance <= PLAIN_STAR_FACT_ARCSEC ? ` A catalogue star lies ${starDistance < 1 ? 'less than 1″' : `${displayDistance!.toFixed(1)}″`} away.` : '')
                 + (nearEdge ? ' It is near the edge of the picture.' : '')
                 + (nearMissing ? ' Pixels at or near it are missing in at least one visit.' : '')
                 + (nearGap ? ' It is close to pixels that could not be compared, or to the edge of the picture.' : '');
@@ -1311,7 +1313,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                     }
                 }
             }
-            const ring: number[] = [], ringSides: number[][] = [[], [], [], []];
+            const ring: number[] = [], ringSides: number[][] = [[], [], [], []], ringBands: number[][] = [[], [], [], []];
             let localCore = 0, localCount = 0;
             const outerPix = PLAIN_RING_OUTER / grid.pixelArcsec;
             for (let y = Math.max(0, Math.ceil(pix.y - outerPix)); y <= Math.min(grid.height - 1, Math.floor(pix.y + outerPix)); y++) {
@@ -1324,6 +1326,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                     if (d >= PLAIN_RING_INNER && d <= PLAIN_RING_OUTER) {
                         ring.push(value);
                         ringSides[(x >= pix.x ? 1 : 0) + (y >= pix.y ? 2 : 0)]!.push(value);
+                        ringBands[Math.min(3, Math.floor((d - PLAIN_RING_INNER) / 3))]!.push(value);
                     }
                 }
             }
@@ -1332,24 +1335,37 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
             const ringLevel = sideMedians.reduce((sum, value) => sum + value, 0) / 4;
             const local = localCount && ring.length >= 20 ? localCore / localCount - ringLevel : NaN;
             const scatter = 1.4826 * median(ring.map(value => Math.abs(value - ringLevel)));
+            // Radial bands also expose a bright annulus that leaves the quadrant medians deceptively uniform.
+            const bandLevels = ringBands.filter(band => band.length >= 3).map(median);
+            const bandRange = bandLevels.length >= 2 ? Math.max(...bandLevels) - Math.min(...bandLevels) : Infinity;
             const ringNoise = Number.isFinite(measurement.sigma) ? Math.max(scatter, measurement.sigma) : scatter;
             // An uneven ring can itself be lifted by a nearby patch; do not use it to claim a direction.
             const evenRing = sideMedians.every(Number.isFinite)
-                && Math.max(...sideMedians) - Math.min(...sideMedians) <= PLAIN_RING_SPREAD * Math.abs(local);
+                && Math.max(...sideMedians) - Math.min(...sideMedians) <= PLAIN_RING_SPREAD * Math.abs(local)
+                && scatter <= PLAIN_RING_SPREAD * Math.abs(local)
+                && bandRange <= PLAIN_RING_SPREAD * Math.abs(local);
             // The local reading (the core against its own ring, with no background tiles) must keep at least half of
             // what the tile-corrected core shows. A bare sign test passes half the time on noise alone, which is
             // exactly where the tiles are wrong: a spot that did not change inside a patch of sky that did.
+            // Regridded picture pixels share noise within a native detector pixel.
+            const independentCore = Math.max(1, localCount * Math.min(1, (grid.pixelArcsec / NATIVE) ** 2));
             const clear = !nearMissing && evenRing && Number.isFinite(center) && Number.isFinite(core) && Number.isFinite(sum)
                 && sign * center > 0 && sign * core > 0 && sign * sum >= PLAIN_CORE_RETAINED * sign * core
                 && Number.isFinite(local) && sign * local >= PLAIN_CORE_RETAINED * sign * core / coreCount
-                && Number.isFinite(ringNoise) && sign * local >= PLAIN_CORE_SIGMA * ringNoise / Math.sqrt(localCount);
+                && Number.isFinite(ringNoise) && sign * local >= PLAIN_CORE_SIGMA * ringNoise / Math.sqrt(independentCore);
+            const ringClipped = ringSides.some(side => side.length < quadrantFloor);
+            const withinRingEdge = pix.x * grid.pixelArcsec < PLAIN_RING_OUTER || pix.y * grid.pixelArcsec < PLAIN_RING_OUTER
+                || (grid.width - 1 - pix.x) * grid.pixelArcsec < PLAIN_RING_OUTER || (grid.height - 1 - pix.y) * grid.pixelArcsec < PLAIN_RING_OUTER;
+            if (!clear && ringClipped && withinRingEdge && !nearEdge) {
+                facts += ' It is too close to the edge of the picture to compare with the sky around it.';
+            }
             const ending = `a change in a source's brightness, a moving source, a change in the sky around it, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this (${snrText(snr)}; candidate).${facts}`;
             const neutral = `The light here differs between the two visits, and which visit has more is not clear; ${ending}`;
             out.push({ id: '', kind: 'unknown', pix, sky: gridPixToSky(grid, pix), snr, sign,
                 gaiaMatch: catalogueArcsec !== undefined, ...(catalogueArcsec === undefined ? {} : { gaiaDistArcsec: catalogueArcsec, catalogueArcsec }),
                 frames: c.frames, reading: clear ? (sign === 1 ? 'moreLater' : 'lessLater') : 'unclear', ends: [{ ...end }], nearCatalogue: catalogueArcsec !== undefined,
                 nearEdge, nearMissing, nearGap, radiusPix: end.radiusPix, neutral,
-                reason: clear ? `Compared with the sky around it, there is ${sign === 1 ? 'more' : 'less'} light here in the later visit than in the earlier one; ${ending}` : neutral });
+                reason: clear ? `Measured against the sky around it in each visit, there is ${sign === 1 ? 'more' : 'less'} light here in the later visit than in the earlier one; ${ending}` : neutral });
         }
     }
     return out;
