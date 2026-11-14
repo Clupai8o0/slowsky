@@ -203,12 +203,43 @@ function fmt(v: number): string
     return Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
 }
 
+// Within the visit that holds the brightest core, how far the value falls and over how few minutes: the frames
+// there are minutes apart, so a large fall inside it is colour, not time.
+function groupSentence(doc: CometDoc, top: CometPoint): string
+{
+    const group = timeGroups(doc).find(g => g.some(f => f.wavelength === top.wavelength)) ?? [];
+    if (group.length < 2) {
+        return 'Frames taken minutes apart change wavelength, not much else.';
+    }
+    const minutes = Math.round(((group[group.length - 1] as CometFrame).mjdStart - (group[0] as CometFrame).mjdStart) * 1440);
+    const ws = group.map(f => f.wavelength);
+    const low = group.reduce((a, f) => (f.coreMean - f.borderMedian < a.coreMean - a.borderMedian ? f : a));
+    return `The ${group.length} frames from ${Math.min(...ws).toFixed(2)} to ${Math.max(...ws).toFixed(2)} µm were taken within ${minutes} minutes of each other,`
+        + ` and in them the core falls from ${fmt(top.value)} to ${fmt(low.coreMean - low.borderMedian)} MJy/sr, so there the change is mostly colour, not time.`;
+}
+
 export function spanText(doc: CometDoc): string
 {
     const first = doc.frames.reduce((a, f) => Math.min(a, f.mjdStart), Infinity);
     const last = doc.frames.reduce((a, f) => Math.max(a, f.mjdStart), -Infinity);
     const minutes = Math.round((last - first) * 1440);
     return minutes < 90 ? `${minutes} minutes` : `about ${(minutes / 60).toFixed(1)} hours`;
+}
+
+// Frames in time order, split where the gap between starts is over 30 minutes (one group per visit).
+export function timeGroups(doc: CometDoc): CometFrame[][]
+{
+    const byTime = [...doc.frames].sort((a, b) => a.mjdStart - b.mjdStart);
+    const out: CometFrame[][] = [];
+    for (const f of byTime) {
+        const last = out[out.length - 1];
+        if (last && (f.mjdStart - (last[last.length - 1] as CometFrame).mjdStart) * 1440 <= 30) {
+            last.push(f);
+        } else {
+            out.push([f]);
+        }
+    }
+    return out;
 }
 
 // The caption, one sentence per item. Every number comes from the file.
@@ -221,7 +252,8 @@ export function cometCaption(doc: CometDoc): string[]
     const day = new Date(f0.start).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
     return [
         `${doc.frames.length} SPHEREx frames from ${day}, taken over ${spanText(doc)} at wavelengths from ${f0.wavelength.toFixed(2)} to ${fn.wavelength.toFixed(2)} µm.`
-            + ' Each frame sees a different wavelength, so the change along the row is colour, not time.',
+            + ' Each frame sees a different wavelength, so the row mixes colour and time.',
+        groupSentence(doc, top),
         'All the pictures share one linear brightness scale, so they can be compared; stars brighter than the top of the scale show white.',
         `The numbers are the mean of the 3×3 pixels at the comet’s predicted position (from IRSA’s Moving Object Search Tool), minus the median of each picture’s border.`
             + ' They are raw pixel values, not a calibrated measurement.',

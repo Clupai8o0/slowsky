@@ -47,7 +47,8 @@ export function cometChartSvg(doc: CometDoc): string
     const ymax = Math.max(...pts.map(p => p.value));
     const step = ymax > 20 ? 10 : ymax > 5 ? 2 : 0.5;
     const y1 = Math.ceil(ymax / step) * step;
-    const y0 = Math.min(0, Math.floor(Math.min(...pts.map(p => p.value)) / step) * step);
+    const y0f = Math.min(0, Math.floor(Math.min(...pts.map(p => p.value)) / step) * step);
+    const y0 = y1 > y0f ? y0f : y1 - step; // a flat chart still gets a positive span
     const sx = (v: number) => L + ((v - x0) / (x1 - x0)) * (W - L - R);
     const sy = (v: number) => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B);
     const xt: string[] = [];

@@ -123,7 +123,9 @@ describe('comet: labels, chart, caption', () => {
 
     it('caption says colour not time, 3x3 mean not calibrated, shared scale, and who reported the coma', () => {
         const text = cometCaption(doc).join(' ');
-        expect(text).toMatch(/colour, not time/);
+        expect(text).toMatch(/mixes colour and time/);
+        expect(text).toMatch(/4\.25 to 4\.36 µm were taken within 6 minutes/);
+        expect(text).toMatch(/there the change is mostly colour, not time/);
         expect(text).toMatch(/3×3 pixels/);
         expect(text).toMatch(/not a calibrated measurement/);
         expect(text).toMatch(/one linear brightness scale/);
@@ -138,6 +140,14 @@ describe('comet: labels, chart, caption', () => {
         expect(cometCaption(doc).join(' ')).not.toMatch(COMET_BANNED);
         expect('Discovery').toMatch(COMET_BANNED);
         expect('detected').toMatch(COMET_BANNED);
+    });
+
+    it('a flat chart (core equals border everywhere) draws no NaN', () => {
+        const d = tiny();
+        for (const f of d.frames as Record<string, unknown>[]) {
+            f.coreMean = 0.5;
+        }
+        expect(cometChartSvg(parseComet(d))).not.toMatch(/NaN|Infinity/);
     });
 
     it('chart has labelled axes and a text alternative; table has twelve rows', () => {
