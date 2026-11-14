@@ -606,7 +606,7 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                 // missing from the picture). The rest folds. A note that ever starts or reads differently folds whole.
                 const opening = 'False colour, not what an eye would see.';
                 const first = parts.note.startsWith(opening) ? opening : '';
-                const combine = entry.picture.combine && parts.note.includes(entry.picture.combine) ? entry.picture.combine : '';
+                const combine = first && entry.picture.combine && parts.note.includes(entry.picture.combine) ? entry.picture.combine : '';
                 const rest = parts.note.slice(first.length).replace(combine, '').replace(/\s{2,}/g, ' ').trim();
                 return { key: true, layer: true, note: join(Object.values(parts)), picture: entry.picture.picture,
                     split: { lead: join([parts.reading, parts.labels, parts.warning, first, combine]), more: join([rest, parts.method]) } };

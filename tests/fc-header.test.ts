@@ -70,6 +70,9 @@ describe('false colour page', () => {
         // The wavelength on screen has no used frame: the Files row still says which wavelength it lists.
         const none = await render(true, 4);
         expect(none.html).toContain('0 of 4 at 0.85 µm');
+        // Detector and Release cover the files listed, so a left-out file's detector is not missing from the box.
+        expect(none.html).toContain('D1, D6');
+        expect(none.html).toContain('SPHEREx DR1');
         expect(none.html).toContain('<dt>Files</dt><dd><span class="sk-only">0.85 µm only</span>');
     });
 
@@ -85,7 +88,7 @@ describe('false colour page', () => {
             layerSlot({ key: true, layer: true, note: 'full', split: { lead: 'labels warning', more: 'explanation' } }, true, 'key', 'layer', 'fcNote');
             expect(nodes.fcNote.children[0]).toBe('labels warning');
             expect(nodes.fcNote.children[2].open).toBe(false);
-            expect(nodes.fcNote.children[2].append).toHaveBeenCalledWith(expect.objectContaining({ textContent: 'How to read this colour: rims, speckle, bright stars' }), 'explanation');
+            expect(nodes.fcNote.children[2].append).toHaveBeenCalledWith(expect.objectContaining({ textContent: 'How to read this colour: scale, bright stars, rims, speckle' }), 'explanation');
         }
         const fs = (globalThis as any).process.getBuiltinModule('node:fs');
         expect(fs.readFileSync('src/ui/styles.css', 'utf8')).toContain('[data-ref="fcNote"] .sk-more summary { display: flex;');

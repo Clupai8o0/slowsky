@@ -1152,7 +1152,7 @@ export function mount(root: HTMLElement): void
                 more.open = noteRef !== 'fcNote' && !narrow.matches;
                 const sum = document.createElement('summary');
                 // The label names what is folded away, so a reader who sees a coloured rim knows where it is explained.
-                sum.textContent = noteRef === 'fcNote' ? 'How to read this colour: rims, speckle, bright stars' : 'How to read this colour';
+                sum.textContent = noteRef === 'fcNote' ? 'How to read this colour: scale, bright stars, rims, speckle' : 'How to read this colour';
                 more.append(sum, split.more);
                 note.append(more);
             } else {
@@ -1337,7 +1337,8 @@ export function mount(root: HTMLElement): void
                 rows.push(['Frames', colourPicture.map(band => `${band.used}${band.leftOut ? ` of ${band.used + band.leftOut}` : ''} at ${band.lambda.toFixed(2)} µm`).join(', ')]);
             }
             const fileRecs = shown.map((i) => result!.frames[i]!.frame.frame);
-            const recs = colourPicture ? colourPicture.flatMap(band => band.records) : fileRecs;
+            // With the colour picture: the files listed below (used or left out) and the partner wavelength's frames.
+            const recs = colourPicture ? [...new Set([...fileRecs, ...colourPicture.flatMap(band => band.records)])] : fileRecs;
             const relRecs = recs.filter((r, i) => recs.findIndex((o) => o.collection === r.collection) === i);
             const dets = [...new Set(recs.map((r) => r.detector))].sort((a, b) => a - b);
             rows.push(

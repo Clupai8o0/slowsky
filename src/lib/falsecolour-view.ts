@@ -556,7 +556,9 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     }
     if (bandList.some(band => band.frames.length >= 3)) {
         const wavelengths = bandList.filter(band => band.frames.length >= 3).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
-        combine = `With 3 or more frames at ${wavelengths}, the middle value of the frames is used at each pixel, so something present in fewer than half of the frames is missing from this picture, and something present in most of them looks steady.`;
+        // With fewer frames at the other wavelength the middle value is taken for one colour only, so say so.
+        const where = bandList.every(band => band.frames.length >= 3) ? 'this picture' : 'that colour';
+        combine = `With 3 or more frames at ${wavelengths}, the middle value of the frames is used at each pixel, so something present in fewer than half of the frames is missing from ${where}, and something present in most of them looks steady.`;
         parts.note += ` ${combine}`;
     }
     const picture = bands.map(band => ({ lambda: band.lambda, used: band.frames.length, leftOut: band.leftOut,
