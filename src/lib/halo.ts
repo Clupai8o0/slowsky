@@ -5,13 +5,21 @@ import type { ApertureOptions, ApertureResult, LightCurve, LightCurvePoint } fro
 const NATIVE_PIXEL_ARCSEC = 6.15;
 // Radial fill bins are half a native pixel wide; a straight-line fit in radius fills each bin's gaps.
 const RING_BIN_NATIVE = 0.5;
+// Our own choice for catalogue placement on a regridded frame: allow a quarter native pixel (1 sigma).
+const DEFAULT_TARGET_POSITION_SIGMA_ARCSEC = NATIVE_PIXEL_ARCSEC / 4;
+// A position term at least half the remaining target noise merits a visible caveat.
+const SIGNIFICANT_POSITION_NOISE_FRACTION = 0.5;
 
 type RingBin = { all: number; finite: number; total: number; sr: number; srr: number; svr: number; mr: number };
 
 export interface HaloCurvePoint extends LightCurvePoint {
-    /** Propagated target and comparison sky noise on relative brightness, conditional on the median baseline. */
+    /** Ring measurement: noise includes positionNoise; snr retains the sky-only selection statistic. */
+    target: ApertureResult;
+    /** RMS change from four position shifts, in target.sum units; 0 when disabled, NaN when unavailable. */
+    positionNoise: number;
+    /** Propagated target sky/position and comparison sky noise, conditional on the median baseline. */
     relativeNoise: number;
-    /** Systematic limitations that must accompany any displayed point and its sky-noise error bar. */
+    /** Significant position sensitivity, or the reason a position-error measurement failed. */
     caveats: string[];
 }
 
@@ -21,8 +29,10 @@ export interface HaloCurve extends LightCurve {
 
 export type HaloCurveOptions = RingOptions & ApertureOptions & WavelengthOptions & {
     seed?: number;
-    /** Minimum ring sky-noise SNR for a valid curve point; finite and >= 1, default 1. */
+    /** Minimum ring sky-only SNR; finite and >= 1, default 3 (our own choice for the sky-only statistic). */
     minSnr?: number;
+    /** Target position 1-sigma uncertainty in arcsec; default 1.5375 (our own choice); 0 disables it. */
+    targetPositionSigmaArcsec?: number;
 };
 
 export class HaloError extends Error {
@@ -391,13 +401,19 @@ export function ringFor(
     const locations: { frame: RegriddedFrame; at: PixelCoord }[] = [];
     selected.forEach(({ frame: f, index: i }) => {
         const at = typeof target === 'function' ? target(f, i) : target;
+        if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) {
+            return;
+        }
         const blank = blankRadius(f.data, f.grid.width, f.grid.height, at, blankOpts);
-        // An unbounded core or a ring that cannot fit this frame cannot set the common ring.
-        if (blank.touchesLimit || !ringContained(f.grid.width, f.grid.height, at, blank.radius + margin + thickness)) {
+        if (blank.touchesLimit) {
+            return;
+        }
+        // Every bounded core sets the margin, even if its frame cannot fit the resulting ring.
+        largest = Math.max(largest, blank.radius);
+        if (!ringContained(f.grid.width, f.grid.height, at, blank.radius + margin + thickness)) {
             return;
         }
         locations.push({ frame: f, at });
-        largest = Math.max(largest, blank.radius);
     });
     if (locations.length === 0) {
         throw new HaloError('The ring does not fit in the picture: use a wider view');
@@ -418,6 +434,17 @@ export function ringFor(
     return { ringIn, ringOut };
 }
 
+function targetRing(f: RegriddedFrame, at: PixelCoord, opts: RingOptions): ApertureResult
+{
+    const measured = ringAperture(f.data, f.grid.width, f.grid.height, at, opts);
+    if (Number.isFinite(at.x) && Number.isFinite(at.y) && blankInRing(f, at, opts.ringIn, opts.ringOut)) {
+        measured.valid = false;
+        measured.sum = Number.NaN;
+        measured.snr = 0;
+    }
+    return measured;
+}
+
 // Mirror lightCurve's private validation, wavelength/order, validity, normalisation and scatter rules; reuse aperture for refs.
 export function haloCurve(
     frames: RegriddedFrame[],
@@ -427,9 +454,13 @@ export function haloCurve(
 ): HaloCurve
 {
     checkRingOptions(opts);
-    const minSnr = opts.minSnr ?? 1;
+    const minSnr = opts.minSnr ?? 3;
     if (!Number.isFinite(minSnr) || minSnr < 1) {
         throw new HaloError('Minimum SNR must be finite and at least 1');
+    }
+    const positionSigma = opts.targetPositionSigmaArcsec ?? DEFAULT_TARGET_POSITION_SIGMA_ARCSEC;
+    if (!Number.isFinite(positionSigma) || positionSigma < 0) {
+        throw new HaloError('Target position uncertainty must be finite and nonnegative (arcsec)');
     }
     if (refs.length === 0) {
         throw new HaloError('At least one reference star is required');
@@ -452,13 +483,30 @@ export function haloCurve(
     for (const { frame: f, index } of kept) {
         const at = typeof target === 'function' ? target(f, index) : target;
         const noiseScale = opts.noiseScale ?? resampleNoiseScale(f.grid.pixelArcsec);
-        const measured = ringAperture(f.data, f.grid.width, f.grid.height, at,
-            { ...opts, noiseScale, binWidth: RING_BIN_NATIVE * NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec });
-        if (Number.isFinite(at.x) && Number.isFinite(at.y)) {
-            if (blankInRing(f, at, opts.ringIn, opts.ringOut)) {
+        const ringOpts = { ...opts, noiseScale, binWidth: RING_BIN_NATIVE * NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec };
+        const measured = targetRing(f, at, ringOpts);
+        const caveats: string[] = [];
+        let positionNoise = positionSigma === 0 ? 0 : Number.NaN;
+        if (measured.valid && positionSigma > 0) {
+            const delta = positionSigma / f.grid.pixelArcsec;
+            const shifted = [
+                { x: at.x + delta, y: at.y }, { x: at.x - delta, y: at.y },
+                { x: at.x, y: at.y + delta }, { x: at.x, y: at.y - delta },
+            ].map((centre) => targetRing(f, centre, ringOpts));
+            // Fail closed: every shift must obey the same containment, core, sky and fill rules.
+            if (shifted.some((ring) => !ring.valid || !Number.isFinite(ring.sum))) {
                 measured.valid = false;
                 measured.sum = Number.NaN;
+                measured.noise = Number.NaN;
                 measured.snr = 0;
+                caveats.push('Position uncertainty cannot be measured: a shifted ring is off the picture, has too few usable pixels, or meets the blank core.');
+            } else {
+                positionNoise = Math.hypot(...shifted.map((ring) => ring.sum - measured.sum)) / 2;
+                if (positionNoise > 0 && positionNoise >= SIGNIFICANT_POSITION_NOISE_FRACTION * measured.noise) {
+                    caveats.push('Ring brightness is sensitive to the catalogue position; the error bar includes the stated position uncertainty.');
+                }
+                // Keep snr as the existing sky-only statistic; add pointing sensitivity only to the error bar.
+                measured.noise = Math.hypot(measured.noise, positionNoise);
             }
         }
         const referenceResults = refs.map((ref) => aperture(f.data, f.grid.width, f.grid.height, ref, { ...opts, noiseScale }));
@@ -475,8 +523,7 @@ export function haloCurve(
             mjd, lambda: f.lambdaAtCenter, target: measured,
             refSum, ratio: valid ? ratio : Number.NaN, relative: Number.NaN, valid,
             // Held in ratio units until the median baseline is available below.
-            relativeNoise: valid ? ratioNoise : Number.NaN,
-            caveats: ['Ring brightness depends on the catalogue position; position uncertainty is not included in the sky-noise error.'],
+            relativeNoise: valid ? ratioNoise : Number.NaN, positionNoise, caveats,
         });
         if (valid) {
             for (let i = 0; i < refRatios.length; i++) {
