@@ -30,8 +30,7 @@ export const SEEN_FLOOR = 0.05;
 const OFF_CENTRE_ARCSEC = 6.15;
 // Our chosen minimum common coverage, relative to the first frame's finite pixels.
 const MIN_SHARED_FRACTION = 0.8;
-export const SCREEN_BOX_ARCSEC = 24.6;
-export const SCREEN_FRACTION = 0.6;
+export const PAIR_FRACTION = 0.35;
 const MIN_COLOURED_FRACTION = 0.5;
 export const TOO_LITTLE_COLOUR = 'False colour is not shown for this view: the frames at the two wavelengths give a colour to less than half of it.';
 
@@ -42,53 +41,13 @@ function median(values: number[]): number
 }
 
 // Frames already share a finite footprint. Subtract each frame's sky before comparing or combining them.
-export function screenColourFrames(frames: RegriddedFrame[]): { data: Float32Array; notAgreed: Uint8Array }
+export function screenColourFrames(frames: RegriddedFrame[]): { data: Float32Array }
 {
     const skies = frames.map(frame => frameBackground(frame.data));
     const size = frames[0]!.data.length;
-    const notAgreed = new Uint8Array(size);
     const data = new Float32Array(size).fill(NaN);
-    const boxesA = new Float64Array(size).fill(NaN);
-    const boxesB = new Float64Array(size).fill(NaN);
-    if (frames.length === 2) {
-        const { width, height, pixelArcsec } = frames[0]!.grid;
-        const side = Math.max(3, 2 * Math.round((SCREEN_BOX_ARCSEC / pixelArcsec - 1) / 2) + 1);
-        const radius = (side - 1) / 2;
-        const stride = width + 1;
-        const sumsA = new Float64Array(stride * (height + 1));
-        const sumsB = new Float64Array(sumsA.length);
-        const counts = new Uint32Array(sumsA.length);
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const p = y * width + x;
-                const i = (y + 1) * stride + x + 1;
-                const a = frames[0]!.data[p]! - skies[0]!;
-                const b = frames[1]!.data[p]! - skies[1]!;
-                const valid = Number.isFinite(a) && Number.isFinite(b);
-                sumsA[i] = sumsA[i - 1]! + sumsA[i - stride]! - sumsA[i - stride - 1]! + (valid ? a : 0);
-                sumsB[i] = sumsB[i - 1]! + sumsB[i - stride]! - sumsB[i - stride - 1]! + (valid ? b : 0);
-                counts[i] = counts[i - 1]! + counts[i - stride]! - counts[i - stride - 1]! + (valid ? 1 : 0);
-            }
-        }
-        const area = (table: Float64Array | Uint32Array, x0: number, y0: number, x1: number, y1: number) =>
-            table[y1 * stride + x1]! - table[y0 * stride + x1]! - table[y1 * stride + x0]! + table[y0 * stride + x0]!;
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const x0 = Math.max(0, x - radius);
-                const x1 = Math.min(width, x + radius + 1);
-                const y0 = Math.max(0, y - radius);
-                const y1 = Math.min(height, y + radius + 1);
-                const count = area(counts, x0, y0, x1, y1);
-                if (count < (x1 - x0) * (y1 - y0) / 2) {
-                    continue;
-                }
-                const p = y * width + x;
-                boxesA[p] = area(sumsA, x0, y0, x1, y1) / count;
-                boxesB[p] = area(sumsB, x0, y0, x1, y1) / count;
-            }
-        }
-    }
-    const differences = frames.length === 2 ? Array.from(boxesA, (value, p) => value - boxesB[p]!).filter(Number.isFinite) : [];
+    const differences = frames.length === 2
+        ? Array.from(frames[0]!.data, (value, p) => value - skies[0]! - (frames[1]!.data[p]! - skies[1]!)).filter(Number.isFinite) : [];
     const middle = differences.length ? median(differences) : 0;
     const spread = differences.length ? 1.4826 * median(differences.map(value => Math.abs(value - middle))) : 0;
     for (let p = 0; p < size; p++) {
@@ -97,21 +56,17 @@ export function screenColourFrames(frames: RegriddedFrame[]): { data: Float32Arr
             continue;
         }
         if (values.length === 2) {
-            const mean = (values[0]! + values[1]!) / 2;
-            const boxMean = (boxesA[p]! + boxesB[p]!) / 2;
-            if (!Number.isFinite(boxMean)) {
-                continue;
-            }
-            if (Math.abs(boxesA[p]! - boxesB[p]!) > Math.max(5 * spread, SCREEN_FRACTION * Math.abs(boxMean))) {
-                notAgreed[p] = 1;
-                continue;
-            }
-            data[p] = mean;
+            const a = values[0]!;
+            const b = values[1]!;
+            const mean = (a + b) / 2;
+            const tolerance = Math.max(5 * spread, PAIR_FRACTION * Math.max(Math.abs(a), Math.abs(b)));
+            const weight = tolerance === 0 ? 0 : Math.max(0, Math.min(1, Math.abs(a - b) / tolerance - 1));
+            data[p] = (1 - weight) * mean + weight * Math.min(a, b);
         } else {
             data[p] = median(values);
         }
     }
-    return { data, notAgreed };
+    return { data };
 }
 
 export function chooseColourFrames(frames: RegriddedFrame[]): { frames: RegriddedFrame[]; leftOut: number }
@@ -275,8 +230,8 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
             }
         }
         const masked = frames.map(frame => ({ ...frame, data: Float32Array.from(frame.data, (value, i) => common[i] ? value : NaN) }));
-        const { data, notAgreed } = screenColourFrames(masked);
-        return { lambda, data, notAgreed, frames: masked, times: frameTimes(frames), leftOut };
+        const { data } = screenColourFrames(masked);
+        return { lambda, data, frames: masked, times: frameTimes(frames), leftOut };
     }).sort((x, y) => x.lambda - y.lambda);
     const short = bands[0]!;
     const long = bands[1]!;
@@ -301,8 +256,6 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     const available = [Number.isFinite(reading.short) && !noNoise[0], Number.isFinite(reading.long) && !noNoise[1]];
     const stackSeen = [reading.seen === 'short' || reading.seen === 'both', reading.seen === 'long' || reading.seen === 'both'];
     const bandList = [short, long];
-    const centreDisagrees = bandList.map(band => band.notAgreed.some((flag, p) => flag
-        && Math.hypot(p % grid.width - at.x, Math.floor(p / grid.width) - at.y) <= radii.radius));
     const checks = bandList.map((band, i) => {
         if (!available[i] || band.frames.length < 2) {
             return { failure: '', strong: 0, outCount: 0, oneLook: false, datesUnknown: false, varying: false, unconfirmed: false, span: 0 };
@@ -440,7 +393,7 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     const apart = spreads.map((gap, i) => framePeaks[i]!.length === 2 && gap > OFF_CENTRE_ARCSEC);
     const offCentre = apart.map((two, i) => two || stackOff[i]! || allOff[i]!);
     const singleSeen = bandList.map((band, i) => available[i] && stackSeen[i] && band.frames.length === 1);
-    if (centreDisagrees.some(Boolean) || disagrees.some(Boolean) || singleSeen.some(Boolean) || offCentre.some(Boolean) || displaced.some(Boolean)
+    if (disagrees.some(Boolean) || singleSeen.some(Boolean) || offCentre.some(Boolean) || displaced.some(Boolean)
         || checks.some((check, i) => check.varying || check.unconfirmed || (bandList[i]!.frames.length === 2 && stackSeen[i]) || (check.oneLook && !check.failure && stackSeen[i]))) {
         const noDates = (band: typeof short) => band.times.some(([start, end]) => Number.isFinite((start + end) / 2))
             ? `not all of its ${band.frames.length} frames have usable dates` : `none of its ${band.frames.length} frames has a usable date`;
@@ -454,7 +407,7 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
         const descriptions = bandList.map((band, i) => {
             const wavelength = `${band.lambda.toFixed(2)} µm`;
             if (!available[i]) {
-                return `${wavelength} cannot be measured here (${centreDisagrees[i] ? 'two frames disagree inside the centre circle' : noNoise[i] ? 'the noise could not be judged' : 'blank pixels'})`;
+                return `${wavelength} cannot be measured here (${noNoise[i] ? 'the noise could not be judged' : 'blank pixels'})`;
             }
             if (disagrees[i]) {
                 if (checks[i]!.failure === 'uncheckable') {
@@ -577,18 +530,14 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     const legend = falseColourLegend(short.lambda, long.lambda);
     parts.labels = `${label(legend.blue, short)} ${label(legend.red, long)}`;
     parts.note += " Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it.";
-    const twoFrames = bandList.some(band => band.frames.length === 2);
-    parts.note += ` Hatched areas have no colour: the frames do not all cover them${twoFrames ? `, or the two frames at one wavelength differ there by more than ${Math.round(SCREEN_FRACTION * 100)} percent` : ''}. The grey picture shows through the hatching.`;
-    if (twoFrames) {
-        parts.note += ' In a simulation with the same detector alignment, a bright star began to be hatched at about 1.86 times its brightness.';
-    }
+    parts.note += ' Hatched areas have no colour: the frames do not all cover them. The grey picture shows through the hatching.';
     if (bandList.some(band => band.frames.length === 1)) {
         const wavelengths = bandList.filter(band => band.frames.length === 1).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
         parts.warning += `${parts.warning ? ' ' : ''}With only one frame at ${wavelengths}, a detector hit can show as a coloured point.`;
     }
     if (bandList.some(band => band.frames.length === 2)) {
         const wavelengths = bandList.filter(band => band.frames.length === 2).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
-        parts.warning += `${parts.warning ? ' ' : ''}With only two frames at ${wavelengths}, a detector hit can still show as a coloured point: a faint one in one frame, or one at the same place in both.`;
+        parts.warning += `${parts.warning ? ' ' : ''}With only two frames at ${wavelengths}, the lower of the two values is used wherever they disagree, so something present in only one of them is missing from this picture. A detector hit at the same place in both, or a faint one, can still show as a coloured point.`;
     }
     if (bandList.some(band => band.frames.length >= 3)) {
         const wavelengths = bandList.filter(band => band.frames.length >= 3).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
