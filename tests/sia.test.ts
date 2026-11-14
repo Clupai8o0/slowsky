@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fixture from './fixtures/sia/rwaur_dr1.xml?raw';
-import { buildUpstreamUrl, GET, isVotable, OPTIONS, parseParams, queryFailed } from '../api/sia';
+import { buildUpstreamUrl, GET, isVotable, OPTIONS, parseParams, queryFailed, RETRY_DELAYS_MS } from '../api/sia';
 import { DETECTOR_BAND_UM, parseSiaXml, queryStatus, rowToFrame, searchFrames, SIA_TIME_SPLITS, timeWindows } from '../src/lib/sia';
 
 const valid = 'POS=CIRCLE+76.956+30.401+0.01';
@@ -8,6 +8,111 @@ const req = (query = valid) => new Request(`https://example.test/api/sia?${query
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('SIA proxy', () => {
+    it('retries a 502 after 500 ms and returns the successful body', async () => {
+        vi.useFakeTimers();
+        const cancel = vi.fn();
+        const failed = new Response(new ReadableStream<Uint8Array>({ cancel }), { status: 502 });
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(failed).mockResolvedValueOnce(new Response('<VOTABLE/>'));
+        expect(RETRY_DELAYS_MS).toEqual([500, 1500]);
+        expect(Object.isFrozen(RETRY_DELAYS_MS)).toBe(true);
+        const pending = GET(req());
+        await vi.advanceTimersByTimeAsync(499);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        expect(cancel).toHaveBeenCalledOnce();
+        await vi.advanceTimersByTimeAsync(1);
+        const response = await pending;
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe('<VOTABLE/>');
+        expect(fetcher).toHaveBeenCalledTimes(2);
+    });
+    it('stops after 502, 503 and 504 with the specified delays', async () => {
+        vi.useFakeTimers();
+        const fetcher = vi.spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(new Response('', { status: 502 }))
+            .mockResolvedValueOnce(new Response('', { status: 503 }))
+            .mockResolvedValueOnce(new Response('', { status: 504 }));
+        const pending = GET(req());
+        await vi.advanceTimersByTimeAsync(500);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(1499);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(1);
+        const response = await pending;
+        expect(fetcher).toHaveBeenCalledTimes(3);
+        expect(response.status).toBe(502);
+        expect(await response.json()).toEqual({ error: 'Invalid upstream response' });
+    });
+    it('retries a network error and returns a successful response', async () => {
+        vi.useFakeTimers();
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('network')).mockResolvedValueOnce(new Response('<VOTABLE/>'));
+        const pending = GET(req());
+        await vi.advanceTimersByTimeAsync(500);
+        expect((await pending).status).toBe(200);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+    });
+    it('returns upstream failure after three network errors', async () => {
+        vi.useFakeTimers();
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network'));
+        const pending = GET(req());
+        await vi.advanceTimersByTimeAsync(2000);
+        const response = await pending;
+        expect(fetcher).toHaveBeenCalledTimes(3);
+        expect(response.status).toBe(502);
+        expect(await response.json()).toEqual({ error: 'Upstream failure' });
+    });
+    it.each([400, 500])('does not retry status %s', async status => {
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status }));
+        expect((await GET(req())).status).toBe(502);
+        expect(fetcher).toHaveBeenCalledOnce();
+    });
+    it('does not retry an invalid VOTable', async () => {
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<html/>'));
+        expect((await GET(req())).status).toBe(502);
+        expect(fetcher).toHaveBeenCalledOnce();
+    });
+    it('does not retry an oversized response even if its status is retryable', async () => {
+        const cancel = vi.fn();
+        const body = new ReadableStream<Uint8Array>({ cancel });
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, {
+            status: 502,
+            headers: { 'Content-Length': String(8 * 1024 * 1024 + 1) },
+        }));
+        const response = await GET(req());
+        expect(response.status).toBe(502);
+        expect(await response.json()).toEqual({ error: 'Invalid upstream response' });
+        expect(fetcher).toHaveBeenCalledOnce();
+        expect(cancel).toHaveBeenCalledOnce();
+    });
+    it('still retries if cancelling a failed response rejects', async () => {
+        vi.useFakeTimers();
+        const cancel = vi.fn(async () => { throw new Error('Cannot cancel'); });
+        const failed = new Response(new ReadableStream<Uint8Array>({ cancel }), { status: 503 });
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(failed).mockResolvedValueOnce(new Response('<VOTABLE/>'));
+        const pending = GET(req());
+        await vi.advanceTimersByTimeAsync(500);
+        expect((await pending).status).toBe(200);
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(fetcher).toHaveBeenCalledTimes(2);
+    });
+    it('ends a retry wait immediately when the shared deadline fires', async () => {
+        vi.useFakeTimers();
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => {
+            setTimeout(() => resolve(new Response('', { status: 502 })), 24800);
+        }));
+        const pending = GET(req());
+        await vi.advanceTimersByTimeAsync(25000);
+        const response = await pending;
+        expect(response.status).toBe(504);
+        expect(await response.json()).toEqual({ error: 'Upstream timeout' });
+        expect(fetcher).toHaveBeenCalledOnce();
+    });
+    it('does not retry an abort error', async () => {
+        const fetcher = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new DOMException('Aborted', 'AbortError'));
+        const response = await GET(req());
+        expect(response.status).toBe(502);
+        expect(await response.json()).toEqual({ error: 'Upstream failure' });
+        expect(fetcher).toHaveBeenCalledOnce();
+    });
     it('parses and reconstructs allowlisted parameters', () => {
         const parsed = parseParams(new URLSearchParams(`${valid}&COLLECTION=spherex_dr1&BAND=0.000001+0.000002&TIME=60001+60002&MAXREC=23`));
         const url = buildUpstreamUrl(parsed);
