@@ -231,7 +231,7 @@ export function ringAperture(
     if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) {
         return {
             valid: false, sum: Number.NaN, background: Number.NaN, backgroundSigma: Number.NaN,
-            nPix: 0, nSky: 0, snr: 0,
+            nPix: 0, nSky: 0, noise: Number.NaN, snr: 0,
         };
     }
     let allRing = 0;
@@ -273,8 +273,11 @@ export function ringAperture(
         && [...bins.values()].every((bin) => bin.finite / bin.all >= minFraction);
     const sum = valid ? [...bins.values()].reduce((total, bin) => total + binSum(bin), 0)
         - background * allRing : Number.NaN;
-    const snr = valid && backgroundSigma > 0 ? sum / (backgroundSigma * Math.sqrt(allRing)) : 0;
-    return { valid, sum, background, backgroundSigma, nPix, nSky: sky.length, snr };
+    // Not yet honest: this leaves out the shared noise of resampled pixels (RESAMPLE_NOISE_FACTOR in
+    // photometry.ts) and the sky-level term. Fix before the module is shown on the page.
+    const noise = backgroundSigma * Math.sqrt(allRing);
+    const snr = valid && backgroundSigma > 0 ? sum / noise : 0;
+    return { valid, sum, background, backgroundSigma, nPix, nSky: sky.length, noise, snr };
 }
 
 type WavelengthOptions = { lambda?: number; maxDeltaUm?: number };
