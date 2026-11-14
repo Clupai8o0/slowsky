@@ -7,6 +7,7 @@ It refuses to run if the frozen training scripts differ from the plan's commit o
 
 import argparse
 import json
+import os
 import subprocess
 import time
 
@@ -20,6 +21,18 @@ from ml_train_cnn import (KEYS, all_features, export_cnn, fit, from_export, mean
 
 PLAN = ROOT / 'models/confirmation-plan.json'
 RESULT = ROOT / 'models/change-classifier.confirm.json'
+LOCK = ROOT / 'models/change-classifier.confirm.lock'
+
+
+def reserve_confirmation():
+    """Keep the reservation even on failure: the frozen draw must never be rerun."""
+    if RESULT.exists():
+        raise SystemExit(f'{RESULT.name} exists: the confirmation runs exactly once')
+    try:
+        descriptor = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        raise SystemExit(f'{LOCK.name} exists: the confirmation run is already reserved') from None
+    os.close(descriptor)
 
 
 def frozen(plan):
@@ -51,8 +64,7 @@ def main(dry):
     plan = json.loads(PLAN.read_text())
     if not dry:
         frozen(plan)
-        if RESULT.exists():
-            raise SystemExit(f'{RESULT.name} exists: the confirmation runs exactly once')
+        reserve_confirmation()
     evaluation = json.loads((ROOT / 'models/change-classifier.eval.json').read_text())
     attempt = evaluation['cnnAttempt']
     tree_json = json.loads((ROOT / 'models/change-classifier-trees.json').read_bytes())
@@ -124,7 +136,7 @@ def main(dry):
                       'bootstrap': result['bootstrap']['meanArtifactPrecision95']}), flush=True)
     if not dry:
         write_json(RESULT, result)
-    return 0
+    return 0 if result['passed'] else 1
 
 
 if __name__ == '__main__':

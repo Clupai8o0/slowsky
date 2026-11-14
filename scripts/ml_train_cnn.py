@@ -278,36 +278,79 @@ def model_card(summary, eval_digest):
     share = ('A quarter' if mover_count * 4 == total else f'{100 * mover_count / total:.2f}'.rstrip('0').rstrip('.') + '%')
     card = {
         'meanFoldMacroF1': round(summary['meanFoldMetrics']['macroF1'], 3),
-        'accuracy': round(summary['meanFoldMetrics']['accuracy'], 3),
+        'syntheticTestAccuracy': round(summary['meanFoldMetrics']['accuracy'], 3),
         'worstFold': {'target': worst['testTarget'], 'macroF1': round(worst['macroF1'], 3)},
         'evaluation': (f"Leave-one-target-out over {len(summary['folds'])} SPHEREx fields "
                        f"({min(frame_counts)}-{max(frame_counts)} frames each), "
                        f"{'/'.join(f'{n:,}' for n in test_counts)} test stamps per fold. "
                        f"Scores are from fold models; the shipped model is trained on all {len(summary['folds'])}."),
-        'data': ('Fake changes added to real SPHEREx DR1/QR3 frames; before and after are one frame with fresh fake noise, '
-                 'not two visits. No real movers, no human labels.'),
+        'data': ('Trained and tested only on fake changes added to single real SPHEREx DR1/QR3 frames, never on '
+                 'two real dates. No real movers, no human labels.'),
         'selection': ('CNN chosen over trees on these same held-out folds and test stamps, so this is not an untouched benchmark.'
                       if summary['cnnAttempt']['gate']['passed'] else
                       'Trees retained; the CNN did not pass its comparison checks on these same held-out folds.'),
         'limits': ('Labels change spots only; it does not find planets. Not tested on a real asteroid. '
                    f"Mover recall is {low_bin['classes']['mover']['recall']:.2f} at S/N 3-5. "
                    f'{share} of test stamps are movers; if real ones are rarer, more mover labels are wrong.'),
-        'treesMacroF1': round(summary['cnnAttempt']['sameTestTrees']['meanFoldMetrics']['macroF1'], 3),
+        'treesMacroF1OriginalFolds': round(summary['cnnAttempt']['sameTestTrees']['meanFoldMetrics']['macroF1'], 3),
         'treesNote': TREES_NOTE, 'evalSha256': eval_digest, 'seed': summary['seed'],
     }
     # The one frozen retest (scripts/ml_confirm.py), once it has run against this evaluation.
     confirm_path = ROOT / 'models/change-classifier.confirm.json'
+    retest_by_target = {}
     if confirm_path.exists():
         confirm = json.loads(confirm_path.read_text())
         assert confirm['evalSha256'] == eval_digest, 'retest was run against a different evaluation'
         mean = confirm['meanFoldMetrics']
         lo, hi = confirm['bootstrap']['meanArtifactPrecision95']
-        card['retest'] = (f"{'Passed' if confirm['passed'] else 'Failed'} a frozen retest, fresh synthetic draw "
-                          f"(same fields and frames, not new sky): macro-F1 {mean['macroF1']:.3f}, artifact precision "
-                          f"{mean['artifactPrecision']:.3f} (95% {lo:.3f}-{hi:.3f}).")
+        card['retest'] = (f"{'Passed' if confirm['passed'] else 'Failed'} a frozen retest on fresh fake stamps "
+                          f"(same fields and frames, not new sky): macro-F1 {mean['macroF1']:.3f}, "
+                          f"mover recall at S/N>=10 {mean['moverRecallSnr10']:.3f}, "
+                          f"artifact precision {mean['artifactPrecision']:.3f}. ")
+        target = thresholds['artifactPrecision']
+        if lo < target:
+            opening = 'The last is a thin pass: its' if confirm['passed'] else 'Its'
+            relation = 'crosses' if hi > target else 'does not clear'
+            card['retest'] += (f"{opening} 95% range, {lo:.3f}-{hi:.3f}, {relation} the {target:.2f} target, "
+                               f"and that range holds the {len(confirm['folds'])} fields fixed, "
+                               'so it shows stamp-to-stamp noise only. ')
+        card['retest'] += (f"Trees on the same fresh stamps: macro-F1 "
+                           f"{confirm['treesMeanFoldMetrics']['macroF1']:.3f}.")
+        retest_by_target = {fold['testTarget']: fold for fold in confirm['folds']}
+    names = {'wise0855': 'WISE 0855', 'barnard': "Barnard's Star", 'epsindb': 'eps Indi B',
+             'rdra': 'R Dra', 'rwaur': 'RW Aur'}
+    weak = [fold for fold in summary['folds']
+            if all(fold[key] < thresholds[key] for key in ('moverRecallSnr10', 'artifactPrecision'))]
+    weak_notes = []
+    for fold in weak:
+        target = fold['testTarget']
+        values = []
+        for key in ('moverRecallSnr10', 'artifactPrecision'):
+            value = f"{labels[key]} {fold[key]:.3f}"
+            if target in retest_by_target:
+                value += f" (retest {retest_by_target[target][key]:.3f})"
+            values.append(value)
+        gate = thresholds['artifactPrecision']
+        both = f'both {gate:.2f} targets' if gate == thresholds['moverRecallSnr10'] else 'both targets'
+        note = f"{names[target]} missed {both}: {' and '.join(values)}"
+        note += ('; the trees did better on both.' if all(trees_by_target[target][key] > fold[key]
+                  for key in ('moverRecallSnr10', 'artifactPrecision')) else '.')
+        weak_notes.append(note)
+    if worst['testTarget'] not in {fold['testTarget'] for fold in weak}:
+        weak_notes.append(f"{names[worst['testTarget']]} has the lowest macro-F1 ({worst['macroF1']:.3f}).")
+    card['weakField'] = ' '.join(weak_notes)
     if below:
         card['belowGate'] = ' '.join(f"Below the {target} target: {'; '.join(parts)}." for target, parts in below.items())
     return card
+
+
+def write_card():
+    """Rebuild only the public wording from existing evidence; never fit a model."""
+    eval_raw = (ROOT / 'models/change-classifier.eval.json').read_bytes()
+    card = model_card(json.loads(eval_raw), sha(eval_raw))
+    assert len(encode(card)) < 2048, 'Model card exceeds the 2048-byte budget'
+    write_json(ROOT / 'public/models/change-classifier.card.json', card)
+    return 0
 
 
 def self_test():
@@ -335,9 +378,36 @@ def self_test():
     print('CNN self-test passed: feature equivalence, augmentation, BN folding, target isolation', flush=True)
 
 
+def check_confirmation(evaluation, eval_digest):
+    """Recompute the five frozen-plan gates; no fitting or fresh draw is allowed here."""
+    result_path = ROOT / 'models/change-classifier.confirm.json'
+    lock_path = ROOT / 'models/change-classifier.confirm.lock'
+    assert not (lock_path.exists() and not result_path.exists()), 'Confirmation lock exists without a result'
+    if not result_path.exists():
+        return
+    result = json.loads(result_path.read_text())
+    assert result['evalSha256'] == eval_digest, 'Confirmation evaluation hash mismatch'
+    plan_path = ROOT / 'models/confirmation-plan.json'
+    assert result['planSha256'] == sha(plan_path.read_bytes()), 'Confirmation plan hash mismatch'
+    mean, trees = result['meanFoldMetrics'], result['treesMeanFoldMetrics']
+    baseline = evaluation['treesBaseline']['meanFoldMetrics']['macroF1']
+    expected = {
+        'macroF1': mean['macroF1'] >= 0.8,
+        'moverRecallSnr10': mean['moverRecallSnr10'] >= 0.85,
+        'artifactPrecision': mean['artifactPrecision'] >= 0.85,
+        'beatsTreesOnSameTestStamps': mean['macroF1'] >= trees['macroF1'] + 0.01,
+        'beatsOriginalTrees': mean['macroF1'] >= baseline + 0.01,
+    }
+    assert result['checks'] == expected, 'Confirmation checks disagree with the fresh metrics'
+    assert result['passed'] == all(expected.values()), 'Confirmation passed flag disagrees with its checks'
+    assert result['passed'] is True, 'Confirmation failed its frozen-plan gates'
+
+
 def check():
     folder = ROOT / 'models'
-    evaluation = json.loads((folder / 'change-classifier.eval.json').read_text())
+    eval_raw = (folder / 'change-classifier.eval.json').read_bytes()
+    evaluation = json.loads(eval_raw)
+    check_confirmation(evaluation, sha(eval_raw))
     attempt = evaluation['cnnAttempt']
     shipped = (ROOT / 'public/models/change-classifier.json').read_bytes()
     trees = (folder / 'change-classifier-trees.json').read_bytes()
@@ -371,7 +441,7 @@ def check():
     assert sha(shipped) == evaluation['modelSha256']
     assert len(shipped) <= 200_000 and evaluation['gate']['passed']
     card = (ROOT / 'public/models/change-classifier.card.json').read_bytes()
-    assert len(card) < 1280, 'Model card exceeds the 1280-byte budget'
+    assert len(card) < 2048, 'Model card exceeds the 2048-byte budget'
     assert json.loads(card) == model_card(evaluation, sha((folder / 'change-classifier.eval.json').read_bytes()))
     for raw in (shipped, trees, cnn):
         maximum = json.loads(raw)['training']['peakSnrMax']
@@ -386,6 +456,8 @@ def check():
 
 
 def main(args):
+    if (ROOT / 'models/change-classifier.confirm.json').exists():
+        raise SystemExit('Training refused: a frozen confirmation result exists; do not overwrite its evaluation or model')
     started = time.monotonic()
     revision, dirty = git_state(('public/models/change-classifier.json',
                                  'public/models/change-classifier.card.json',
@@ -515,7 +587,7 @@ def main(args):
     eval_path = folder / 'change-classifier.eval.json'
     write_json(eval_path, summary)
     card = model_card(summary, sha(eval_path.read_bytes()))
-    assert len(encode(card)) < 1280, 'Model card exceeds the 1280-byte budget'
+    assert len(encode(card)) < 2048, 'Model card exceeds the 2048-byte budget'
     write_json(public / 'change-classifier.card.json', card)
     selected = [int(np.flatnonzero((targets == target) & (y == kind) & (peak_snrs >= 2.5))[0])
                 for target in names for kind in range(4)]
@@ -542,11 +614,15 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=30)  # 20 stopped short: best epoch 18-20 in every fold
     parser.add_argument('--batch-size', type=int, default=256)
     parser.add_argument('--verify-determinism', action='store_true')
-    parser.add_argument('--check', action='store_true')
-    parser.add_argument('--self-test', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--check', action='store_true')
+    mode.add_argument('--write-card', action='store_true', help='rebuild only the public card from existing eval/retest evidence')
+    mode.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
     if args.per_class < 8 or not 1 <= args.epochs <= 30 or not 8 <= args.batch_size <= 1024:
         parser.error('Need >=8 stamps/class, 1-30 epochs and batch size 8-1024')
+    if args.write_card:
+        raise SystemExit(write_card())
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
     torch.use_deterministic_algorithms(True)

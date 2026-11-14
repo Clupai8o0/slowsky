@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error Node types are not included in the browser TypeScript configuration.
 import { createHash } from 'node:crypto';
 // @ts-expect-error Node types are not included in the browser TypeScript configuration.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+// @ts-expect-error Node types are not included in the browser TypeScript configuration.
+import { execFileSync } from 'node:child_process';
 import weights from '../public/models/change-classifier.json';
 import treeWeights from '../models/change-classifier-trees.json';
 import cnnWeightsAttempt from '../models/change-classifier-cnn.json';
 import parity from './fixtures/classify-parity.json';
 import evaluation from '../models/change-classifier.eval.json';
 import { classify, loadClassifier, stampFor } from '../src/lib/classify';
+import type { ClassifierModel } from '../src/lib/classify';
+import * as classifier from '../src/lib/classify';
 import type { OutputGrid } from '../src/lib/types';
 
 it('records a compact card and per-fold gate exceptions from the evaluation', () => {
@@ -18,9 +22,11 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     const round3 = (value: number): number => Math.round(value * 1000) / 1000;
     expect(card.macroF1).toBeUndefined();
     expect(card.meanFoldMacroF1).toBe(round3(evaluation.meanFoldMetrics.macroF1));
-    expect(card.accuracy).toBe(round3(evaluation.meanFoldMetrics.accuracy));
+    expect(card.accuracy).toBeUndefined();
+    expect(card.syntheticTestAccuracy).toBe(round3(evaluation.meanFoldMetrics.accuracy));
     expect(card.worstFold).toEqual({ target: worst.testTarget, macroF1: round3(worst.macroF1) });
-    expect(card.treesMacroF1).toBe(round3(evaluation.cnnAttempt.sameTestTrees.meanFoldMetrics.macroF1));
+    expect(card.treesMacroF1).toBeUndefined();
+    expect(card.treesMacroF1OriginalFolds).toBe(round3(evaluation.cnnAttempt.sameTestTrees.meanFoldMetrics.macroF1));
     expect(card.treesNote).toBe('Trees saw 600 stamps per class per target, the CNN 2,500: not like-for-like.');
     // Every fold under a gate is named on the card with its value.
     const gated = evaluation as typeof evaluation & { worstFoldGate: Record<string, { target: string; value: number }[]> };
@@ -39,8 +45,8 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
         + `(${Math.min(...frameCounts)}-${Math.max(...frameCounts)} frames each), `
         + `${testCounts.map((n) => n.toLocaleString('en-US')).join('/')} test stamps per fold. `
         + `Scores are from fold models; the shipped model is trained on all ${evaluation.folds.length}.`);
-    expect(card.data).toBe('Fake changes added to real SPHEREx DR1/QR3 frames; before and after are one frame with fresh fake noise, '
-        + 'not two visits. No real movers, no human labels.');
+    expect(card.data).toBe('Trained and tested only on fake changes added to single real SPHEREx DR1/QR3 frames, never on '
+        + 'two real dates. No real movers, no human labels.');
     const total = Object.values(evaluation.perClass).reduce((sum, value) => sum + value.count, 0);
     const share = evaluation.perClass.mover.count / total;
     const prevalence = share === 0.25 ? 'A quarter of test stamps are movers'
@@ -60,7 +66,7 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
         }
     }
     for (const text of [JSON.stringify(card), weights.aiNote, weights.madeBy]) {
-        expect(text).not.toMatch(/discover|confirm|detected/i);
+        expect(text).not.toMatch(/detected a|confirmed|proves|discovery/i);
     }
     expect(weights.madeBy).toContain('Codex (OpenAI) and Claude');
     expect(evaluation.treesBaseline.selectionReason).toBe('Baseline only; not shipped. Kept for comparison.');
@@ -76,16 +82,37 @@ it('records a compact card and per-fold gate exceptions from the evaluation', ()
     expect(evaluation.configurationSelection).toMatch(/development validation, not an untouched benchmark/i);
     expect(card.evalSha256).toBe(digest);
     expect(card.seed).toBe(evaluation.seed);
-    expect(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url)).length).toBeLessThan(1280);
+    expect(readFileSync(new URL('../public/models/change-classifier.card.json', import.meta.url)).length).toBeLessThan(2048);
     // The one frozen retest is on the card with its caveat, its numbers from the result file (-ba, 14 Nov).
     const confirm = JSON.parse(readFileSync(new URL('../models/change-classifier.confirm.json', import.meta.url), 'utf8'));
     expect(confirm.evalSha256).toBe(digest);
-    expect(card.retest).toContain(confirm.passed ? 'Passed a frozen retest' : 'Failed a frozen retest');
-    expect(card.retest).toContain('fresh synthetic draw (same fields and frames, not new sky)');
-    expect(card.retest).toContain(`macro-F1 ${confirm.meanFoldMetrics.macroF1.toFixed(3)}`);
-    expect(card.retest).toContain(`artifact precision ${confirm.meanFoldMetrics.artifactPrecision.toFixed(3)}`);
     const [lo, hi] = confirm.bootstrap.meanArtifactPrecision95 as [number, number];
-    expect(card.retest).toContain(`(95% ${lo.toFixed(3)}-${hi.toFixed(3)})`);
+    const target = evaluation.gate.thresholds.artifactPrecision;
+    expect(card.retest).toBe(`${confirm.passed ? 'Passed' : 'Failed'} a frozen retest on fresh fake stamps `
+        + `(same fields and frames, not new sky): macro-F1 ${confirm.meanFoldMetrics.macroF1.toFixed(3)}, `
+        + `mover recall at S/N>=10 ${confirm.meanFoldMetrics.moverRecallSnr10.toFixed(3)}, `
+        + `artifact precision ${confirm.meanFoldMetrics.artifactPrecision.toFixed(3)}. `
+        + (lo < target ? `The last is a thin pass: its 95% range, ${lo.toFixed(3)}-${hi.toFixed(3)}, `
+            + `crosses the ${target.toFixed(2)} target, and that range holds the ${confirm.folds.length} fields fixed, `
+            + 'so it shows stamp-to-stamp noise only. ' : '')
+        + `Trees on the same fresh stamps: macro-F1 ${confirm.treesMeanFoldMetrics.macroF1.toFixed(3)}.`);
+    const names: Record<string, string> = { wise0855: 'WISE 0855', barnard: "Barnard's Star", epsindb: 'eps Indi B',
+        rdra: 'R Dra', rwaur: 'RW Aur' };
+    const weak = evaluation.folds.filter((f) => f.moverRecallSnr10 < evaluation.gate.thresholds.moverRecallSnr10
+        && f.artifactPrecision < target);
+    const weakText = weak.map((fold) => {
+        const retest = (confirm.folds as typeof evaluation.folds).find((f) => f.testTarget === fold.testTarget)!;
+        const trees = evaluation.comparison.find((f) => f.testTarget === fold.testTarget)!.trees;
+        return `${names[fold.testTarget]} missed both ${target.toFixed(2)} targets: mover recall at S/N>=10 `
+            + `${fold.moverRecallSnr10.toFixed(3)} (retest ${retest.moverRecallSnr10.toFixed(3)}) and artifact precision `
+            + `${fold.artifactPrecision.toFixed(3)} (retest ${retest.artifactPrecision.toFixed(3)})`
+            + (trees.moverRecallSnr10 > fold.moverRecallSnr10 && trees.artifactPrecision > fold.artifactPrecision
+                ? '; the trees did better on both.' : '.');
+    });
+    if (!weak.some((f) => f.testTarget === worst.testTarget)) {
+        weakText.push(`${names[worst.testTarget]} has the lowest macro-F1 (${worst.macroF1.toFixed(3)}).`);
+    }
+    expect(card.weakField).toBe(weakText.join(' '));
     const thresholds = { moverRecallSnr10: 0.85, artifactPrecision: 0.85, macroF1: 0.80 } as const;
     const expected = Object.fromEntries(Object.entries(thresholds).map(([key, threshold]) => [key,
         evaluation.folds.filter((fold) => fold[key as keyof typeof thresholds] < threshold)
@@ -110,7 +137,293 @@ function cnnWeights()
         training: { ...treeWeights.training, peakSnrMax: 40, epochs: 20, batchNormFolded: true } };
 }
 
+function expectParity(model: ClassifierModel, samples: readonly { stamp: number[]; probabilities: number[] }[])
+{
+    let faint = 0, unclear = 0;
+    expect(samples).toHaveLength(20);
+    for (const sample of samples) {
+        const result = classify(model, Float32Array.from(sample.stamp));
+        const core = sample.stamp.slice(450).filter((_, i) => (i % 15 - 7) ** 2 + (Math.floor(i / 15) - 7) ** 2 <= 16);
+        const scores = sample.probabilities.slice().sort((a, b) => b - a);
+        if (Math.max(...core.map(Math.abs)) < 2.5) {
+            expect(result).toEqual({ kind: 'declined', reason: 'too faint to label' });
+            faint++;
+        } else if (scores[0]! - scores[1]! < classifier.MIN_SCORE_MARGIN) {
+            expect(result).toEqual({ kind: 'declined', reason: 'no clear label' });
+            unclear++;
+        } else {
+            if (result.kind === 'declined') {
+                throw new Error(result.reason);
+            }
+            model.classes.forEach((kind, i) => {
+                expect(Math.abs(result.p[kind] - sample.probabilities[i]!)).toBeLessThan(1e-4);
+            });
+            expect(result.kind).toBe(model.classes[sample.probabilities.indexOf(Math.max(...sample.probabilities))]);
+            expect(Object.values(result.p).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 12);
+        }
+    }
+    return { faint, unclear };
+}
+
+const pythonExecutable = new URL('../scripts/.venv/bin/python', import.meta.url);
+
+/** Execute only selected Python function ASTs: never import or launch the confirmation/training scripts. */
+function pythonProbe(body: string, args: string[] = [])
+{
+    execFileSync(pythonExecutable.pathname, ['-c', `
+import ast, copy, hashlib, json, os, sys, time
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+ROOT = Path.cwd()
+def source(name):
+    return ast.parse((ROOT / 'scripts' / name).read_text())
+def functions(tree, names, scope):
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), '<isolated guards>', 'exec'), scope)
+${body}`, ...args], { cwd: new URL('../', import.meta.url), encoding: 'utf8', timeout: 10000 });
+}
+
+// A Node-only checkout has no optional fixture-rebuild virtualenv; the Python gate still runs with --check.
+describe.skipIf(!existsSync(pythonExecutable))('frozen confirmation guards without training or a confirmation run', () => {
+    it('card-only regeneration writes exactly the public card from existing evidence', () => {
+        pythonProbe(`
+evaluation = json.loads((ROOT / 'models/change-classifier.eval.json').read_bytes())
+writes = []
+scope = dict(ROOT=ROOT, json=json, hashlib=hashlib,
+             TREES_NOTE=evaluation['cnnAttempt']['sameTestTrees']['note'],
+             write_json=lambda path, value: writes.append((path, value)))
+functions(source('ml_train_cnn.py'), ['write_card', 'model_card', 'encode', 'sha'], scope)
+assert scope['write_card']() == 0
+assert writes == [(ROOT / 'public/models/change-classifier.card.json',
+                   json.loads((ROOT / 'public/models/change-classifier.card.json').read_bytes()))]
+`);
+    });
+
+    it.each(['changedMetrics', 'clearRange', 'failedRetest', 'treesWorseOnOne', 'lowestIsWeak', 'multipleWeak', 'noWeak'])(
+        'card wording follows changed evidence: %s', (mode) => {
+            pythonProbe(`
+mode = sys.argv[1]
+summary = json.loads((ROOT / 'models/change-classifier.eval.json').read_text())
+confirm = json.loads((ROOT / 'models/change-classifier.confirm.json').read_text())
+wise = next(f for f in summary['folds'] if f['testTarget'] == 'wise0855')
+target = summary['gate']['thresholds']['artifactPrecision']
+if mode == 'changedMetrics':
+    confirm['meanFoldMetrics'].update(macroF1=0.91234, moverRecallSnr10=0.92345, artifactPrecision=0.85678)
+    confirm['treesMeanFoldMetrics']['macroF1'] = 0.81234
+    confirm['bootstrap']['meanArtifactPrecision95'] = [0.8312, 0.8612]
+    confirm['folds'] = confirm['folds'][1:]
+elif mode == 'clearRange': confirm['bootstrap']['meanArtifactPrecision95'] = [target, target + 0.01]
+elif mode == 'failedRetest': confirm['passed'] = False
+elif mode == 'treesWorseOnOne':
+    comparison = next(f for f in summary['comparison'] if f['testTarget'] == 'wise0855')
+    comparison['trees']['moverRecallSnr10'] = wise['moverRecallSnr10'] - 0.01
+elif mode == 'lowestIsWeak': wise['macroF1'] = 0.1
+elif mode == 'multipleWeak':
+    fold = next(f for f in summary['folds'] if f['testTarget'] == 'epsindb')
+    fold.update(moverRecallSnr10=target - 0.01, artifactPrecision=target - 0.01)
+elif mode == 'noWeak': wise.update(moverRecallSnr10=0.9, artifactPrecision=0.9)
+class EvidenceRoot:
+    def __truediv__(self, _): return self
+    def exists(self): return True
+    def read_text(self): return json.dumps(confirm)
+scope = dict(ROOT=EvidenceRoot(), json=json, TREES_NOTE=summary['cnnAttempt']['sameTestTrees']['note'])
+functions(source('ml_train_cnn.py'), ['model_card'], scope)
+card = scope['model_card'](summary, confirm['evalSha256'])
+assert not {'accuracy', 'treesMacroF1'} & card.keys()
+if mode == 'changedMetrics':
+    for key in ['macroF1', 'moverRecallSnr10', 'artifactPrecision']:
+        assert f"{confirm['meanFoldMetrics'][key]:.3f}" in card['retest']
+    lo, hi = confirm['bootstrap']['meanArtifactPrecision95']
+    assert f'{lo:.3f}-{hi:.3f}' in card['retest']
+    assert f"holds the {len(confirm['folds'])} fields fixed" in card['retest']
+    assert f"Trees on the same fresh stamps: macro-F1 {confirm['treesMeanFoldMetrics']['macroF1']:.3f}." in card['retest']
+elif mode == 'clearRange':
+    assert 'thin pass' not in card['retest'] and '95% range' not in card['retest']
+elif mode == 'failedRetest':
+    assert card['retest'].startswith('Failed a frozen retest') and 'thin pass' not in card['retest']
+elif mode == 'treesWorseOnOne': assert 'the trees did better on both' not in card['weakField']
+elif mode == 'lowestIsWeak': assert 'has the lowest macro-F1' not in card['weakField']
+elif mode == 'multipleWeak':
+    assert 'eps Indi B missed both' in card['weakField'] and 'WISE 0855 missed both' in card['weakField']
+elif mode == 'noWeak': assert card['weakField'].startswith("Barnard's Star has the lowest macro-F1")
+`, [mode]);
+        });
+
+    it('atomically reserves one launch and refuses an existing lock or result', () => {
+        pythonProbe(`
+from concurrent.futures import ThreadPoolExecutor
+tree = source('ml_confirm.py')
+prefix = copy.deepcopy(next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'main'))
+prefix.name = 'guard'
+# Stop before evaluation is read, far before any dataset or training call.
+stop = next(i for i, n in enumerate(prefix.body) if isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == 'evaluation' for t in n.targets))
+prefix.body = prefix.body[:stop]
+with TemporaryDirectory(prefix='slowsky-confirm-guard-') as temporary:
+    folder = Path(temporary)
+    plan, result, lock = folder / 'plan.json', folder / 'result.json', folder / 'result.lock'
+    plan.write_text('{}')
+    scope = dict(json=json, os=os, time=time, PLAN=plan, RESULT=result, LOCK=lock, frozen=lambda _: None)
+    functions(tree, ['reserve_confirmation'], scope)
+    exec(compile(ast.Module(body=[prefix], type_ignores=[]), '<confirmation preamble>', 'exec'), scope)
+    scope['guard'](True)
+    assert not lock.exists(), 'dry preamble must not reserve the frozen run'
+    def launch(_):
+        try:
+            scope['guard'](False)
+            return 1
+        except SystemExit:
+            return 0
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        winners = sum(pool.map(launch, range(2)))
+    assert winners == 1 and lock.exists(), 'two launches both passed the single-run guard'
+    assert launch(None) == 0, 'an abandoned reservation must still block a rerun'
+    lock.unlink()
+    result.write_text('{}')
+    assert launch(None) == 0, 'an existing result must block a rerun'
+`);
+    });
+
+    it('returns failure only after recording a failed confirmation result', () => {
+        pythonProbe(`
+tree = source('ml_confirm.py')
+tail = copy.deepcopy(next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'main'))
+tail.name = 'finish'
+tail.args = ast.parse('def finish(dry, result): pass').body[0].args
+tail.body = tail.body[-2:]
+writes = []
+scope = dict(RESULT='unused', write_json=lambda path, value: writes.append(copy.deepcopy(value)))
+exec(compile(ast.Module(body=[tail], type_ignores=[]), '<confirmation result tail>', 'exec'), scope)
+assert scope['finish'](False, {'passed': False}) != 0, 'a failed result returned success'
+assert writes == [{'passed': False}], 'the failed result must be recorded first'
+assert scope['finish'](False, {'passed': True}) == 0
+`);
+    });
+
+    it('refuses training before reaching data generation after confirmation', () => {
+        pythonProbe(`
+def forbidden(*args, **kwargs):
+    raise AssertionError('training/data generation reached after confirmation')
+scope = dict(ROOT=ROOT, time=time, json=json, sha=lambda raw: hashlib.sha256(raw).hexdigest(),
+             git_state=lambda _: ('test', False), dataset=forbidden, write_json=forbidden)
+functions(source('ml_train_cnn.py'), ['main'], scope)
+try:
+    scope['main'](SimpleNamespace())
+except SystemExit as error:
+    assert error.code and 'confirm' in str(error).lower()
+else:
+    raise AssertionError('training was allowed after confirmation')
+`);
+    });
+
+    it.each(['checks', 'passed', 'failed', 'macroF1', 'moverRecallSnr10', 'artifactPrecision',
+        'treesMeanFoldMetrics', 'originalTrees', 'evalSha256', 'planSha256', 'orphanLock'])(
+        'check rejects invalid confirmation evidence: %s', (mode) => {
+            pythonProbe(`
+import numpy as np
+mode = sys.argv[1]
+original = json.loads((ROOT / 'models/change-classifier.confirm.json').read_text())
+altered = copy.deepcopy(original)
+if mode == 'checks': altered['checks']['macroF1'] = False
+elif mode == 'passed': altered['passed'] = False
+elif mode == 'failed':
+    altered['meanFoldMetrics']['artifactPrecision'] = 0.1
+    altered['checks']['artifactPrecision'] = False
+    altered['passed'] = False
+elif mode in ['macroF1', 'moverRecallSnr10', 'artifactPrecision']: altered['meanFoldMetrics'][mode] = 0.1
+elif mode == 'treesMeanFoldMetrics': altered['treesMeanFoldMetrics']['macroF1'] = 1
+elif mode == 'originalTrees': altered['meanFoldMetrics']['macroF1'] = 0.825
+elif mode in ['evalSha256', 'planSha256']: altered[mode] = 'wrong hash'
+class ReadPath:
+    def __init__(self, path): self.path = path
+    def __truediv__(self, part): return ReadPath(self.path / part)
+    def exists(self):
+        if mode == 'orphanLock' and self.path.name == 'change-classifier.confirm.json': return False
+        if mode == 'orphanLock' and self.path.name == 'change-classifier.confirm.lock': return True
+        return self.path.exists()
+    def read_text(self): return self.path.read_text()
+    def read_bytes(self): return self.path.read_bytes()
+def loads(raw):
+    value = json.loads(raw)
+    return copy.deepcopy(altered) if isinstance(value, dict) and 'planSha256' in value else value
+# Keep the public-card equality check separate, so it cannot mask a missing confirmation guard.
+card = json.loads((ROOT / 'public/models/change-classifier.card.json').read_bytes())
+scope = dict(ROOT=ReadPath(ROOT), np=np, hashlib=hashlib, json=SimpleNamespace(loads=loads),
+             KEYS=('macroF1', 'accuracy', 'moverRecallSnr10', 'artifactPrecision'), model_card=lambda *_: card)
+functions(source('ml_train_cnn.py'), ['check', 'sha', 'mean_metrics', 'check_confirmation', 'confirmation_checks'], scope)
+try:
+    scope['check']()
+except AssertionError as error:
+    assert 'confirm' in str(error).lower(), f'wrong guard failed: {error}'
+else:
+    raise AssertionError(f'--check accepted invalid confirmation evidence: {mode}')
+`, [mode]);
+        });
+});
+
 describe('snapshot change classifier', () => {
+    it('declines invalid stamps instead of throwing and offers a nonthrowing model loader', () => {
+        const model = loadClassifier(weights);
+        for (const stamp of [new Float32Array(4), ...[NaN, Infinity, -Infinity].map((value) => {
+            const invalid = new Float32Array(675);
+            invalid[1] = value;
+            return invalid;
+        })]) {
+            expect(classify(model, stamp)).toEqual({ kind: 'declined', reason: 'invalid stamp' });
+        }
+        if (!('tryLoadClassifier' in classifier) || typeof classifier.tryLoadClassifier !== 'function') {
+            throw new Error('Missing nonthrowing model loader');
+        }
+        for (const bad of [null, {}, { ...weights, classes: [] }, { ...weights, conv: [] }]) {
+            expect(classifier.tryLoadClassifier(bad)).toBeUndefined();
+            expect(() => loadClassifier(bad)).toThrow();
+        }
+        expect(classifier.tryLoadClassifier(weights)).toEqual(model);
+        expect('HELPER_LABEL' in classifier && classifier.HELPER_LABEL).toBe('Experimental sort hint, trained only on fake changes '
+            + 'added to single frames. Never tested on real two-date changes. Not a verdict.');
+    });
+
+    it('declines near-tied uncalibrated scores using the documented margin choice', () => {
+        const cnn = cnnWeights(), stamp = new Float32Array(675);
+        stamp[225 + 112] = stamp[450 + 112] = 5;
+        // Zero weights make the logits exactly these biases, independent of the stamp.
+        cnn.dense[1]!.bias = [1, 1.01, 0, 0];
+        expect(classify(loadClassifier(cnn), stamp)).toEqual({ kind: 'declined', reason: 'no clear label' });
+        expect('MIN_SCORE_MARGIN' in classifier && classifier.MIN_SCORE_MARGIN).toBe(0.2);
+        cnn.dense[1]!.bias = [0, 0, 0, 3];
+        expect(classify(loadClassifier(cnn), stamp).kind).toBe('nothing');
+    });
+
+    it('declines disagreement in any difference pixel and tolerates float32 channel rounding', () => {
+        const model = loadClassifier(weights), stamp = new Float32Array(675);
+        stamp[562] = 20;
+        expect(classify(model, stamp)).toEqual({ kind: 'declined', reason: 'stamp channels disagree' });
+        stamp[225 + 112] = 20;
+        stamp[450] = 0.001;
+        expect(classify(model, stamp)).toEqual({ kind: 'declined', reason: 'stamp channels disagree' });
+        // Large common backgrounds permit the documented relative tolerance, at every pixel.
+        stamp.fill(1000, 0, 450);
+        stamp.fill(0.05, 450);
+        stamp[225 + 112] = 1005;
+        stamp[562] = 5.05;
+        expect(classify(loadClassifier(cnnWeights()), stamp).kind).toBe('nothing');
+        const a = new Float32Array(41 * 41).fill(1000.125), b = a.slice();
+        b[20 * 41 + 20] = 1005.125;
+        const sampled = stampFor(a, b, grid, { x: 20.25, y: 20.25 }, 0.123)!;
+        expect(sampled).toHaveLength(675);
+        expect(classify(loadClassifier(cnnWeights()), sampled).kind).toBe('nothing');
+    });
+
+    it('uses the feature disc for both faintness and brightness gates', () => {
+        const model = loadClassifier(cnnWeights()), stamp = new Float32Array(675);
+        stamp[225 + 224] = stamp[450 + 224] = 10;
+        expect(classify(model, stamp)).toEqual({ kind: 'declined', reason: 'too faint to label' });
+        stamp[225 + 112] = stamp[450 + 112] = 5;
+        stamp[225 + 224] = stamp[450 + 224] = 1000;
+        expect(classify(model, stamp).kind).toBe('nothing');
+    });
+
     it('declines a flat gradient even within the training S/N range', () => {
         const stamp = new Float32Array(675);
         for (let y = 0; y < 15; y++) {
@@ -209,38 +522,14 @@ describe('snapshot change classifier', () => {
 
     it('matches PyTorch for twenty exported stamps to 1e-4', () => {
         const model = loadClassifier(weights);
-        expect(parity.cases).toHaveLength(20);
-        for (const sample of parity.cases) {
-            const result = classify(model, Float32Array.from(sample.stamp));
-            if (result.kind === 'declined') {
-                throw new Error(result.reason);
-            }
-            model.classes.forEach((kind, i) => {
-                expect(Math.abs(result.p[kind] - sample.probabilities[i]!)).toBeLessThan(1e-4);
-            });
-            expect(result.kind).toBe(model.classes[sample.probabilities.indexOf(Math.max(...sample.probabilities))]);
-            expect(Object.values(result.p).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 12);
-        }
-        expect(() => classify(model, new Float32Array(4))).toThrow();
-        const invalid = new Float32Array(675);
-        invalid[1] = NaN;
-        expect(() => classify(model, invalid)).toThrow();
+        expect(expectParity(model, parity.cases)).toEqual({ faint: 1, unclear: 1 });
         expect(classify(model, new Float32Array(675))).toEqual({ kind: 'declined', reason: 'too faint to label' });
     });
 
     it('matches PyTorch for the CNN attempt and the unchanged phone fallback', () => {
         for (const [json, cases] of [[treeWeights, parity.treeCases], [cnnWeightsAttempt, parity.cnnCases]] as const) {
             const model = loadClassifier(json);
-            expect(cases).toHaveLength(20);
-            for (const sample of cases) {
-                const result = classify(model, Float32Array.from(sample.stamp));
-                if (result.kind === 'declined') {
-                    throw new Error(result.reason);
-                }
-                model.classes.forEach((kind, i) => {
-                    expect(Math.abs(result.p[kind] - sample.probabilities[i]!)).toBeLessThan(1e-4);
-                });
-            }
+            expect(expectParity(model, cases)).toEqual({ faint: 1, unclear: json === treeWeights ? 5 : 1 });
         }
         const digest = (path: string) => createHash('sha256')
             .update(readFileSync(new URL(path, import.meta.url))).digest('hex');

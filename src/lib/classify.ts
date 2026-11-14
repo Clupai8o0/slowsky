@@ -4,7 +4,7 @@ export type ModelKind = 'mover' | 'brightness' | 'artifact' | 'nothing';
 
 export type Classification = {
     kind: ModelKind;
-    /** Uncalibrated scores, not probabilities; never show as percentages or "% sure". */
+    /** Internal uncalibrated scores, not probabilities; never rendered. */
     p: Record<ModelKind, number>;
 } | { kind: 'declined'; reason: string };
 
@@ -48,6 +48,11 @@ interface CnnModel extends ModelBase {
 }
 
 export type ClassifierModel = TreesModel | CnnModel;
+
+// Our own choice, not tuned or validated: decline when the top two uncalibrated scores are closer than this.
+export const MIN_SCORE_MARGIN = 0.2;
+export const HELPER_LABEL = 'Experimental sort hint, trained only on fake changes added to single frames. '
+    + 'Never tested on real two-date changes. Not a verdict.';
 
 const KINDS: ModelKind[] = ['mover', 'brightness', 'artifact', 'nothing'];
 const ARCHITECTURE = 'gradient-boosted-trees-12';
@@ -179,6 +184,16 @@ export function loadClassifier(json: unknown): ClassifierModel
         dense: layersFor(root.dense, [[28, 32], [32, 4]], 1) };
 }
 
+/** Disable the optional helper when fetched weights cannot be loaded. */
+export function tryLoadClassifier(json: unknown): ClassifierModel | undefined
+{
+    try {
+        return loadClassifier(json);
+    } catch {
+        return undefined;
+    }
+}
+
 function bilinear(data: Float32Array, grid: OutputGrid, x: number, y: number): number | undefined
 {
     const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
@@ -230,6 +245,22 @@ export function stampFor(earlier: Float32Array, later: Float32Array, grid: Outpu
     return result;
 }
 
+/** Row-major peak in the radius-4 disc used by the morphology features and S/N gates. */
+function corePeak(diff: Float32Array): { peak: number; px: number; py: number }
+{
+    let peak = -1, px = 7, py = 7;
+    for (let y = 3; y <= 11; y++) {
+        for (let x = 3; x <= 11; x++) {
+            if ((x - 7) ** 2 + (y - 7) ** 2 <= 16 && Math.abs(diff[y * SIZE + x]!) > peak) {
+                peak = Math.abs(diff[y * SIZE + x]!);
+                px = x;
+                py = y;
+            }
+        }
+    }
+    return { peak, px, py };
+}
+
 function featuresFor(stamp: Float32Array): number[]
 {
     const am = Array.from(stamp.subarray(0, AREA)).sort((a, b) => a - b)[112]!;
@@ -237,16 +268,7 @@ function featuresFor(stamp: Float32Array): number[]
     const a = Float64Array.from(stamp.subarray(0, AREA), (v) => v - am);
     const b = Float64Array.from(stamp.subarray(AREA, AREA * 2), (v) => v - bm);
     const diff = stamp.subarray(AREA * 2), absolute = Float64Array.from(diff, Math.abs);
-    let peak = -1, px = 7, py = 7;
-    for (let y = 3; y <= 11; y++) {
-        for (let x = 3; x <= 11; x++) {
-            if ((x - 7) ** 2 + (y - 7) ** 2 <= 16 && absolute[y * SIZE + x]! > peak) {
-                peak = absolute[y * SIZE + x]!;
-                px = x;
-                py = y;
-            }
-        }
-    }
+    const { peak, px, py } = corePeak(diff);
     let total = 1e-12, mx = 0, my = 0, ps = 0, ns = 0;
     let pxc = 0, pyc = 0, nxc = 0, nyc = 0, fa = 0, fb = 0;
     let count = 0, asum = 0, bsum = 0;
@@ -404,9 +426,15 @@ function cnnLogits(model: CnnModel, stamp: Float32Array, features: number[]): nu
 export function classify(model: ClassifierModel, stamp: Float32Array): Classification
 {
     if (stamp.length !== AREA * 3 || !stamp.every(Number.isFinite)) {
-        throw new Error('Classifier: expected a finite 3x15x15 stamp');
+        return { kind: 'declined', reason: 'invalid stamp' };
     }
-    const diff = stamp.subarray(AREA * 2), peak = Math.max(...diff.map(Math.abs));
+    for (let i = 0; i < AREA; i++) {
+        const earlier = stamp[i]!, later = stamp[AREA + i]!, difference = stamp[AREA * 2 + i]!;
+        if (Math.abs(difference - (later - earlier)) > 1e-4 * Math.max(1, Math.abs(earlier), Math.abs(later))) {
+            return { kind: 'declined', reason: 'stamp channels disagree' };
+        }
+    }
+    const diff = stamp.subarray(AREA * 2), { peak } = corePeak(diff);
     if (peak < 2.5) {
         return { kind: 'declined', reason: 'too faint to label' };
     }
@@ -441,6 +469,10 @@ export function classify(model: ClassifierModel, stamp: Float32Array): Classific
     }
     const maximum = Math.max(...logits), exp = logits.map((v) => Math.exp(v - maximum));
     const total = exp.reduce((a, b) => a + b, 0);
+    const scores = exp.map((v) => v / total).sort((a, b) => b - a);
+    if (scores[0]! - scores[1]! < MIN_SCORE_MARGIN) {
+        return { kind: 'declined', reason: 'no clear label' };
+    }
     const p = Object.fromEntries(KINDS.map((kind, i) => [kind, exp[i]! / total])) as Record<ModelKind, number>;
     return { kind: KINDS[logits.indexOf(maximum)]!, p };
 }
