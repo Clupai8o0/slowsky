@@ -207,8 +207,8 @@ describe('round 11 public readings', () => {
         const r = compareVisits(image(a, 'a'), image(b, 'b', 60200), grid, stars, { plain: true });
         const at = (x: number, y: number) => r.candidates.find((c) => Math.hypot(c.pix.x - x, c.pix.y - y) < 3);
         expect(at(30, 30)).toMatchObject({ reading: 'moreLater', nearCatalogue: true });
-        expect(at(30, 30)!.catalogueArcsec).toBeLessThan(2);
-        expect(at(30, 30)!.sentence).toMatch(/\(candidate\)\. A catalogue star lies \d+\.\d″ away\.$/);
+        expect(at(30, 30)!.catalogueArcsec).toBeLessThan(1);
+        expect(at(30, 30)!.sentence).toMatch(/\(candidate\)\. A catalogue star lies less than 1″ away\.$/);
         expect(at(90, 90)).toMatchObject({ reading: 'moreLater', nearCatalogue: false });
         // The only entry near (30, 90) is the later-visit position; the light there is in the earlier visit.
         expect(at(30, 90)).toMatchObject({ reading: 'lessLater', nearCatalogue: false });
@@ -245,6 +245,19 @@ describe('round 11 public readings', () => {
             expect(covered.sentence, `${plain}`).toMatch(/\(S\/N > 50; candidate\)/);
             expect(hole.sentence, `${plain}`).not.toMatch(/S\/N/);
             expect(r.notes).toContain('S/N is left out for 1 candidate where the frames\' error maps have no value, because the noise there comes from the difference image alone.');
+        }
+    });
+    it('prints no S/N when the maps have holes around the spot but not at its centre (Codex r11p)', () => {
+        for (const plain of [false, true]) {
+            const a = noise(grid), b = noise(grid);
+            point(b, grid, 60, 60, 1000);
+            const va = new Float32Array(a.length).fill(1), vb = new Float32Array(b.length).fill(1);
+            // One NaN in every 4x4 bin around the spot, none at the spot's own pixel.
+            for (let y = 44; y < 77; y += 4) { for (let x = 44; x < 77; x += 4) { if (x !== 60 || y !== 60) { va[y * grid.width + x] = NaN; } } }
+            const r = compareVisits({ ...image(a, 'a'), variance: va }, { ...image(b, 'b', 60200), variance: vb }, grid, [], { plain });
+            const c = r.candidates.find((k) => Math.hypot(k.pix.x - 60, k.pix.y - 60) < 3)!;
+            expect(c, `${plain}`).toBeDefined();
+            expect(c.sentence, `${plain}`).not.toMatch(/S\/N/);
         }
     });
     it('never prints S/N 50.0 below the > 50 form', () => {
