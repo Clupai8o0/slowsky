@@ -36,6 +36,42 @@ describe('SIA proxy', () => {
         expect((await GET(req())).status).toBe(502);
         expect((await GET(req())).status).toBe(502);
     });
+    it.each(['HTTP error', 'declared size', 'streamed size'])('cancels and aborts an upstream rejected for %s', async reason => {
+        const cancel = vi.fn();
+        const body = new ReadableStream<Uint8Array>({
+            start(controller)
+            {
+                controller.enqueue(new Uint8Array(reason === 'streamed size' ? 8 * 1024 * 1024 + 1 : 1));
+            },
+            cancel,
+        });
+        const upstream = new Response(body, {
+            status: reason === 'HTTP error' ? 500 : 200,
+            headers: reason === 'declared size' ? { 'Content-Length': String(8 * 1024 * 1024 + 1) } : {},
+        });
+        let signal: AbortSignal | null | undefined;
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+            signal = init?.signal;
+            return upstream;
+        });
+        expect((await GET(req())).status).toBe(502);
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(signal?.aborted).toBe(true);
+    });
+    it('aborts when cancelling a rejected upstream body fails', async () => {
+        const cancel = vi.fn(async () => { throw new Error('Cannot cancel'); });
+        const upstream = new Response(new ReadableStream<Uint8Array>({ cancel }), { status: 500 });
+        let signal: AbortSignal | null | undefined;
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+            signal = init?.signal;
+            return upstream;
+        });
+        const response = await GET(req());
+        expect(response.status).toBe(502);
+        expect(await response.json()).toEqual({ error: 'Invalid upstream response' });
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(signal?.aborted).toBe(true);
+    });
     it('times out upstream', async () => {
         vi.useFakeTimers();
         vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_resolve, reject) => {
@@ -102,6 +138,19 @@ describe('SIA rows', () => {
             await expect(searchFrames(q, undefined, vi.fn(async () => new Response(xml)) as unknown as typeof fetch)).rejects.toThrow(status);
         }
         expect(queryStatus(fixture)?.status).not.toMatch(/ERROR|OVERFLOW/);
+    });
+    it('rejects a trailing QUERY_STATUS OVERFLOW after an OK fixture', async () => {
+        const xml = fixture.replace('</ns0:TABLE>', '</ns0:TABLE><INFO name="QUERY_STATUS" value="OVERFLOW"/>');
+        expect(queryStatus(xml)?.status).toBe('OVERFLOW');
+        const fetcher: typeof fetch = async () => new Response(xml);
+        await expect(searchFrames(q, undefined, fetcher)).rejects.toThrow('QUERY_STATUS=OVERFLOW');
+    });
+    it.each([
+        ['OK', 'OVERFLOW', 'ERROR'],
+        ['OK', 'ERROR', 'OVERFLOW'],
+    ])('gives ERROR priority for QUERY_STATUS sequence %s, %s, %s', (...statuses) => {
+        const xml = statuses.map(status => `<INFO name="QUERY_STATUS" value="${status}"/>`).join('');
+        expect(queryStatus(xml)?.status).toBe('ERROR');
     });
     it('keeps rows sharing an obs_id but differing in detector', () => {
         const row = parseSiaXml(fixture)[0]!;

@@ -15,7 +15,7 @@ const NAMED_ENTITIES = new Map<string, string>([
 
 // Throws with the server's INFO text when the reply is an error document.
 // Quoted attribute values may contain '>' (e.g. name="flux>limit"), so tag bodies are matched quote-aware.
-const TAG_ATTRS = `((?:"[^"]*"|'[^']*'|[^>"'])*)`;
+const TAG_ATTRS = `((?:"[^"]*"|'[^']*'|[^>/"'])*)`;
 const CDATA_MARK = /(\d+)/g;
 
 export function parseVotable(xml: string): VoRow[]
@@ -38,8 +38,8 @@ export function parseVotable(xml: string): VoRow[]
         return [];
     }
     const rows: VoRow[] = [];
-    for (const tr of body.matchAll(/<TR\b[^>]*?(?:\/>|>([\s\S]*?)<\/TR\s*>)/gi)) {
-        const cells = cellsOf(tr[1] ?? '', cdata);
+    for (const tr of body.matchAll(new RegExp(`<TR\\b${TAG_ATTRS}(?:\\/>|>([\\s\\S]*?)<\\/TR\\s*>)`, 'gi'))) {
+        const cells = cellsOf(tr[2] ?? '', cdata);
         const row: VoRow = {};
         fields.forEach((name, i) => {
             row[name] = cells[i] ?? '';

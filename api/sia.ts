@@ -102,6 +102,11 @@ export async function GET(request: Request): Promise<Response>
     try {
         const response = await fetch(buildUpstreamUrl(params), { signal: controller.signal });
         if (!response.ok || Number(response.headers.get('content-length')) > LIMIT) {
+            try {
+                await response.body?.cancel();
+            } catch {
+                // Still reject the response when upstream cancellation fails.
+            }
             return error(502, 'Invalid upstream response');
         }
         const reader = response.body?.getReader();
@@ -132,5 +137,6 @@ export async function GET(request: Request): Promise<Response>
         return error(controller.signal.aborted ? 504 : 502, controller.signal.aborted ? 'Upstream timeout' : 'Upstream failure');
     } finally {
         clearTimeout(timer);
+        controller.abort();
     }
 }
