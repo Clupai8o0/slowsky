@@ -140,8 +140,8 @@ describe('spectrumChart', () => {
         expect(JSON.stringify(text)).not.toMatch(/NaN|Infinity|undefined/);
 
         const svg = spectrumChartSvg(spec);
-        expect(svg).toContain(`<title id="spectrum-Npix1234-255p5-128p5-title">${text.title}</title>`);
-        expect(svg).toContain(`<desc id="spectrum-Npix1234-255p5-128p5-desc">${text.summary}</desc>`);
+        expect(svg).toContain(`>${text.title}</title>`);
+        expect(svg).toContain(`>${text.summary}</desc>`);
     });
 
     it('handles no valid channels (with wavelength range and with zero-length arrays)', () => {
@@ -256,10 +256,8 @@ describe('spectrumChart', () => {
         // Dimension clamping for NaN, negative and tiny values.
         const minSvg = spectrumChartSvg(spec, { width: 320, height: 180 });
         for (const bad of [
-            { width: NaN, height: NaN },
             { width: -200, height: -50 },
-            { width: 120, height: 90 },
-            { width: Infinity, height: 0 }
+            { width: 120, height: 90 }
         ]) {
             const clamped = spectrumChartSvg(spec, bad);
             assertCleanSvg(clamped);
@@ -361,5 +359,143 @@ describe('spectrumChart', () => {
         expect(lambdaToX(9.9, 64, 600, [0.75, 4.75])).toBe(664);
         expect(lambdaToX(NaN, 64, 600, [0.75, 4.75])).toBe(64);
         expect(lambdaToX(Infinity, 64, 600, [0.75, 4.75])).toBe(664);
+    });
+});
+
+function smallSpectrum(lambdas: number[], values = lambdas.map(() => 1), noise = values.map(() => 0)): CubeSpectrum
+{
+    return makeSpectrum({
+        lambda: Float64Array.from(lambdas),
+        surfaceBrightness: Float32Array.from(values),
+        noise: Float32Array.from(noise),
+        reasons: values.map(() => null)
+    });
+}
+
+describe('spectrum chart regression cases', () => {
+    it('terminates for huge and tiny wavelengths in a time-limited subprocess', async () => {
+        const childProcessModule = 'node:child_process';
+        const processModule = 'node:process';
+        const { spawnSync } = await import(childProcessModule) as {
+            spawnSync: (command: string, args: string[], options: { timeout: number; encoding: string }) => {
+                error?: Error; status: number | null; stderr: string;
+            };
+        };
+        const { execPath } = await import(processModule) as { execPath: string };
+        const script = `
+            const { stripTypeScriptTypes } = require('node:module');
+            const fs = require('node:fs');
+            let source = fs.readFileSync('src/lib/spectrum-chart.ts', 'utf8');
+            source = source.replace(/^import .*from '\\.\\/cube';/m, 'const LINES = [];');
+            source = source.replace(/export /g, '');
+            const code = stripTypeScriptTypes(source);
+            const render = new Function(code + '; return spectrumChartSvg;')();
+            for (const lambda of [[1e16], [1e16, 2e16], [1e-9, 2e-9]]) {
+                const spec = { lambda, surfaceBrightness: lambda.map(() => 1), noise: lambda.map(() => 0), reasons: lambda.map(() => null), spot: { tile: 't', x: 0, y: 0 }, unit: '', caption: '', notes: [] };
+                const output = render(spec);
+                if (/NaN|Infinity|undefined/.test(output)) { throw Error('unclean SVG'); }
+            }
+        `;
+        const child = spawnSync(execPath, ['-e', script], { timeout: 3000, encoding: 'utf8' });
+        expect(child.error?.message, child.stderr).toBeUndefined();
+        expect(child.status, child.stderr).toBe(0);
+    }, 5000);
+
+    it.each([320, 720])('spaces X labels and retains enough ticks at width %i', width => {
+        for (const range of [[0.75, 5], [100, 119], [0.75, 0.9], [1, 1000], [1.1, 2.1]]) {
+            const spec = smallSpectrum(range);
+            const svg = spectrumChartSvg(spec, { width });
+            assertCleanSvg(svg);
+            expect(JSON.stringify(spectrumChartText(spec))).not.toMatch(/NaN|Infinity|undefined/);
+            const labels = [...svg.matchAll(/<text data-x-tick-label="true" x="([\d.]+)"[^>]*>([^<]+)<\/text>/g)]
+                .map(match => ({ x: Number(match[1]), text: match[2]! }));
+            expect(labels.length).toBeGreaterThanOrEqual(2);
+            expect(labels.length).toBeLessThanOrEqual(12);
+            for (let i = 1; i < labels.length; i++) {
+                const prev = labels[i - 1]!;
+                const next = labels[i]!;
+                expect(next.x - prev.x + 0.01).toBeGreaterThanOrEqual((prev.text.length + next.text.length) * 6.2 / 2 + 8);
+            }
+            if (range[0] === 0.75 && range[1] === 5) {
+                expect(labels.map(label => label.text)).toEqual(['1', '2', '3', '4', '5']);
+            }
+        }
+    });
+
+    it.each([[-5, -5], [3, 3, 3], [0, 0], [-2], [1e-12, 2e-12], [1e9, 2e9], [-5, 2]].map(values => [values]))
+    ('keeps dots, lines and noise bands in bounds for %j', values => {
+        for (const factor of [0, 0.1]) {
+            const spec = smallSpectrum(values.map((_, index) => index + 1), values, values.map(value => Math.abs(value) * factor));
+            const svg = spectrumChartSvg(spec);
+            assertCleanSvg(svg);
+            expect(JSON.stringify(spectrumChartText(spec))).not.toMatch(/NaN|Infinity|undefined/);
+            const xs: number[] = [];
+            const ys: number[] = [];
+            for (const dot of svg.matchAll(/<circle data-dot="true" cx="([^"]+)" cy="([^"]+)"/g)) {
+                xs.push(Number(dot[1]));
+                ys.push(Number(dot[2]));
+            }
+            for (const line of svg.matchAll(/<path data-line="true" d="([^"]+)"/g)) {
+                for (const point of line[1]!.matchAll(/[ML]([\d.]+) ([\d.]+)/g)) {
+                    xs.push(Number(point[1]));
+                    ys.push(Number(point[2]));
+                }
+            }
+            for (const band of svg.matchAll(/<polygon data-band="true" points="([^"]+)"/g)) {
+                for (const point of band[1]!.matchAll(/([\d.]+),([\d.]+)/g)) {
+                    xs.push(Number(point[1]));
+                    ys.push(Number(point[2]));
+                }
+            }
+            expect(ys.length).toBeGreaterThanOrEqual(values.length);
+            for (const x of xs) {
+                expect(x).toBeGreaterThanOrEqual(64);
+                expect(x).toBeLessThanOrEqual(700);
+            }
+            for (const y of ys) {
+                expect(y).toBeGreaterThanOrEqual(36);
+                expect(y).toBeLessThanOrEqual(222);
+            }
+        }
+    });
+
+    it('uses deterministic valid IDs with full spot precision', () => {
+        const spot = { ...makeSpectrum().spot, tile: 'tile "< with spaces', x: 1.01, y: 2 };
+        const id = (x: number): string => {
+            const svg = spectrumChartSvg(makeSpectrum({ spot: { ...spot, x } }));
+            assertCleanSvg(svg);
+            return svg.match(/<title id="([^"]+)"/)![1]!;
+        };
+        expect(id(1.01)).toMatch(/^[A-Za-z][A-Za-z0-9_-]*$/);
+        expect(id(1.01)).toBe(id(1.01));
+        expect(id(1.01)).not.toBe(id(1.02));
+    });
+
+    it.each([[1e308, 4000, 3000], [Infinity, 720, 260], [-Infinity, 720, 260], [NaN, 720, 260], [0, 320, 180], [4001, 4000, 3000]])
+    ('clamps or defaults dimensions for %s', (input, width, height) => {
+        const spec = makeSpectrum();
+        const svg = spectrumChartSvg(spec, { width: input, height: input });
+        assertCleanSvg(svg);
+        expect(svg).toContain(`viewBox="0 0 ${width} ${height}"`);
+        expect(JSON.stringify(spectrumChartText(spec))).not.toMatch(/NaN|Infinity|undefined/);
+    });
+
+    it('never emits negative rounded zero', () => {
+        for (const spec of [smallSpectrum([-0.001]), smallSpectrum([0, 1], [-0.0001, -0.0001])]) {
+            const output = spectrumChartSvg(spec, { markLambda: -0 }) + JSON.stringify(spectrumChartText(spec));
+            assertCleanSvg(spectrumChartSvg(spec, { markLambda: -0 }));
+            expect(output).not.toMatch(/-0(?:\.|\D|$)/);
+            expect(output).not.toMatch(/NaN|Infinity|undefined/);
+        }
+    });
+
+    it('keeps the normal fixture identical except for accessible IDs', () => {
+        const svg = spectrumChartSvg(makeSpectrum(), { markLambda: 2.5 })
+            .replace(/spectrum-[A-Za-z0-9_-]+-(title|desc)/g, 'spectrum-ID-$1');
+        let hash = 2166136261;
+        for (let i = 0; i < svg.length; i++) {
+            hash = Math.imul(hash ^ svg.charCodeAt(i), 16777619);
+        }
+        expect(hash >>> 0).toBe(428219100);
     });
 });

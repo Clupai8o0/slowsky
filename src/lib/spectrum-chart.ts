@@ -8,8 +8,10 @@ export interface SpectrumChartOptions {
 
 const DEFAULT_WIDTH = 720;
 const MIN_WIDTH = 320;
+const MAX_WIDTH = 4000;
 const DEFAULT_HEIGHT = 260;
 const MIN_HEIGHT = 180;
+const MAX_HEIGHT = 3000;
 
 const PLOT_LEFT = 64;
 const PLOT_RIGHT_MARGIN = 20;
@@ -67,56 +69,110 @@ function escapeXml(value: string): string
         .replace(/"/g, '&quot;');
 }
 
-function normalizeDimension(requested: number | undefined, fallback: number, minimum: number): number
+function normalizeDimension(requested: number | undefined, fallback: number, minimum: number, maximum: number): number
 {
-    if (requested === undefined) {
+    if (requested === undefined || !Number.isFinite(requested)) {
         return fallback;
     }
-    if (typeof requested !== 'number' || !Number.isFinite(requested) || requested < minimum) {
-        return minimum;
-    }
-    return round1(requested);
+    return round1(Math.max(minimum, Math.min(maximum, requested)));
 }
 
 function spotIdPrefix(spot: CubeSpectrum['spot']): string
 {
-    const rawTile = typeof spot?.tile === 'string' ? spot.tile : 'spot';
-    const cleanTile = rawTile
-        .replace(/nan|infinity|undefined/gi, '')
-        .replace(/[^a-zA-Z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '') || 'spot';
-    const cleanCoord = (coord: number | undefined, tag: string): string => {
-        if (typeof coord !== 'number' || !Number.isFinite(coord)) {
-            return tag;
+    const encode = (value: string): string => {
+        let encoded = '';
+        for (let i = 0; i < value.length; i++) {
+            encoded += value.charCodeAt(i).toString(16).padStart(4, '0');
         }
-        return fmt(coord).replace('-', 'm').replace('.', 'p');
+        return encoded;
     };
-    return `spectrum-${cleanTile}-${cleanCoord(spot?.x, 'x')}-${cleanCoord(spot?.y, 'y')}`;
+    const coord = (value: number | undefined): string => Object.is(value, -0) ? '-0' : String(value);
+    return `spectrum-${encode(typeof spot?.tile === 'string' ? spot.tile : '')}-${encode(coord(spot?.x))}-${encode(coord(spot?.y))}`;
+}
+
+function formatNumber(value: number, style: 'fixed' | 'significant' | 'tick'): string
+{
+    let result: string;
+    if (style === 'fixed') {
+        result = value.toFixed(2);
+    } else if (style === 'significant') {
+        result = Math.abs(value) >= 1000 && Math.abs(value) < 1e6
+            ? String(Number(value.toPrecision(3))) : value.toPrecision(3);
+    } else if (value !== 0 && (Math.abs(value) >= 1e5 || Math.abs(value) < 1e-3)) {
+        result = value.toExponential().replace(/\.?0+e/, 'e').replace('e+', 'e');
+    } else {
+        result = String(Number(value.toPrecision(10)));
+    }
+    if (Number(result) === 0 && result.startsWith('-')) {
+        return result.slice(1);
+    }
+    if (result.startsWith('-0.')) {
+        return style === 'significant' ? value.toExponential(2) : value.toExponential();
+    }
+    return result;
 }
 
 function formatSigFigs3(value: number): string
 {
-    const clean = value === 0 ? 0 : value;
-    if (clean === 0) {
-        return '0.00';
-    }
-    const abs = Math.abs(clean);
-    if (abs >= 1000 && abs < 1e6) {
-        return String(Number(clean.toPrecision(3)));
-    }
-    return clean.toPrecision(3);
+    return formatNumber(value, 'significant');
 }
 
 function formatTickLabel(tick: number): string
 {
-    if (tick === 0) {
-        return '0';
+    return formatNumber(tick, 'tick');
+}
+
+function xTicks(min: number, max: number, width: number): number[]
+{
+    if (min === max) {
+        return Number.isInteger(min) ? [min] : [];
     }
-    const abs = Math.abs(tick);
-    if (abs >= 1e5 || abs < 1e-3) {
-        return tick.toExponential().replace(/\.?0+e/, 'e').replace('e+', 'e');
+    const span = max - min;
+    if (!Number.isFinite(span) || span <= 0) {
+        return [];
     }
-    return String(Number(tick.toPrecision(10)));
+    const initialExp = span >= 1 ? Math.max(0, Math.floor(Math.log10(span)) - 2) : Math.floor(Math.log10(span)) - 2;
+    const exponents = Array.from({ length: 6 }, (_, i) => initialExp + i);
+    if (span >= 1 && initialExp === 0) {
+        exponents.push(-2, -1);
+    }
+    for (const exp of exponents) {
+        for (const factor of [1, 2, 5]) {
+            const step = factor * 10 ** exp;
+            if (!Number.isFinite(step) || step <= 0) {
+                continue;
+            }
+            const first = Math.ceil(min / step - 1e-10);
+            const last = Math.floor(max / step + 1e-10);
+            const count = last - first + 1;
+            if (!Number.isFinite(count) || count < 2 || count > 12) {
+                continue;
+            }
+            const ticks: number[] = [];
+            let fits = true;
+            for (let i = 0; i < count; i++) {
+                const tick = Number(((first + i) * step).toPrecision(15));
+                const previous = ticks[ticks.length - 1];
+                if (previous !== undefined) {
+                    if (tick <= previous) {
+                        fits = false;
+                        break;
+                    }
+                    const gap = (lambdaToX(tick, 0, width, [min, max]) - lambdaToX(previous, 0, width, [min, max]));
+                    const labelWidth = (formatTickLabel(tick).length + formatTickLabel(previous).length) * CHAR_WIDTH_PX / 2;
+                    if (gap < labelWidth + 8.1) {
+                        fits = false;
+                        break;
+                    }
+                }
+                ticks.push(tick);
+            }
+            if (fits && ticks.length >= 2) {
+                return ticks;
+            }
+        }
+    }
+    return [];
 }
 
 function analyzeSpectrum(spec: CubeSpectrum): AnalyzedSpectrum
@@ -201,7 +257,11 @@ function ticksInBounds(yMin: number, yMax: number, mantissa: number, exp: number
         return { ticks: [], firstIndex: 0, lastIndex: -1 };
     }
     const ticks: number[] = [];
-    for (let idx = firstIndex; idx <= lastIndex; idx++) {
+    for (let offset = 0; offset <= lastIndex - firstIndex; offset++) {
+        const idx = firstIndex + offset;
+        if (offset > 0 && idx <= firstIndex + offset - 1) {
+            break;
+        }
         ticks.push(tickAtIndex(idx, mantissa, exp));
     }
     return { ticks, firstIndex, lastIndex };
@@ -222,8 +282,13 @@ function computeYAxis(valid: ValidChannel[]): YAxis
         }
     }
 
+    if (minLow === maxHigh) {
+        const padding = minLow === 0 ? 1 : Math.abs(minLow) * 0.05;
+        minLow -= padding;
+        maxHigh += padding;
+    }
     const rawMin = Math.min(0, minLow);
-    const rawMax = maxHigh;
+    const rawMax = Math.max(0, maxHigh);
     const span = rawMax - rawMin;
     if (!Number.isFinite(span) || span <= 0) {
         return { min: 0, max: 1, ticks: [0, 0.5, 1] };
@@ -332,7 +397,7 @@ export function spectrumChartText(spec: CubeSpectrum): {
     const caption = typeof spec.caption === 'string' ? spec.caption : '';
     const notes = Array.isArray(spec.notes) ? spec.notes : [];
     const title = lambdaRange !== null
-        ? `Spectrum at this spot, ${lambdaRange[0].toFixed(2)} to ${lambdaRange[1].toFixed(2)} µm`
+        ? `Spectrum at this spot, ${formatNumber(lambdaRange[0], 'fixed')} to ${formatNumber(lambdaRange[1], 'fixed')} µm`
         : 'Spectrum at this spot';
 
     if (valid.length === 0 || lambdaRange === null) {
@@ -356,8 +421,8 @@ export function spectrumChartText(spec: CubeSpectrum): {
     const noDataCount = totalCount - validCount;
     const unitRaw = typeof spec.unit === 'string' ? spec.unit.trim() : '';
     const unitPart = unitRaw.length > 0 ? ` ${unitRaw}` : '';
-    const countPhrase = `${validCount} of ${totalCount} ${totalCount === 1 ? 'colour has' : 'colours have'} data, from ${lambdaRange[0].toFixed(2)} to ${lambdaRange[1].toFixed(2)} µm.`;
-    const brightestPhrase = `Brightest at ${brightest.lambda.toFixed(2)} µm: ${formatSigFigs3(brightest.value)}${unitPart}.`;
+    const countPhrase = `${validCount} of ${totalCount} ${totalCount === 1 ? 'colour has' : 'colours have'} data, from ${formatNumber(lambdaRange[0], 'fixed')} to ${formatNumber(lambdaRange[1], 'fixed')} µm.`;
+    const brightestPhrase = `Brightest at ${formatNumber(brightest.lambda, 'fixed')} µm: ${formatSigFigs3(brightest.value)}${unitPart}.`;
     const noDataPhrase = noDataCount > 0
         ? ` ${noDataCount} ${noDataCount === 1 ? 'colour has' : 'colours have'} no data.`
         : '';
@@ -372,8 +437,8 @@ export function spectrumChartText(spec: CubeSpectrum): {
 
 export function spectrumChartSvg(spec: CubeSpectrum, opts: SpectrumChartOptions = {}): string
 {
-    const width = normalizeDimension(opts.width, DEFAULT_WIDTH, MIN_WIDTH);
-    const height = normalizeDimension(opts.height, DEFAULT_HEIGHT, MIN_HEIGHT);
+    const width = normalizeDimension(opts.width, DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH);
+    const height = normalizeDimension(opts.height, DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT);
     const plotLeft = PLOT_LEFT;
     const plotRight = width - PLOT_RIGHT_MARGIN;
     const plotWidth = plotRight - plotLeft;
@@ -395,16 +460,10 @@ export function spectrumChartSvg(spec: CubeSpectrum, opts: SpectrumChartOptions 
 
     const [xMin, xMax] = lambdaRange;
     const xAxisParts: string[] = [];
-    const firstWhole = Math.ceil(xMin);
-    const lastWhole = Math.floor(xMax);
-    if (lastWhole >= firstWhole) {
-        const wholeCount = lastWhole - firstWhole + 1;
-        const wholeStep = wholeCount > 20 ? Math.ceil(wholeCount / 10) : 1;
-        for (let m = firstWhole; m <= lastWhole; m += wholeStep) {
-            const tx = round1(lambdaToX(m, plotLeft, plotWidth, lambdaRange));
-            xAxisParts.push(`<line data-x-tick="true" x1="${fmt(tx)}" y1="${fmt(plotBottom)}" x2="${fmt(tx)}" y2="${fmt(plotBottom + 5)}" stroke="${MUTE}" stroke-width="1"/>`);
-            xAxisParts.push(`<text data-x-tick-label="true" x="${fmt(tx)}" y="${fmt(plotBottom + 17)}" text-anchor="middle" fill="${MUTE}" font-size="11" font-family="inherit">${m}</text>`);
-        }
+    for (const m of xTicks(xMin, xMax, plotWidth)) {
+        const tx = round1(lambdaToX(m, plotLeft, plotWidth, lambdaRange));
+        xAxisParts.push(`<line data-x-tick="true" x1="${fmt(tx)}" y1="${fmt(plotBottom)}" x2="${fmt(tx)}" y2="${fmt(plotBottom + 5)}" stroke="${MUTE}" stroke-width="1"/>`);
+        xAxisParts.push(`<text data-x-tick-label="true" x="${fmt(tx)}" y="${fmt(plotBottom + 17)}" text-anchor="middle" fill="${MUTE}" font-size="11" font-family="inherit">${formatTickLabel(m)}</text>`);
     }
     xAxisParts.push(`<text data-axis-title="x" x="${fmt(plotLeft + plotWidth / 2)}" y="${fmt(plotBottom + 33)}" text-anchor="middle" fill="${MUTE}" font-size="12" font-family="inherit">wavelength, µm</text>`);
 
