@@ -298,7 +298,7 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
     let last: [HTMLElement, HTMLElement, SlotView] | null = null;
 
     // One frame at a time, each with its own deadline; null when a new result takes over. A read that fails or
-    // runs out of time counts as null for that frame.
+    // runs out of time counts as null for that frame, and nothing a frame started outlives its turn.
     async function eachFrame<T>(frames: RegriddedFrame[], reset: AbortSignal, read: (frame: RegriddedFrame, signal: AbortSignal) => Promise<T | null>): Promise<Map<string, T | null> | null>
     {
         const out = new Map<string, T | null>();
@@ -316,6 +316,10 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
             });
             const value = await Promise.race([read(frame, deadline.signal).catch(() => null), timeout]);
             clearTimeout(timer);
+            // The frame's turn is over. A read made of several downloads can end early (one part failed) while the
+            // others are still running: end them here, because once the listener below is gone stop() cannot reach
+            // them. A read that finished has nothing left to end.
+            abort();
             reset.removeEventListener('abort', abort);
             out.set(frame.frame.obsId, value);
         }

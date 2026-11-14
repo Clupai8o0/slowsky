@@ -165,6 +165,49 @@ describe('page change list stops reading when the page drops its view', () => {
         expect(again.innerHTML).toBe(finished);
         expect([variance.mock.calls.length, read.mock.calls.length]).toEqual(reads);
     });
+
+    it('a frame whose flag read fails ends its other downloads when its turn is over', async () => {
+        const result = livePair();
+        const variance = vi.fn(async (f: RegriddedFrame) => f.variance ?? null);
+        const read = vi.fn(async () => { throw new Error('flags failed'); });
+        // The picture and background downloads never finish; each records the signal it was given.
+        const pending: AbortSignal[] = [];
+        const reader = { index: async (url: string) => ({ url }),
+            readFloat32: (_index: unknown, _name: string, _box: unknown, signal: AbortSignal) => new Promise<Float32Array>(() => { pending.push(signal); }),
+        } as unknown as RangeReader;
+        const onChange = vi.fn(), box = {} as HTMLElement, marks = {} as HTMLElement;
+        const slot = mountChanges(onChange, { reader, read, variance });
+        const view = { source: 'live' as const, result, index: 0, mode: 'blink' as const };
+        slot.render(box, marks, view);
+        // Two frames, each with a picture and a background download: four in all, one frame after the other.
+        await vi.waitFor(() => expect(pending).toHaveLength(4));
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
+        expect(read).toHaveBeenCalledTimes(2);
+        // Every download left behind by a failed frame was ended when that frame's turn was over.
+        expect(pending.map(s => s.aborted)).toEqual([true, true, true, true]);
+        slot.stop();
+    });
+
+    it('stop() during a frame whose flag read is still running ends all three of its downloads', async () => {
+        const result = livePair();
+        const variance = vi.fn(async (f: RegriddedFrame) => f.variance ?? null);
+        const pending: AbortSignal[] = [];
+        const hang = (signal: AbortSignal) => new Promise<never>(() => { pending.push(signal); });
+        const read = vi.fn((_url: string, _layout: unknown, _box: unknown, options: { signal: AbortSignal }) => hang(options.signal));
+        const reader = { index: async (url: string) => ({ url }),
+            readFloat32: (_index: unknown, _name: string, _box: unknown, signal: AbortSignal) => hang(signal),
+        } as unknown as RangeReader;
+        const onChange = vi.fn(), box = {} as HTMLElement, marks = {} as HTMLElement;
+        const slot = mountChanges(onChange, { reader, read: read as never, variance });
+        slot.render(box, marks, { source: 'live' as const, result, index: 0, mode: 'blink' as const });
+        await vi.waitFor(() => expect(pending).toHaveLength(3));
+        expect(pending.map(s => s.aborted)).toEqual([false, false, false]);
+        slot.stop();
+        expect(pending.map(s => s.aborted)).toEqual([true, true, true]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        // The second frame is never started.
+        expect(pending).toHaveLength(3);
+    });
 });
 
 describe('page change list is the plain list', () => {
