@@ -5,7 +5,7 @@ import type { OutputGrid, RangeReader, RegriddedFrame, Wcs } from '../src/lib/ty
 import type { SkyResult } from '../src/lib/source';
 import { gridSkyToPix } from '../src/lib/regrid';
 import { nativePeak, readFrameFlags, screen } from '../src/ui/flag-screen';
-import { MAPS_NOTE, mountChanges, type SlotView } from '../src/ui/slots';
+import { MAPS_NOTE, mountChanges, SAVED_NOTE, type SlotView } from '../src/ui/slots';
 
 const candidate = { id: 'a', kind: 'brightness', pix: { x: 1, y: 1 }, sign: 1,
     gaiaMatch: false, reason: 'A spot appeared.' } as ChangeCandidate;
@@ -216,7 +216,7 @@ describe('change slot', () => {
         const a = frame('a', 0), b = frame('b', 20);
         delete a.context; delete b.context;
         const box = {} as HTMLElement;
-        mountChanges(vi.fn(), { find }).render(box, {} as HTMLElement, { source: 'snapshot', result: sky([a, b]), index: 0, mode: 'blink' });
+        mountChanges(vi.fn(), { find, savedList: true }).render(box, {} as HTMLElement, { source: 'snapshot', result: sky([a, b]), index: 0, mode: 'blink' });
         expect(box.innerHTML).toBe('<p class="sk-chg-lead">Every spot listed is a candidate only; this page cannot tell which, if any, are real changes in the sky.</p><p class="sk-chg-lead">Archive flags are not checked in a saved view, so these spots are listed without that check.</p><p class="sk-chg-lead">Each visit has fewer than 3 frames, so a detector hit cannot be ruled out.</p><ol class="sk-chg"><li><b>Candidate 1</b> Plain spot (candidate).</li></ol>');
     });
     it('shows the finder at once, then updates once with screened marks', async () => {
@@ -273,10 +273,35 @@ describe('change slot', () => {
         expect(box.innerHTML).not.toContain('Checking the archive');
     });
 
-    it('resolves saved frames immediately without reads', () => {
+    it('lists nothing from a saved view: one note, no marks, no finder run and no reads', () => {
         const reader = { index: vi.fn() } as unknown as RangeReader;
         const find = vi.fn(found);
-        const slot = mountChanges(vi.fn(), { reader, find });
+        const onChange = vi.fn();
+        const slot = mountChanges(onChange, { reader, find });
+        const a = frame('a', 0);
+        const b = frame('b', 20);
+        const box = {} as HTMLElement;
+        const marks = {} as HTMLElement;
+        const result = sky([a, b]);
+        expect(slot.render(box, marks, { source: 'snapshot', result, index: 0, mode: 'blink' })).toBe(true);
+        expect(box.innerHTML).toBe(`<ul class="sk-chg-notes"><li>${SAVED_NOTE}</li></ul>`);
+        expect(marks.innerHTML).toBe('');
+        expect(SAVED_NOTE).toBe('Candidate changes need a live read. Go live to compare the first and last visit; a saved copy is not checked against the archive’s error maps and flags.');
+        slot.render(box, marks, { source: 'snapshot', result, index: 0, mode: 'diff' });
+        expect(find).not.toHaveBeenCalled();
+        expect(reader.index).not.toHaveBeenCalled();
+        expect(onChange).not.toHaveBeenCalled();
+        // The same frames read live are listed as before.
+        const live = mountChanges(vi.fn(), { reader, find, variance: async () => null });
+        const liveBox = {} as HTMLElement;
+        live.render(liveBox, {} as HTMLElement, { source: 'live', result: sky([frame('a', 0), frame('b', 20)]), index: 0, mode: 'blink' });
+        expect(find).toHaveBeenCalledTimes(1);
+        expect(liveBox.innerHTML).not.toContain(SAVED_NOTE);
+    });
+    it('resolves saved frames immediately without reads (savedList, tests only)', () => {
+        const reader = { index: vi.fn() } as unknown as RangeReader;
+        const find = vi.fn(found);
+        const slot = mountChanges(vi.fn(), { reader, find, savedList: true });
         const a = frame('a', 0);
         const b = frame('b', 20);
         delete a.context;

@@ -30,7 +30,7 @@ import { readVariance } from './error-maps';
 
 export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true });
+    Object.freeze({ spectrum: false, flags: true, changes: true, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
@@ -273,8 +273,11 @@ export interface ChangesDeps {
     timeoutMs?: number;
     find?: typeof findChanges;
     variance?: (frame: RegriddedFrame, signal: AbortSignal) => Promise<Float32Array | null>;
+    savedList?: boolean; // tests only: list candidates from a saved view too (the site never does)
 }
 
+// A saved view is not checked against the archive's error maps or flags, so the site lists nothing from it.
+export const SAVED_NOTE = 'Candidate changes need a live read. Go live to compare the first and last visit; a saved copy is not checked against the archive’s error maps and flags.';
 export const MAPS_NOTE = 'Reading the archive’s error maps for the two compared visits; the list shows once that is done.';
 
 export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { render: (box: HTMLElement, marks: HTMLElement, view: SlotView) => boolean }
@@ -336,6 +339,12 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
             return;
         }
         const saved = source === 'snapshot';
+        if (saved && !deps.savedList) {
+            // No finder run and no marks: an unchecked list would be longer than the checked one a live read gives.
+            resultView = { candidates: [], notes: [SAVED_NOTE], ran: false };
+            done.set(result, resultView);
+            return;
+        }
         const first = changesFor(result, deps.find);
         resultView = first;
         if (!first?.ran) {

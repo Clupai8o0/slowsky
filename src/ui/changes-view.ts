@@ -1,4 +1,4 @@
-// The "Candidate changes" panel (switch FEATURES.changes, off). It prints the change finder's own sentences and
+// The "Candidate changes" panel (switch FEATURES.changes, on; live views only, see SAVED_NOTE in slots.ts). It prints the change finder's own sentences and
 // notes (src/lib/changes.ts, src/lib/change-input.ts) exactly as the module writes them, and adds no number or
 // claim of its own: each line is labelled "Candidate N" so the word stays on every line, and the marks over the
 // sky carry the same N. The finder's counts, noise and threshold are not shown. Pure string builders, no DOM.
