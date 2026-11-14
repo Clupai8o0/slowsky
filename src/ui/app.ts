@@ -365,7 +365,9 @@ export function mount(root: HTMLElement): void
     function bind(key: string, text: string): void
     {
         for (const el of qa<HTMLElement>(`[data-bind="${key}"]`)) {
-            el.textContent = text;
+            if (el.textContent !== text) {
+                el.textContent = text;
+            }
         }
     }
 
