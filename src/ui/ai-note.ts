@@ -211,13 +211,18 @@ export function mountAiNote(panel: HTMLElement, deps: { status?: typeof insightS
         setMsg(st?.busy ? busyText(st) : '');
     }
 
+    let tries = 0; // only the latest Unlock answer counts
     lock.addEventListener('submit', async (e) => {
         e.preventDefault();
         const v = pass.value;
         if (!v) {
             return;
         }
+        const mine = ++tries;
         const s = await status({ passcode: v });
+        if (mine !== tries) {
+            return;
+        }
         if (s.busy) {
             setMsg(busyText(s));
             return;
