@@ -1,8 +1,8 @@
 import { formatDec, formatRa } from './coords';
+import { AVERAGED_VISIT_NOTE } from '../ui/subtract';
 
 export const AI_CREDIT = 'Made with AI-written code (Claude, Codex, Gemini)';
-// The dataset citations on the page's SPHEREx file links (app.ts).
-export const DATA_CREDIT = 'SPHEREx DR1, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA678; SPHEREx QR3, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA662';
+export const SIMULATED_CREDIT = 'Simulated sky made by this page. Not NASA data.';
 
 // The same words as the page's own Subtract hint (subtractText), so the picture explains its colours by itself.
 export const DIFF_KEY = 'B − A: blue marks more light in the earlier visit (A), orange more in the later one (B). Black means about the same, or a pixel blank in either visit.';
@@ -10,8 +10,10 @@ export const DIFF_KEY = 'B − A: blue marks more light in the earlier visit (A)
 export interface ShareCardInput {
     name: string;
     position: { ra: number; dec: number };
-    dateA: string;
-    dateB: string;
+    labelA: string;
+    labelB: string;
+    averaged: boolean;
+    releases: string[];
     wavelength: number;
     field: number;
     rings: boolean;
@@ -23,9 +25,10 @@ export function shareCardText(input: ShareCardInput)
 {
     return {
         title: `Slowsky · ${input.name || `${formatRa(input.position.ra)}  ${formatDec(input.position.dec)}`}`,
-        labels: [`A · ${input.dateA}`, `B · ${input.dateB}`, `B − A · ${input.dateB} − ${input.dateA}`],
+        labels: [`A · ${input.labelA}`, `B · ${input.labelB}`, 'B − A · later minus earlier'],
         details: `${input.simulated ? 'Simulated sky · ' : ''}${input.wavelength.toFixed(2)} µm · Field ${Number(input.field.toFixed(3))}°`,
-        credits: [DIFF_KEY, DATA_CREDIT, ...(input.rings ? ['Gaia DR3, CC BY-NC 3.0 IGO'] : []), AI_CREDIT,
+        credits: [DIFF_KEY, ...(input.averaged ? [AVERAGED_VISIT_NOTE] : []),
+            ...(input.simulated ? [SIMULATED_CREDIT] : input.releases), ...(input.rings ? ['Gaia DR3, CC BY-NC 3.0 IGO'] : []), AI_CREDIT,
             'A difference between two visits is a candidate only, not a confirmed change.', input.url],
     };
 }
@@ -104,7 +107,7 @@ export function pngWithText(png: Uint8Array, entries: { key: string; text: strin
         const type = String.fromCharCode(...png.subarray(pos + 4, pos + 8));
         hasData ||= type === 'IDAT';
         if (type === 'IEND') {
-            hasEnd = length === 0;
+            hasEnd = length === 0 && end === png.length;
             break;
         }
         pos = end;
@@ -114,8 +117,11 @@ export function pngWithText(png: Uint8Array, entries: { key: string; text: strin
     }
     const encoder = new TextEncoder();
     const chunks = entries.map(({ key, text }) => {
-        if (!/^[\x20-\x7e]{1,79}$/.test(key)) {
+        if (!/^[\x20-\x7e]{1,79}$/.test(key) || key.startsWith(' ') || key.endsWith(' ') || key.includes('  ')) {
             throw new Error('Invalid PNG keyword');
+        }
+        if (text.includes('\0')) {
+            throw new Error('Invalid PNG text');
         }
         const keyword = encoder.encode(key), value = encoder.encode(text);
         const data = new Uint8Array(keyword.length + 5 + value.length);

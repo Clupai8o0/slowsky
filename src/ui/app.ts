@@ -26,7 +26,7 @@ import { mountSpectrum } from './spectrum-view';
 import { mountUpTonight } from './uptonight-slot';
 import { saveShareCard } from './share-view';
 import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
-import { combineVisits, defaultPicks, subtractText, headerDates, visitDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
+import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
 
 type Mode = 'blink' | 'stack' | 'diff';
 type SourceKind = 'live' | 'snapshot' | 'demo';
@@ -317,7 +317,7 @@ export function shell(shareCard = FEATURES.shareCard): string
     <div class="sk-sub" data-ref="sub" hidden>
       <label class="sk-fov">A <select data-ref="subA" aria-label="Earlier visit (A)"></select></label>
       <label class="sk-fov">B <select data-ref="subB" aria-label="Later visit (B)"></select></label>
-      <div class="sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true">B − A</button><button type="button" data-subop="sum" aria-pressed="false">A + B</button></div>${shareCard ? '<button type="button" class="sk-save" data-act="save-picture">Save picture</button>' : ''}
+      <div class="sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true">B − A</button><button type="button" data-subop="sum" aria-pressed="false">A + B</button></div>${shareCard ? '<button type="button" class="sk-save" data-act="save-picture" title="Save a picture of A, B and B − A" aria-label="Save a picture of A, B and B − A">Save picture</button>' : ''}
     </div>
     <p class="sk-hint" data-bind="hint"></p>
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
@@ -1690,15 +1690,18 @@ export function mount(root: HTMLElement): void
                 const name = st.target ? COPY[st.target].display : st.label;
                 const slug = name.normalize('NFKD').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'position';
                 const date = (mjd: number) => new Date((mjd - 40587) * 86400000).toISOString().slice(0, 10);
+                const records = [...pair.a.ks, ...pair.b.ks].map(k => result!.frames[k]!.frame.frame);
+                const releases = records.filter((r, i) => records.findIndex(o => o.collection === r.collection) === i)
+                    .map(r => RELEASE_DOI[r.release]?.cite ?? r.collection);
                 savingPicture = true;
                 b.disabled = true;
                 void saveShareCard({ result, a: pair.a, b: pair.b, stretch,
-                    card: { name, position: st.center, dateA: visitDates(pair.a), dateB: visitDates(pair.b), wavelength: result.lambda,
+                    card: { name, position: st.center, labelA: visitLabel(pair.a), labelB: visitLabel(pair.b), averaged: pair.a.n > 1 || pair.b.n > 1, releases, wavelength: result.lambda,
                         field: result.grid.fovDeg, rings: false, url: url.toString(), simulated: sourceKind === 'demo' },
                     filename: `slowsky-${slug}-${date(pair.a.mjd)}-${date(pair.b.mjd)}.png`,
                 }, toast).finally(() => {
                     savingPicture = false;
-                    b.disabled = !!root.dataset.loading || !activeVisits();
+                    b.disabled = !!root.dataset.loading || !activeVisits() || !result;
                 });
             }
         } else if (b.dataset.act === 'retry') {

@@ -1,5 +1,5 @@
 import { renderRgba } from '../lib/player';
-import { AI_CREDIT, DATA_CREDIT, layoutShareCard, pngWithText, shareCardText, type ShareCardInput } from '../lib/sharecard';
+import { AI_CREDIT, SIMULATED_CREDIT, layoutShareCard, pngWithText, shareCardText, type ShareCardInput } from '../lib/sharecard';
 import type { SkyResult } from '../lib/source';
 import type { Stretch } from '../lib/types';
 import { diffScale, fillCores, renderDiverging } from './compose';
@@ -42,9 +42,9 @@ export async function saveShareCard(input: ShareViewInput, toast: (message: stri
         ctx.fillStyle = '#fff';
         ctx.font = `${layout.fontSize}px monospace`;
         ctx.textBaseline = 'top';
-        const drawLines = (lines: string[], x: number, y: number) => lines.forEach((line, i) => ctx.fillText(line, x, y + i * layout.lineHeight));
-        drawLines(layout.headingLines, layout.heading.x, layout.heading.y);
-        drawLines(layout.bandLines, layout.band.x, layout.band.y);
+        const drawLines = (lines: string[], x: number, y: number, width: number) => lines.forEach((line, i) => ctx.fillText(line, x, y + i * layout.lineHeight, width));
+        drawLines(layout.headingLines, layout.heading.x, layout.heading.y, layout.heading.width);
+        drawLines(layout.bandLines, layout.band.x, layout.band.y, layout.band.width);
         const a = visitImage(input.result, input.a), b = visitImage(input.result, input.b);
         const diff = combineVisits(a, b, 'diff');
         const { width, height } = input.result.grid;
@@ -63,7 +63,7 @@ export async function saveShareCard(input: ShareViewInput, toast: (message: stri
             pixelCtx.clearRect(0, 0, width, height);
             pixelCtx.putImageData(image, 0, 0);
             const panel = layout.panels[i]!, label = layout.labels[i]!;
-            drawLines(layout.labelLines[i]!, label.x, label.y);
+            drawLines(layout.labelLines[i]!, label.x, label.y, label.width);
             ctx.fillStyle = '#000';
             ctx.fillRect(panel.x, panel.y, panel.width, panel.height);
             ctx.imageSmoothingEnabled = false;
@@ -73,23 +73,29 @@ export async function saveShareCard(input: ShareViewInput, toast: (message: stri
         const blob = await canvasBlob(canvas);
         const png = pngWithText(new Uint8Array(await blob.arrayBuffer()), [
             { key: 'Software', text: 'Slowsky' },
-            { key: 'Comment', text: `${AI_CREDIT}\n${DATA_CREDIT}` },
+            { key: 'Comment', text: [AI_CREDIT, ...(input.card.simulated ? [SIMULATED_CREDIT] : input.card.releases)].join('\n') },
             { key: 'Source', text: input.card.url },
         ]);
         const file = new File([new Uint8Array(png)], input.filename, { type: 'image/png' });
-        const files = [file];
-        if (navigator.canShare?.({ files })) {
-            await navigator.share({ files, title: text.title, url: input.card.url });
-        } else {
-            const url = URL.createObjectURL(file);
+        const payload = { files: [file], title: text.title };
+        if (navigator.canShare?.(payload)) {
             try {
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = input.filename;
-                link.click();
-            } finally {
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                await navigator.share(payload);
+                return;
+            } catch (error) {
+                if (error instanceof Error && error.name === 'AbortError') {
+                    return;
+                }
             }
+        }
+        const url = URL.createObjectURL(file);
+        try {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = input.filename;
+            link.click();
+        } finally {
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
     } catch {
         toast('The picture could not be shared or saved.');
