@@ -64,8 +64,16 @@ export const TWO_MASS_K: Readonly<EpochSource> = Object.freeze({
 /** Page copy explaining the limits of the older survey image. */
 export const EPOCH_NOTE = 'The older picture is a stretched survey image, not a measurement: its brightness cannot be compared with SPHEREx, and the night or nights it was taken on are not known.';
 
-/** Page credit for the survey and its resampled HiPS tiles. */
-export const EPOCH_CREDIT = `2MASS: ${TWO_MASS_K.credit}. HiPS tiles: ${TWO_MASS_K.hipsCredit}, served by IRSA.`;
+/** Page credit for the survey and the server that supplies its HiPS tiles. */
+export function epochCredit(source: EpochSource): string
+{
+    const name = source.name === TWO_MASS_K.name ? '2MASS' : source.name;
+    const host = new URL(source.baseUrl).hostname;
+    const server = host === 'irsa.ipac.caltech.edu' ? 'IRSA' : host;
+    return `${name}: ${source.credit}. HiPS tiles: ${source.hipsCredit}, served by ${server}.`;
+}
+
+export const EPOCH_CREDIT = epochCredit(TWO_MASS_K);
 
 export interface EpochTile {
     npix: number;
@@ -107,14 +115,18 @@ export type EpochResult = {
     band: string;
     order: number;
     wantedOrder: number;
+    /** Resampled HiPS pixel size at this order, not survey sharpness; never print it as sharpness. */
     pixelArcsec: number;
+    /** Coarser than the best available order for this grid, not necessarily coarser than the grid. */
     coarser: boolean;
+    /** Finite sample fraction; JPEG zero can be outside the survey, so 1 does not promise real sky. */
     covered: number;
+    /** Whether samples are non-finite; JPEG zero can be outside the survey without counting as a hole. */
     holes: boolean;
     // 'fits' means BSCALE/BZERO-applied tile values; no physical unit is implied.
     // 'display' is the publisher's stretched JPEG/PNG intensity, never flux.
     values: 'display' | 'fits';
-    source: { name: string; propertiesUrl: string; credit: string; creditUrl: string; format: EpochSource['format'] };
+    source: { name: string; propertiesUrl: string; credit: string; creditUrl: string; hipsCredit: string; hipsCreator: string; format: EpochSource['format'] };
     epoch: { label: string; fromMonth: string; toMonth: string; nightKnown: boolean };
     missing: EpochMissing[];
 } | {
@@ -146,6 +158,13 @@ function inFrame(c: SkyCoord, source: EpochSource): SkyCoord
     return source.frame === 'galactic' ? icrsToGalactic(c) : c;
 }
 
+function outputSample(grid: OutputGrid, source: EpochSource, order: number, x: number, y: number)
+{
+    const sky = inFrame(gridPixToSky(grid, { x, y }), source);
+    const cell = skyToHealpix(sky, order + Math.log2(source.tileWidth));
+    return healpixTilePixel(cell, order, source.tileWidth, source.format);
+}
+
 /** Tiles containing all output sample centres, sorted by NESTED index.
  * Resolution is sqrt(solid angle per pixel), HiPS 1.0 section 4.2.1.1.
  * The tile cap may force a coarser order. An impossible cap returns no tiles.
@@ -163,6 +182,7 @@ export function planEpochTiles(grid: OutputGrid, source: EpochSource = TWO_MASS_
     for (let candidate = 0; candidate <= source.hipsOrder; candidate++) {
         const pixel = basePixel / 2 ** candidate;
         const distance = Math.abs(pixel - grid.pixelArcsec);
+        // The closest order is within 2x, or the deepest order is the fallback; this condition never decides the result.
         if (pixel <= 2 * grid.pixelArcsec && distance < bestDistance) {
             order = candidate;
             bestDistance = distance;
@@ -173,7 +193,7 @@ export function planEpochTiles(grid: OutputGrid, source: EpochSource = TWO_MASS_
         const cells = new Set<number>();
         for (let y = 0; y < grid.height; y++) {
             for (let x = 0; x < grid.width; x++) {
-                cells.add(skyToHealpix(inFrame(gridPixToSky(grid, { x, y }), source), order));
+                cells.add(outputSample(grid, source, order, x, y).npix);
             }
         }
         if (cells.size <= maxTiles) {
@@ -243,6 +263,9 @@ function imageTile(image: EpochDecoded, width: number): Float32Array
         pixels[i] = channels === 4 && !(image.data[offset + 3]! > 0) ? NaN
             : channels === 1 ? image.data[offset]!
                 : (image.data[offset]! + image.data[offset + 1]! + image.data[offset + 2]!) / 3;
+    }
+    if (pixels.every((value) => value === pixels[0] || (Number.isNaN(value) && Number.isNaN(pixels[0])))) {
+        throw new Error('Flat image tile');
     }
     return pixels;
 }
@@ -333,8 +356,9 @@ export async function readEpoch(grid: OutputGrid, opts: EpochOptions = {}): Prom
         return fail('fetch', 'Request aborted', missing);
     }
     const missingReason = missing.some((m) => m.reason === 'fetch') ? 'fetch' : 'decode';
+    const missingDetail = missingReason === 'fetch' ? 'Some tiles are missing' : 'Some tiles could not be read';
     if (missing.length && !opts.allowPartial) {
-        return fail(missingReason, 'Some tiles are missing', missing);
+        return fail(missingReason, missingDetail, missing);
     }
     const tiles = new Map<number, Float32Array>();
     for (let i = 0; i < replies.length; i++) {
@@ -344,7 +368,6 @@ export async function readEpoch(grid: OutputGrid, opts: EpochOptions = {}): Prom
         }
     }
     const pixels = new Float32Array(grid.width * grid.height).fill(NaN);
-    const pixelOrder = plan.order + Math.log2(source.tileWidth);
     let lo = Infinity;
     let hi = -Infinity;
     let finite = 0;
@@ -356,9 +379,14 @@ export async function readEpoch(grid: OutputGrid, opts: EpochOptions = {}): Prom
             return fail('fetch', 'Request aborted', missing);
         }
         for (let x = 0; x < grid.width; x++) {
-            const sky = inFrame(gridPixToSky(grid, { x, y }), source);
-            const cell = skyToHealpix(sky, pixelOrder);
-            const sample = healpixTilePixel(cell, plan.order, source.tileWidth, source.format);
+            const index = y * grid.width + x;
+            if (index > 0 && index % 4096 === 0) {
+                await new Promise<void>((resolve) => setTimeout(resolve, 0));
+                if (opts.signal?.aborted) {
+                    return fail('fetch', 'Request aborted', missing);
+                }
+            }
+            const sample = outputSample(grid, source, plan.order, x, y);
             const value = tiles.get(sample.npix)?.[sample.y * source.tileWidth + sample.x] ?? NaN;
             if (Number.isFinite(value)) {
                 pixels[y * grid.width + x] = value;
@@ -369,8 +397,11 @@ export async function readEpoch(grid: OutputGrid, opts: EpochOptions = {}): Prom
         }
     }
     const covered = finite / pixels.length;
+    if (!opts.allowPartial && covered < 1) {
+        return fail('empty', 'The picture has holes', missing);
+    }
     if (opts.allowPartial && covered < 0.5) {
-        return missing.length ? fail(missingReason, 'Some tiles are missing', missing)
+        return missing.length ? fail(missingReason, missingDetail, missing)
             : fail('empty', 'Less than half the picture has data', missing);
     }
     if (!(hi > lo)) {
@@ -380,6 +411,7 @@ export async function readEpoch(grid: OutputGrid, opts: EpochOptions = {}): Prom
         wantedOrder: plan.wanted, pixelArcsec: Math.sqrt(Math.PI / 3) * 180 / Math.PI * 3600 / source.tileWidth / 2 ** plan.order,
         coarser: plan.order < plan.wanted, covered, holes: covered < 1,
         values: source.format === 'fits' ? 'fits' : 'display',
-        source: { name: source.name, propertiesUrl: source.propertiesUrl, credit: source.credit, creditUrl: source.creditUrl, format: source.format },
+        source: { name: source.name, propertiesUrl: source.propertiesUrl, credit: source.credit, creditUrl: source.creditUrl,
+            hipsCredit: source.hipsCredit, hipsCreator: source.hipsCreator, format: source.format },
         epoch: { label: source.epochLabel, fromMonth: source.fromMonth, toMonth: source.toMonth, nightKnown: source.nightKnown }, missing };
 }
