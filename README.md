@@ -118,6 +118,7 @@ through the CfA mirror. The full list, with licences and credit lines: [DATA-LIC
 |---|---|---|
 | Claude Code (Claude Opus, Sonnet and Haiku models) | Anthropic | Writing and reviewing code, tests, planning help, page text drafts |
 | Codex | OpenAI | Writing and reviewing code |
+| Gemini (through Antigravity) | Google | Writing and reviewing code |
 | Grok (through Grok Build) | xAI | Writing and reviewing code |
 | ElevenLabs | ElevenLabs | AI voice in the demo video |
 | GPT Image | OpenAI | Decorative images, if used, marked where they appear |
