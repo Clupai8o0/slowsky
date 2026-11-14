@@ -164,7 +164,7 @@ Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md
 | Gemini (Argon and Carbon models, through Antigravity) | Google | Writing and reviewing code; reviewing the facts and wording in this file and on the page |
 | Grok 4.7 (through Grok Build) | xAI | Reviewing code; checking the source list |
 | ElevenLabs | ElevenLabs | AI voice in the demo video |
-| GPT Image | OpenAI | Decorative images, if used, marked where they appear |
+| GPT Image | OpenAI | Decorative images in the demo film, marked "AI-generated images" on screen; never sky data |
 | Change sort hint (a small neural network, `public/models/change-classifier.json`) | Trained in this repo with PyTorch, by scripts that Codex and Claude wrote | Nothing yet: it is switched off and the site does not use it (see "In the repository but not switched on") |
 
 Sam chose the idea and makes every product decision. `DECISIONS.md` is his own log of them; AI tools do not write
@@ -235,8 +235,9 @@ three on with `VITE_PREVIEW_FEATURES`. The sort hint is not connected to the pag
 - For R Draconis, the light in a ring around its too-bright centre, look by look, as a line or a table
   (`src/lib/halo.ts`, `src/ui/halo-view.ts`).
 - A machine-learning sort hint for each candidate change, described below.
-- Code that reads one spot's spectrum from the SPHEREx cube tiles in the public archive (`src/lib/cube.ts`). No
-  part of the page calls it.
+- A Spectrum panel: after a press it reads one spot's 102 colours from the SPHEREx all-sky cube in the public
+  archive and draws a small chart (`src/lib/cube.ts`, `src/ui/spectrum-view.ts`). While it is switched off the
+  page does not show it and reads nothing from the cube. A preview build can switch it on in the same way.
 
 **The change sort hint.** A small neural network (`public/models/change-classifier.json`, run by
 `src/lib/classify.ts`). Its card is `public/models/change-classifier.card.json`; its test results are in `models/`.
