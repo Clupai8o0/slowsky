@@ -446,7 +446,7 @@ export function mount(root: HTMLElement): void
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
     let flagsOn = false; // the Flags layer over the sky
-    let fcOn = false; // the False colour layer over the sky (slot, off until its lane lands)
+    let fcOn = false; // the False colour key is pressed (the layer shows in Stack on a live view)
     let fcState: LayerState = { key: false, layer: false, note: '' };
     let fcFailure: { result: SkyResult; mode: Mode; source: SourceKind; note: string } | null = null;
     let lookup: AbortController | null = null; // pending name lookup; any newer navigation cancels it
@@ -1140,7 +1140,7 @@ export function mount(root: HTMLElement): void
         key.setAttribute('aria-pressed', String(on));
         ref<HTMLElement>(layerRef).hidden = !fs.layer;
         const note = ref<HTMLElement>(noteRef);
-        // A long note is split: the reading stays in view; how to read it folds away on narrow screens.
+        // A long note is split: the lead stays in view; the rest folds away (False colour at every width, others on narrow screens).
         const split = fs.split && fs.split.lead && fs.split.more ? fs.split : undefined;
         const want = split ? `${split.lead}\u0000${split.more}` : fs.note;
         if (note.dataset.shown !== want) {
@@ -1332,7 +1332,8 @@ export function mount(root: HTMLElement): void
                 ];
             // Stack and Subtract can mix detectors or releases (e.g. QR3 and DR1), so list every one they use.
             if (colourPicture) {
-                rows.push(['Frames', colourPicture.map(band => `${band.used} at ${band.lambda.toFixed(2)} µm`).join(', ')]);
+                // Frames used in the picture; "of N" when some were left out, so the row agrees with the Files row below.
+                rows.push(['Frames', colourPicture.map(band => `${band.used}${band.leftOut ? ` of ${band.used + band.leftOut}` : ''} at ${band.lambda.toFixed(2)} µm`).join(', ')]);
             }
             const fileRecs = shown.map((i) => result!.frames[i]!.frame.frame);
             const recs = colourPicture ? colourPicture.flatMap(band => band.records) : fileRecs;
@@ -1346,7 +1347,9 @@ export function mount(root: HTMLElement): void
             );
             const firstRec = fileRecs[0]!;
             const lastRec = fileRecs[fileRecs.length - 1]!;
-            const fileBand = colourPicture?.find(band => band.records.some(record => fileRecs.includes(record)));
+            // The Files and Open rows list the frames of the wavelength on screen only; say which one that is.
+            const fileBand = colourPicture?.find(band => band.records.some(record => fileRecs.includes(record)))
+                ?? colourPicture?.reduce((a, b) => (Math.abs(b.lambda - result!.lambda) < Math.abs(a.lambda - result!.lambda) ? b : a));
             const only = fileBand ? ` (${fileBand.lambda.toFixed(2)} µm only)` : '';
             if (!many) {
                 rows.push(['File', rec.obsId]);
@@ -1355,7 +1358,7 @@ export function mount(root: HTMLElement): void
             } else if (st.mode === 'diff') {
                 rows.push(['Files', `${last!.obsId} − ${first!.obsId}`]);
             } else {
-                rows.push([`Files${only}`, `${n}, ${first!.obsId} to ${last!.obsId}`]);
+                rows.push(n === 1 ? [`File${only}`, first!.obsId] : [`Files${only}`, `${n}, ${first!.obsId} to ${last!.obsId}`]);
             }
             if (rec.pipelineVersion && !many) {
                 rows.push(['Pipeline', rec.pipelineVersion]);

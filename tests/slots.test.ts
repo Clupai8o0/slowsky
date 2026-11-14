@@ -294,6 +294,28 @@ describe('false colour slot', () => {
         }
     });
 
+    it('keeps the sentence on how 3 or more frames are combined in view, not folded', async () => {
+        const h = colourHarness(true, true);
+        const mk = (name: string, lambda: number, t: number) => {
+            const f = frame(name);
+            f.lambdaAtCenter = lambda;
+            f.frame = { tMin: t, tMax: t + 1, detector: 1, collection: 'spherex_dr1', release: 'dr1' } as RegriddedFrame['frame'];
+            return f;
+        };
+        const v = view(sky([mk('a1', 0.85, 60857), mk('a2', 0.85, 60887), mk('a3', 0.85, 60917)]), 0, { mode: 'stack' });
+        h.slot.update(v, true);
+        h.calls[0]!.resolve(sky([mk('b1', 4.6, 60857), mk('b2', 4.6, 60887), mk('b3', 4.6, 60917)]));
+        await flush();
+        const state = h.slot.update(v, true);
+        expect(state.split?.lead).toContain('With 3 or more frames at 0.85 µm and 4.60 µm, the middle value of the frames is used at each pixel');
+        expect(state.split?.more).not.toContain('With 3 or more frames');
+        expect(state.split?.more).toContain('blue means brighter at the shorter wavelength');
+        const all = `${state.split?.lead} ${state.split?.more}`;
+        for (const sentence of state.note.split(/(?<=\.)\s+/)) {
+            expect(all).toContain(sentence);
+        }
+    });
+
     it('reports a picture only while the colour layer is actually on screen', async () => {
         for (const leave of ['off', 'blink', 'subtract', 'snapshot', 'target', 'field', 'colour', 'play'] as const) {
             const h = colourHarness();

@@ -91,7 +91,8 @@ export interface LayerState {
     key: boolean; // show the key in the sky legend
     layer: boolean; // show the layer over the sky
     note: string; // the line under the legend ('' hides it)
-    // Optional split of `note` for small screens: `lead` always shows, `more` goes behind "How to read this colour".
+    // Optional split of `note`: `lead` always shows, `more` goes behind "How to read this colour" (False colour folds it
+    // at every width; other notes only on small screens).
     split?: { lead: string; more: string };
     picture?: ReturnType<typeof falseColourView>['picture'];
     failed?: boolean;
@@ -601,12 +602,14 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                 }
                 const parts = (deps.readingEnabled ?? FEATURES.fcReading) ? entry.picture.parts : pictureOnlyParts(entry.picture.parts);
                 const join = (xs: string[]) => xs.filter(Boolean).join(' ');
-                // The note's opening sentence stays visible; the rest folds. If the note ever starts differently, all of it folds.
+                // In view: what each colour is, what can mislead, the opening sentence and how the frames were combined (what is
+                // missing from the picture). The rest folds. A note that ever starts or reads differently folds whole.
                 const opening = 'False colour, not what an eye would see.';
                 const first = parts.note.startsWith(opening) ? opening : '';
+                const combine = entry.picture.combine && parts.note.includes(entry.picture.combine) ? entry.picture.combine : '';
+                const rest = parts.note.slice(first.length).replace(combine, '').replace(/\s{2,}/g, ' ').trim();
                 return { key: true, layer: true, note: join(Object.values(parts)), picture: entry.picture.picture,
-                    split: { lead: join([parts.reading, parts.labels, parts.warning, first]),
-                        more: join([parts.note.slice(first.length).trim(), parts.method]) } };
+                    split: { lead: join([parts.reading, parts.labels, parts.warning, first, combine]), more: join([rest, parts.method]) } };
             } catch {
                 entry = { status: 'failed', note: FALSE_COLOUR_TEXT.picture };
                 return { key: true, layer: false, note: FALSE_COLOUR_TEXT.picture, failed: true };

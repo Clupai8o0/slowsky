@@ -4,18 +4,18 @@ import app from '../src/ui/app.ts?raw';
 import { FALSE_COLOUR_HINT, MODE_HINT } from '../src/ui/copy';
 
 // Exercise the page's real header and details rendering with small stand-ins for its DOM nodes.
-async function render(layer: boolean)
+async function render(layer: boolean, leftOut = 0, shown = 4)
 {
     const records = [
         ...[60857, 60887, 60917, 60947].map((t, i) => ({ tMin: t, tMax: t, detector: 1, collection: 'spherex_dr1', release: 'dr1', obsId: `a${i}`, url: `https://example.test/a${i}` })),
         ...[60796, 61000, 61284].map((t, i) => ({ tMin: t, tMax: t, detector: 6, collection: 'spherex_qr3', release: 'qr3', obsId: `b${i}` })),
     ];
     const picture = [
-        { lambda: 0.85, used: 4, leftOut: 0, times: records.slice(0, 4).map(r => [r.tMin, r.tMax]), records: records.slice(0, 4) },
+        { lambda: 0.85, used: shown - leftOut, leftOut, times: records.slice(leftOut, shown).map(r => [r.tMin, r.tMax]), records: records.slice(leftOut, shown) },
         { lambda: 4.6, used: 3, leftOut: 0, times: records.slice(4).map(r => [r.tMin, r.tMax]), records: records.slice(4) },
     ];
-    const result = { frames: records.slice(0, 4).map(frame => ({ frame: { frame } })),
-        locked: records.slice(0, 4).map(() => ({ lambda: 0.85, dLambda: 0 })), grid: { fovDeg: 0.25, width: 97, height: 97, pixelArcsec: 1.54 } };
+    const result = { lambda: 0.85, frames: records.slice(0, shown).map(frame => ({ frame: { frame } })),
+        locked: records.slice(0, shown).map(() => ({ lambda: 0.85, dLambda: 0 })), grid: { fovDeg: 0.25, width: 97, height: 97, pixelArcsec: 1.54 } };
     const values: Record<string, string> = {};
     const elements: Record<string, { innerHTML: string }> = { dl: { innerHTML: '' } };
     const date = (mjd: number) => new Date((mjd - 40587) * 86400000);
@@ -51,6 +51,21 @@ describe('false colour page', () => {
         const getHint = new Function('fcState', 'st', 'pair', 'subtractText', 'MODE_HINT', 'FALSE_COLOUR_HINT', `return ${hint};`);
         expect(getHint({ layer: true }, { mode: 'stack' }, null, null, MODE_HINT, FALSE_COLOUR_HINT)).toBe(FALSE_COLOUR_HINT);
         expect(getHint({ layer: false }, { mode: 'stack' }, null, null, MODE_HINT, FALSE_COLOUR_HINT)).toBe(MODE_HINT.stack);
+    });
+
+    it('counts frames used of those on screen when some are left out, and names a single file as one file', async () => {
+        const partly = await render(true, 2);
+        expect(partly.html).toContain('2 of 4 at 0.85 µm, 3 at 4.60 µm');
+        expect(partly.html).toContain('Files (0.85 µm only)');
+        expect(partly.html).toContain('4, a0 to a3');
+        const single = await render(true, 0, 1);
+        expect(single.html).toContain('1 at 0.85 µm, 3 at 4.60 µm');
+        expect(single.html).toContain('<dt>File (0.85 µm only)</dt>');
+        expect(single.html).not.toContain('a0 to a0');
+        // The wavelength on screen has no used frame: the Files row still says which wavelength it lists.
+        const none = await render(true, 4);
+        expect(none.html).toContain('0 of 4 at 0.85 µm');
+        expect(none.html).toContain('Files (0.85 µm only)');
     });
 
     it('creates a closed disclosure at either width and leaves the visible warning outside', async () => {
