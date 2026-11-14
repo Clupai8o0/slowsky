@@ -500,6 +500,37 @@ describe('mountAiNote', () => {
         expect(doc.el('msg').textContent).toBe('Couldn’t reach the server. Try again.');
     });
 
+    it('after an "off" reply, re-checks before hiding and follows what the route says', async () => {
+        const off = async () => {
+            throw new InsightError('off');
+        };
+        const store = new MemStore();
+        store.setItem(PASS_KEY, 'old');
+        let n = 0;
+        const a = setup({ store, fetch: off, status: async () => (n++ === 0 ? { enabled: true, locked: true, unlocked: true } : LOCKED) });
+        await flush();
+        a.ai.update(noteView());
+        await a.doc.el('go').fire('click');
+        expect(store.getItem(PASS_KEY)).toBeNull();
+        expect(a.doc.el('lock').hidden).toBe(false);
+        expect(a.doc.el('msg').textContent).toBe('Wrong passcode.');
+
+        let m = 0;
+        const b = setup({ fetch: off, status: async () => (m++ === 0 ? OPEN : { enabled: true, locked: false, unlocked: false, busy: true, retryAfter: 900 }) });
+        await flush();
+        b.ai.update(noteView());
+        await b.doc.el('go').fire('click');
+        expect(b.doc.el('msg').textContent).toBe('Too many requests. Try again in 15 min.');
+        expect(b.doc.panel.hidden).toBe(false);
+
+        let k = 0;
+        const c = setup({ fetch: off, status: async () => (k++ === 0 ? OPEN : { enabled: false, locked: false, unlocked: false }) });
+        await flush();
+        c.ai.update(noteView());
+        await c.doc.el('go').fire('click');
+        expect(c.doc.panel.hidden).toBe(true);
+    });
+
     it('says a failed note can be retried', async () => {
         const { doc, ai } = setup({ fetch: async () => {
             throw new InsightError('failed');

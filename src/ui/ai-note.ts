@@ -415,11 +415,23 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 if (mine !== tries || ctrl !== c) {
                     return;
                 }
-                if (reached && !s.enabled) {
+                if (!reached) {
+                    setMsg(MSG.unreachable);
+                } else if (s.busy) {
+                    busy(s);
+                } else if (!s.enabled) {
                     st = s;
                     show();
+                } else if (s.locked && !s.unlocked) {
+                    st = s;
+                    if (sent !== undefined) {
+                        savePass(undefined);
+                    }
+                    showLock(sent === undefined ? MSG.enter : MSG.wrong);
                 } else {
-                    setMsg(MSG.unreachable);
+                    st = s;
+                    show();
+                    setMsg(MSG.failed);
                 }
             } else if (code === 'locked') {
                 if (st) {
