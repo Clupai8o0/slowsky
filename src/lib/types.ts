@@ -199,6 +199,9 @@ export interface RegriddedFrame {
     frame: FrameRecord;
     grid: OutputGrid;
     data: Float32Array; // NaN where the detector does not cover
+    // Relative noise map on the same grid as data, not a calibrated variance (see regridVariance).
+    // NaN wherever data is NaN, and also where the file's variance was invalid.
+    variance?: Float32Array;
     lambdaAtCenter: number; // µm, from the wave grid at the view centre
     bandwidthAtCenter: number;
 }

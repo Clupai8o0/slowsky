@@ -15,6 +15,8 @@ export class StackError extends Error
 
 export interface StackResult {
     data: Float32Array;
+    // Relative noise map; see regridVariance. Any kept frame with invalid variance makes that pixel NaN.
+    variance?: Float32Array;
     n: Uint16Array;
 }
 
@@ -37,16 +39,23 @@ function sameGrid(a: OutputGrid, b: OutputGrid): boolean
 }
 
 // Sort the first m entries of buf ascending (insertion sort, no allocation).
-function sortHead(buf: Float32Array, m: number): void
+function sortHead(buf: Float32Array, m: number, indices?: Uint32Array): void
 {
     for (let i = 1; i < m; i++) {
         const v = buf[i]!;
+        const index = indices?.[i];
         let j = i - 1;
         while (j >= 0 && buf[j]! > v) {
             buf[j + 1] = buf[j]!;
+            if (indices) {
+                indices[j + 1] = indices[j]!;
+            }
             j--;
         }
         buf[j + 1] = v;
+        if (indices) {
+            indices[j + 1] = index!;
+        }
     }
 }
 
@@ -139,6 +148,10 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
         if (frames[f]!.data.length !== size) {
             throw new StackError(`stackVisit: frame ${f} has ${frames[f]!.data.length} pixels, grid needs ${size}`);
         }
+        const variance = frames[f]!.variance;
+        if (variance && variance.length !== size) {
+            throw new StackError(`stackVisit: frame ${f} variance has ${variance.length} pixels, grid needs ${size}`);
+        }
     }
 
     const nf = frames.length;
@@ -154,22 +167,32 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
     const vals = new Float32Array(nf);
     const devs = new Float32Array(nf);
     const arrays = frames.map((fr) => fr.data);
+    // No variance buffers or per-pixel variance work unless every frame has V.
+    const variances = frames.every((fr) => fr.variance !== undefined) ? frames.map((fr) => fr.variance!) : undefined;
+    const variance = variances ? new Float32Array(size) : undefined;
+    const indices = variances ? new Uint32Array(nf) : undefined;
 
     for (let p = 0; p < size; p++) {
         let m = 0;
         for (let f = 0; f < nf; f++) {
             const v = arrays[f]![p]!;
             if (Number.isFinite(v)) {
+                if (indices) {
+                    indices[m] = f;
+                }
                 vals[m++] = v - offsets[f]!;
             }
         }
         if (m === 0) {
             out[p] = NaN;
             counts[p] = 0;
+            if (variance) {
+                variance[p] = NaN;
+            }
             continue;
         }
         if (m >= 3 && clipSigma !== Infinity) {
-            sortHead(vals, m);
+            sortHead(vals, m, indices);
             for (let round = 0; round < MAX_CLIP_ROUNDS && m >= 3; round++) {
                 const med = sortedMedian(vals, m);
                 for (let i = 0; i < m; i++) {
@@ -184,6 +207,9 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
                 let w = 0;
                 for (let i = 0; i < m; i++) {
                     if (Math.abs(vals[i]! - med) <= lim) {
+                        if (indices) {
+                            indices[w] = indices[i]!;
+                        }
                         vals[w++] = vals[i]!;
                     }
                 }
@@ -199,8 +225,20 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
         }
         out[p] = sum / m;
         counts[p] = m;
+        if (variance && variances && indices) {
+            let sumVariance = 0;
+            for (let i = 0; i < m; i++) {
+                const v = variances[indices[i]!]![p]!;
+                if (!Number.isFinite(v) || v < 0) {
+                    sumVariance = NaN;
+                    break;
+                }
+                sumVariance += v;
+            }
+            variance[p] = m > 0 ? sumVariance / (m * m) : NaN;
+        }
     }
-    return { data: out, n: counts };
+    return variance ? { data: out, n: counts, variance } : { data: out, n: counts };
 }
 
 function asResult(x: StackResult | Float32Array): StackResult
@@ -215,6 +253,18 @@ function asResult(x: StackResult | Float32Array): StackResult
     return { data: x, n };
 }
 
+function checkVarianceLength(result: StackResult, operation: string): void
+{
+    if (result.variance && result.variance.length !== result.data.length) {
+        throw new StackError(`${operation}: variance length differs (${result.variance.length} vs ${result.data.length})`);
+    }
+}
+
+function validVariance(value: number): boolean
+{
+    return Number.isFinite(value) && value >= 0;
+}
+
 export function subtract(a: StackResult | Float32Array, b: StackResult | Float32Array): StackResult
 {
     const ra = asResult(a);
@@ -222,21 +272,32 @@ export function subtract(a: StackResult | Float32Array, b: StackResult | Float32
     if (ra.data.length !== rb.data.length) {
         throw new StackError(`subtract: lengths differ (${ra.data.length} vs ${rb.data.length})`);
     }
+    checkVarianceLength(ra, 'subtract');
+    checkVarianceLength(rb, 'subtract');
     const len = ra.data.length;
     const data = new Float32Array(len);
     const n = new Uint16Array(len);
+    const variance = ra.variance && rb.variance ? new Float32Array(len) : undefined;
     for (let i = 0; i < len; i++) {
         const va = ra.data[i]!;
         const vb = rb.data[i]!;
         if (Number.isFinite(va) && Number.isFinite(vb)) {
             data[i] = va - vb;
             n[i] = Math.min(ra.n[i]!, rb.n[i]!);
+            if (variance) {
+                const va = ra.variance![i]!;
+                const vb = rb.variance![i]!;
+                variance[i] = validVariance(va) && validVariance(vb) ? va + vb : NaN;
+            }
         } else {
             data[i] = NaN;
             n[i] = 0;
+            if (variance) {
+                variance[i] = NaN;
+            }
         }
     }
-    return { data, n };
+    return variance ? { data, n, variance } : { data, n };
 }
 
 export function add(a: StackResult, b: StackResult): StackResult
@@ -244,9 +305,12 @@ export function add(a: StackResult, b: StackResult): StackResult
     if (a.data.length !== b.data.length) {
         throw new StackError(`add: lengths differ (${a.data.length} vs ${b.data.length})`);
     }
+    checkVarianceLength(a, 'add');
+    checkVarianceLength(b, 'add');
     const len = a.data.length;
     const data = new Float32Array(len);
     const n = new Uint16Array(len);
+    const variance = a.variance && b.variance ? new Float32Array(len) : undefined;
     for (let i = 0; i < len; i++) {
         const wa = Number.isFinite(a.data[i]!) ? a.n[i]! : 0;
         const wb = Number.isFinite(b.data[i]!) ? b.n[i]! : 0;
@@ -254,18 +318,35 @@ export function add(a: StackResult, b: StackResult): StackResult
         if (w === 0) {
             data[i] = NaN;
             n[i] = 0;
+            if (variance) {
+                variance[i] = NaN;
+            }
         } else if (wa === 0) {
             data[i] = b.data[i]!;
             n[i] = Math.min(wb, 65535);
+            if (variance) {
+                const vb = b.variance![i]!;
+                variance[i] = validVariance(vb) ? vb : NaN;
+            }
         } else if (wb === 0) {
             data[i] = a.data[i]!;
             n[i] = Math.min(wa, 65535);
+            if (variance) {
+                const va = a.variance![i]!;
+                variance[i] = validVariance(va) ? va : NaN;
+            }
         } else {
             data[i] = (a.data[i]! * wa + b.data[i]! * wb) / w;
             n[i] = Math.min(w, 65535);
+            if (variance) {
+                const va = a.variance![i]!;
+                const vb = b.variance![i]!;
+                variance[i] = validVariance(va) && validVariance(vb)
+                    ? (wa * wa * va + wb * wb * vb) / (w * w) : NaN;
+            }
         }
     }
-    return { data, n };
+    return variance ? { data, n, variance } : { data, n };
 }
 
 export function groupByVisit(frames: RegriddedFrame[], gapDays = 10): RegriddedFrame[][]
