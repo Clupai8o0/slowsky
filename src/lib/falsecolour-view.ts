@@ -1,5 +1,5 @@
 import { colourAt, falseColourLegend, falseColourRgba, FalseColourError, pairStretch, type ColourAt } from './falsecolour';
-import { frameBackground, stackVisit } from './stack';
+import { stackVisit } from './stack';
 import { aperture, resampleNoiseScale } from './photometry';
 import { starAt } from './gaia';
 import { gridSkyToPix } from './regrid';
@@ -15,6 +15,10 @@ const MIN_COLOUR_SNR = 3;
 export const SAME_LOOK_DAYS = 10;
 // Our own choice: below this a single frame's brightest point is mostly noise.
 export const PEAK_SNR = 10;
+// The centre reading needs a picture fine enough to place light to within one detector pixel. The 0.1° and 0.25° views
+// draw 1.5375″ pixels; the 0.5° and 1° views draw about 2.5″ and 5″ pixels, where light 8″ to 9″ either side of the
+// centre can be read as light at the centre (review of round 9e), so no reading is given there.
+export const MAX_READING_PIXEL_ARCSEC = 1.6;
 // Our own choice, not measured: 3 for two frames, rising slowly because more frames give more chances for one to stand out by chance.
 export function agreeSigma(n: number): number
 {
@@ -24,10 +28,6 @@ export function agreeSigma(n: number): number
 export const SEEN_FLOOR = 0.05;
 // Our chosen threshold: one native SPHEREx detector pixel, not an instrument limit.
 const OFF_CENTRE_ARCSEC = 6.15;
-// With 2 frames, the light they share is placed only when its brightest pixel is this many times the sky ring's scatter
-// above the ring's middle value, and the ring has at least this many usable pixels.
-const SHARED_PEAK_SIGMA = 5;
-const SHARED_RING_MIN = 8;
 // Our chosen minimum common coverage, relative to the first frame's finite pixels.
 const MIN_SHARED_FRACTION = 0.8;
 
@@ -164,7 +164,9 @@ export function colourSentence(lambdaShort: number, lambdaLong: number, reading:
     return Object.values(colourParts(lambdaShort, lambdaLong, reading, times, incomplete)).filter(Boolean).join(' ');
 }
 
-export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: number; annulusIn: number; annulusOut: number }): { rgba: Uint8ClampedArray; width: number; height: number; sentence: string; parts: ColourParts }
+// `maxReadingPixelArcsec` is lifted only by tests of the sentence rules, whose made-up sources sit exactly on pixels.
+export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: number; annulusIn: number; annulusOut: number },
+    maxReadingPixelArcsec = MAX_READING_PIXEL_ARCSEC): { rgba: Uint8ClampedArray; width: number; height: number; sentence: string; parts: ColourParts }
 {
     const grid = a.grid;
     const grids = [b.grid, ...a.frames.map(item => item.frame.grid), ...b.frames.map(item => item.frame.grid)];
@@ -291,43 +293,12 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
     const located = (i: number) => Boolean(available[i] && stackSeen[i] && !checks[i]!.failure);
     // In the combined picture, which is what the page draws: a distance printed from it is true of what the reader sees.
     const peakDistances = bandList.map((band, i) => located(i) ? peakDistance(p => band.data[p]!) : NaN);
-    // With 2 frames, also the light the two frames share (the lower of the two, pixel by pixel, each with its own sky
-    // taken off): whether any stands clear inside the circle, and where it is brightest. A hit in one frame is not in it.
-    const sharedLight = bandList.map((band, i) => {
-        if (!located(i) || band.frames.length !== 2) { return { clear: false, distance: NaN }; }
-        const offsets = band.frames.map(frame => frameBackground(frame.data));
-        const lower = new Float32Array(grid.width * grid.height);
-        for (let p = 0; p < lower.length; p++) {
-            lower[p] = Math.min(band.frames[0]!.data[p]! - offsets[0]!, band.frames[1]!.data[p]! - offsets[1]!);
-        }
-        // In noise the brightest shared pixel falls anywhere: its place counts only when that pixel stands clear of
-        // the pixel-to-pixel scatter of the shared picture in the sky ring.
-        const ring: number[] = [];
-        for (let y = Math.max(0, Math.ceil(at.y - radii.annulusOut)); y <= Math.min(grid.height - 1, Math.floor(at.y + radii.annulusOut)); y++) {
-            for (let x = Math.max(0, Math.ceil(at.x - radii.annulusOut)); x <= Math.min(grid.width - 1, Math.floor(at.x + radii.annulusOut)); x++) {
-                const d = Math.hypot(x - at.x, y - at.y);
-                const value = lower[y * grid.width + x]!;
-                if (d >= radii.annulusIn && d <= radii.annulusOut && Number.isFinite(value)) {
-                    ring.push(value);
-                }
-            }
-        }
-        const middle = (values: number[]) => {
-            const sorted = [...values].sort((x, y) => x - y);
-            return sorted.length % 2 ? sorted[(sorted.length - 1) / 2]! : (sorted[sorted.length / 2 - 1]! + sorted[sorted.length / 2]!) / 2;
-        };
-        const peak = peakOf(p => lower[p]!);
-        if (ring.length < SHARED_RING_MIN || !Number.isFinite(peak.value)) { return { clear: false, distance: peak.distance }; }
-        const level = middle(ring);
-        const scatter = 1.4826 * middle(ring.map(value => Math.abs(value - level)));
-        return { clear: peak.value - level > SHARED_PEAK_SIGMA * scatter, distance: peak.distance };
-    });
     const disagrees = checks.map(check => Boolean(check.failure));
     const roundedDistance = (value: number) => Number(value.toFixed(2));
-    // The widest gap, in arcsec, between the brightest points of the frames that each show the light strongly.
-    const hops = bandList.map((band, i) => {
-        if (band.frames.length < 2 || !available[i] || !stackSeen[i] || disagrees[i]) { return 0; }
-        const peaks = band.frames.filter(frame => {
+    // The brightest point of each frame that shows the light strongly enough to place it.
+    const framePeaks = bandList.map((band, i) => {
+        if (band.frames.length < 2 || !available[i] || !stackSeen[i] || disagrees[i]) { return []; }
+        return band.frames.filter(frame => {
             const ap = aperture(frame.data, grid.width, grid.height, at, { ...radii, noiseScale: resampleNoiseScale(grid.pixelArcsec) });
             return ap.valid && Number.isFinite(ap.noise) && ap.noise > 0 && ap.sum / ap.noise >= PEAK_SNR;
         }).map(frame => {
@@ -345,18 +316,36 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
             }
             return point;
         });
-        return peaks.reduce((widest, a, j) => peaks.slice(j + 1).reduce((gap, b) => Math.max(gap, roundedDistance(Math.hypot(a.x - b.x, a.y - b.y) * grid.pixelArcsec)), widest), 0);
     });
-    const displaced = hops.map(hop => hop > OFF_CENTRE_ARCSEC);
+    // How far apart those points are, in arcsec. With 2 of them: the gap between the two. With 3 or more: how far the
+    // farthest one is from the middle of them all (the median of their places), so that one odd frame among many
+    // shows, and the widest of many pairs of frames of a source that does not move is not taken for a change of place.
+    const spreads = framePeaks.map(peaks => {
+        if (peaks.length < 2) { return 0; }
+        if (peaks.length === 2) { return roundedDistance(Math.hypot(peaks[0]!.x - peaks[1]!.x, peaks[0]!.y - peaks[1]!.y) * grid.pixelArcsec); }
+        const middle = (values: number[]) => {
+            const sorted = [...values].sort((x, y) => x - y);
+            return (sorted[Math.floor((sorted.length - 1) / 2)]! + sorted[Math.ceil((sorted.length - 1) / 2)]!) / 2;
+        };
+        const mid = { x: middle(peaks.map(p => p.x)), y: middle(peaks.map(p => p.y)) };
+        return peaks.reduce((far, p) => Math.max(far, roundedDistance(Math.hypot(p.x - mid.x, p.y - mid.y) * grid.pixelArcsec)), 0);
+    });
+    // And how far from the centre the farthest of them is.
+    const fars = framePeaks.map(peaks => peaks.reduce((far, p) => Math.max(far, roundedDistance(Math.hypot(p.x - at.x, p.y - at.y) * grid.pixelArcsec)), 0));
+    const displaced = spreads.map(spread => spread > OFF_CENTRE_ARCSEC);
+    // Up to this gap between 2 frames (one detector pixel plus one pixel of this picture, where the place is read off)
+    // the page says a source that does not move can do it: the reviewers' simulations of a steady star gave gaps up to
+    // 7.69″ at 1.5375″ per pixel in 7,200 draws. A wider gap is treated as two places; that can, rarely, withhold a
+    // steady star, which errs on the safe side.
+    const stillLimit = roundedDistance(OFF_CENTRE_ARCSEC + grid.pixelArcsec);
     // Only a band that counts as seen has light whose place means something: in noise the brightest pixel falls anywhere.
     const stackOff = peakDistances.map((d, i) => located(i) && roundedDistance(d) > OFF_CENTRE_ARCSEC);
-    // With 2 frames that clearly share light, that light decides: a hit in one frame beside a centred source is not the
-    // source's place. With no clear shared light, 2 strong frames that are brightest in different places share nothing
-    // at the centre; frames too weak to place leave it to the combined picture.
-    const offCentre = sharedLight.map((shared, i) => shared.clear ? roundedDistance(shared.distance) > OFF_CENTRE_ARCSEC
-        : (bandList[i]!.frames.length === 2 && displaced[i]!) || stackOff[i]!);
-    // A distance is printed only when it is true of the combined picture; otherwise the two frames just disagree.
-    const apart = offCentre.map((off, i) => off && !stackOff[i]);
+    // With 2 frames there is no third to say which is right. When 2 strong frames are brightest further apart than that
+    // limit, or more than one detector pixel apart with either of them more than one detector pixel from the centre,
+    // the band is not counted as seen at the centre, whichever frame is the brighter, and no distance is printed for it.
+    // Frames too weak to place, and frames within one detector pixel of each other, leave it to the combined picture.
+    const apart = spreads.map((gap, i) => bandList[i]!.frames.length === 2 && (gap > stillLimit || (displaced[i]! && fars[i]! > OFF_CENTRE_ARCSEC)));
+    const offCentre = apart.map((two, i) => two || stackOff[i]!);
     const singleSeen = bandList.map((band, i) => available[i] && stackSeen[i] && band.frames.length === 1);
     if (disagrees.some(Boolean) || singleSeen.some(Boolean) || offCentre.some(Boolean) || displaced.some(Boolean)
         || checks.some((check, i) => check.varying || check.unconfirmed || (bandList[i]!.frames.length === 2 && stackSeen[i]) || (check.oneLook && !check.failure && stackSeen[i]))) {
@@ -367,10 +356,10 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
         const oneVisit = (band: typeof short, i: number) => chained(i)
             ? `its ${band.frames.length} frames span ${Math.round(checks[i]!.span)} days with no gap of ${SAME_LOOK_DAYS} days or more between them, so they are not counted as separate visits`
             : `${band.frames.length === 2 ? 'both frames come' : `all ${band.frames.length} frames come`} from one visit`;
-        // A still star's brightest pixel can hop between frames too, by up to the diagonal of one detector pixel (and of
-        // one pixel of this picture, where the place is read off). A wider gap is not offered that excuse.
-        const coarse = (i: number) => hops[i]! <= Math.SQRT2 * (OFF_CENTRE_ARCSEC + grid.pixelArcsec)
-            ? `, which a steady star can also show because each detector pixel is ${OFF_CENTRE_ARCSEC}″ wide` : '';
+        // The remark is offered only for 2 placed frames, a gap that a source which does not move can give, and frames
+        // that are each brightest within one detector pixel of the centre.
+        const coarse = (i: number) => framePeaks[i]!.length === 2 && spreads[i]! <= stillLimit && fars[i]! <= OFF_CENTRE_ARCSEC
+            ? `, which can happen even when the source does not move, because each detector pixel is ${OFF_CENTRE_ARCSEC}″ wide` : '';
         const descriptions = bandList.map((band, i) => {
             const wavelength = `${band.lambda.toFixed(2)} µm`;
             if (!available[i]) {
@@ -392,21 +381,22 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
             }
             if (checks[i]!.varying) {
                 // Light that changes away from the centre is not the target's to claim: say where it is.
-                const where = !offCentre[i] ? '' : !apart[i] ? `; it is brightest ${peakDistances[i]!.toFixed(2)}″ from the centre, so it may belong to a neighbouring source`
-                    : displaced[i] ? '' : '; its two frames do not agree on where it is brightest';
-                const moved = displaced[i] ? `; its brightest point sits in different places in different frames${coarse(i)}` : '';
+                const where = apart[i] ? '; its two frames do not agree on where it is brightest'
+                    : stackOff[i] ? `; it is brightest ${peakDistances[i]!.toFixed(2)}″ from the centre, so it may belong to a neighbouring source` : '';
+                // The remark about coarse pixels is kept for light that the combined picture still puts at the centre.
+                const moved = displaced[i] && !apart[i] ? `; its brightest point sits in different places in different frames${stackOff[i] ? '' : coarse(i)}` : '';
                 const dates = checks[i]!.datesUnknown ? `; ${noDates(band)}` : checks[i]!.oneLook ? `; ${oneVisit(band, i)}` : '';
                 return `${wavelength} shows light that differs between frames by more than a steady source would give (strong in ${checks[i]!.strong} of ${band.frames.length} frames); it may have changed or moved, or be a detector effect${where}${moved}${dates}`;
             }
             if (stackSeen[i] && offCentre[i]) {
                 // Light that peaks away from the centre is most likely a neighbour's: say where, and claim nothing here.
                 if (apart[i]) {
-                    // 2 frames only, and what they share is not at the centre: no distance is true of both.
+                    // 2 frames only, brightest far apart: no distance is true of both, and nothing says which is right.
                     return `${wavelength} shows light here, but its two frames do not agree on where it is brightest, so it may be a moving source, a neighbouring one or a detector hit, and it is not counted as seen at the centre`;
                 }
                 const place = `${wavelength} shows light here that is brightest ${peakDistances[i]!.toFixed(2)}″ from the centre`;
                 return displaced[i]
-                    ? `${place} in the combined picture, and its brightest point sits in different places in different frames${coarse(i)}; it may be a moving source or a neighbouring one, and it is not counted as seen at the centre`
+                    ? `${place} in the combined picture, and its brightest point sits in different places in different frames; it may be a moving source, a neighbouring one or a detector hit, and it is not counted as seen at the centre`
                     : `${place}, so it may belong to a neighbouring source and is not counted as seen at the centre`;
             }
             if (stackSeen[i]) {
@@ -423,8 +413,11 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
                 const twoVisits = !two ? '' : checks[i]!.unconfirmed
                     ? `, only 2 frames, and at least one of them alone is below ${MIN_COLOUR_SNR} times the noise, so it is not confirmed at a second date; a moving source or two detector hits cannot be ruled out`
                     : ', only 2 frames, so a moving source or two detector hits cannot be ruled out';
+                // A caution earlier in the sentence already names a moving source and detector hits: do not list them twice.
+                const said = Boolean(oneLook || twoVisits);
+                const causes = said ? 'more than one source' : 'a moving source, more than one source or a detector hit';
                 const moved = !displaced[i] ? '' : `; its brightest point sits in different places in different frames${coarse(i)
-                    ? `${coarse(i)}, and it may also be a moving source or more than one source` : ', so it may be a moving source or more than one source'}`;
+                    ? `${coarse(i)}, ${said ? 'or with' : 'and it may also be'} ${causes}` : `, so it may ${said ? 'also ' : ''}be ${causes}`}`;
                 return `seen at ${wavelength} (signal-to-noise ${snr(ratio)}${singleSeen[i] ? ', one frame only, so a detector hit cannot be ruled out' : ''}${oneLook}${unconfirmed}${twoVisits}${moved})`;
             }
             return `no clear signal at ${wavelength} (clear means at least ${MIN_COLOUR_SNR} times the noise)`;
@@ -481,6 +474,10 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
             parts.method += ` The reading adds up all light within ${radius}″ of the centre; ${stars}. That list holds only the brighter stars, so a fainter star or a source seen only in infrared can still be inside.${unplaced ? ` ${unplaced} of the stars on that list could not be placed in this picture, so ${unplaced === 1 ? 'it' : 'they'} may be inside too.` : ''}`;
         }
         parts.method += ` ${COLOUR_DISCLAIMER}`;
+    }
+    if (grid.pixelArcsec > maxReadingPixelArcsec) {
+        parts.reading = `No reading is given at the centre of this view: each pixel of the picture is ${grid.pixelArcsec.toFixed(2)}″ wide, too coarse to tell light at the centre from light beside it. Choose a narrower view for a reading.`;
+        parts.method = COLOUR_DISCLAIMER;
     }
     const label = (name: string, band: typeof short) => {
         const suffix = band.leftOut ? `; ${band.leftOut} more left out (${band.leftOut === 1 ? 'it does' : 'they do'} not share enough of this view with the frames used)` : '';
