@@ -42,11 +42,25 @@ export function frameMjd(f: RegriddedFrame): number
 // The date halfway through the looks: where rings go when every frame is shown at once.
 export function middleMjd(result: SkyResult): number
 {
-    const fs = result.frames;
-    if (fs.length === 0) {
-        return NaN;
-    }
-    return (frameMjd(fs[0]!.frame) + frameMjd(fs[fs.length - 1]!.frame)) / 2;
+    const [first, last] = span(result);
+    return first < 0 ? NaN : (frameMjd(result.frames[first]!.frame) + frameMjd(result.frames[last]!.frame)) / 2;
+}
+
+// Indices of the earliest and latest frame. Sources sort by time already; this does not rely on it.
+function span(result: SkyResult): [number, number]
+{
+    let first = -1;
+    let last = -1;
+    result.frames.forEach((p, i) => {
+        const t = frameMjd(p.frame);
+        if (first < 0 || t < frameMjd(result.frames[first]!.frame)) {
+            first = i;
+        }
+        if (last < 0 || t >= frameMjd(result.frames[last]!.frame)) {
+            last = i;
+        }
+    });
+    return [first, last];
 }
 
 // The brightest `max` Gaia stars, each where it was on `mjd`. Ranked after moving, so a star that walked
@@ -168,15 +182,23 @@ export function curveFor(result: SkyResult, self?: Astrometry): Curve | null
         // Trust the measured centre only when it agrees with the predicted one to within a few pixels.
         return c && Math.hypot(c.x - p.x, c.y - p.y) < 3 ? c : p;
     };
+    // lightCurve cuts on each frame's wavelength. The source already locked every frame at the target, each to
+    // within half its own channel (result.locked, same order). Hand lightCurve those values and a cut that keeps
+    // them all, so the curve keeps exactly the frames the player shows: the view-centre value (lambdaAtCenter)
+    // differs from the target's when the target is off centre, and a fixed cut dropped detector 4 frames (R 35).
+    const lockedLam = result.locked.length === frames.length ? result.locked.map((l) => l.lambda) : [];
+    const onTarget = lockedLam.length === frames.length && lockedLam.every((l) => Number.isFinite(l));
+    const curveFrames = onTarget ? frames.map((f, i) => ({ ...f, lambdaAtCenter: lockedLam[i]! })) : frames;
+    const maxDeltaUm = onTarget ? Math.max(0, ...lockedLam.map((l) => Math.abs(l - result.lambda))) : 0.05;
     let lc: LightCurve;
     let order: number[] = []; // lightCurve asks for the target once per kept frame, in point order
     try {
         const measure = () => {
             order = [];
-            return lightCurve(frames, (f, i) => {
+            return lightCurve(curveFrames, (f, i) => {
                 order.push(i);
                 return where(f);
-            }, refs.map((r) => r.pix), { ...options, lambda: result.lambda, maxDeltaUm: 0.05 });
+            }, refs.map((r) => r.pix), { ...options, lambda: result.lambda, maxDeltaUm });
         };
         lc = measure();
         while (refs.length > 2) {
@@ -300,18 +322,18 @@ export interface Shift {
 // Catalogue motion from the first frame to the last, with a measured shift when reliable.
 export function shiftFor(result: SkyResult, a: Astrometry): Shift | null
 {
-    const to = result.frames.length - 1;
-    if (to <= 0 || !result.track?.length) {
+    const [from, to] = span(result);
+    if (result.frames.length < 2 || from === to || !result.track?.length) {
         return null;
     }
-    const f0 = result.frames[0]!.frame;
+    const f0 = result.frames[from]!.frame;
     const f1 = result.frames[to]!.frame;
     const mjd0 = frameMjd(f0);
     const mjd1 = frameMjd(f1);
     const predictedArcsec = separationDeg(positionAt(a, mjd0), positionAt(a, mjd1)) * 3600;
     const errArcsec = 0.65 * NATIVE_ARCSEC;
     const shift: Shift = {
-        from: 0, to,
+        from, to,
         predictedArcsec, errArcsec,
         significant: predictedArcsec >= 2 * errArcsec,
         measured: null,
