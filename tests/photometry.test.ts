@@ -323,7 +323,15 @@ describe('lightCurve', () => {
         const fine = { ...native, grid: { ...native.grid, pixelArcsec: 3.075 } };
         const a = lightCurve([native], target, refs).points[0]!.target.snr;
         expect(lightCurve([fine], target, refs).points[0]!.target.snr).toBeCloseTo(a / 2, 10);
-        expect(lightCurve([fine], target, refs, { noiseScale: 1 }).points[0]!.target.snr).toBeCloseTo(a, 10);
+        expect(lightCurve([fine], target, refs, { noiseScale: 1 }).points[0]!.target.snr).toBeCloseTo(a * 1.4, 10);
+    });
+
+    it('uses the native floor for coarse grids with the resampling factor', () => {
+        const coarse = frame(0);
+        coarse.grid.pixelArcsec = 12.3;
+        const measured = lightCurve([coarse], target, refs).points[0]!.target;
+        const raw = aperture(coarse.data, width, height, target);
+        expect(measured.snr).toBeCloseTo(raw.snr / 1.4, 10);
     });
 
     it('uses sample reference scatter and requires two ratios', () => {

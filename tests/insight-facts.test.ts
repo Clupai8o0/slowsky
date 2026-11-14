@@ -60,6 +60,21 @@ function base(): FactsInput
 }
 
 describe('buildFacts', () => {
+    it('floors wire signal-to-noise at two decimals and preserves below-one readings', () => {
+        const first = curve([60500, 60501]);
+        first.points[1]!.target.snr = 0.9999;
+        const second = curve([60500, 60501]);
+        second.points[1]!.target.snr = 0.991;
+        const a = buildFacts({ ...base(), lightCurve: first });
+        const b = buildFacts({ ...base(), lightCurve: second });
+        expect(a).toEqual(b);
+        expect(a.lightCurve!.points[1]!.snr).toBe(0.99);
+        expect(factSheet(a).join(' ')).toContain('points: below 1.');
+        for (const [input, expected] of [[1.15, 1.15], [0.9999999999999999, 0.99], [-1.151, -1.16]] as const) {
+            first.points[1]!.target.snr = input;
+            expect(buildFacts({ ...base(), lightCurve: first }).lightCurve!.points[1]!.snr).toBe(expected);
+        }
+    });
     it('describes retained visits and capped frame counts honestly and validates the result', () => {
         const visits = Array.from({ length: 13 }, (_, i) => [frame(60500 + i)]);
         visits[0] = Array.from({ length: 501 }, () => frame(60500));

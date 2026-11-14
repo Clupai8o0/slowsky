@@ -218,6 +218,8 @@ export function toJy(sum: number, pixelArcsec: number): number
 }
 
 const NATIVE_PIXEL_ARCSEC = 6.15;
+// Measured by photometry-noise.test.ts on native, 2x and 4x regridded pixels.
+export const RESAMPLE_NOISE_FACTOR = 1.4;
 
 /** Moving targets receive the index in the original input, before filtering/sorting. */
 export function lightCurve(
@@ -259,7 +261,7 @@ export function lightCurve(
     const refRatios: number[][] = refs.length >= 2 ? refs.map(() => []) : [];
     for (const { frame: f, index } of kept) {
         const at = typeof target === 'function' ? target(f, index) : target;
-        const apertureOpts = { ...opts, noiseScale: opts.noiseScale ?? Math.max(1, NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec) };
+        const apertureOpts = { ...opts, noiseScale: opts.noiseScale ?? RESAMPLE_NOISE_FACTOR * Math.max(1, NATIVE_PIXEL_ARCSEC / f.grid.pixelArcsec) };
         const measured = aperture(f.data, f.grid.width, f.grid.height, at, apertureOpts);
         const referenceResults = refs.map((ref) => aperture(f.data, f.grid.width, f.grid.height, ref, apertureOpts));
         const refSum = referenceResults.reduce((sum, ref) => sum + ref.sum, 0);

@@ -9,6 +9,25 @@ const lines = ['Target: a position typed in by the visitor.', 'Position: RA 12.3
 
 describe('honest fact sheet', () => {
     const withPoints = (points: { mjd: number; relative: number; snr: number }[]) => ({ ...facts, lightCurve: { ...facts.lightCurve!, points } });
+    it('uses printed precision at the bounds', () => {
+        for (const [snr, shown] of [[1, '1'], [100, '100'], [100.4, '100']] as const) {
+            expect(factSheet(withPoints([{ mjd: 61000, relative: 1, snr }])).join(' ')).toContain(`points: ${shown}.`);
+        }
+        for (const [peakSigma, shown] of [[100, '100.0 sigma'], [100.04, '100.0 sigma'], [5, '5.0 sigma'], [0.04, 'no change above the noise']] as const) {
+            expect(factSheet({ ...facts, difference: { peakSigma } }).join(' ')).toContain(shown);
+        }
+        expect(factSheet({ ...facts, difference: { peakSigma: 5 } }).join(' ')).toContain('A bright star');
+        const pts = [1, 1, 1.0051].map((relative, i) => ({ mjd: 61000 + i, relative, snr: 10 }));
+        expect(factSheet(withPoints(pts))).toContain('Largest change from the median brightness: 1 percent brighter.');
+    });
+    it('omits the span for a single visit', () => {
+        expect(factSheet({ ...facts, visits: [facts.visits[0]!] }).join(' ')).not.toContain('Time from first to last visit');
+    });
+    it('computes change using only the displayed points', () => {
+        const sheet = factSheet(withPoints([0.8, 1, 1.2, 20].map((relative, i) => ({ mjd: 61000 + i, relative, snr: i === 3 ? 0.9 : 10 }))));
+        expect(sheet.join(' ')).toContain('0.80, 1.00, 1.20. Points too faint');
+        expect(sheet).toContain('Largest change from the median brightness: 20 percent either side.');
+    });
     it('bounds signal-to-noise and checks the printed bound', () => {
         const sheet = factSheet(withPoints([{ mjd: 61000, relative: 1, snr: 3582 }]));
         expect(sheet).toContain('Lowest signal-to-noise among the points: more than 100. This counts sky noise only, so the real uncertainty is larger.');

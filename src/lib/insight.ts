@@ -87,7 +87,8 @@ export function factSheet(f: InsightFacts): string[]
     const match = name?.match(/^(\w+) J(\d{4}\d*(?:\.\d+)?)([-+−])(\d{4}\d*(?:\.\d+)?)$/i);
     const short = match ? `, also written ${match[1]} ${match[2]!.slice(0, 4)}${match[3]}${match[4]!.slice(0, 4)}` : '';
     const frames = f.visits.map((v) => v.frames === 500 ? 'at least 500' : String(v.frames)).join(', ');
-    const lines = [`Target: ${name ?? 'a position typed in by the visitor'}${short}.`, `Position: RA ${f.ra.toFixed(4)} deg, Dec ${f.dec.toFixed(4)} deg.`, `Wavelength: ${f.lambdaUm.toFixed(3)} micron.`, `Visits: ${f.visits.length >= 12 ? 'at least 12' : f.visits.length}. Frames in each visit: ${frames}. Time from first to last visit: ${(Math.max(...times) - Math.min(...times)).toFixed(1)} days.`];
+    const span = f.visits.length > 1 ? ` Time from first to last visit: ${(Math.max(...times) - Math.min(...times)).toFixed(1)} days.` : '';
+    const lines = [`Target: ${name ?? 'a position typed in by the visitor'}${short}.`, `Position: RA ${f.ra.toFixed(4)} deg, Dec ${f.dec.toFixed(4)} deg.`, `Wavelength: ${f.lambdaUm.toFixed(3)} micron.`, `Visits: ${f.visits.length >= 12 ? 'at least 12' : f.visits.length}. Frames in each visit: ${frames}.${span}`];
     if (f.lightCurve) {
         const lc = f.lightCurve;
         const kept = lc.points.filter((p) => p.snr >= 1);
@@ -109,7 +110,8 @@ export function factSheet(f: InsightFacts): string[]
             }
         }
         const snr = Math.min(...lc.points.map((p) => p.snr));
-        const snrText = snr > 100 ? 'more than 100' : snr < 1 ? 'below 1' : snr.toFixed(0);
+        const roundedSnr = Number(snr.toFixed(0));
+        const snrText = snr < 1 ? 'below 1' : roundedSnr > 100 ? 'more than 100' : roundedSnr.toFixed(0);
         const scatter = lc.refScatter.filter(Number.isFinite);
         lines.push(`Lowest signal-to-noise among the points: ${snrText}. This counts sky noise only, so the real uncertainty is larger.`, scatter.length ? `Reference stars: ${scatter.length} with available scatter. Scatter of each: ${scatter.map((n) => (n * 100).toFixed(1)).join(', ')} percent.` : 'Reference stars: scatter unavailable.', `Frames left out because their wavelength did not match: ${lc.dropped}.`);
     }
@@ -118,7 +120,7 @@ export function factSheet(f: InsightFacts): string[]
         if (peak.toFixed(1) === '0.0') {
             lines.push('Difference image at the target: no change above the noise.');
         } else {
-            const value = peak > 100 ? 'more than 100' : peak.toFixed(1);
+            const value = Number(peak.toFixed(1)) > 100 ? 'more than 100' : peak.toFixed(1);
             const caution = Number(peak.toFixed(1)) >= 5 ? ' A bright star leaves marks this strong from a tiny misalignment, and a star that moved leaves a bright side and a dark side.' : '';
             lines.push(`Difference image at the target: strongest pixel ${value} sigma, ${f.difference.peakSigma >= 0 ? 'brighter' : 'fainter'} there in the later visit.${caution}`);
         }
