@@ -58,7 +58,8 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 - Below the colour step, in the **Spectrum** panel, press **Read the spectrum here** to read the light of the spot at
   the centre of the view in SPHEREx's 102 colours, from the archive's all-sky cube. Nothing is read until you
   press. A small chart shows the result, with a shaded band for the scatter of the sky around the spot, a gold
-  line at the colour on screen, and labels at seven wavelengths where well-known features fall. It is a quick
+  line at the colour on screen, and labels at up to seven wavelengths where well-known features fall (a label
+  that would overlap another is left out). It is a quick
   look, not a measurement: it reads a spot, not a named object, and a label does not mean that feature is there.
   It is not offered on the simulated sky (`src/lib/cube.ts`, `src/ui/spectrum-view.ts`).
 - Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
@@ -106,7 +107,8 @@ plus Gaia DR3 stars brighter than magnitude 19 within 0.1° (counts from `public
 files in each target folder).
 
 **The spectrum.** The Spectrum panel reads a different product: the SPHEREx DR1 all-sky cube. It was made in
-SPHEREx's first-year reprocessing from the first year of calibrated frames, with the zodiacal light taken out: each pixel
+SPHEREx's first-year reprocessing from the first year of calibrated frames, after the archive's model of the
+zodiacal light was subtracted: each pixel
 of each colour is the average of the good frame pixels that landed on it. The sky is cut into 12,288 tiles, and each
 tile is one FITS file of 512 × 512 pixels (12.9 arcsec each) by 102 colours, in MJy/sr, in the same S3 bucket (under
 `dr1/hips5_cube/`). After the press, the page works out which tile and pixel hold the centre of the view, reads that
@@ -239,18 +241,19 @@ in it.
 - The Spectrum panel is a quick look, not a measurement. IRSA's own guide to the cube says spectra taken from it
   are for display only, and points to its photometry tool for science.
   - It reads the spot at the centre of the view, not a named object. A star that moves, or a neighbour within the
-    same pixels (each about 13 arcsec wide), changes what is read.
+    same pixels (each 12.9 arcsec wide), can change what is read.
   - A spot's colours were not all observed at the same time: SPHEREx takes a few neighbouring colours in a row
-    and the rest hours to weeks later, and the cube averages each colour over the first year. A star that varies
+    and the next ones hours or days later, so one spot's full set builds up over days or weeks, and the cube
+    averages each colour over the first year. A star that varies
     can look jagged.
-  - Some spots have data in only a few colours: Barnard's Star had 9 of 102 in our read, and we have not checked
-    why. A faint target reads near zero, with noise (WISE 0855−0714: a flat line near zero with one spike near
-    1.1 µm; we have not checked what the spike is). Two colours near 2.4 µm,
-    where a beam splitter divides the light between the two sets of detectors, are blank everywhere in this
-    version of the cube.
-  - The seven labels mark where features fall; a label does not mean the feature is there. The helium label at
-    1.083 µm is also where the strongest glow from Earth's upper atmosphere falls, and IRSA says that glow leaves
-    stripes in the cube, so a bump there may not come from the spot. Bright lines in nebulae, such as Brackett α
+  - Some spots have data in only some colours. In our reads on 15 Nov 2026, Barnard's Star had 9 of 102, RW
+    Aurigae 85 and WISE 0855−0714 100; we have not checked why they differ. The read at the position of WISE
+    0855−0714 was a flat line near zero with one high value near 1.1 µm; we have not checked what that value is,
+    and we do not claim it is light from that object. Two colours near 2.4 µm, the ones next to the instrument's
+    beam splitter, are blank everywhere in this version of the cube.
+  - The labels mark where features fall; a label does not mean the feature is there. The helium label at 1.083 µm
+    is also where a helium line from Earth's atmosphere (airglow) falls, and IRSA names it as the airglow that
+    leaves the most marked stripes in the cube, so a bump there may not come from the spot. Bright lines in nebulae, such as Brackett α
     at 4.05 µm, can leave stripes too.
   - In our six reads on 15 Nov 2026 (three targets, each at desktop and phone size), each read took 34 to 36
     seconds and about 2.1 MB in 110 requests. It depends on the connection and on the archive.
