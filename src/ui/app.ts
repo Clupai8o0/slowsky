@@ -19,7 +19,7 @@ import { stackVisit, subtract, StackError } from '../lib/stack';
 import { initLayout } from './layout';
 import { coreBlank, curveFor, frameMjd, NATIVE_ARCSEC, ringsOn, shiftFor, visitsOf, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
-import { FEATURES, renderFlags, renderSpectrum } from './slots';
+import { FEATURES, mountFlags, renderSpectrum } from './slots';
 import { COPY, CUSTOM_COPY, DETECTORS, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 
 type Mode = 'blink' | 'stack' | 'diff';
@@ -269,12 +269,13 @@ function shell(): string
     <div class="sk-legrow">
       <div class="sk-leg">
         <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
-        <button type="button" class="sk-key f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i>Flags</button>
+        <button type="button" class="sk-key g f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Flagged pixels</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
       <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
     </div>
+    <p class="sk-flagnote" data-ref="flagsNote" hidden></p>
     <div class="sk-player">
       <div class="sk-tr">
         <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
@@ -345,6 +346,7 @@ export function mount(root: HTMLElement): void
     const qa = <T extends Element>(sel: string) => [...root.querySelectorAll(sel)] as T[];
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
     const aiNote = mountAiNote(ref<HTMLElement>('ai'));
+    const flagLayer = mountFlags(ref<HTMLElement>('flags'), () => renderSlots());
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     const glow = ref<HTMLCanvasElement>('glow');
@@ -888,16 +890,20 @@ export function mount(root: HTMLElement): void
     // Feature-flagged slots (src/ui/slots.ts): hidden unless the flag is on and the module has something to show.
     function renderSlots(): void
     {
-        const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode } : null;
+        const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode, source: sourceKind } : null;
         const spec = ref<HTMLElement>('spec');
         spec.hidden = !(FEATURES.spectrum && view && renderSpectrum(ref<HTMLElement>('specBox'), view));
-        // The layer is filled even when switched off, so the key shows only when there is a mask to show.
-        const layer = ref<HTMLElement>('flags');
-        const hasFlags = Boolean(FEATURES.flags && view && renderFlags(layer, view));
+        // FLAGS are read only once the key is switched on (Blink, live frames); a finished read renders again.
+        const fs = flagLayer.update(view, flagsOn);
         const key = ref<HTMLButtonElement>('flagsKey');
-        key.hidden = !hasFlags;
+        key.hidden = !fs.key;
         key.setAttribute('aria-pressed', String(flagsOn));
-        layer.hidden = !(hasFlags && flagsOn);
+        ref<HTMLElement>('flags').hidden = !fs.layer;
+        const note = ref<HTMLElement>('flagsNote');
+        if (note.textContent !== fs.note) {
+            note.textContent = fs.note;
+        }
+        note.hidden = !(fs.key && fs.note);
     }
 
     function renderText(): void
