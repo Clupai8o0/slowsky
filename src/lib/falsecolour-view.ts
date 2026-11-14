@@ -535,11 +535,13 @@ export function falseColourView(a: SkyResult, b: SkyResult, radii: { radius: num
         parts.warning += `${parts.warning ? ' ' : ''}With only one frame at ${wavelengths}, a detector hit can show as a coloured point.`;
     }
     if (bandList.some(band => band.frames.length === 2)) {
-        const wavelengths = bandList.filter(band => band.frames.length === 2).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
-        parts.warning += `${parts.warning ? ' ' : ''}With only two frames at ${wavelengths}, the picture uses their average where they agree and the lower of the two values where they clearly disagree, so something bright in only one of them is left out. This can also make a bright star several percent fainter at this wavelength, which tints it slightly. A detector hit at the same place in both, or a faint one, can still show as a coloured point.`;
+        const pairs = bandList.filter(band => band.frames.length === 2);
+        const wavelengths = pairs.map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');
+        const where = pairs.length === 1 ? 'this wavelength' : 'these wavelengths';
+        parts.warning += `${parts.warning ? ' ' : ''}With only two frames at ${wavelengths}, the picture uses their average where they agree and the lower of the two values where they clearly disagree, so the bright middle of something present in only one of them is left out. A faint one, or the faint edge of a bright one, can still show as a false tint. This can also make a bright star fainter at ${where}, by several percent and up to about a tenth, and tint its edge. A detector hit at the same place in both can still show as a coloured point.`;
     }
-    if (shownShort.some(value => !Number.isFinite(value))) {
-        parts.warning += `${parts.warning ? ' ' : ''}Hatched areas have no colour: the frames do not all cover them. The grey picture shows through the hatching.`;
+    if (shownShort.some((value, i) => !Number.isFinite(value) && (i % grid.width + Math.floor(i / grid.width)) % 4 === 0)) {
+        parts.warning += `${parts.warning ? ' ' : ''}Hatched areas have no colour: the frames do not all have usable pixels there, either outside a frame or where a frame has blank pixels, which can happen at the core of a very bright star. Where the grey picture has data, it shows through the hatching.`;
     }
     if (bandList.some(band => band.frames.length >= 3)) {
         const wavelengths = bandList.filter(band => band.frames.length >= 3).map(band => `${band.lambda.toFixed(2)} µm`).join(' and ');

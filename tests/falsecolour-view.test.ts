@@ -239,7 +239,9 @@ describe('round 9j pair combination', () => {
 
     it('states the two-frame warning and coverage note exactly, but never warns for three frames', () => {
         const pair = makeFalseColourView(sky([sourceFrame(1.25), sourceFrame(1.25)]), sky([sourceFrame(4.6), sourceFrame(4.6), sourceFrame(4.6)]), radii);
-        expect(pair.parts.warning).toBe('With only two frames at 1.25 µm, the picture uses their average where they agree and the lower of the two values where they clearly disagree, so something bright in only one of them is left out. This can also make a bright star several percent fainter at this wavelength, which tints it slightly. A detector hit at the same place in both, or a faint one, can still show as a coloured point.');
+        expect(pair.parts.warning).toBe('With only two frames at 1.25 µm, the picture uses their average where they agree and the lower of the two values where they clearly disagree, so the bright middle of something present in only one of them is left out. A faint one, or the faint edge of a bright one, can still show as a false tint. This can also make a bright star fainter at this wavelength, by several percent and up to about a tenth, and tint its edge. A detector hit at the same place in both can still show as a coloured point.');
+        const both = makeFalseColourView(sky([sourceFrame(1.25), sourceFrame(1.25)]), sky([sourceFrame(4.6), sourceFrame(4.6)]), radii);
+        expect(both.parts.warning).toBe('With only two frames at 1.25 µm and 4.60 µm, the picture uses their average where they agree and the lower of the two values where they clearly disagree, so the bright middle of something present in only one of them is left out. A faint one, or the faint edge of a bright one, can still show as a false tint. This can also make a bright star fainter at these wavelengths, by several percent and up to about a tenth, and tint its edge. A detector hit at the same place in both can still show as a coloured point.');
         expect(pair.sentence).not.toContain('Hatched');
         expect(pair.parts.note).not.toContain('differ there by more than');
         const three = makeFalseColourView(sky([sourceFrame(1.25), sourceFrame(1.25), sourceFrame(1.25)]), sky([sourceFrame(4.6), sourceFrame(4.6), sourceFrame(4.6)]), radii);
@@ -311,8 +313,8 @@ describe('round 9j pair combination', () => {
         }
     });
 
-    // The colour map is continuous: define grey as red and blue within 10% of the brighter channel.
-    it('studies tint from two frames versus three', () => {
+    // At signal-to-noise 115, define grey as red and blue within 10% of the brighter channel.
+    it('studies tint from two frames versus three at signal-to-noise 115', () => {
         let greyPeak = 0;
         let greyBox = 0;
         for (let draw = 0; draw < 100; draw++) {
@@ -1271,7 +1273,15 @@ describe('reliable colour readings', () => {
         const long = sourceFrame(4.6);
         long.data[0] = NaN;
         expect(falseColourView(sky([sourceFrame(1.25)]), sky([long]), radii).parts.warning)
-            .toContain('Hatched areas have no colour: the frames do not all cover them. The grey picture shows through the hatching.');
+            .toContain('Hatched areas have no colour: the frames do not all have usable pixels there, either outside a frame or where a frame has blank pixels, which can happen at the core of a very bright star. Where the grey picture has data, it shows through the hatching.');
+    });
+
+    it('omits the hatch explanation when a lone missing pixel falls between hatch lines', () => {
+        const long = sourceFrame(4.6);
+        long.data[1] = NaN;
+        const result = falseColourView(sky([sourceFrame(1.25)]), sky([long]), radii);
+        expect(result.rgba[7]).toBe(0);
+        expect(result.parts.warning).not.toContain('Hatched areas');
     });
 
     it('puts the hatch explanation in the warning when half a frame is missing', () => {
@@ -1282,7 +1292,7 @@ describe('reliable colour readings', () => {
             }
         }
         const result = falseColourView(sky([sourceFrame(1.25)]), sky([long]), radii);
-        expect(result.parts.warning).toContain('Hatched areas have no colour: the frames do not all cover them. The grey picture shows through the hatching.');
+        expect(result.parts.warning).toContain('Hatched areas have no colour: the frames do not all have usable pixels there, either outside a frame or where a frame has blank pixels, which can happen at the core of a very bright star. Where the grey picture has data, it shows through the hatching.');
         expect(result.parts.note).not.toContain('Hatched');
     });
 
@@ -1696,7 +1706,7 @@ describe('one frame set per band', () => {
         const result = falseColourView(sky([full, missing]), sky([frame(4.6)]), radii);
         expect(result.parts.reading).toContain('1.20 µm cannot be measured here (blank pixels)');
         expect(result.rgba[4 * (15 * 31 + 15) + 3]).toBe(0);
-        expect(result.parts.warning).toContain('Hatched areas have no colour: the frames do not all cover them. The grey picture shows through the hatching.');
+        expect(result.parts.warning).not.toContain('Hatched areas');
         expect(result.parts.note).not.toContain('Hatched');
         const covered = falseColourView(sky([full, frame(1.2)]), sky([frame(4.6)]), radii);
         expect(covered.parts.reading).not.toContain('cannot be measured');
@@ -2628,8 +2638,7 @@ describe('round 9g: tests for two untested edits', () => {
     const NOTE = 'False colour, not what an eye would see. Both pictures share one brightness scale after each '
         + "one's own sky level is taken off: blue means brighter at the shorter wavelength, orange means brighter at the "
         + 'longer one, grey means about the same. Where a star is too bright for that scale, both colours are scaled down '
-        + 'together, so its colour is kept but its brightness is not. Coloured rims around bright stars can come from the two pictures not '
-        + "being equally sharp. Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it. "
+        + "together, so its colour is kept, though paler, but its brightness is not. Coloured rims or one-sided edges around bright stars come from how the detector's pixels fell on the star in each picture and from the two pictures not being equally sharp; they are not the star's colour. Coloured speckle in dark sky is noise. Each frame's middle value is taken off as sky, so a glow that fills most of the view can be removed with it. "
         + 'With 3 or more frames at 1.25 µm and 4.60 µm, the middle value of the '
         + 'frames is used at each pixel, so something present in fewer than half of the frames is missing from this '
         + 'picture, and something present in most of them looks steady.';

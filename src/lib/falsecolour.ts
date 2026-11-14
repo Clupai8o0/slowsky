@@ -37,8 +37,7 @@ export interface ColourAt {
 const FALSE_COLOUR_NOTE = 'False colour, not what an eye would see. Both pictures share one brightness scale after each '
     + "one's own sky level is taken off: blue means brighter at the shorter wavelength, orange means brighter at the "
     + 'longer one, grey means about the same. Where a star is too bright for that scale, both colours are scaled down '
-    + 'together, so its colour is kept but its brightness is not. Coloured rims around bright stars can come from the two pictures not '
-    + 'being equally sharp.';
+    + "together, so its colour is kept, though paler, but its brightness is not. Coloured rims or one-sided edges around bright stars come from how the detector's pixels fell on the star in each picture and from the two pictures not being equally sharp; they are not the star's colour. Coloured speckle in dark sky is noise.";
 
 function channelStats(data: Float32Array, hiPercentile: number): { sky: number; top: number; sigma: number }
 {

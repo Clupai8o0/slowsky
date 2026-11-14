@@ -694,8 +694,7 @@ describe('falseColourLegend', () => {
             note: 'False colour, not what an eye would see. Both pictures share one brightness scale after each '
                 + "one's own sky level is taken off: blue means brighter at the shorter wavelength, orange means "
                 + 'brighter at the longer one, grey means about the same. Where a star is too bright for that scale, '
-                + 'both colours are scaled down together, so its colour is kept but its brightness is not. Coloured rims around bright stars can '
-                + 'come from the two pictures not being equally sharp.',
+                + "both colours are scaled down together, so its colour is kept, though paler, but its brightness is not. Coloured rims or one-sided edges around bright stars come from how the detector's pixels fell on the star in each picture and from the two pictures not being equally sharp; they are not the star's colour. Coloured speckle in dark sky is noise.",
         });
 
         expect(falseColourLegend(0.9, 4.5)).toMatchObject({
@@ -773,7 +772,7 @@ describe('determinism and string hygiene', () => {
             expect(text).not.toContain('Na' + 'N');
             expect(text).not.toContain('Infin' + 'ity');
             expect(text).not.toContain('undef' + 'ined');
-            expect(text).not.toMatch(/discover|detect|confirm|prove/i);
+            expect(text).not.toMatch(/discover|\bdetect(?:ed|ion|ing|s)?\b|confirm|prove/i);
         }
     });
 });
