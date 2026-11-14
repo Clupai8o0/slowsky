@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    FalseColourError, centroidOffset, colourAt, falseColourLegend, falseColourRgba, pairStretch,
+    FalseColourError, NO_COLOUR_HATCH, centroidOffset, colourAt, falseColourLegend, falseColourRgba as renderRgba, pairStretch,
 } from '../src/lib/falsecolour';
 import type { ColourAt, PairStretch } from '../src/lib/falsecolour';
 import { centroid } from '../src/lib/photometry';
@@ -9,6 +9,11 @@ import type { PixelCoord, Stretch } from '../src/lib/types';
 
 const SIZE = 41;
 const CENTER: PixelCoord = { x: 20, y: 20 };
+
+function falseColourRgba(short: Float32Array, long: Float32Array, sShort: Stretch, sLong: Stretch, out?: Uint8ClampedArray): Uint8ClampedArray
+{
+    return renderRgba(short, long, sShort, sLong, out, short.length);
+}
 
 interface SyntheticSource extends PixelCoord {
     flux: number;
@@ -219,6 +224,76 @@ describe('pairStretch', () => {
 describe('falseColourRgba', () => {
     const lin: Stretch = { lo: 0, hi: 1, kind: 'linear' };
 
+    it.each([['short', 0.9, 0.45], ['long', 0.45, 0.9]])('retains normalized colour for a %s-bright star above the scale', (_name, short, long) => {
+        const reference = falseColourRgba(Float32Array.of(short), Float32Array.of(long), lin, lin);
+        for (const factor of [1.5 / 0.9, 10 / 0.9, 100 / 0.9]) {
+            const pixel = falseColourRgba(Float32Array.of(short * factor), Float32Array.of(long * factor), lin, lin);
+            for (let channel = 0; channel < 3; channel++) {
+                expect(Math.abs(pixel[channel]! * 0.9 - reference[channel]!)).toBeLessThanOrEqual(2);
+            }
+            expect(pixel[0] === 255 && pixel[2] === 255).toBe(false);
+            expect(Math.sign(pixel[2]! - pixel[0]!)).toBe(Math.sign(short - long));
+        }
+    });
+
+    it.each(['linear', 'asinh'] as const)('keeps saturated colours consistent across 1.5, 10 and 100 times the scale with %s', kind => {
+        const stretch: Stretch = { lo: 0, hi: 1, kind };
+        for (const [short, long] of [[1, 0.5], [0.5, 1]]) {
+            const colours = [1.5, 10, 100].map(factor => falseColourRgba(
+                Float32Array.of(short! * factor), Float32Array.of(long! * factor), stretch, stretch));
+            for (const pixel of colours) {
+                for (let channel = 0; channel < 3; channel++) {
+                    expect(Math.abs(pixel[channel]! - colours[0]![channel]!)).toBeLessThanOrEqual(2);
+                }
+            }
+        }
+    });
+
+    it.each(['linear', 'asinh'] as const)('keeps a saturated core blue at every brightness with %s stretches', kind => {
+        const s: Stretch = { lo: 2, hi: 12, kind };
+        const l: Stretch = { lo: 7, hi: 17, kind };
+        const colours = [1, 10, 100].map(factor => falseColourRgba(
+            Float32Array.of(2 + 330 * factor), Float32Array.of(7 + 100 * factor), s, l));
+        for (const colour of colours) {
+            expect(colour[2]).toBe(255);
+            expect(colour[2]!).toBeGreaterThan(colour[0]!);
+            expect(Math.abs(colour[0]! - colours[0]![0]!)).toBeLessThanOrEqual(2);
+        }
+        const equal = falseColourRgba(Float32Array.of(332), Float32Array.of(337), s, l);
+        expect(Array.from(equal)).toEqual([255, 255, 255, 255]);
+    });
+
+    it.each(['linear', 'asinh'] as const)('preserves all unsaturated bytes from stretchValue for %s', kind => {
+        const s: Stretch = { lo: 2, hi: 12, kind };
+        const l: Stretch = { lo: 7, hi: 17, kind };
+        const short = Float32Array.from({ length: 101 }, (_, i) => 1 + i / 10);
+        const long = Float32Array.from({ length: 101 }, (_, i) => 17 - i / 10);
+        const before = new Uint8ClampedArray(short.length * 4);
+        for (let i = 0; i < short.length; i++) {
+            const blue = stretchValue(short[i]!, s);
+            const red = stretchValue(long[i]!, l);
+            before.set([255 * red, 255 * (red + blue) / 2, 255 * blue, 255], 4 * i);
+        }
+        expect(falseColourRgba(short, long, s, l)).toEqual(before);
+    });
+
+    it('keeps the paired-stretch star core blue from 330/100 through 33000/10000', () => {
+        const centres: number[][] = [];
+        for (const factor of [1, 10, 100]) {
+            const short = makePatch([{ ...CENTER, flux: 330 * factor }]);
+            const long = makePatch([{ ...CENTER, flux: 100 * factor }], 2);
+            const stretch = pairStretch(short, long);
+            const rgba = falseColourRgba(short, long, stretch.sShort, stretch.sLong);
+            const p = (CENTER.y * SIZE + CENTER.x) * 4;
+            const centre = Array.from(rgba.slice(p, p + 4));
+            expect(centre[2]!).toBeGreaterThan(centre[0]!);
+            centres.push(centre);
+        }
+        for (let channel = 0; channel < 3; channel++) {
+            expect(Math.abs(centres[0]![channel]! - centres[2]![channel]!)).toBeLessThanOrEqual(2);
+        }
+    });
+
     it('maps orange to long-only, blue to short-only, and grey/white/black to equal channels', () => {
         const short = Float32Array.from([0, 1, 1, 0, 0.5]);
         const long = Float32Array.from([1, 0, 1, 0, 0.5]);
@@ -239,11 +314,11 @@ describe('falseColourRgba', () => {
         expect(a).toBe(255);
     });
 
-    it('renders non-finite values in either channel transparent, clamps finite range and overwrites reused out', () => {
+    it('hatches non-finite values, preserves saturated ratios and overwrites reused out', () => {
         expectPixelNear(
             falseColourRgba(Float32Array.from([Number.POSITIVE_INFINITY]), Float32Array.from([0]), lin, lin),
             0,
-            [0, 0, 0, 0],
+            [...NO_COLOUR_HATCH],
             0,
         );
 
@@ -266,21 +341,21 @@ describe('falseColourRgba', () => {
         expect(px).toBe(out);
 
         for (let i = 0; i < 5; i++) {
-            expectPixelNear(px, i, [0, 0, 0, 0], 0);
+            expectPixelNear(px, i, i % 4 === 0 ? [...NO_COLOUR_HATCH] : [0, 0, 0, 0], 0);
         }
         expectPixelNear(px, 5, [0, 0, 0, 255], 0);
-        expectPixelNear(px, 6, [255, 255, 255, 255], 0);
+        expectPixelNear(px, 6, [94, 174, 255, 255], 0);
         expectPixelNear(px, 7, [255, 128, 0, 255], 1);
         expectPixelNear(px, 8, [0, 128, 255, 255], 1);
     });
 
-    it('agrees with stretchValue across 50 values for the asinh stretch', () => {
+    it('agrees with stretchValue across 50 unsaturated values for the asinh stretch', () => {
         const n = 50;
         const short = new Float32Array(n);
         const long = new Float32Array(n);
         for (let i = 0; i < n; i++) {
-            short[i] = -1 + i * 0.35;
-            long[i] = -2 + (n - 1 - i) * 0.6;
+            short[i] = -1 + i * 0.2;
+            long[i] = -2 + (n - 1 - i) * 0.4;
         }
         const sShort: Stretch = { lo: 0.5, hi: 12, kind: 'asinh' };
         const sLong: Stretch = { lo: 1, hi: 24, kind: 'asinh' };
@@ -618,8 +693,8 @@ describe('falseColourLegend', () => {
             blue: 'Blue: 1.12 µm (the shorter wavelength)',
             note: 'False colour, not what an eye would see. Both pictures share one brightness scale after each '
                 + "one's own sky level is taken off: blue means brighter at the shorter wavelength, orange means "
-                + 'brighter at the longer one, grey means about the same. Coloured rims around bright stars can '
-                + 'come from the two pictures not being equally sharp.',
+                + 'brighter at the longer one, grey means about the same. Where a star is too bright for that scale, '
+                + "both colours are scaled down together, so its colour is kept, though paler, but its brightness is not. Coloured rims or one-sided edges around bright stars come from how the detector's pixels fell on the star in each picture and from the two pictures not being equally sharp; they are not the star's colour. Coloured speckle in dark sky is noise.",
         });
 
         expect(falseColourLegend(0.9, 4.5)).toMatchObject({
@@ -697,7 +772,7 @@ describe('determinism and string hygiene', () => {
             expect(text).not.toContain('Na' + 'N');
             expect(text).not.toContain('Infin' + 'ity');
             expect(text).not.toContain('undef' + 'ined');
-            expect(text).not.toMatch(/discover|detect|confirm|prove/i);
+            expect(text).not.toMatch(/discover|\bdetect(?:ed|ion|ing|s)?\b|confirm|prove/i);
         }
     });
 });

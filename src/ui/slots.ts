@@ -12,7 +12,7 @@
 import { readFlags } from '../lib/flags';
 import { flagsRgba, regridFlags, summariseFlags } from '../lib/flags-view';
 import { createLiveSource, type SkyResult, type SkySource } from '../lib/source';
-import { ColourGridError, falseColourView } from '../lib/falsecolour-view';
+import { ColourGridError, falseColourView, pictureOnlyParts, TOO_LITTLE_COLOUR } from '../lib/falsecolour-view';
 import { apertureFor } from './measure';
 import type { RegriddedFrame, TargetId } from '../lib/types';
 import { COPY } from './copy';
@@ -26,9 +26,9 @@ import type { RangeReader } from '../lib/types';
 import { readFrameFlags, screen, type FrameFlags } from './flag-screen';
 import { readVariance } from './error-maps';
 
-export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'halo' | 'mlHint';
+export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, halo: false, mlHint: false });
+    Object.freeze({ spectrum: false, flags: true, changes: false, falseColour: false, fcReading: false, halo: false, mlHint: false });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
@@ -477,6 +477,7 @@ export interface FalseColourSlot {
 
 export interface FalseColourDeps {
     enabled?: boolean;
+    readingEnabled?: boolean;
     source?: SkySource;
     paint?: (layer: HTMLElement, rgba: Uint8ClampedArray, width: number, height: number) => void;
 }
@@ -540,7 +541,8 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                     try {
                         entry = { status: 'ready', picture: falseColourView(current, other, apertureFor(current.grid)) };
                     } catch (error) {
-                        entry = { status: 'failed', note: error instanceof ColourGridError ? FALSE_COLOUR_TEXT.grid : FALSE_COLOUR_TEXT.picture };
+                        entry = { status: 'failed', note: error instanceof ColourGridError ? FALSE_COLOUR_TEXT.grid
+                            : error instanceof Error && error.message === TOO_LITTLE_COLOUR ? TOO_LITTLE_COLOUR : FALSE_COLOUR_TEXT.picture };
                     }
                 }
                 onChange();
@@ -592,9 +594,9 @@ export function mountFalseColour(layer: HTMLElement, onChange: () => void, deps:
                     paint(layer, picture.rgba, picture.width, picture.height);
                     painted = true;
                 }
-                const parts = entry.picture.parts;
+                const parts = (deps.readingEnabled ?? FEATURES.fcReading) ? entry.picture.parts : pictureOnlyParts(entry.picture.parts);
                 const join = (xs: string[]) => xs.filter(Boolean).join(' ');
-                return { key: true, layer: true, note: entry.picture.sentence,
+                return { key: true, layer: true, note: join(Object.values(parts)),
                     split: { lead: join([parts.reading, parts.warning]), more: join([parts.labels, parts.note, parts.method]) } };
             } catch {
                 entry = { status: 'failed', note: FALSE_COLOUR_TEXT.picture };

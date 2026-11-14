@@ -13,6 +13,9 @@ export class FalseColourError extends Error {
     }
 }
 
+// Dark olive, deliberately outside the map's green = (red + blue) / 2 line.
+export const NO_COLOUR_HATCH = Object.freeze([24, 40, 20, 255] as const);
+
 export interface PairStretch {
     sShort: Stretch;
     sLong: Stretch;
@@ -33,8 +36,8 @@ export interface ColourAt {
 
 const FALSE_COLOUR_NOTE = 'False colour, not what an eye would see. Both pictures share one brightness scale after each '
     + "one's own sky level is taken off: blue means brighter at the shorter wavelength, orange means brighter at the "
-    + 'longer one, grey means about the same. Coloured rims around bright stars can come from the two pictures not '
-    + 'being equally sharp.';
+    + 'longer one, grey means about the same. Where a star is too bright for that scale, both colours are scaled down '
+    + "together, so its colour is kept, though paler, but its brightness is not. Coloured rims or one-sided edges around bright stars come from how the detector's pixels fell on the star in each picture and from the two pictures not being equally sharp; they are not the star's colour. Coloured speckle in dark sky is noise.";
 
 function channelStats(data: Float32Array, hiPercentile: number): { sky: number; top: number; sigma: number }
 {
@@ -112,13 +115,14 @@ export function pairStretch(
     };
 }
 
-// RGBA pixels for canvas putImageData: blue for short, orange for long, grey where equal, transparent if non-finite.
+// RGBA pixels: blue for short, orange for long, grey where equal, transparent gaps between hatch lines.
 export function falseColourRgba(
     short: Float32Array,
     long: Float32Array,
     sShort: Stretch,
     sLong: Stretch,
-    out?: Uint8ClampedArray,
+    out: Uint8ClampedArray | undefined,
+    width: number,
 ): Uint8ClampedArray
 {
     if (short.length !== long.length) {
@@ -135,14 +139,17 @@ export function falseColourRgba(
         const vl = long[i];
         const o = i * 4;
         if (vs === undefined || vl === undefined || !Number.isFinite(vs) || !Number.isFinite(vl)) {
-            px[o] = 0;
-            px[o + 1] = 0;
-            px[o + 2] = 0;
-            px[o + 3] = 0;
+            const x = i % width;
+            const y = Math.floor(i / width);
+            px.set((x + y) % 4 === 0 ? NO_COLOUR_HATCH : [0, 0, 0, 0], o);
             continue;
         }
-        const s = stretchValue(vs, sShort);
-        const l = stretchValue(vl, sLong);
+        // The same pre-curve position for linear and asinh stretches; leave the unsaturated path byte-identical.
+        const ts = Math.max(0, (vs - sShort.lo) / (sShort.hi - sShort.lo));
+        const tl = Math.max(0, (vl - sLong.lo) / (sLong.hi - sLong.lo));
+        const scale = Math.max(ts, tl);
+        const s = scale > 1 ? stretchValue(ts / scale, { lo: 0, hi: 1, kind: sShort.kind }) : stretchValue(vs, sShort);
+        const l = scale > 1 ? stretchValue(tl / scale, { lo: 0, hi: 1, kind: sLong.kind }) : stretchValue(vl, sLong);
         px[o] = 255 * l;
         px[o + 1] = 255 * (s + l) / 2;
         px[o + 2] = 255 * s;
