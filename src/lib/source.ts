@@ -183,7 +183,11 @@ export function thinFrames(frames: FrameRecord[], gapDays: number, max: number):
     if (frames.length <= max) {
         return frames;
     }
-    const visits = groupVisits(frames, gapDays);
+    return thinVisits(groupVisits(frames, gapDays), max);
+}
+
+function thinVisits(visits: FrameRecord[][], max: number): FrameRecord[]
+{
     const perVisit = Math.max(1, Math.floor(max / Math.max(1, visits.length)));
     const kept: FrameRecord[] = [];
     for (const v of visits) {
@@ -228,11 +232,14 @@ export function bestLambda(
 ): number
 {
     const all: number[] = [];
+    const ends: number[] = [];
     for (const v of visits) {
         for (const f of v) {
             const l = lambdaOf(f);
             if (l !== undefined && Number.isFinite(l)) {
                 all.push(l);
+                const limit = limitOf(f);
+                ends.push(...[l - limit, l + limit].filter(Number.isFinite));
             }
         }
     }
@@ -240,10 +247,15 @@ export function bestLambda(
         return NaN;
     }
     all.sort((a, b) => a - b);
+    ends.sort((a, b) => a - b);
+    const candidates = all.slice();
+    for (let i = 1; i < ends.length; i++) {
+        candidates.push(((ends[i - 1] as number) + (ends[i] as number)) / 2);
+    }
     const middle = range ? (range[0] + range[1]) / 2 : ((all[0] as number) + (all[all.length - 1] as number)) / 2;
     let best = all[0] as number;
     let bestCount = -1;
-    for (const c of all) {
+    for (const c of candidates) {
         let count = 0;
         for (const v of visits) {
             if (v.some((f) => {
@@ -265,18 +277,21 @@ export function bestLambda(
 async function assemble(
     req: SkyRequest,
     infos: FrameInfo[],
+    frameVisits: FrameRecord[][],
     opts: SourceOptions,
     notes: string[],
 ): Promise<Omit<SkyResult, 'source' | 'stars' | 'credits'>>
 {
-    const gap = opts.visitGapDays ?? 10;
     const grid = gridForView(req.center, req.fovDeg, opts.minScreenPx ?? 4, opts.maxSide ?? 721);
     if (infos.length === 0) {
         return { grid, frames: [], locked: [], lambda: req.lambda ?? NaN, notes };
     }
     const byId = new Map(infos.map((f) => [f.record.obsId, f]));
     const lambdaOf = (r: FrameRecord): number | undefined => byId.get(r.obsId)?.lambda;
-    const visits = groupVisits(infos.map((f) => f.record), gap);
+    const visits = frameVisits.map((v) => v.flatMap((r) => {
+        const info = byId.get(r.obsId);
+        return info ? [info.record] : [];
+    })).filter((v) => v.length > 0);
     const range = commonRange(visits, lambdaOf);
     const limitOf = (r: FrameRecord): number => opts.maxDeltaUm ?? (byId.get(r.obsId) as FrameInfo).bandwidth / 2;
     const chosen = req.lambda ?? bestLambda(visits, lambdaOf, limitOf, range);
@@ -284,8 +299,7 @@ async function assemble(
         notes.push('No usable wavelength in these frames.');
         return { grid, frames: [], locked: [], lambda: NaN, notes };
     }
-    const nearest = lockWavelength(visits, lambdaOf, chosen);
-    const locked = nearest.filter((l) => Math.abs(l.dLambda) <= limitOf(l.frame));
+    const locked = lockWavelength(visits, lambdaOf, chosen, { limitOf });
     const dropped = visits.length - locked.length;
     if (dropped > 0) {
         notes.push(`${plural(dropped, 'visit')} left out: no frame close enough to ${chosen.toFixed(3)} µm.`);
@@ -381,7 +395,9 @@ export function createLiveSource(opts: LiveOptions = {}): SkySource
             if (onDetector.length === 0) {
                 notes.push(`No SPHEREx frames on detector ${req.detector} cover this spot yet.`);
             }
-            const candidates = thinFrames(onDetector, gap, opts.maxHeaders ?? 60);
+            const visits = groupVisits(onDetector, gap);
+            const maxHeaders = opts.maxHeaders ?? 60;
+            const candidates = onDetector.length <= maxHeaders ? onDetector : thinVisits(visits, maxHeaders);
             if (candidates.length < onDetector.length) {
                 notes.push(`Read ${candidates.length} of ${onDetector.length} frames to keep loading quick.`);
             }
@@ -431,7 +447,7 @@ export function createLiveSource(opts: LiveOptions = {}): SkySource
             if (usable.length < candidates.length) {
                 notes.push(`${plural(candidates.length - usable.length, 'frame')} left out: the spot is at the detector edge.`);
             }
-            const core = await assemble(req, usable, opts, notes);
+            const core = await assemble(req, usable, visits, opts, notes);
             const records = core.frames.map((f) => f.frame.frame);
             return { source: 'live', stars: [], credits: credits(records, false), ...core };
         },
@@ -508,6 +524,8 @@ function optionalNumber(v: number | null | undefined): number | undefined
     return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
+const SNAPSHOT_MAX_FOV_DEG = 0.1;
+
 export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
 {
     const base = (opts.baseUrl ?? '').replace(/\/$/, '');
@@ -523,15 +541,31 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
         return await response.json() as T;
     }
 
-    function getIndex(id: TargetId, signal?: AbortSignal): Promise<SnapshotIndexJson>
+    async function getIndex(id: TargetId, signal?: AbortSignal): Promise<SnapshotIndexJson>
     {
+        signal?.throwIfAborted();
         let p = indexCache.get(id);
         if (!p) {
-            p = getJson<SnapshotIndexJson>(`/snapshot/${id}/index.json`, signal);
+            p = getJson<SnapshotIndexJson>(`/snapshot/${id}/index.json`);
             p.catch(() => indexCache.delete(id));
             indexCache.set(id, p);
         }
-        return p;
+        if (!signal) {
+            return p;
+        }
+        let onAbort!: () => void;
+        const aborted = new Promise<never>((_resolve, reject) => {
+            onAbort = () => reject(signal.reason);
+            signal.addEventListener('abort', onAbort, { once: true });
+            if (signal.aborted) {
+                onAbort();
+            }
+        });
+        try {
+            return await Promise.race([p, aborted]);
+        } finally {
+            signal.removeEventListener('abort', onAbort);
+        }
     }
 
     return {
@@ -546,11 +580,36 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
             const index = await getIndex(req.target, req.signal);
             req.onProgress?.({ stage: 'search', done: 1, total: 1 });
             const onDetector = index.frames.filter((f) => f.record.detector === req.detector);
+            const visits = groupVisits(onDetector.map((f) => f.record), opts.visitGapDays ?? 10);
             if (onDetector.length === 0) {
                 notes.push(`The offline copy has detector ${target.detector} only for this target.`);
             }
+            if (onDetector.length > 0) {
+                // The baked boxes follow the star at frame time and span about 0.19 deg, so centre there and keep the view inside.
+                const meanMjd = onDetector.reduce((a, f) => a + mid(f.record), 0) / onDetector.length;
+                const center = positionAt(target.astrometry, meanMjd);
+                const fovDeg = Math.min(req.fovDeg, SNAPSHOT_MAX_FOV_DEG);
+                if (fovDeg < req.fovDeg) {
+                    notes.push(`The offline copy limits the field to ${SNAPSHOT_MAX_FOV_DEG}°.`);
+                }
+                req = { ...req, center, fovDeg };
+            }
             const infos: FrameInfo[] = [];
+            let missingScale = 0;
             for (const f of onDetector) {
+                const finite = (key: string): boolean => {
+                    const value = f.imageHeader[key];
+                    return typeof value === 'number' && Number.isFinite(value);
+                };
+                const anyCd = ['CD1_1', 'CD1_2', 'CD2_1', 'CD2_2'].some((key) => f.imageHeader[key] !== undefined);
+                // Mirror wcsFromHeader: with any CD key present, missing ones default to 0.
+                const hasScale = anyCd
+                    ? ['CD1_1', 'CD2_2'].every(finite)
+                    : ['CDELT1', 'CDELT2'].every(finite);
+                if (!hasScale) {
+                    missingScale++;
+                    continue;
+                }
                 const header = headerFromCards(f.imageHeader);
                 const wcs = makeWcs(wcsFromHeader(header));
                 const wave = snapshotWave(f.wave);
@@ -613,7 +672,14 @@ export function createSnapshotSource(opts: SnapshotOptions = {}): SkySource
                 };
                 infos.push(info);
             }
-            const core = await assemble(req, infos, opts, notes);
+            if (missingScale > 0) {
+                const note = `${missingScale} offline frames lack a pixel scale and were skipped.`;
+                notes.push(note);
+                if (infos.length === 0) {
+                    throw new SkyUnavailable(note);
+                }
+            }
+            const core = await assemble(req, infos, visits, opts, notes);
             let stars: GaiaStar[] = [];
             try {
                 const gaia = await getJson<GaiaJson>(`/snapshot/${req.target}/gaia.json`, req.signal);

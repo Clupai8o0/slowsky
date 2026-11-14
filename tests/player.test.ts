@@ -141,6 +141,29 @@ describe('wavelength lock', () => {
         expect(() => lockWavelength([v1], lambdaOf, NaN)).toThrow();
     });
 
+    it('chooses the nearest frame inside its own passband', () => {
+        const narrow = frameRecord('narrow', 60000);
+        const wide = frameRecord('wide', 60000.1);
+        const lambdaOf = (f: FrameRecord): number => f === narrow ? 1.000 : 1.0303;
+        const limitOf = (f: FrameRecord): number => (f === narrow ? 0.030 : 0.031) / 2;
+        const visits = [[narrow, wide]];
+        const got = lockWavelength(visits, lambdaOf, 1.0151, { limitOf });
+        expect(got.map((g) => g.frame.obsId)).toEqual(['wide']);
+        expect(got[0]?.dLambda).toBeCloseTo(0.0152, 12);
+        expect(lockWavelength(visits, lambdaOf, 1.0151, { limitOf, maxDelta: 0.015 })).toEqual([]);
+        expect(lockWavelength(visits, lambdaOf, 1.0151, { limitOf, maxDelta: 0.016 })).toHaveLength(1);
+    });
+
+    it('rejects frames with an invalid passband limit', () => {
+        const invalid = frameRecord('invalid', 60000);
+        const valid = frameRecord('valid', 60000.1);
+        const lambdaOf = (f: FrameRecord): number => f === invalid ? 1 : 1.01;
+        const limitOf = (f: FrameRecord): number => f === invalid ? NaN : 0.015;
+        const got = lockWavelength([[invalid, valid]], lambdaOf, 1, { limitOf });
+        expect(got.map((g) => g.frame.obsId)).toEqual(['valid']);
+        expect(lockWavelength([[invalid]], lambdaOf, 1, { limitOf })).toEqual([]);
+    });
+
     it('commonRange is the overlap of every visit', () => {
         expect(commonRange([v1, v2], lambdaOf)).toEqual([0.97, 1.00]);
         const far = [frameRecord('c1', 60300)];
