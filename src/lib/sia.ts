@@ -86,6 +86,10 @@ async function queryOnce(q: FrameQuery, signal: AbortSignal | undefined, fetcher
         throw new Error(`SIA request failed (${response.status})`);
     }
     const xml = await response.text();
+    // A 200 reply that is not a VOTable (a host's own HTML page, a maintenance notice) is a failure, not an empty sky.
+    if (!/<(?:[\w.-]+:)?VOTABLE[\s>/]/i.test(xml)) {
+        throw new Error('SIA reply was not a frame list (VOTable)');
+    }
     const status = queryStatus(xml);
     if (status?.status === 'ERROR') {
         throw new Error('SIA query failed (QUERY_STATUS=ERROR)');
