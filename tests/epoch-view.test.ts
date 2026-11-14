@@ -1,0 +1,415 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+    EPOCH_FLIP_MS, EPOCH_MAX_BYTES, EPOCH_TEXT, HATCH_DARK, HATCH_LIGHT, createEpoch, epochBracket, epochFailText, epochNoteParts,
+    epochRgba, makeDecode, mountEpoch, noteText, type BitmapLike, type EpochElements, type EpochOut, type EpochSlotView,
+} from '../src/ui/epoch-view';
+import { DEFAULT_FEATURES, FEATURES } from '../src/ui/slots';
+import { EPOCH_NOTE, TWO_MASS_K, epochCredit, type EpochResult } from '../src/lib/epoch';
+import { renderRgba } from '../src/lib/player';
+import { positionAt, targetById } from '../src/lib/targets';
+import type { SkyResult } from '../src/lib/source';
+import type { OutputGrid } from '../src/lib/types';
+
+const W = 40;
+const H = 40;
+
+function grid(fovDeg = 0.25): OutputGrid
+{
+    return { center: { ra: 150, dec: 2 }, fovDeg, pixelArcsec: fovDeg * 3600 / W, width: W, height: H };
+}
+
+function sky(fovDeg = 0.25, extra: Partial<SkyResult> = {}): SkyResult
+{
+    const g = grid(fovDeg);
+    const frame = { frame: { frame: { tMin: 61000 }, grid: g, data: new Float32Array(W * H) }, label: '' };
+    return { source: 'live', grid: g, frames: [frame, frame], locked: [], lambda: 1.5, stars: [], credits: [], notes: [], ...extra } as unknown as SkyResult;
+}
+
+function view(result: SkyResult | null, over: Partial<EpochSlotView> = {}): EpochSlotView | null
+{
+    return result ? { result, index: 0, mode: 'blink', source: 'live', when: '3 Mar 2026', ...over } : null;
+}
+
+function okResult(g: OutputGrid, pixels?: Float32Array): EpochResult
+{
+    const px = pixels ?? Float32Array.from({ length: g.width * g.height }, (_, i) => i % 256);
+    return { ok: true, width: g.width, height: g.height, pixels: px, band: 'K', order: 9, wantedOrder: 9, pixelArcsec: 1.15,
+        coarser: false, covered: 1, holes: false, values: 'display',
+        source: { name: TWO_MASS_K.name, baseUrl: TWO_MASS_K.baseUrl, propertiesUrl: TWO_MASS_K.propertiesUrl, credit: TWO_MASS_K.credit,
+            creditUrl: TWO_MASS_K.creditUrl, hipsCredit: TWO_MASS_K.hipsCredit, hipsCreator: TWO_MASS_K.hipsCreator, format: 'jpeg' },
+        epoch: { label: TWO_MASS_K.epochLabel, fromMonth: TWO_MASS_K.fromMonth, toMonth: TWO_MASS_K.toMonth, nightKnown: false }, missing: [] };
+}
+
+interface Rig {
+    slot: ReturnType<typeof createEpoch>;
+    last: () => EpochOut;
+    read: ReturnType<typeof vi.fn>;
+    pause: ReturnType<typeof vi.fn>;
+    signals: AbortSignal[];
+    resolve: (r: EpochResult) => void;
+    vis: { hidden: boolean; fire: () => void };
+}
+
+function rig(opts: { reduced?: boolean; enabled?: boolean } = {}): Rig
+{
+    const outs: EpochOut[] = [];
+    const signals: AbortSignal[] = [];
+    let resolve: (r: EpochResult) => void = () => {};
+    const read = vi.fn((_g: OutputGrid, o?: { signal?: AbortSignal }) => {
+        if (o?.signal) {
+            signals.push(o.signal);
+        }
+        return new Promise<EpochResult>((res) => {
+            resolve = res;
+        });
+    });
+    const pause = vi.fn();
+    let listener: (() => void) | null = null;
+    const vis = { hidden: false, fire: () => listener?.() };
+    const slot = createEpoch({
+        enabled: opts.enabled ?? true,
+        reducedMotion: opts.reduced ?? false,
+        draw: (o) => outs.push(o),
+        pause,
+        read: read as unknown as typeof import('../src/lib/epoch').readEpoch,
+        decode: async () => ({ width: 1, height: 1, data: [0] }),
+        visibility: {
+            hidden: () => vis.hidden,
+            listen: (cb) => {
+                listener = cb;
+                return () => {
+                    listener = null;
+                };
+            },
+        },
+    });
+    return { slot, last: () => outs[outs.length - 1]!, read, pause, signals, resolve: (r) => resolve(r), vis };
+}
+
+async function settle(): Promise<void>
+{
+    for (let i = 0; i < 5; i++) {
+        await Promise.resolve();
+    }
+}
+
+async function ready(r: Rig, result: SkyResult, over: Partial<EpochSlotView> = {}): Promise<void>
+{
+    r.slot.update(view(result, over));
+    r.slot.press();
+    r.resolve(okResult(result.grid));
+    await settle();
+}
+
+const NOTE = `${TWO_MASS_K.epochLabel}. ${EPOCH_NOTE} It comes from a different telescope at a different wavelength (2.16 µm; this SPHEREx frame is at 1.50 µm), so a star can look brighter or fainter between the two without having changed. Rings mark where the catalogue puts each star on the SPHEREx frame’s date; a star that sits away from its ring in the older picture may have moved: a candidate to check, not a measurement. ${epochCredit(TWO_MASS_K)}`;
+
+describe('older picture: switched off', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('is off by default and makes no request while off', () => {
+        expect(DEFAULT_FEATURES.epoch).toBe(false);
+        expect(FEATURES.epoch).toBe(false);
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        const r = rig({ enabled: false });
+        r.slot.update(view(sky()));
+        r.slot.press();
+        r.slot.tagPress();
+        expect(r.read).not.toHaveBeenCalled();
+        expect(r.slot.on).toBe(false);
+        const read = vi.fn();
+        const mounted = mountEpoch({} as EpochElements, { enabled: false, pause: () => {}, read });
+        mounted.update(view(sky()));
+        mounted.press();
+        expect(read).not.toHaveBeenCalled();
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+});
+
+describe('older picture: when the key is offered', () => {
+    it('shows the key only in Blink, on 0.1 or 0.25 degrees, with a real result', () => {
+        const r = rig();
+        r.slot.update(view(sky(0.25)));
+        expect(r.last().key).toBe(true);
+        r.slot.update(view(sky(0.1)));
+        expect(r.last().key).toBe(true);
+        r.slot.update(view(sky(0.1), { source: 'snapshot' }));
+        expect(r.last().key).toBe(true);
+        r.slot.update(view(sky(0.25), { mode: 'stack' }));
+        expect(r.last().key).toBe(false);
+        r.slot.update(view(sky(0.25), { mode: 'diff' }));
+        expect(r.last().key).toBe(false);
+        r.slot.update(view(sky(0.5)));
+        expect(r.last().key).toBe(false);
+        r.slot.update(view(sky(1)));
+        expect(r.last().key).toBe(false);
+        r.slot.update(view(sky(0.25), { source: 'demo' }));
+        expect(r.last().key).toBe(false);
+        r.slot.update(null);
+        expect(r.last().key).toBe(false);
+        expect(r.read).not.toHaveBeenCalled();
+    });
+
+    it('switches off and clears when the mode leaves Blink', async () => {
+        const r = rig();
+        const s = sky();
+        await ready(r, s);
+        expect(r.last().picture).not.toBeNull();
+        r.slot.update(view(s, { mode: 'stack' }));
+        expect(r.slot.on).toBe(false);
+        expect(r.last().key).toBe(false);
+        r.slot.update(view(s));
+        expect(r.last()).toMatchObject({ key: true, pressed: false, picture: null, then: false, tag: null });
+    });
+
+    it('treats too-large as not offered, with no message', async () => {
+        const r = rig();
+        const s = sky();
+        r.slot.update(view(s));
+        r.slot.press();
+        r.resolve({ ok: false, reason: 'too-large', detail: 'This view is too large for the older picture', missing: [] });
+        await settle();
+        expect(r.last()).toMatchObject({ key: false, note: [], picture: null });
+        expect(r.slot.on).toBe(false);
+    });
+});
+
+describe('older picture: pressing it', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('reads once on the first press and aborts on the second', () => {
+        const r = rig();
+        const s = sky();
+        r.slot.update(view(s));
+        expect(r.read).not.toHaveBeenCalled();
+        r.slot.press();
+        expect(r.read).toHaveBeenCalledTimes(1);
+        expect(r.read.mock.calls[0]![0]).toBe(s.grid);
+        expect(r.last().note).toEqual([EPOCH_TEXT.loading]);
+        expect(r.last().pressed).toBe(true);
+        r.slot.update(view(s));
+        expect(r.read).toHaveBeenCalledTimes(1);
+        r.slot.press();
+        expect(r.signals[0]!.aborted).toBe(true);
+        expect(r.last()).toMatchObject({ pressed: false, note: [], picture: null });
+    });
+
+    it('a new target aborts the read and drops the picture', async () => {
+        const r = rig();
+        r.slot.update(view(sky()));
+        r.slot.press();
+        const next = sky();
+        r.slot.update(view(next));
+        expect(r.signals[0]!.aborted).toBe(true);
+        expect(r.slot.on).toBe(false);
+        r.resolve(okResult(next.grid));
+        await settle();
+        expect(r.last()).toMatchObject({ pressed: false, picture: null, then: false });
+    });
+
+    it('pauses playback and flips every 900 ms with the exact tag words', async () => {
+        const r = rig();
+        await ready(r, sky());
+        expect(r.pause).toHaveBeenCalledTimes(1);
+        expect(r.last()).toMatchObject({ then: true, tag: { label: 'Then: 2MASS, 1997 to 2001', action: null } });
+        vi.advanceTimersByTime(EPOCH_FLIP_MS);
+        expect(r.last()).toMatchObject({ then: false, tag: { label: 'Now: SPHEREx, 3 Mar 2026', action: null } });
+        vi.advanceTimersByTime(EPOCH_FLIP_MS);
+        expect(r.last().then).toBe(true);
+    });
+
+    it('with reduced motion never starts a timer and flips by hand', async () => {
+        const r = rig({ reduced: true });
+        await ready(r, sky());
+        expect(vi.getTimerCount()).toBe(0);
+        vi.advanceTimersByTime(EPOCH_FLIP_MS * 5);
+        expect(r.last()).toMatchObject({ then: true, tag: { label: EPOCH_TEXT.then, action: 'Show now' } });
+        r.slot.tagPress();
+        expect(r.last()).toMatchObject({ then: false, tag: { label: 'Now: SPHEREx, 3 Mar 2026', action: 'Show then' } });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('the tag stops the flip and then flips by hand', async () => {
+        const r = rig();
+        await ready(r, sky());
+        r.slot.tagPress();
+        expect(vi.getTimerCount()).toBe(0);
+        expect(r.last().tag?.action).toBe('Show now');
+    });
+
+    it('stops the timer when the key goes off and while the page is hidden', async () => {
+        const r = rig();
+        await ready(r, sky());
+        expect(vi.getTimerCount()).toBe(1);
+        r.vis.hidden = true;
+        r.vis.fire();
+        expect(vi.getTimerCount()).toBe(0);
+        r.vis.hidden = false;
+        r.vis.fire();
+        expect(vi.getTimerCount()).toBe(1);
+        r.slot.press();
+        expect(vi.getTimerCount()).toBe(0);
+        r.vis.fire();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('Play and stepping frames switch the older picture off', async () => {
+        const r = rig();
+        const s = sky();
+        await ready(r, s);
+        r.slot.off();
+        expect(r.slot.on).toBe(false);
+        expect(vi.getTimerCount()).toBe(0);
+        expect(r.last()).toMatchObject({ pressed: false, picture: null });
+        await ready(r, s);
+        expect(r.slot.on).toBe(true);
+        r.slot.update(view(s, { index: 1 }));
+        expect(r.slot.on).toBe(false);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('a refused read prints the reason and shows no picture', async () => {
+        const r = rig();
+        r.slot.update(view(sky()));
+        r.slot.press();
+        r.resolve({ ok: false, reason: 'fetch', detail: 'Some tiles are missing', missing: [] });
+        await settle();
+        expect(noteText(r.last().note)).toBe('The older picture could not be read for this view (Some tiles are missing). The SPHEREx frames are not affected.');
+        expect(r.last()).toMatchObject({ picture: null, then: false, tag: null });
+        expect(vi.getTimerCount()).toBe(0);
+        expect(r.pause).not.toHaveBeenCalled();
+    });
+});
+
+describe('older picture: the words', () => {
+    it('ships the exact strings', async () => {
+        expect(EPOCH_TEXT.key).toBe('Older picture');
+        expect(EPOCH_TEXT.loading).toBe('Reading the older picture…');
+        expect(epochFailText('HTTP 502')).toBe('The older picture could not be read for this view (HTTP 502). The SPHEREx frames are not affected.');
+        const parts = epochNoteParts(okResult(grid()) as Extract<EpochResult, { ok: true }>, 1.5);
+        expect(noteText(parts)).toBe(NOTE);
+        expect(parts).toContainEqual({ text: '2MASS', href: 'https://www.ipac.caltech.edu/2mass/' });
+        expect(noteText(parts)).toContain('2MASS: University of Massachusetts & IPAC/Caltech. HiPS tiles: CNRS/Unistra, served by IRSA.');
+        expect(noteText(parts)).not.toMatch(/discover|detected a|confirmed|proves|arcsec|″|%/i);
+    });
+
+    it('the ready note carries the credit and the frame wavelength', async () => {
+        vi.useFakeTimers();
+        const r = rig();
+        await ready(r, sky());
+        expect(noteText(r.last().note)).toBe(NOTE);
+        vi.useRealTimers();
+    });
+});
+
+describe('older picture: drawing', () => {
+    it('draws NaN as hatching, never black', () => {
+        const px = new Float32Array(12 * 12).fill(NaN);
+        const rgba = epochRgba(px, 12, 12);
+        const greys = new Set<number>();
+        for (let i = 0; i < 144; i++) {
+            expect(rgba[i * 4 + 3]).toBe(255);
+            expect(rgba[i * 4]).toBeGreaterThan(0);
+            greys.add(rgba[i * 4]!);
+        }
+        expect([...greys].sort()).toEqual([HATCH_LIGHT, HATCH_DARK].sort());
+    });
+
+    it('draws display values straight to grey, no re-stretch', () => {
+        const px = Float32Array.from([0, 37, 128, 255]);
+        const rgba = epochRgba(px, 4, 1);
+        expect([rgba[0], rgba[4], rgba[8], rgba[12]]).toEqual([0, 37, 128, 255]);
+        expect([rgba[5], rgba[6]]).toEqual([37, 37]);
+    });
+
+    it('a bright pixel lands on the canvas pixel the SPHEREx layer uses', () => {
+        const w = 9;
+        const h = 6;
+        const x = 7;
+        const y = 3;
+        const old = new Float32Array(w * h).fill(10);
+        old[y * w + x] = 250;
+        const spx = new Float32Array(w * h).fill(1);
+        spx[y * w + x] = 1000;
+        const a = epochRgba(old, w, h);
+        const b = renderRgba(spx, { lo: 0, hi: 1000, kind: 'linear' });
+        const brightest = (d: Uint8ClampedArray) => {
+            let k = 0;
+            for (let i = 0; i < d.length / 4; i++) {
+                if (d[i * 4]! > d[k * 4]!) {
+                    k = i;
+                }
+            }
+            return k;
+        };
+        expect(a.length).toBe(b.length);
+        expect(brightest(a)).toBe(y * w + x);
+        expect(brightest(a)).toBe(brightest(b));
+    });
+
+    it('brackets the catalogue path only when it lies inside the view', () => {
+        const barnard = targetById('barnard')!;
+        const centre = positionAt(barnard.astrometry, 61041);
+        const g = (fovDeg: number): OutputGrid => ({ center: centre, fovDeg, pixelArcsec: 6.15, width: Math.round(fovDeg * 3600 / 6.15), height: Math.round(fovDeg * 3600 / 6.15) });
+        const track = [{ mjd: 61041, ra: centre.ra, dec: centre.dec, pix: { x: 0, y: 0 } }];
+        const wide = sky(0.25, { grid: g(0.25), track });
+        const b = epochBracket(wide, 'barnard');
+        expect(b).not.toBeNull();
+        expect(Math.hypot(b!.to.x - b!.from.x, b!.to.y - b!.from.y)).toBeGreaterThan(3);
+        expect(epochBracket(sky(0.1, { grid: g(0.1), track }), 'barnard')).toBeNull();
+        expect(epochBracket(sky(0.25, { grid: g(0.25) }), 'barnard')).toBeNull();
+        expect(epochBracket(wide, 'rwaur')).toBeNull();
+        expect(epochBracket(wide, undefined)).toBeNull();
+        expect(EPOCH_TEXT.bracket).toBe('Where its catalogue motion puts it between June 1997 and February 2001');
+    });
+});
+
+describe('older picture: the decoder', () => {
+    const jpeg = (n: number) => {
+        const b = new Uint8Array(n);
+        b[0] = 0xff;
+        b[1] = 0xd8;
+        b[n - 2] = 0xff;
+        b[n - 1] = 0xd9;
+        return b;
+    };
+    function fake(width: number, height: number): { bitmap: () => Promise<BitmapLike>; closed: () => number; made: () => number }
+    {
+        let closed = 0;
+        let made = 0;
+        return {
+            bitmap: async () => {
+                made++;
+                return { width, height, close: () => { closed++; } };
+            },
+            closed: () => closed,
+            made: () => made,
+        };
+    }
+
+    it('refuses too many bytes, a bad start, a bad end and a wrong size', async () => {
+        const f = fake(8, 8);
+        const decode = makeDecode(8, { bitmap: f.bitmap, pixels: () => new Uint8ClampedArray(8 * 8 * 4) });
+        await expect(decode(jpeg(EPOCH_MAX_BYTES + 1))).rejects.toThrow(Error);
+        const badStart = jpeg(64);
+        badStart[1] = 0xd9;
+        await expect(decode(badStart)).rejects.toThrow(Error);
+        const badEnd = jpeg(64);
+        badEnd[63] = 0x00;
+        await expect(decode(badEnd)).rejects.toThrow(Error);
+        expect(f.made()).toBe(0);
+        const wrong = fake(8, 7);
+        await expect(makeDecode(8, { bitmap: wrong.bitmap, pixels: () => new Uint8ClampedArray(0) })(jpeg(64))).rejects.toThrow(Error);
+        expect(wrong.closed()).toBe(1);
+        const out = await decode(jpeg(EPOCH_MAX_BYTES));
+        expect(out).toMatchObject({ width: 8, height: 8 });
+        expect(out.data.length).toBe(256);
+        expect(f.closed()).toBe(1);
+    });
+});

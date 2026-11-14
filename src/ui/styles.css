@@ -269,6 +269,28 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-slot-layer { position: absolute; inset: 0; pointer-events: none; }
 .sk-slot-layer > canvas, .sk-slot-layer > svg { display: block; width: 100%; height: 100%; }
 .sk-slot-fc > canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+/* Older picture (src/ui/epoch-view.ts): the 2MASS picture covers the sky during "Then", same grid and pixels, hard
+   cuts only (a blink is a swap, never a fade). The corner tag says which picture shows; square corners, keyboard
+   reachable. The bracket beside the target's catalogue path is cyan, apart from the gold rings and white marks. */
+.sk-slot-ep > canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+.sk-slot-ep .path { stroke: #7fd8ff; stroke-width: 1.75; }
+.sk-ep-tag { position: absolute; z-index: 2; top: 10px; left: 10px; display: inline-flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 10px;
+    border: 1px solid rgba(255, 255, 255, .22); border-radius: 2px; background: rgba(3, 5, 11, .82); color: var(--ink);
+    font: var(--fs-label)/1.3 var(--mono); letter-spacing: .02em; text-align: left; cursor: pointer; transition: transform var(--t-press) var(--ease); }
+.sk-ep-tag:hover { border-color: rgba(255, 255, 255, .5); }
+.sk-ep-tag:active { transform: scale(.97); }
+.sk-ep-tag:focus-visible { outline: 2px solid rgba(255, 255, 255, .7); outline-offset: 2px; }
+.sk-ep-tag .a { color: var(--ink2); text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .4); text-underline-offset: 3px; }
+.sk[data-loading] .sk-ep-tag { visibility: hidden; }
+.sk-key.e .sw { width: 10px; height: 10px; border-radius: 1px; background: linear-gradient(90deg, #a3a8b0 50%, #262b36 50%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25); }
+.sk-key.e[aria-pressed=false] .sw { opacity: .5; }
+.sk-ep-note a { color: var(--ink); text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .35); text-underline-offset: 3px; }
+.sk-ep-note a:hover, .sk-ep-note a:focus-visible { text-decoration-color: currentColor; }
+.sk-ep-leg { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--ink2); }
+.sk-ep-leg i { flex: none; width: 10px; height: 7px; border: 1.75px solid #7fd8ff; border-bottom: 0; }
+@media (max-width: 1080px), (pointer: coarse) {
+    .sk-ep-tag { min-height: 44px; }
+}
 .sk-slot-flags canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
 .sk-img { image-rendering: pixelated; image-rendering: crisp-edges; }
 /* Loading: the old picture, its rings and every layer over it are gone at once (app.ts clears them); only the empty
