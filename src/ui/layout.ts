@@ -11,8 +11,8 @@ const MIN_CENTRE = 460;
 const STEP = 16;
 const FOLDED_W = 0; // a folded rail and its gutter take no width (--lcol, --lg in styles.css)
 // Side by side (styles.css, .sk[data-side]): the controls column and the gap beside the sky.
-const CTRL_W = 340;
-const CTRL_GAP = 40;
+const CTRL_W = 300;
+const CTRL_GAP = 32;
 const ANIM_MS = 320; // a little over the 280 ms grid transition
 
 function read(): Saved
@@ -117,6 +117,7 @@ export function initLayout(root: HTMLElement): Layout
         const focus = folded.left && folded.right;
         focusBtn.setAttribute('aria-pressed', String(focus));
         focusBtn.lastChild!.textContent = focus ? 'Show panels' : 'Focus';
+        focusBtn.setAttribute('aria-label', focus ? 'Show panels' : 'Focus: fold both panels');
         arrange();
     }
 
@@ -145,7 +146,7 @@ export function initLayout(root: HTMLElement): Layout
         const stacked = Math.min(midW, Math.max(floor, vh - under));
         const top = sky.getBoundingClientRect().top - root.getBoundingClientRect().top;
         const side = Math.floor(Math.min(vh - parseFloat(cs.paddingBottom) - top, midW - CTRL_W - CTRL_GAP));
-        if (side >= Math.max(floor, stacked + 48)) {
+        if (side >= Math.max(floor, stacked + 24)) {
             root.dataset.side = '';
             root.style.setProperty('--sky', `${side}px`);
         } else {

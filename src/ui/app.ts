@@ -111,6 +111,79 @@ function targetById(id: TargetId): Target | undefined
     return TARGETS.find((t) => t.id === id);
 }
 
+// Each SPHEREx release links to its archive DOI from the Release row (the citation sits in the link's title).
+const RELEASE_DOI: Partial<Record<string, { id: string; label: string; cite: string }>> = {
+    dr1: { id: '10.26131/IRSA678', label: 'SPHEREx DR1', cite: 'SPHEREx DR1, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA678' },
+    qr3: { id: '10.26131/IRSA662', label: 'SPHEREx QR3', cite: 'SPHEREx QR3, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA662' },
+};
+
+// ---------- small figures ----------
+const MAP_W = 132;
+const MAP_H = 66;
+
+// RA runs right to left, as on a sky chart; 0h at the right edge.
+function mapXY(ra: number, dec: number): [number, number]
+{
+    return [MAP_W * (1 - (((ra % 360) + 360) % 360) / 360), MAP_H * (0.5 - dec / 180)];
+}
+
+// The Milky Way's mid-line (galactic latitude 0) in RA and Dec, as path segments that break where RA wraps.
+const PLANE = ((): string => {
+    const d2r = Math.PI / 180;
+    const raG = 192.85948 * d2r;
+    const decG = 27.12825 * d2r;
+    const lNcp = 122.93192 * d2r;
+    let path = '';
+    let last = NaN;
+    for (let l = 0; l <= 360; l += 4) {
+        const dl = lNcp - l * d2r;
+        const dec = Math.asin(Math.cos(decG) * Math.cos(dl)) / d2r;
+        const ra = (raG + Math.atan2(Math.sin(dl), -Math.sin(decG) * Math.cos(dl))) / d2r;
+        const [x, y] = mapXY(ra, dec);
+        path += `${Number.isFinite(last) && Math.abs(x - last) < MAP_W / 2 ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
+        last = x;
+    }
+    return path;
+})();
+
+function skyMapSvg(ra: number, dec: number): string
+{
+    const [x, y] = mapXY(ra, dec);
+    return `<svg viewBox="0 0 ${MAP_W} ${MAP_H}" width="${MAP_W}" height="${MAP_H}" role="img" aria-label="Position on the whole sky: the gold square, with the Milky Way as a faint band">
+<rect x=".5" y=".5" width="${MAP_W - 1}" height="${MAP_H - 1}" rx="2" class="fr"/>
+<path d="${PLANE}" class="mw"/>
+<path d="M0 ${MAP_H / 2}H${MAP_W}" class="eq"/>
+<rect x="${(x - 3).toFixed(1)}" y="${(y - 3).toFixed(1)}" width="6" height="6" rx="1" class="me"/>
+</svg>`;
+}
+
+const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+
+// Yearly motion as an arrow on a small compass, north up and east left (as the sky image shows it).
+function motionSvg(pmRa: number, pmDec: number): { svg: string; text: string }
+{
+    const pm = Math.hypot(pmRa, pmDec) / 1000; // arcsec a year
+    const pa = (Math.atan2(pmRa, pmDec) * 180) / Math.PI;
+    const way = COMPASS[Math.round((((pa % 360) + 360) % 360) / 45) % 8]!;
+    const S = 66;
+    const c = S / 2;
+    const len = 22;
+    const ux = -pmRa / 1000 / pm;
+    const uy = -pmDec / 1000 / pm;
+    const tx = c + ux * len;
+    const ty = c + uy * len;
+    const head = (k: number) => `${(tx - ux * 6 + k * uy * 4).toFixed(1)} ${(ty - uy * 6 - k * ux * 4).toFixed(1)}`;
+    const svg = `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" role="img" aria-label="Moves ${pm.toFixed(1)} arcseconds a year toward the ${way}">
+<rect x=".5" y=".5" width="${S - 1}" height="${S - 1}" rx="2" class="fr"/>
+<path d="M${c} 8V${S - 8}M8 ${c}H${S - 8}" class="eq"/>
+<text x="${c}" y="7" class="lb">N</text><text x="5" y="${c + 3}" class="lb">E</text>
+<path d="M${c} ${c}L${tx.toFixed(1)} ${ty.toFixed(1)}" class="ar"/>
+<path d="M${head(1)}L${tx.toFixed(1)} ${ty.toFixed(1)}L${head(-1)}" class="ar"/>
+<rect x="${c - 2}" y="${c - 2}" width="4" height="4" rx="1" class="me"/>
+</svg>`;
+    return { svg, text: `${pm.toFixed(1)}″ a year, ${way}` };
+}
+
 function matchTarget(text: string): TargetId | undefined
 {
     const norm = (s: string) => s.toLowerCase().replace(/[’'\s−-]/g, '');
@@ -156,7 +229,11 @@ function shell(): string
   <section class="sk-mod sk-m-about" aria-labelledby="sk-h4">
     <h2 class="sk-mh" id="sk-h4"><span class="ic">${ICON.look}</span>What to look for</h2>
     <p class="sk-h" data-bind="headline"></p>
-    <p class="sk-coord"><span data-bind="name"></span><span data-bind="coords"></span></p>
+    <p class="sk-coord"><span data-bind="name"></span><a class="sk-src" data-ref="coords" target="_blank" rel="noopener"></a></p>
+    <div class="sk-figs">
+      <figure class="sk-fig"><span data-ref="map"></span><figcaption>Where in the sky</figcaption></figure>
+      <figure class="sk-fig" data-ref="pmfig" hidden><span data-ref="pm"></span><figcaption data-bind="pm"></figcaption></figure>
+    </div>
     <p class="sk-body" data-bind="show"></p>
     <p class="sk-body mute"><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
   </section>
@@ -168,7 +245,7 @@ function shell(): string
 <main class="sk-mid">
   <section class="sk-mod sk-m-watch" aria-labelledby="sk-h2">
     <div class="sk-mhrow">
-      <h2 class="sk-mh" id="sk-h2"><i>02</i>Watch it change</h2>
+      <h2 class="sk-mh" id="sk-h2"><i>02</i><span class="w">Watch it change</span></h2>
       <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
       <button type="button" class="sk-focus" data-act="focus" aria-pressed="false" title="Fold both panels (F)"><span class="ic">${ICON.focus}</span><span>Focus</span></button>
     </div>
@@ -184,7 +261,7 @@ function shell(): string
     <div class="sk-ctrl">
     <div class="sk-legrow">
       <div class="sk-leg">
-        <button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button>
+        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://doi.org/10.5270/esa-qa4lep3" target="_blank" rel="noopener" title="Rings: ESA/Gaia/DPAC, Gaia DR3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>there then<i class="o"></i>there now</span>
       </div>
@@ -231,7 +308,7 @@ function shell(): string
     <dl data-ref="dl"></dl>
     <ul class="sk-notes" data-ref="notes"></ul>
   </section>
-  <footer class="sk-credit"><p data-bind="status"></p><p data-bind="credits"></p></footer>
+  <footer class="sk-credit"><p data-bind="status"></p></footer>
 </aside>
 <p class="sk-sr" aria-live="polite" data-ref="live"></p>
 <div class="sk-toast" data-ref="toast" role="status"></div>`;
@@ -740,7 +817,24 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('golive').hidden = !(result && sourceKind === 'snapshot' && st.target);
         const copy = st.target ? COPY[st.target] : null;
         bind('name', copy ? copy.display : st.label);
-        bind('coords', `${formatRa(st.center.ra)}  ${formatDec(st.center.dec)}`);
+        const coordsA = ref<HTMLAnchorElement>('coords');
+        coordsA.textContent = `${formatRa(st.center.ra)}  ${formatDec(st.center.dec)}`;
+        // The position's source, on the position: SIMBAD (Harvard mirror; the CDS site is down) by name or by coordinates.
+        const simbadName = st.target ? targetById(st.target)?.name : undefined;
+        coordsA.href = simbadName
+            ? `https://simbad.cfa.harvard.edu/simbad/sim-id?Ident=${encodeURIComponent(simbadName)}`
+            : `https://simbad.cfa.harvard.edu/simbad/sim-coo?Coord=${encodeURIComponent(`${st.center.ra.toFixed(5)} ${st.center.dec >= 0 ? '+' : ''}${st.center.dec.toFixed(5)}`)}&Radius=1&Radius.unit=arcmin`;
+        coordsA.title = simbadName ? `Position and motion: SIMBAD, ${simbadName}` : 'Look up this position in SIMBAD';
+        ref<HTMLElement>('map').innerHTML = skyMapSvg(st.center.ra, st.center.dec);
+        // The motion arrow only for stars that visibly walk: over half an arcsecond a year.
+        const am = st.target ? targetById(st.target)?.astrometry : undefined;
+        const fast = am && Number.isFinite(am.pmRa) && Number.isFinite(am.pmDec) && Math.hypot(am.pmRa, am.pmDec) > 500;
+        ref<HTMLElement>('pmfig').hidden = !fast;
+        if (fast) {
+            const m = motionSvg(am.pmRa, am.pmDec);
+            ref<HTMLElement>('pm').innerHTML = m.svg;
+            bind('pm', m.text);
+        }
         bind('headline', copy ? copy.headline : CUSTOM_COPY.headline);
         bind('show', copy ? copy.show : CUSTOM_COPY.show);
         bind('not', copy ? copy.not : CUSTOM_COPY.not);
@@ -761,6 +855,7 @@ export function mount(root: HTMLElement): void
         gaiaBtn.setAttribute('aria-pressed', String(st.gaia));
         // No catalogue stars came back: hide the toggle rather than offer an empty one.
         gaiaBtn.hidden = !result || result.stars.length === 0;
+        ref<HTMLElement>('gaiaSrc').hidden = gaiaBtn.hidden;
         fovSelect.value = String(st.fovDeg);
         bind('det', `Detector ${lamDraft === null ? st.detector : detectorOf(lamDraft)} of 6`);
 
@@ -827,7 +922,13 @@ export function mount(root: HTMLElement): void
                         : 'The star’s centre could not be found close enough to where it should be, so only the expected shift from its catalogue motion is shown.');
                 }
             }
-            let html = rows.map(([k, v]) => `<dt>${k}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('');
+            const doi = sourceKind === 'demo' ? undefined : RELEASE_DOI[rec.release];
+            let html = rows.map(([k, v]) => {
+                const val = k === 'Release' && doi
+                    ? `<a class="sk-src" href="https://doi.org/${doi.id}" target="_blank" rel="noopener" title="${esc(doi.cite)}">${esc(doi.label)}</a>`
+                    : esc(v);
+                return `<dt>${k}</dt><dd>${val}</dd>`;
+            }).join('');
             const links: string[] = [];
             if (rec.url) {
                 links.push(`<a href="${esc(rec.url)}" rel="noopener" target="_blank"><span class="ic">${ICON.file}</span>FITS file</a>`);
@@ -847,8 +948,6 @@ export function mount(root: HTMLElement): void
                 : 'Saved copy of real NASA SPHEREx frames, so it opens at once. Go live reads them from the archive (about 30 s).')
                 : 'Simulated sky for building the page. Not real data.';
         bind('status', status);
-        const credits = ['NASA SPHEREx via IRSA (NASA/IPAC).', ...(sourceKind === 'demo' ? [] : result.credits)];
-        bind('credits', [...new Set(credits)].join(' '));
         ref<HTMLElement>('notes').innerHTML = [...extraNotes, ...result.notes].map((t) => `<li>${esc(t)}</li>`).join('');
         ref<HTMLElement>('live').textContent = `${q<HTMLElement>('[data-bind="frame"]').textContent}, ${q<HTMLElement>('[data-bind="when"]').textContent}`;
         canvas.setAttribute('aria-label', `Sky image. ${ref<HTMLElement>('live').textContent}, ${lam.toFixed(2)} µm`);
