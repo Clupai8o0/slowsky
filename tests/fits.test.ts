@@ -105,6 +105,23 @@ describe('FITS range reader', () => {
         await expect(createRangeReader({ fetch: fetcher }).index(url)).rejects.toThrow();
     });
 
+    it('cancels the body of a non-206 reply', async () => {
+        let cancelled = false;
+        const body = new ReadableStream<Uint8Array>({
+            start(controller)
+            {
+                controller.enqueue(new Uint8Array(4));
+            },
+            cancel()
+            {
+                cancelled = true;
+            },
+        });
+        const fetcher: typeof fetch = async () => new Response(body, { status: 200 });
+        await expect(createRangeReader({ fetch: fetcher }).index(url)).rejects.toThrow(/206/);
+        expect(cancelled).toBe(true);
+    });
+
     it('rejects and cancels an oversized range stream that never ends', async () => {
         let source!: ReadableStreamDefaultController<Uint8Array>;
         let cancelled = false;

@@ -157,6 +157,11 @@ export function createRangeReader(opts: RangeReaderOptions = {}): RangeReader
         budget(length);
         const response = await fetcher(url, { headers: { Range: `bytes=${start}-${start + length - 1}` }, signal });
         if (response.status !== 206) {
+            try {
+                await response.body?.cancel();
+            } catch {
+                // Report the status even when cancellation fails.
+            }
             throw new Error(`Range request requires 206, received ${response.status}`);
         }
         let data: Uint8Array;
