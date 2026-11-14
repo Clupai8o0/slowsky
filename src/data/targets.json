@@ -1,0 +1,75 @@
+[
+    {
+        "id": "barnard",
+        "name": "Barnard's Star",
+        "astrometry": {
+            "ra": 269.4520769586187,
+            "dec": 4.693364966576667,
+            "epochJyear": 2000.0,
+            "pmRa": -801.551,
+            "pmDec": 10362.394,
+            "parallax": 546.9759,
+            "radialVelocity": -110.11
+        },
+        "source": "SIMBAD (CfA mirror) via scripts/targets.py 2026-11-14T02:34:21.265214+00:00",
+        "detector": 1
+    },
+    {
+        "id": "rwaur",
+        "name": "RW Aur",
+        "astrometry": {
+            "ra": 76.95652603458333,
+            "dec": 30.401438173888888,
+            "epochJyear": 2000.0,
+            "pmRa": 7.23,
+            "pmDec": -20.33,
+            "parallax": 15.42,
+            "radialVelocity": 15.0
+        },
+        "source": "SIMBAD (CfA mirror) via scripts/targets.py 2026-11-14T02:34:21.265214+00:00",
+        "detector": 1
+    },
+    {
+        "id": "epsindb",
+        "name": "eps Indi B",
+        "astrometry": {
+            "ra": 331.04414658852124,
+            "dec": -56.782844195116105,
+            "epochJyear": 2000.0,
+            "pmRa": 3981.977,
+            "pmDec": -2466.832,
+            "parallax": 270.658
+        },
+        "source": "SIMBAD (CfA mirror) via scripts/targets.py 2026-11-14T02:34:21.265214+00:00",
+        "detector": 3
+    },
+    {
+        "id": "wise0855",
+        "name": "WISE J085510.83-071442.5",
+        "astrometry": {
+            "ra": 133.81890825,
+            "dec": -7.247048000000001,
+            "epochJyear": 2000.0,
+            "pmRa": -8123.7,
+            "pmDec": 673.2,
+            "parallax": 439.0
+        },
+        "source": "SIMBAD (CfA mirror) via scripts/targets.py 2026-11-14T02:34:21.265214+00:00",
+        "detector": 6
+    },
+    {
+        "id": "rdra",
+        "name": "R Dra",
+        "astrometry": {
+            "ra": 248.16761083295,
+            "dec": 66.75497941722,
+            "epochJyear": 2000.0,
+            "pmRa": -20.643,
+            "pmDec": 6.149,
+            "parallax": 1.2509,
+            "radialVelocity": -132.8
+        },
+        "source": "SIMBAD (CfA mirror) via scripts/targets.py 2026-11-14T02:34:21.265214+00:00",
+        "detector": 1
+    }
+]
