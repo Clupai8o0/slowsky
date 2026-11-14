@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_FEATURES, FEATURES, FLAGS_READ_TIMEOUT_MS, FLAGS_TEXT, featuresFrom, mountFalseColour, mountFlags, renderChanges, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
+import { DEFAULT_FEATURES, FEATURES, FLAGS_READ_TIMEOUT_MS, FLAGS_TEXT, featuresFrom, mountChanges, mountFalseColour, mountFlags, renderHalo, shownBits, type FlagsDeps, type SlotView } from '../src/ui/slots';
 import { DETECTORS } from '../src/ui/copy';
 import { apertureFor } from '../src/ui/measure';
 import { colourAt } from '../src/lib/falsecolour';
@@ -240,7 +240,7 @@ describe('slots for modules still in their lanes', () => {
         // The change panel is wired (switch off): one visit shows only the finder's own message.
         const box = {} as HTMLElement;
         const marks = {} as HTMLElement;
-        expect(renderChanges(box, marks, v)).toBe(true);
+        expect(mountChanges(() => {}).render(box, marks, v)).toBe(true);
         expect(box.innerHTML).toBe('<ul class="sk-chg-notes"><li>Change finding needs two visits; these frames make 1.</li></ul>');
         expect(marks.innerHTML).toBe('');
         expect(renderHalo(el, v)).toBe(false);
