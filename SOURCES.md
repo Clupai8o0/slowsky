@@ -134,7 +134,7 @@ lines about it. Checked on 15 Nov 2026 against the pages linked here.
 
 ## Planet Nine comparison
 
-The README's "Limits" section uses these. The chart in `src/lib/planetx.ts` is not on the page.
+The README's "Limits" section uses these. The chart (`src/lib/planetx-chart.ts`, numbers from `src/lib/planetx.ts`) is on the page, under the comet card.
 
 | Claim | Where in this repo | Source | What the source gives |
 |---|---|---|---|

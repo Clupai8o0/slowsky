@@ -113,6 +113,9 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 - Look at the **Comet 3I/ATLAS across the CO₂ band** card at the foot of the left panel: twelve small pictures of
   the interstellar comet from SPHEREx frames taken on 14 Dec 2025, and a chart of its core's brightness by
   wavelength. See "Comet card" below.
+- Look at the **Planet Nine: how faint, how deep?** chart under the comet card: published estimates of how bright
+  Planet Nine would be, beside how deep SPHEREx and three optical searches reach. The rows are in different bands,
+  so it is a rough comparison, not a search result. (the `planetx` switch in `src/ui/slots.ts`)
 - On a touchscreen, swipe on the sky picture to step through frames, and press and hold on a later frame to see the
   first frame until you let go. A mouse does not trigger these gestures, and pinch-zoom still works. While the page
   is pinch-zoomed in, the gestures switch off so the picture pans normally. On a device with a touchscreen, text
@@ -347,9 +350,9 @@ linear scale (its top is the brightest pixel in any 3 × 3 box) and charts core 
 
 These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
 `src/ui/slots.ts`; Flagged pixels, False colour, Older picture, Candidate changes, Spectrum, Tonight's sky, Save
-picture, the comet card and touch gestures are on). A preview build can switch the first two below on with
-`VITE_PREVIEW_FEATURES`. The sort hint is connected to the Candidate changes list behind its switch (`mlHint`) and
-stays off; the reason is given below.
+picture, the comet card, the Planet Nine chart and touch gestures are on). A preview build can switch the first two
+below on with `VITE_PREVIEW_FEATURES`. The sort hint is connected to the Candidate changes list behind its switch
+(`mlHint`) and stays off; the reason is given below.
 
 - A sentence that reads the colour at one spot of the False colour picture (`fcReading`). It stays off: the page
   shows the picture and does not measure a colour.

@@ -1,6 +1,8 @@
 // Empty, feature-flagged slots for modules built in their own lanes, so those lanes edit this file and never
 // the shared UI. A slot shows only when its flag is on AND it has something to show. fcReading, halo and mlHint are off;
-// the rest are on (spectrum, upTonight, shareCard, comet and gestures since 15 Nov 2026).
+// the rest are on (spectrum, upTonight, shareCard, comet, gestures and planetx since 15 Nov 2026).
+// - planetx: the "Planet Nine: how faint, how deep?" card under the comet card (src/ui/planetx-view.ts), drawing
+//   the chart in src/lib/planetx-chart.ts from the published numbers in src/lib/planetx.ts. Switched on 15 Nov 2026.
 // - spectrum: a panel under the colour step (src/ui/spectrum-view.ts). After a press it reads one spot's spectrum
 //   from the SPHEREx DR1 all-sky cube (src/lib/cube.ts) and draws it (src/lib/spectrum-chart.ts). Switched on
 //   15 Nov 2026 (lane spec-on); its claims are sourced in SOURCES.md, "Spectrum (SPHEREx all-sky cube)".
@@ -34,10 +36,10 @@ import type { RangeReader } from '../lib/types';
 import { readFrameFlags, screen, type FrameFlags } from './flag-screen';
 import { readVariance } from './error-maps';
 
-export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch' | 'upTonight' | 'shareCard' | 'comet' | 'gestures';
+export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch' | 'upTonight' | 'shareCard' | 'comet' | 'gestures' | 'planetx';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
     Object.freeze({ spectrum: true, flags: true, changes: true, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true,
-        upTonight: true, shareCard: true, comet: true, gestures: true });
+        upTonight: true, shareCard: true, comet: true, gestures: true, planetx: true });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.

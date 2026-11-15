@@ -13,7 +13,7 @@ export interface CometDeps {
 
 export interface CometSlot { section: HTMLElement | null; ready: Promise<void> }
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+export const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 export const COMET_FAILED = 'The comet frames could not be loaded.';
 
