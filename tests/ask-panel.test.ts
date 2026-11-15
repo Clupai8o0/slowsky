@@ -298,6 +298,7 @@ describe('mountAsk', () => {
         askPanel.sync({ ready: true, facts: FACTS_B });
         q.value = 'What changed?';
         await form.fire('submit');
+        expect(form.querySelector('[data-ask="attribution"]')?.textContent).toBe('AI-generated: Claude Opus 5.5');
         expect(out.innerHTML).toBe(askViewHtml({ kind: 'answer', sheet: factSheet(FACTS_B), lines: [1, 3], trust: [4, 5] }));
         expect(lines).toEqual([3, 1]);
         expect(trust).toEqual([5, 4]);

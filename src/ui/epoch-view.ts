@@ -482,6 +482,7 @@ export interface EpochElements {
     layer: HTMLElement; // over the picture, under the rings
     tag: HTMLButtonElement; // a corner of the sky
     note: HTMLElement; // the line under the legend
+    gloss?: HTMLElement;
     thenHides?: HTMLElement[]; // layers hidden while the older picture shows
 }
 
@@ -577,6 +578,9 @@ function drawInto(els: EpochElements): (o: EpochOut) => void
             }
         }
         els.note.hidden = !o.key;
+        if (els.gloss) {
+            els.gloss.hidden = !o.key || o.note.length === 0;
+        }
     };
 }
 
