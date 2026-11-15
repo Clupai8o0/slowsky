@@ -106,6 +106,11 @@ describe('planetx view', () => {
         expect(css).toContain('@media (max-width: 1080px) { .sk-m-comet { order: 7;');
     });
 
+    it('gives the drawing 320 px or close to it on the smallest phones, so its text is not shrunk', () => {
+        const css = readFileSync(new URL('../src/ui/styles.css', import.meta.url), 'utf8');
+        expect(css).toContain('@media (max-width: 355px) { .sk-px-svg { margin: 0 -18px 0 -14px; } }');
+    });
+
     it('escapes < & > and quotes in every string it is given', () => {
         const base = planetxChartText();
         const page = fakePage();
