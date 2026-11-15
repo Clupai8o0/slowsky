@@ -2,7 +2,7 @@
 // picks line numbers from this page's measured fact sheet, and askViewHtml prints those measured lines.
 import { ASK_ENABLED, askInsight, factSheet, InsightError, validateQuestion, type InsightFacts } from '../lib/insight';
 import { askViewHtml, type AskViewState } from './ask-view';
-import type { AiRequest } from './ai-note';
+import { modelName, type AiRequest } from './ai-note';
 
 export type Doc = Pick<Document, 'createElement' | 'createTextNode'> & { activeElement: Element | null };
 
@@ -88,9 +88,13 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
     const out = doc.createElement('div');
     out.setAttribute('data-ask', 'out');
     out.setAttribute('aria-live', 'polite');
+    const attribution = doc.createElement('p');
+    attribution.className = 'sk-ask-attribution';
+    attribution.setAttribute('data-ask', 'attribution');
+    attribution.hidden = true;
 
     row.append(input, btn);
-    form.append(label, row, hint, out);
+    form.append(label, row, hint, attribution, out);
     anchor.after(form);
 
     let ready = false;
@@ -101,6 +105,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
 
     function render(state: AskViewState): void
     {
+        attribution.hidden = true;
         try {
             out.innerHTML = askViewHtml(state);
         } catch {
@@ -114,6 +119,7 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
         ctrl = null;
         btn.removeAttribute('aria-disabled');
         out.innerHTML = '';
+        attribution.hidden = true;
     }
 
     btn.addEventListener('click', (e) => {
@@ -178,6 +184,11 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
                 render({ kind: 'none' });
             } else {
                 render({ kind: 'failed' });
+            }
+            if (answer.kind === 'answer' || answer.kind === 'none') {
+                // The lines themselves are this page's measurements; the AI model only chose which ones answer.
+                attribution.textContent = `Chosen by AI (${modelName(answer.model)}) from the measurements on this page.`;
+                attribution.hidden = false;
             }
         } catch (err) {
             if (!(err instanceof InsightError) || err.code === 'failed' || err.code === 'unverified' || err.code === 'off'

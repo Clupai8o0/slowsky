@@ -10,10 +10,10 @@ import type { Curve, Shift } from './measure';
 import { frameMjd } from './measure';
 
 export const PASS_KEY = 'slowsky.insight.passcode';
-// The line shown with every note, naming the model when the server says which one writes it.
-export function disclaimer(model?: string): string
+// The caution shown with every note; the heading carries the model name.
+export function disclaimer(_model?: string): string
 {
-    return `Written by AI (${modelName(model)}) from the measurements on this page. It can be wrong and is not a measurement: check it against the numbers.`;
+    return 'Written by AI from the measurements on this page. It can be wrong and is not a measurement: check it against the numbers.';
 }
 
 // 'claude-opus-5-5' -> 'Claude Opus 5.5'. Anything else Anthropic-shaped falls back to plain 'Claude'.
@@ -218,6 +218,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
     const msg = q<HTMLElement>('msg');
     const left = q<HTMLElement>('left');
     const disc = q<HTMLElement>('disc');
+    const tag = panel.querySelector<HTMLElement>('[data-ai="tag"]');
     const given = q<HTMLElement>('given');
     const givenList = q<HTMLElement>('givenList');
     const goLabel = go.textContent ?? '';
@@ -450,6 +451,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         ctrl?.abort();
         ctrl = null;
         out.replaceChildren();
+        if (tag) { tag.textContent = 'AI-generated'; }
         given.hidden = true;
         givenList.replaceChildren();
         go.disabled = false;
@@ -515,6 +517,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
         go.textContent = 'Writing the note…';
         setMsg(MSG.writing);
         out.replaceChildren();
+        if (tag) { tag.textContent = 'AI-generated'; }
         given.hidden = true;
         const sent = passcode();
         const request = startRequest();
@@ -537,6 +540,7 @@ export function mountAiNote(panel: HTMLElement, deps: AiNoteDeps = {}): AiNote
                 return;
             }
             renderNote(out, note.text, doc);
+            if (tag) { tag.textContent = `AI-generated: ${modelName(note.model)}`; }
             givenList.replaceChildren(...factSheet(f).map((line) => {
                 const li = doc.createElement('li');
                 li.textContent = line;
