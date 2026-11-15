@@ -1,6 +1,8 @@
 // Empty, feature-flagged slots for modules built in their own lanes, so those lanes edit this file and never
-// the shared UI. A slot shows only when its flag is on AND it has something to show. fcReading, halo and mlHint are off;
-// the rest are on (spectrum, upTonight, shareCard, comet, gestures and planetx since 15 Nov 2026).
+// the shared UI. A slot shows only when its flag is on AND it has something to show. All are on (spectrum, upTonight,
+// shareCard, comet, gestures and planetx since 15 Nov 2026; fcReading, halo and mlHint since 15 Nov 2026, the team's call).
+// - fcReading: the colour reading sentence under the False colour legend (colourAt in src/lib/falsecolour-view.ts).
+// - mlHint: the experimental sort hint line under each candidate change on a live view (src/ui/ml-hint.ts).
 // - planetx: the "Planet Nine: how faint, how deep?" card under the comet card (src/ui/planetx-view.ts), drawing
 //   the chart in src/lib/planetx-chart.ts from the published and worked-out numbers in src/lib/planetx.ts. Switched on 15 Nov 2026.
 // - spectrum: a panel under the colour step (src/ui/spectrum-view.ts). After a press it reads one spot's spectrum
@@ -38,7 +40,7 @@ import { readVariance } from './error-maps';
 
 export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch' | 'upTonight' | 'shareCard' | 'comet' | 'gestures' | 'planetx';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: true, flags: true, changes: true, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true,
+    Object.freeze({ spectrum: true, flags: true, changes: true, falseColour: true, fcReading: true, halo: true, mlHint: true, epoch: true,
         upTonight: true, shareCard: true, comet: true, gestures: true, planetx: true });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.

@@ -1,4 +1,4 @@
-// The optional sort hint on a change-list candidate (switch FEATURES.mlHint, off). The model lives in
+// The optional sort hint on a change-list candidate (switch FEATURES.mlHint, on since 15 Nov 2026 as an experimental hint). The model lives in
 // src/lib/classify.ts (lane/ml); this file only turns its answer into words. It never shows the model's scores,
 // percentages or class names, and always shows the model's own label (HELPER_LABEL) beside the hint.
 // The types below match classify()'s return shape, so this file builds before the module lands on main.

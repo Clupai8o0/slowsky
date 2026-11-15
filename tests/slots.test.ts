@@ -230,12 +230,13 @@ describe('flags slot', () => {
     });
 });
 
-describe('slots for modules still in their lanes', () => {
-    it('ship switched off and show nothing until a module fills them (the change list is on)', () => {
+describe('slots for modules built in their own lanes', () => {
+    it('ship switched on and show nothing until they have something to show', () => {
         expect(FEATURES.changes).toBe(true);
         expect(FEATURES.falseColour).toBe(true);
-        expect(FEATURES.fcReading).toBe(false);
-        expect(FEATURES.halo).toBe(false);
+        expect(FEATURES.fcReading).toBe(true);
+        expect(FEATURES.halo).toBe(true);
+        expect(featuresFrom('-halo').halo).toBe(false);
         const dated = frame('a');
         dated.frame.tMin = 60000;
         dated.frame.tMax = 60000.001;
@@ -363,12 +364,14 @@ describe('false colour slot', () => {
         expect(state.note).toBe('False colour is not shown for this view: the frames at the two wavelengths give a colour to less than half of it.');
         expect(h.paint).not.toHaveBeenCalled();
     });
-    it('defaults false colour on and its colour reading off, and accepts both in preview features', () => {
+    it('defaults false colour and its colour reading on, and switches each off in preview features', () => {
         expect(DEFAULT_FEATURES.falseColour).toBe(true);
-        expect(DEFAULT_FEATURES.fcReading).toBe(false);
+        expect(DEFAULT_FEATURES.fcReading).toBe(true);
         expect(featuresFrom('falseColour,fcReading')).toMatchObject({ falseColour: true, fcReading: true });
+        expect(featuresFrom('-fcReading')).toMatchObject({ falseColour: true, fcReading: false });
         expect(featuresFrom('fcReading,-fcReading')).toMatchObject({ falseColour: true, fcReading: false });
-        expect(featuresFrom('-falseColour')).toMatchObject({ falseColour: false, fcReading: false });
+        expect(featuresFrom('-falseColour')).toMatchObject({ falseColour: false, fcReading: true });
+        expect(featuresFrom('-falseColour,-fcReading')).toMatchObject({ falseColour: false, fcReading: false });
         for (const reading of [false, true]) {
             const h = colourHarness(false, reading);
             expect(JSON.stringify(h.slot.update(view(sky([frame('a')])), true))).toBe('{"key":false,"layer":false,"note":""}');
@@ -401,7 +404,7 @@ describe('false colour slot', () => {
         expect(state.split?.lead).toContain('a detector hit can show as a coloured point');
     });
 
-    it('defaults the reading off when its override is omitted', async () => {
+    it('defaults the reading on when its override is omitted', async () => {
         const calls: { resolve: (result: SkyResult) => void }[] = [];
         const source = { load: () => new Promise<SkyResult>(resolve => calls.push({ resolve })) };
         const slot = mountFalseColour({} as HTMLElement, vi.fn(), { enabled: true, source, paint: vi.fn() });
@@ -411,7 +414,7 @@ describe('false colour slot', () => {
         slot.update(v, true);
         calls[0]!.resolve(sky([b]));
         await flush();
-        expect(slot.update(v, true).note).not.toMatch(/At the centre|No reading is given|signal-to-noise/);
+        expect(slot.update(v, true).note).toMatch(/At the centre|No reading is given/);
     });
 
     it('keeps the slot off when false colour is switched off, even with fcReading enabled', async () => {
@@ -743,8 +746,9 @@ describe('preview switch', () => {
     it('keeps the defaults when unset or empty, and flips only known names', () => {
         expect(featuresFrom(undefined)).toEqual(DEFAULT_FEATURES);
         expect(featuresFrom('')).toEqual(DEFAULT_FEATURES);
-        expect(featuresFrom(' halo , falseColour,-flags,nonsense,constructor,__proto__')).toEqual({ ...DEFAULT_FEATURES, halo: true, falseColour: true, flags: false });
-        expect(featuresFrom('halo,-halo')).toEqual(DEFAULT_FEATURES);
+        expect(featuresFrom(' -halo , falseColour,-flags,nonsense,constructor,__proto__')).toEqual({ ...DEFAULT_FEATURES, halo: false, falseColour: true, flags: false });
+        expect(featuresFrom('-halo,halo')).toEqual(DEFAULT_FEATURES);
+        expect(featuresFrom('halo,-halo')).toEqual({ ...DEFAULT_FEATURES, halo: false });
         expect(DEFAULT_FEATURES.epoch).toBe(true);
         expect(featuresFrom('-epoch')).toEqual({ ...DEFAULT_FEATURES, epoch: false });
         expect(DEFAULT_FEATURES.gestures).toBe(true);

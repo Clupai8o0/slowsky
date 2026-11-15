@@ -60,6 +60,18 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   two wavelengths were not taken at the same times, areas where not every frame has usable pixels are hatched
   instead of coloured, and the page lists these limits under the picture (`src/lib/falsecolour.ts`,
   `src/lib/falsecolour-view.ts`).
+- With **False colour** on, read the first sentence under the picture, which starts "At the centre:". It is about
+  the spot at the centre of the view. For each of the two wavelengths it says whether light is seen there; "seen"
+  means at least 3 times the noise, and a wavelength counted as seen gets its signal-to-noise (how many times the
+  noise it is). To get it, the page adds up the light in a small circle (two SPHEREx pixels, about 12″, in radius)
+  and takes off the sky measured in a ring just outside it. The sentence also says when the light differs between
+  frames more than a steady source would, when it is brightest away from the centre, or when it rests on one frame
+  or one visit, so it may be a moving source, a neighbour or a detector hit. It gives no colour value, no ratio of
+  the two wavelengths and no magnitude. It is a rough reading of the picture, not photometry, and the notes folded
+  under the picture still say the page does not measure a colour. On the 0.5° and 1° fields each pixel of the
+  picture is about 2.5″ or 5″ wide, too coarse to tell light at the centre from light beside it, so it gives no
+  reading there and says why (`colourParts` and `falseColourView` in `src/lib/falsecolour-view.ts`; the `fcReading`
+  switch in `src/ui/slots.ts`).
 - In Blink on the 0.1° or 0.25° field, switch on **Older picture** to flip the sky between the 2MASS K survey
   picture (taken between June 1997 and February 2001) and the SPHEREx frame on screen. On the 0.25° field
   Barnard's Star sits away from its ring in the older picture, and a bracket marks where its catalogue motion puts
@@ -92,6 +104,14 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   sharper star image in one visit or a small shift between the two pictures, and it says so above the list. A
   saved copy lists nothing, because it is not checked against the error maps and flags (`src/lib/changes.ts`,
   `src/ui/changes-view.ts`, `src/ui/flag-screen.ts`).
+- Under each spot in **Candidate changes** (the inspector's **Candidates** tab, on a live view), read one line that
+  starts "Sort hint:". It comes from a small neural network, trained in this repo only on fake changes, and says
+  which kind of fake change the spot looks most like: a moving spot, a spot whose light went up or down, a camera or
+  processing effect, or plain noise. Often it says "Sort hint: not given." After every hint the page prints the
+  model's own label: "Experimental sort hint, trained only on fake changes added to single frames. Never tested on
+  real two-date changes. Not a verdict." It does not say what a spot is, and it does not change the order, the
+  number or the wording of the candidates. It is shown against the advice of two AI reviews; see "The change sort
+  hint" below for what it learned from, how well it does and why it may mislead.
 - In the inspector's **Charts** tab, in the **Spectrum** card, press **Read the spectrum here** to read the light of the spot at
   the centre of the view in SPHEREx's 102 colours, from the archive's all-sky cube. Nothing is read until you
   press. A small chart shows the result, with a shaded band for the scatter of the sky around the spot, a gold
@@ -99,6 +119,17 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   that would overlap another is left out). It is a quick
   look, not a measurement: it reads a spot, not a named object, and a label does not mean that feature is there.
   It is not offered on the simulated sky (`src/lib/cube.ts`, `src/ui/spectrum-view.ts`).
+- For R Draconis, read the **Halo over time** card in the inspector's **Charts** tab, on the saved copy or live. The
+  star's centre is too bright for the camera, so the card measures the light in a ring just outside the blank centre
+  (31″ to 49″ out on the saved copy), look by look, and divides it by the light of two to four nearby Gaia
+  comparison stars. Each reading is given as a share above or below the median of the looks. A line is drawn only
+  from looks on at least 3 visits, all within 0.005 µm of colour; otherwise each reading is listed in a table, and
+  its date shows that frame in Blink. The ± on each reading is its noise: the sky around the ring and around the
+  comparison stars, and an allowance of about 1.5″ (our own choice, a quarter of a SPHEREx pixel) for how far off
+  the star's catalogue position could be. The comparison stars' own position error is not included. Light from other
+  stars is not taken out: the card says how many Gaia stars sit in or at the edge of the ring, and the G magnitude
+  of the brightest. It measures the glow around the star, not the star's own brightness, and it never says the star
+  changed (`src/lib/halo.ts`, `src/ui/halo-view.ts`; the `halo` switch in `src/ui/slots.ts`).
 - Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode, and in Subtract the two
@@ -257,7 +288,7 @@ Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md
 | Grok 4.7 (through Grok Build) | xAI | Reviewing code; checking the source list |
 | ElevenLabs (model `eleven_multilingual_v2`) | ElevenLabs | AI voice in the demo film; the film names the model on screen |
 | GPT Image (model `gpt-image-2`) | OpenAI | Decorative images in the demo film; the film names the model on screen. Never sky data |
-| Change sort hint (a small neural network, `public/models/change-classifier.json`) | Trained in this repo with PyTorch, by scripts that Codex and Claude wrote | Nothing yet: it is switched off and the site does not use it (see "In the repository but not switched on") |
+| Change sort hint (a small neural network, `public/models/change-classifier.json`) | Trained in this repo with PyTorch, by scripts that Codex and Claude wrote | Inside the site, since 15 Nov 2026: one experimental "Sort hint" line under each candidate change on a live view, labelled "Not a verdict". It writes no free text: each line is one of five fixed sentences (see "The change sort hint") |
 
 Each AI-generated item, with the model that made it, is listed in SOURCES.md under
 [AI-generated content](SOURCES.md#ai-generated-content).
@@ -363,26 +394,19 @@ linear scale (its top is the brightest pixel in any 3 × 3 box) and charts core 
 - Blank pixels (no value in the archive) are drawn dark red; a white speck can be a star, a hot pixel or a
   cosmic-ray hit. The pictures keep the detector's orientation and are not turned north up.
 
-## In the repository but not switched on
+## The change sort hint
 
-These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
-`src/ui/slots.ts`; Flagged pixels, False colour, Older picture, Candidate changes, Spectrum, Tonight's sky, Save
-picture, the comet card, the Planet Nine chart and touch gestures are on). A preview build can switch the first two
-below on with `VITE_PREVIEW_FEATURES`. The sort hint is connected to the Candidate changes list behind its switch
-(`mlHint`) and stays off; the reason is given below.
+Every switch in `FEATURES` in `src/ui/slots.ts` is on. The last three, the colour reading (`fcReading`), the
+R Draconis halo card (`halo`) and this sort hint (`mlHint`), have been on since 15 Nov 2026. A preview build can
+switch any of them off with `VITE_PREVIEW_FEATURES` (for example `-mlHint`). The AI note is a separate server
+route, described under "AI tools used".
 
-- A sentence that reads the colour at one spot of the False colour picture (`fcReading`). It stays off: the page
-  shows the picture and does not measure a colour.
-- For R Draconis, the light in a ring around its too-bright centre, look by look, as a line or a table
-  (`src/lib/halo.ts`, `src/ui/halo-view.ts`).
-- A machine-learning sort hint for each candidate change, described below.
-
-**The change sort hint.** A small neural network (`public/models/change-classifier.json`, run by
+The sort hint is a small neural network (`public/models/change-classifier.json`, run by
 `src/lib/classify.ts`). Its card is `public/models/change-classifier.card.json`; its test results are in `models/`.
 
 - What it looks at: a 15 × 15 pixel square around one candidate change, from the earlier picture, the later one and
   their difference.
-- What it would say: which of four kinds of change the spot looks most like, among the fake changes it was trained
+- What it says: which of four kinds of change the spot looks most like, among the fake changes it was trained
   on: a moving spot, a spot whose light went up or down, a camera or processing effect, or plain noise. It does not
   say what the spot is, and it does not look for planets.
 - What it learned from: only fake changes added to single real SPHEREx frames (DR1 and QR3) of the five preset
@@ -395,18 +419,22 @@ below on with `VITE_PREVIEW_FEATURES`. The sort hint is connected to the Candida
   picture's values are too large to check; when its three inputs do not agree; when the difference is only an
   even offset or an even slope across the square; when its top two answers score about the same; or when a much
   stronger change sits away from the centre of the square.
-- Where it stands: it is connected to the Candidate changes list behind a switch (`mlHint`), and that switch is
-  off. With it off, the site does not load the model and shows nothing from it. With it on, the page would load the
-  model once, for a view read live from the archive, and put one line under each candidate
+- Where it stands: it is on, as an experimental hint, since 15 Nov 2026. That was the team's own choice. On a view
+  read live from the archive, the page loads the model once and puts one line under each candidate
   (`src/lib/change-hints.ts`, `mountChanges` in `src/ui/slots.ts`), in the words of `src/ui/ml-hint.ts`, beside the
   model's own label (`HELPER_LABEL` in `src/lib/classify.ts`): "Experimental sort hint, trained only on fake changes
-  added to single frames. Never tested on real two-date changes. Not a verdict."
-- Why it stays off: the squares the page would hand it are not the kind it learned from. In training, each square
+  added to single frames. Never tested on real two-date changes. Not a verdict." A saved copy gets no hint, and the
+  model is not loaded for it. The page never shows the model's scores.
+- What it does not do: it does not reorder, add, remove or reword candidates. The list's order and count are set
+  before the hint runs, and the hint is added to each candidate in place, one for one.
+- Why it may mislead: the squares the page hands it are not the kind it learned from. In training, each square
   came from one frame and was scaled by the noise measured in a 45 × 45 pixel cut-out of that frame around the spot
   (`robust_sigma` in `scripts/ml_stamps.py`). On the page, each visit is an average of its frames, moved onto a
   common grid, and every square is scaled by one noise figure for the whole view (`found.sigma` in
   `src/lib/change-hints.ts`). Two AI reviews of this code (Gemini and Claude Opus) said its lines could mislead on
-  such squares and that it should not be switched on, so it was not.
+  such squares and advised against switching it on. It is shown anyway, marked on the page as experimental and "Not
+  a verdict", so a visitor can see it and judge it. Treat it as a guess about where to look first, never as an
+  answer.
 
 ## Licence
 

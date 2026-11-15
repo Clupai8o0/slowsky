@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HINT_TEXT, hintHtml, hintText, type HintInput } from '../src/ui/ml-hint';
-import { DEFAULT_FEATURES } from '../src/ui/slots';
+import { DEFAULT_FEATURES, featuresFrom } from '../src/ui/slots';
 
 // A stand-in for HELPER_LABEL in src/lib/classify.ts (lane/ml), which is not on this branch yet.
 const LABEL = 'Experimental sort hint, trained only on fake changes added to single frames. Never tested on real two-date changes. Not a verdict.';
@@ -34,8 +34,9 @@ describe('ML sort hint', () => {
         }
     });
 
-    it('escapes the label and stays off by default', () => {
+    it('escapes the label, is on by default and can be switched off', () => {
         expect(hintHtml(answers[0], 'a <i>b</i>')).toContain('a &lt;i&gt;b&lt;/i&gt;');
-        expect(DEFAULT_FEATURES.mlHint).toBe(false);
+        expect(DEFAULT_FEATURES.mlHint).toBe(true);
+        expect(featuresFrom('-mlHint').mlHint).toBe(false);
     });
 });

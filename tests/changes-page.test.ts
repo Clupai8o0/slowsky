@@ -35,15 +35,24 @@ describe('optional change hints', () => {
     it('does not fetch or change HTML when switched off, or on a saved view', () => {
         const data = result(), fetcher = vi.fn(), box = {} as HTMLElement, marks = {} as HTMLElement;
         const view = { source: 'live' as const, result: data, index: 0, mode: 'blink' as const };
-        const off = mountChanges(() => {}, { fetcher: fetcher as unknown as typeof fetch });
+        const off = mountChanges(() => {}, { hint: false, fetcher: fetcher as unknown as typeof fetch });
         off.render(box, marks, view);
         const before = box.innerHTML;
         mountChanges(() => {}, { hint: false, fetcher: fetcher as unknown as typeof fetch }).render(box, marks, view);
         expect(box.innerHTML).toBe(before);
+        expect(box.innerHTML).not.toContain('sk-hintml');
         mountChanges(() => {}, { hint: true, savedList: true, fetcher: fetcher as unknown as typeof fetch })
             .render(box, marks, { ...view, source: 'snapshot' });
         expect(box.innerHTML).not.toContain('sk-hintml');
         expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    it('is switched on by default: a live view asks for the model without a hint override', () => {
+        const data = result(), fetcher = vi.fn(() => new Promise<Response>(() => {})), box = {} as HTMLElement, marks = {} as HTMLElement;
+        const view = { source: 'live' as const, result: data, index: 0, mode: 'blink' as const };
+        mountChanges(() => {}, { fetcher: fetcher as unknown as typeof fetch }).render(box, marks, view);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        expect(String((fetcher.mock.calls[0] as unknown[])[0])).toContain('models/change-classifier.json');
     });
 
     it('adds hints only after the final list and reuses the fetched model', async () => {
