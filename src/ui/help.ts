@@ -70,7 +70,7 @@ export const GLOSSARY: Readonly<Record<TermId, Term>> = Object.freeze({
         long: 'The Two Micron All Sky Survey: a project that photographed the whole sky in infrared light between 1997 and 2001, with two telescopes on the ground, one in Arizona and one in Chile. Its picture is the "Older picture" here.',
     },
     arcsec: {
-        term: '″',
+        term: '″ (arcsecond)',
         find: '″',
         short: '″ = arcsecond, a very small angle on the sky: 1/3600 of a degree. One SPHEREx pixel is about 6″ wide.',
         long: 'Arcsecond: a very small angle on the sky, 1/3600 of a degree. The full Moon is about half a degree, or roughly 1,800″, across. One SPHEREx pixel (one of the small squares that make up its pictures) is about 6″ wide.',
