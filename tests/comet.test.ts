@@ -231,7 +231,7 @@ describe('comet: the switch', () => {
 
     it('off: the page shell is unchanged (no comet markup in it)', () => {
         const app = readFileSync(new URL('../src/ui/app.ts', import.meta.url), 'utf8');
-        const shell = app.slice(app.indexOf('function shell(): string'), app.indexOf('export function mount('));
+        const shell = app.slice(app.indexOf('function shell('), app.indexOf('export function mount('));
         expect(shell.length).toBeGreaterThan(1000);
         expect(shell).not.toMatch(/comet|sk-cm/i);
         expect(app).toContain("mountComet(root.querySelector<HTMLElement>('.sk-m-about'), { enabled: FEATURES.comet });");
