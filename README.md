@@ -181,9 +181,12 @@ Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md
 | Codex (GPT-6.1 Sol and Terra models) | OpenAI | Writing and reviewing code; checking the source list |
 | Gemini (Argon and Carbon models, through Antigravity) | Google | Writing and reviewing code; reviewing the facts and wording in this file and on the page |
 | Grok 4.7 (through Grok Build) | xAI | Reviewing code; checking the source list |
-| ElevenLabs | ElevenLabs | AI voice in the demo video |
-| GPT Image | OpenAI | Decorative images in the demo film, marked "AI-generated images" on screen; never sky data |
+| ElevenLabs (model `eleven_multilingual_v2`) | ElevenLabs | AI voice in the demo film; the film names the model on screen |
+| GPT Image (model `gpt-image-2`) | OpenAI | Decorative images in the demo film; the film names the model on screen. Never sky data |
 | Change sort hint (a small neural network, `public/models/change-classifier.json`) | Trained in this repo with PyTorch, by scripts that Codex and Claude wrote | Nothing yet: it is switched off and the site does not use it (see "In the repository but not switched on") |
+
+Each AI-generated item, with the model that made it, is listed in SOURCES.md under
+[AI-generated content](SOURCES.md#ai-generated-content).
 
 Sam chose the idea and makes every product decision. `DECISIONS.md` is his own log of them; AI tools do not write
 in it.
