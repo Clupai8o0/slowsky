@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareVisits, plainListNotes, type VisitImage } from '../src/lib/changes';
+import { compareVisits, latticeValue, plainListNotes, type VisitImage } from '../src/lib/changes';
 import { groupOf } from '../src/ui/changes-view';
 import type { OutputGrid } from '../src/lib/types';
 import { changeInput, findChanges } from '../src/lib/change-input';
@@ -95,15 +95,15 @@ describe('comparison coverage', () => {
         expect(result.candidates[0]!.pix.y).toBeCloseTo(60, -1);
         const outside = result.candidates.find(c => Math.abs(c.pix.y - 20) < 5)!;
         expect(outside.catalogueChecked).toBe(false);
-        expect(outside.sentence).toContain('It lies at or beyond the edge of the part of the picture where the Gaia star list was loaded, so it was not checked against that list.');
+        expect(outside.sentence).toContain('It lies near or beyond the edge of the part of the picture where the Gaia star list was loaded, so it was not checked against that list.');
         expect(result.candidates[0]!.sentence).toBe(base.candidates.find(c => Math.abs(c.pix.y - 60) < 5)!.sentence);
-        expect(result.notes).toContain('1 spot lies at or beyond the edge of the part of the picture where the Gaia star list was loaded (within 0.01° of the centre), so it was not checked against that list.');
+        expect(result.notes).toContain('1 spot lies near or beyond the edge of the part of the picture where the Gaia star list was loaded (within 0.01° of the centre), so it was not checked against that list.');
     });
     it('groups unchecked candidates last and counts them in notes', () => {
         const candidate = { id: '', kind: 'unknown' as const, pix: { x: 0, y: 0 }, sky: { ra: 0, dec: 0 }, snr: 1,
             sign: 1 as const, gaiaMatch: false, frames: [], reason: 'spot', nearCatalogue: false, catalogueChecked: false };
         expect(groupOf(candidate)).toBe(2);
-        expect(plainListNotes([candidate], false, 6, 0.2)[1]).toContain('1 spot lies at or beyond the edge of the part');
+        expect(plainListNotes([candidate], false, 6, 0.2)[1]).toContain('1 spot lies near or beyond the edge of the part');
         const found = { candidates: [{ ...candidate, reading: 'unclear' as const }], notes: [], sigma: 1, threshold: 5,
             rejected: { streaks: 0, single: 0, edge: 0, residual: 0 }, skipped: [], plainListInfo: { usedErrorMap: false, matchArcsec: 6 } };
         const html = changesHtml(changesView(found));
@@ -116,9 +116,9 @@ describe('comparison coverage', () => {
         const view = changesView(result);
         view.candidates.reverse();
         const html = changesHtml(view, true);
-        expect(html.indexOf('Candidate 1')).toBeLessThan(html.indexOf('It lies at or beyond the edge of the part'));
+        expect(html.indexOf('Candidate 1')).toBeLessThan(html.indexOf('It lies near or beyond the edge of the part'));
         view.candidates = view.candidates.filter(c => c.catalogueChecked !== false);
-        expect(changesHtml(view, true)).not.toContain('1 spot lies at or beyond the edge of the part');
+        expect(changesHtml(view, true)).not.toContain('1 spot lies near or beyond the edge of the part');
         expect(changesHtml(view, true)).not.toContain('come last');
         expect(changesHtml(view, true)).toContain('Listed with spots that have no catalogue star within 6″ first');
     });
@@ -224,7 +224,7 @@ describe('comparison coverage', () => {
             { ...b, lambdaMap: later, lambdaGrid: lattice(0) }, grid, [], { plain: true });
         expect(result.notes).toContain("About 17% of the area both visits cover was left out of the comparison: there the two visits' wavelengths differ by more than 0.02 µm.");
     });
-    it('says a spot beside a left-out part has no S/N for that reason, not for missing error maps', () => {
+    it('says a spot beside pixels that are not compared has no S/N for that reason, not for missing error maps', () => {
         const [a, b] = pictures();
         const variance = () => new Float32Array(grid.width * grid.height).fill(1 / 12);
         // Rows more than 10 pixels (about 15 arcsec) from row 60 are left out; the spot at row 60 sits beside both edges.
@@ -232,14 +232,47 @@ describe('comparison coverage', () => {
             { ...b, variance: variance(), lambdaGrid: lattice(-0.06) }, grid, [], { plain: true });
         expect(result.notes).toContain("Noise estimated using the frames' pixel uncertainty maps.");
         expect(result.candidates.length).toBe(1);
-        expect(result.candidates[0]!.snrLeftOutNear).toBe(true);
-        expect(result.notes).toContain('The 1 candidate lies beside a part of the picture that was left out of the comparison, so its S/N is left out.');
+        expect(result.candidates[0]!.snrBesideUncompared).toBe(true);
+        expect(result.notes).toContain('The 1 candidate lies beside pixels that are not part of the comparison, so its S/N is left out.');
         expect(result.notes.some(n => n.includes('error maps have no value'))).toBe(false);
         expect(result.notes.some(n => n.includes('estimated from the difference image'))).toBe(false);
         // With nothing left out, the same spot prints its S/N and carries no such mark.
         const whole = compareVisits({ ...a, variance: variance() }, { ...b, variance: variance() }, grid, [], { plain: true });
-        expect(whole.candidates.some(c => c.snrLeftOutNear)).toBe(false);
-        expect(whole.notes.some(n => n.includes('left out of the comparison'))).toBe(false);
+        expect(whole.candidates.some(c => c.snrBesideUncompared)).toBe(false);
+        expect(whole.notes.some(n => n.includes('not part of the comparison'))).toBe(false);
+        // Once part of the picture is left out, a missing pixel beside the spot withholds the S/N too, with the same
+        // true reason (the error maps do have a value there).
+        const holed = { ...a, data: Float32Array.from(a.data), variance: variance() };
+        holed.data[60 * grid.width + 62] = NaN;
+        const far = { nx: 3, ny: 3, values: Float32Array.from([2, 2, 2, 2, 2, 2, 2.1, 2.1, 2.1]) };
+        const gap = compareVisits({ ...holed, lambdaGrid: far }, { ...b, variance: variance(), lambdaGrid: lattice(0) }, grid, [], { plain: true });
+        const centre = gap.candidates.find(c => Math.abs(c.pix.y - 60) < 3)!;
+        expect(centre.snrBesideUncompared).toBe(true);
+        expect(centre.sentence).not.toContain('S/N');
+        expect(gap.notes.some(n => / beside pixels that are not part of the comparison, so (?:its|their) S\/N is left out\.$/.test(n))).toBe(true);
+        expect(gap.notes.some(n => n.includes('error maps have no value'))).toBe(false);
+    });
+    it('leaves a frame the stack clipped out at a pixel out of the wavelength there', () => {
+        const [a, b] = pictures();
+        const size = grid.width * grid.height, p = 60 * grid.width + 30;
+        const shifted = (by: number) => Float32Array.from({ length: size }, (_, i) => a.data[(i + by) % size]!);
+        const hit = shifted(5000);
+        hit[p] = 1e6;
+        const frame = (data: Float32Array, id: string, t: number, value: number) => ({
+            frame: { obsId: id, collection: 'spherex_dr1' as const, release: 'dr1' as const, detector: 1 as const,
+                url: '', tMin: t, tMax: t + 0.01, lambdaMin: 1, lambdaMax: 3 }, grid, data,
+            lambdaAtCenter: 2, bandwidthAtCenter: 0.1, lambdaGrid: { nx: 2, ny: 2, values: Float32Array.from([value, value, value, value]) },
+        });
+        // Three frames at 2 µm and a fourth whose wavelength is unknown. At pixel p the fourth holds a detector hit,
+        // which the stack clips out: the visit's wavelength there is 2 µm, not unknown.
+        const frames = [frame(a.data, 'a', 60000, 2), frame(shifted(1000), 'b', 60001, 2), frame(shifted(3000), 'c', 60002, 2),
+            frame(hit, 'd', 60003, NaN), frame(b.data, 'e', 60100, 2)];
+        const sky: SkyResult = { source: 'live', grid, frames: frames.map(f => ({ frame: f, label: '' })), locked: [], lambda: 2,
+            stars: [], credits: [], notes: [] };
+        const map = changeInput(sky).earlier.lambdaMap!;
+        expect(map[p]).toBe(2);
+        // Where the fourth frame is kept, the wavelength is unknown.
+        expect(Array.from(map).some(Number.isNaN)).toBe(true);
     });
     it('says the wavelength check left nothing, not that the visits do not overlap', () => {
         const [a, b] = pictures();
@@ -249,14 +282,37 @@ describe('comparison coverage', () => {
         expect(result.notes.some(n => n.includes('do not overlap'))).toBe(false);
         expect(result.candidates).toEqual([]);
     });
-    it('marks a spot just inside the star cone as at or beyond its edge', () => {
+    it('says too few pixels are left, not that the visits do not overlap, when the wavelength check leaves a handful', () => {
+        const [a, b] = pictures();
+        const size = grid.width * grid.height;
+        const same = new Float32Array(size).fill(2), other = new Float32Array(size).fill(2.1);
+        for (let x = 55; x < 65; x++) { other[60 * grid.width + x] = 2; }
+        const result = compareVisits({ ...a, lambdaMap: same }, { ...b, lambdaMap: other }, grid, [], { plain: true });
+        expect(result.notes).toContain("Almost none of the area both visits cover could be compared: over the rest, the two visits' wavelengths differ by more than 0.02 µm.");
+        expect(result.notes).toContain('Too few image pixels are left to compare the visits.');
+        expect(result.notes.some(n => n.includes('overlapping'))).toBe(false);
+        expect(result.candidates).toEqual([]);
+    });
+    it('reads a wavelength on a lattice line from that line alone', () => {
+        // The right-hand nodes are unknown. On the left edge they carry no weight, so the wavelength there is known.
+        const right = { nx: 2, ny: 2, values: Float32Array.from([3, NaN, 3, NaN]) };
+        expect(latticeValue(right, 0, 40, grid)).toBe(3);
+        expect(latticeValue(right, 1, 40, grid)).toBeNaN();
+        const lower = { nx: 2, ny: 2, values: Float32Array.from([3, 3, NaN, NaN]) };
+        expect(latticeValue(lower, 40, 0, grid)).toBe(3);
+        expect(latticeValue(lower, 40, 1, grid)).toBeNaN();
+        const left = { nx: 2, ny: 2, values: Float32Array.from([NaN, 3, NaN, 3]) };
+        expect(latticeValue(left, 120, 40, grid)).toBe(3);
+        expect(latticeValue(left, 119, 40, grid)).toBeNaN();
+    });
+    it('marks a spot just inside the star cone as near or beyond its edge', () => {
         const [a, b] = pictures();
         // The spot at row 20 is 40 pixels from the centre: inside a 42 pixel cone, but closer to its edge than the
         // 6 arcsec (3.9 pixel) matching radius, so a star just past the edge could be missed.
         const result = compareVisits(a, b, grid, [], { plain: true, starCover: { x: 60, y: 60, radiusPix: 42 } });
         const spot = result.candidates.find(c => Math.abs(c.pix.y - 20) < 3)!;
         expect(spot.catalogueChecked).toBe(false);
-        expect(spot.sentence).toContain(' It lies at or beyond the edge of the part of the picture where the Gaia star list was loaded, so it was not checked against that list.');
-        expect(result.notes).toContain('1 spot lies at or beyond the edge of the part of the picture where the Gaia star list was loaded (within 0.02° of the centre), so it was not checked against that list.');
+        expect(spot.sentence).toContain(' It lies near or beyond the edge of the part of the picture where the Gaia star list was loaded, so it was not checked against that list.');
+        expect(result.notes).toContain('1 spot lies near or beyond the edge of the part of the picture where the Gaia star list was loaded (within 0.02° of the centre), so it was not checked against that list.');
     });
 });

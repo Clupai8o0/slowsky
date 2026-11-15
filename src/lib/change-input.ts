@@ -44,44 +44,24 @@ function middle(visit: RegriddedFrame[]): number
 
 function image(visit: RegriddedFrame[]): VisitImage
 {
-    const stack = stackVisit(visit);
+    // The visit's wavelength at each pixel: the mean over the frames the stack kept there, each frame's own wavelength
+    // being read at that pixel first. (Averaging the frames' lattices and interpolating afterwards smeared the edge of
+    // a frame's coverage across a lattice cell.) A frame clipped out at a pixel does not count there. NaN where no
+    // frame holds a value, and where the wavelength of a kept frame is unknown: the stacked picture there mixes in
+    // light of an unknown wavelength. Left out unless every frame carries a lattice of at least two by two nodes.
+    const grid = visit[0]?.grid;
+    const lattices = visit.every(f => f.lambdaGrid && f.lambdaGrid.nx >= 2 && f.lambdaGrid.ny >= 2
+        && f.lambdaGrid.values.length === f.lambdaGrid.nx * f.lambdaGrid.ny) ? visit.map(f => f.lambdaGrid!) : undefined;
+    const stack = stackVisit(visit, grid && lattices
+        ? { perFrame: (frame, pixel) => latticeValue(lattices[frame]!, pixel % grid.width, Math.floor(pixel / grid.width), grid) } : {});
     const lambda = visit.reduce((sum, f) => sum + f.lambdaAtCenter, 0) / visit.length;
-    const lambdaMap = wavelengthMap(visit);
+    const lambdaMap = stack.perFrameMean;
     return {
         data: stack.data, lambda, mjd: middle(visit),
         obsIds: visit.slice().sort((a, b) => a.frame.tMin - b.frame.tMin).map((f) => f.frame.obsId),
         ...(stack.variance ? { variance: stack.variance } : {}),
         ...(lambdaMap ? { lambdaMap } : {}),
     };
-}
-
-// The visit's wavelength at each pixel: the mean over the frames that hold a value there, each frame's own wavelength
-// being read at that pixel first. (Averaging the frames' lattices and interpolating afterwards smeared the edge of a
-// frame's coverage across a lattice cell.) NaN where no frame holds a value, and where the wavelength of a frame that
-// does is unknown: the stacked picture there mixes in light of an unknown wavelength.
-// Undefined unless every frame carries a wavelength lattice of at least two by two nodes.
-function wavelengthMap(visit: RegriddedFrame[]): Float32Array | undefined
-{
-    const grid = visit[0]?.grid;
-    if (!grid || !visit.every(f => f.lambdaGrid && f.lambdaGrid.nx >= 2 && f.lambdaGrid.ny >= 2
-        && f.lambdaGrid.values.length === f.lambdaGrid.nx * f.lambdaGrid.ny)) {
-        return undefined;
-    }
-    const map = new Float32Array(grid.width * grid.height);
-    for (let y = 0; y < grid.height; y++) {
-        for (let x = 0; x < grid.width; x++) {
-            const i = y * grid.width + x;
-            let sum = 0, count = 0;
-            for (const f of visit) {
-                if (Number.isFinite(f.data[i]!)) {
-                    sum += latticeValue(f.lambdaGrid!, x, y, grid);
-                    count++;
-                }
-            }
-            map[i] = count ? sum / count : NaN;
-        }
-    }
-    return map;
 }
 
 function placed(stars: GaiaStar[], grid: OutputGrid, mjd: number, margin: number, visit: 'earlier' | 'later'): StarPix[]
