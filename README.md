@@ -103,13 +103,13 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   anything can be seen there. The sums run in the browser (`src/lib/uptonight.ts`), ask the visitor for nothing,
   and are checked against astropy 8.0.2 (`tests/fixtures/uptonight-astropy.json`, made by
   `scripts/uptonight_fixture.py`).
-- Press **Save picture**, beside the B − A and A + B buttons: it draws one PNG in the browser with the earlier
-  visit, the later visit and their difference side by side. Under them it prints what the colours of the difference
-  mean, the SPHEREx data release (on the simulated sky, a line saying it is not NASA data instead), a line saying
-  the code was written with AI tools, a line saying a difference is a candidate only, and the link to the view. The
-  credit lines are also stored in the PNG's text fields. Where the browser can share files it opens the share
-  sheet; otherwise it downloads the file. The page itself sends the picture nowhere (`src/lib/sharecard.ts`,
-  `src/ui/share-view.ts`).
+- In Subtract, press **Save picture**, beside the B − A and A + B buttons: it draws one PNG in the browser with the
+  earlier visit, the later visit and their difference side by side. Under them it prints what the colours of the
+  difference mean, the SPHEREx data release (on the simulated sky, a line saying it is not NASA data instead), a
+  line saying the code was written with AI tools, a line saying a difference is a candidate only, and the link to
+  the view. The credit lines are also stored in the PNG's text fields. Where the browser can share files it opens
+  the share sheet; otherwise it downloads the file. The page itself sends the picture nowhere
+  (`src/lib/sharecard.ts`, `src/ui/share-view.ts`).
 - Look at the **Comet 3I/ATLAS across the CO₂ band** card at the foot of the left panel: twelve small pictures of
   the interstellar comet from SPHEREx frames taken on 14 Dec 2025, and a chart of its core's brightness by
   wavelength. See "Comet card" below.
@@ -321,6 +321,28 @@ in it.
   visit with several frames is a plain average of them too, so a spot that was in only one of its frames can
   still show.
 
+## Comet card
+
+`scripts/bake_comet.py` asks IRSA's Moving Object Search Tool which SPHEREx frames hold comet
+3I/ATLAS (C/2025 N1) and where it should be in each. It takes the twelve detector-5 DR1 frames from three visits on
+14 Dec 2025, which step from 3.96 to 4.36 µm, and reads by byte range only the rows it needs from each file (about
+4.9 MB in all). It writes `public/comet/3i-atlas.json`: a 41 × 41 pixel cut-out around the predicted spot, the mean
+of the 3 × 3 pixels there, and the median of the cut-out's 5-pixel border. The card draws the cut-outs on one shared
+linear scale (its top is the brightest pixel in any 3 × 3 box) and charts core minus border against wavelength (`src/lib/comet.ts`, `src/ui/comet-view.ts`).
+- What the numbers are: raw L2 image values in MJy/sr, with nothing subtracted except that border median.
+- What they are not: a calibrated measurement of the comet. The 3 × 3 box is not an aperture and sits on the
+  predicted position, not on the brightest pixel. The border is not empty sky: the reported coma (about 3 arcminutes
+  in radius) is wider than the cut-out (about 4 arcminutes across). The frames were taken over about 3.3 hours,
+  each at a different wavelength, so the row mixes colour and time. The values 39 (at 4.25 µm) and 1 MJy/sr (at
+  4.36 µm) come from four frames that started within 7 minutes of each other.
+- At 4.25 µm core minus border is 39 MJy/sr; at 3.96 to 4.18 µm it is 0.6 to 0.7 MJy/sr, over 50 times less
+  (36 to 47 times less before the border is taken off). The SPHEREx team reports carbon dioxide gas emission at
+  4.25 to 4.27 µm in this comet and a carbon dioxide coma about 3 arcminutes in radius (Lisse et al. 2025, RNAAS 9,
+  242, arXiv:2508.15469; Lisse et al. 2026, RNAAS 10, 26, arXiv:2601.06759). The card does not separate gas light
+  from dust light. It redraws public frames with rough numbers of its own and adds nothing new to that work.
+- Blank pixels (no value in the archive) are drawn dark red; a white speck can be a star, a hot pixel or a
+  cosmic-ray hit. The pictures keep the detector's orientation and are not turned north up.
+
 ## In the repository but not switched on
 
 These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
@@ -365,26 +387,6 @@ stays off; the reason is given below.
   common grid, and every square is scaled by one noise figure for the whole view (`found.sigma` in
   `src/lib/change-hints.ts`). Two AI reviews of this code (Gemini and Claude Opus) said its lines could mislead on
   such squares and that it should not be switched on, so it was not.
-
-**Comet card.** `scripts/bake_comet.py` asks IRSA's Moving Object Search Tool which SPHEREx frames hold comet
-3I/ATLAS (C/2025 N1) and where it should be in each. It takes the twelve detector-5 DR1 frames from three visits on
-14 Dec 2025, which step from 3.96 to 4.36 µm, and reads by byte range only the rows it needs from each file (about
-4.9 MB in all). It writes `public/comet/3i-atlas.json`: a 41 × 41 pixel cut-out around the predicted spot, the mean
-of the 3 × 3 pixels there, and the median of the cut-out's 5-pixel border. The card draws the cut-outs on one shared
-linear scale (its top is the brightest pixel in any 3 × 3 box) and charts core minus border against wavelength (`src/lib/comet.ts`, `src/ui/comet-view.ts`).
-- What the numbers are: raw L2 image values in MJy/sr, with nothing subtracted except that border median.
-- What they are not: a calibrated measurement of the comet. The 3 × 3 box is not an aperture and sits on the
-  predicted position, not on the brightest pixel. The border is not empty sky: the reported coma (about 3 arcminutes
-  in radius) is wider than the cut-out (about 4 arcminutes across). The frames were taken over about 3.3 hours,
-  each at a different wavelength, so the row mixes colour and time. The values 39 (at 4.25 µm) and 1 MJy/sr (at
-  4.36 µm) come from four frames that started within 7 minutes of each other.
-- At 4.25 µm core minus border is 39 MJy/sr; at 3.96 to 4.18 µm it is 0.6 to 0.7 MJy/sr, over 50 times less
-  (36 to 47 times less before the border is taken off). The SPHEREx team reports carbon dioxide gas emission at
-  4.25 to 4.27 µm in this comet and a carbon dioxide coma about 3 arcminutes in radius (Lisse et al. 2025, RNAAS 9,
-  242, arXiv:2508.15469; Lisse et al. 2026, RNAAS 10, 26, arXiv:2601.06759). The card does not separate gas light
-  from dust light. It redraws public frames with rough numbers of its own and adds nothing new to that work.
-- Blank pixels (no value in the archive) are drawn dark red; a white speck can be a star, a hot pixel or a
-  cosmic-ray hit. The pictures keep the detector's orientation and are not turned north up.
 
 ## Licence
 

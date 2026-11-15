@@ -1157,7 +1157,8 @@ export function mount(root: HTMLElement): void
             return;
         }
         const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode, source: sourceKind } : null;
-        spectrumSlot.update({ center: st.center, lambda: result?.locked[st.index]?.lambda, source: sourceKind, available: !!view });
+        // The centre of the picture on screen: a saved copy of a target is centred on the target, whatever position the link named.
+        spectrumSlot.update({ center: result?.grid.center ?? st.center, lambda: result?.locked[st.index]?.lambda, source: sourceKind, available: !!view });
         const changes = !!(FEATURES.changes && view && changesSlot.render(ref<HTMLElement>('changesBox'), ref<HTMLElement>('changesMarks'), view));
         ref<HTMLElement>('changes').hidden = !changes;
         ref<HTMLElement>('changesMarks').hidden = !changes;
