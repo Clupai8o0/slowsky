@@ -43,6 +43,7 @@ export interface ChangeCandidate {
     reading?: ChangeReading;
     ends?: ChangeEnd[];
     nearCatalogue?: boolean;
+    catalogueChecked?: boolean;
     radiusPix?: number;
     /** Plain list only: distance to the nearest visit-matched catalogue position within matchArcsec. */
     catalogueArcsec?: number;
@@ -97,13 +98,15 @@ export interface ChangeOptions {
     maxSpotsPerFrame?: number;
     /** Plain list: every kept spot is its own candidate with one fixed sentence (no pairing, mover or cause). */
     plain?: boolean;
+    starCover?: { x: number; y: number; radiusPix: number };
 }
 
 // One visit (a stack or a single frame) on the output grid. `variance` is optional: the per-pixel variance on
 // the same grid (e.g. the VARIANCE plane regridded like the image). With it, noise follows the frames' own
 // error map (scaled once to the difference's measured scatter); without it, noise comes from the difference
 // image alone in 64 arcsec tiles, and a noisy patch smaller than a tile can give false candidates.
-export interface VisitImage { data: Float32Array; lambda: number; mjd: number; obsIds: string[]; variance?: Float32Array; }
+export interface VisitImage { data: Float32Array; lambda: number; mjd: number; obsIds: string[]; variance?: Float32Array;
+    lambdaGrid?: { nx: number; ny: number; values: Float32Array }; }
 type Image = VisitImage;
 type Settings = Required<ChangeOptions>;
 type Blob = { pix: PixelCoord; snr: number; sign: 1 | -1; area: number; edge: boolean; narrow?: boolean; compactUncertain?: boolean };
@@ -136,7 +139,8 @@ function settings(opts: ChangeOptions = {}): Settings
         minSpeedArcsecPerHour: opts.minSpeedArcsecPerHour ?? 5,
         maxSpeedArcsecPerHour: opts.maxSpeedArcsecPerHour ?? 4000, lineTolArcsec: opts.lineTolArcsec ?? 4,
         minFracChange: opts.minFracChange ?? 0.10, minShiftArcsec: opts.minShiftArcsec ?? 3,
-        maxSpotsPerFrame: opts.maxSpotsPerFrame ?? 15, plain: opts.plain ?? false };
+        maxSpotsPerFrame: opts.maxSpotsPerFrame ?? 15, plain: opts.plain ?? false,
+        starCover: opts.starCover ?? { x: 0, y: 0, radiusPix: Infinity } };
 }
 
 function validate(data: Float32Array, grid: OutputGrid): void
@@ -601,7 +605,8 @@ function finish(result: ChangeResult, opt: Settings, singleFrame = false,
     showSnr: boolean | ((c: ChangeCandidate) => boolean) = true, plainOrder = false): ChangeResult
 {
     const shown = new Map(result.candidates.map((c) => [c, typeof showSnr === 'function' ? showSnr(c) : showSnr]));
-    result.candidates.sort((a, b) => (plainOrder ? Number(Boolean(a.nearCatalogue)) - Number(Boolean(b.nearCatalogue))
+    const group = (c: ChangeCandidate): number => c.nearCatalogue ? 1 : c.catalogueChecked === false ? 2 : 0;
+    result.candidates.sort((a, b) => (plainOrder ? group(a) - group(b)
         : singleFrame ? Number(b.gaiaMatch) - Number(a.gaiaMatch) : 0)
         || (plainOrder ? Number(shown.get(b)) - Number(shown.get(a)) : 0)
         || b.snr - a.snr || a.pix.y - b.pix.y || a.pix.x - b.pix.x);
@@ -629,8 +634,17 @@ export function stripSnr(text: string): string
 
 export const PLAIN_CAUSES = "a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
 
-export function plainListNotes(candidates: { line?: string; sentence?: string; reason: string; snrMapMissing?: boolean; snrFlagRemoved?: boolean }[],
-    usedErrorMap: boolean, matchArcsec: number): string[]
+// The note for spots outside the loaded Gaia star list. Built in one place: the page counts again after its flag
+// screening (src/ui/changes-view.ts) and must print the same sentence.
+export const COVER_NOTE = /^(?:1 spot lies|\d+ spots lie) outside the part of the picture where the Gaia star list was loaded \(within ([\d.]+)° of the centre\), so /;
+export function coverNote(count: number, radius: string): string
+{
+    return `${count === 1 ? '1 spot lies' : `${count} spots lie`} outside the part of the picture where the Gaia star list was loaded (within ${radius}° of the centre), so ${count === 1 ? 'it was' : 'they were'} not checked against that list.`;
+}
+// The clause the order note carries while any spot in the list was not checked against the star list.
+export const UNCHECKED_LAST = '; spots not checked against the Gaia star list come last';
+export function plainListNotes(candidates: { line?: string; sentence?: string; reason: string; snrMapMissing?: boolean; snrFlagRemoved?: boolean; catalogueChecked?: boolean }[],
+    usedErrorMap: boolean, matchArcsec: number, radiusDeg?: number): string[]
 {
     if (!candidates.length) { return []; }
     const shown = candidates.filter(c => hasSnrFigure(c.line ?? c.sentence ?? c.reason)).length;
@@ -638,12 +652,15 @@ export function plainListNotes(candidates: { line?: string; sentence?: string; r
     const base = `Listed with spots that have no catalogue star within ${matchArcsec}″ first, then by how far each stands out from the noise`;
     // An overflow can hide a mapped S/N even though the ordering still used the error maps.
     const hiddenMapped = usedErrorMap && candidates.some(c => !c.snrMapMissing && !hasSnrFigure(c.line ?? c.sentence ?? c.reason));
-    const order = !shown && hiddenMapped ? `${base}.` : !shown ? `${base} estimated from the difference image; that figure is used only for this order.`
-        : `${base}${shown < candidates.length ? '; within each group, spots with no S/N figure come after those with one' : ''}.`;
+    const unchecked = candidates.filter(c => c.catalogueChecked === false).length;
+    const last = unchecked ? UNCHECKED_LAST : '';
+    const order = !shown && hiddenMapped ? `${base}${last}.` : !shown ? `${base} estimated from the difference image; that figure is used only for this order${last}.`
+        : `${base}${shown < candidates.length ? '; within each group, spots with no S/N figure come after those with one' : ''}${last}.`;
     const flagged = candidates.filter(c => c.snrFlagRemoved && !c.snrMapMissing).length;
     const count = (n: number) => candidates.length === 1 ? 'the 1 candidate' : n === candidates.length ? (n === 2 ? 'both candidates' : `all ${n} candidates`) : `${n} of the ${candidates.length} candidates`;
     const subject = (n: number) => count(n).replace(/^./, c => c.toUpperCase());
-    return [order, ...(flagged ? [`${subject(flagged)} ${flagged === 1 ? 'is' : 'are'} marked by an archive overflow flag, so ${flagged === 1 ? 'its' : 'their'} S/N is left out; the S/N figure there can be unreliable.`] : []),
+    return [order, ...(unchecked && radiusDeg !== undefined ? [coverNote(unchecked, String(Number(radiusDeg.toFixed(2))))] : []),
+        ...(flagged ? [`${subject(flagged)} ${flagged === 1 ? 'is' : 'are'} marked by an archive overflow flag, so ${flagged === 1 ? 'its' : 'their'} S/N is left out; the S/N figure there can be unreliable.`] : []),
         ...(unmapped ? [`The frames' error maps have no value at ${count(unmapped)}, so ${unmapped === 1 ? 'its' : 'their'} S/N is left out; the noise there comes from the difference image alone.`] : [])];
 }
 export function isSnrNote(note: string): boolean
@@ -1257,7 +1274,7 @@ function explainedByWobble(earlier: Float32Array, later: Float32Array, spots: Pi
 // could do it, and plain lookups (catalogue distance, edge, missing pixels). Pairs are split into their ends, and a
 // spot shared by two candidates is listed once.
 function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image, later: Image, grid: OutputGrid,
-    stars: StarPix[], opt: Settings, diff: Float32Array, measurement: Measurement): ChangeCandidate[]
+    stars: StarPix[], opt: Settings, diff: Float32Array, measurement: Measurement, leftOut?: Uint8Array): ChangeCandidate[]
 {
     const out: ChangeCandidate[] = [], seen = new Set<string>();
     const radiusPix = PSF_FWHM / grid.pixelArcsec, edgePix = opt.edgeArcsec / grid.pixelArcsec;
@@ -1282,16 +1299,23 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                 }
             }
             const catalogueArcsec = starDistance !== undefined && starDistance <= opt.matchArcsec ? starDistance : undefined;
+            const unchecked = catalogueArcsec === undefined && Math.hypot(end.x - opt.starCover.x, end.y - opt.starCover.y)
+                > opt.starCover.radiusPix - opt.matchArcsec / grid.pixelArcsec;
             const nearEdge = pix.x < edgePix || pix.y < edgePix || pix.x > grid.width - 1 - edgePix || pix.y > grid.height - 1 - edgePix;
-            let nearMissing = false;
+            // `nearAbsent`: a pixel with no data. `nearLeftOut`: a pixel left out because the wavelengths differ.
+            // `nearUnknown`: a pixel left out because a visit's wavelength there could not be worked out.
+            let nearMissing = false, nearAbsent = false, nearLeftOut = false, nearUnknown = false;
             const r = Math.ceil(radiusPix);
-            for (let y = Math.round(pix.y) - r; y <= Math.round(pix.y) + r && !nearMissing; y++) {
+            for (let y = Math.round(pix.y) - r; y <= Math.round(pix.y) + r; y++) {
                 for (let x = Math.round(pix.x) - r; x <= Math.round(pix.x) + r; x++) {
                     if (x < 0 || y < 0 || x >= grid.width || y >= grid.height || Math.hypot(x - pix.x, y - pix.y) > radiusPix) {
                         continue;
                     }
                     const i = y * grid.width + x;
-                    if (!Number.isFinite(earlier.data[i]!) || !Number.isFinite(later.data[i]!)) { nearMissing = true; break; }
+                    if (!Number.isFinite(earlier.data[i]!) || !Number.isFinite(later.data[i]!)) {
+                        nearMissing = true;
+                        if (leftOut?.[i] === 1) { nearLeftOut = true; } else if (leftOut?.[i]) { nearUnknown = true; } else { nearAbsent = true; }
+                    }
                 }
             }
             const nearGap = Boolean(blob?.edge && !nearEdge && !nearMissing);
@@ -1300,8 +1324,11 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                 ? Math.ceil(starDistance * 10) / 10 : roundedDistance;
             let facts = (starDistance !== undefined && starDistance <= PLAIN_STAR_FACT_ARCSEC ? ` A catalogue star lies ${starDistance < 1 ? 'less than 1″' : `${displayDistance!.toFixed(1)}″`} away.` : '')
                 + (nearEdge ? ' It is near the edge of the picture.' : '')
-                + (nearMissing ? ' Pixels at or near it are missing in at least one visit.' : '')
-                + (nearGap ? ' It is close to pixels that could not be compared, or to the edge of the picture.' : '');
+                + (nearAbsent ? ' Pixels at or near it are missing in at least one visit.' : '')
+                + (nearLeftOut ? ` Pixels at or near it were left out of the comparison: there the two visits' wavelengths differ by more than ${opt.maxDeltaLambda} µm.` : '')
+                + (nearUnknown ? ' Pixels at or near it were left out of the comparison: there the wavelength of at least one visit could not be worked out.' : '')
+                + (nearGap ? ' It is close to pixels that could not be compared, or to the edge of the picture.' : '')
+                + (unchecked ? ' It lies outside the part of the picture where the Gaia star list was loaded, so it was not checked against that list.' : '');
             const corrected = (x: number, y: number): number => {
                 const index = y * grid.width + x;
                 const bin = Math.floor(y / measurement.k) * measurement.width + Math.floor(x / measurement.k);
@@ -1380,11 +1407,22 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
             out.push({ id: '', kind: 'unknown', pix, sky: gridPixToSky(grid, pix), snr, sign,
                 gaiaMatch: catalogueArcsec !== undefined, ...(catalogueArcsec === undefined ? {} : { gaiaDistArcsec: catalogueArcsec, catalogueArcsec }),
                 frames: c.frames, reading: clear ? (sign === 1 ? 'moreLater' : 'lessLater') : 'unclear', ends: [{ ...end }], nearCatalogue: catalogueArcsec !== undefined,
+                ...(unchecked ? { catalogueChecked: false } : {}),
                 nearEdge, nearMissing, nearGap, radiusPix: end.radiusPix, neutral,
                 reason: clear ? `Measured against the change in the sky around it, there is ${sign === 1 ? 'more' : 'less'} light here in the later visit than in the earlier one; ${ending}` : neutral });
         }
     }
     return out;
+}
+
+function latticeValue(lattice: NonNullable<VisitImage['lambdaGrid']>, x: number, y: number, grid: OutputGrid): number
+{
+    const gx = grid.width > 1 ? x * (lattice.nx - 1) / (grid.width - 1) : 0;
+    const gy = grid.height > 1 ? y * (lattice.ny - 1) / (grid.height - 1) : 0;
+    const ix = Math.min(lattice.nx - 2, Math.floor(gx)), iy = Math.min(lattice.ny - 2, Math.floor(gy));
+    const fx = gx - ix, fy = gy - iy, v = lattice.values;
+    return (v[iy * lattice.nx + ix]! * (1 - fx) + v[iy * lattice.nx + ix + 1]! * fx) * (1 - fy)
+        + (v[(iy + 1) * lattice.nx + ix]! * (1 - fx) + v[(iy + 1) * lattice.nx + ix + 1]! * fx) * fy;
 }
 
 export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, stars: StarPix[], opts?: ChangeOptions): VisitChangeResult
@@ -1393,8 +1431,6 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     const visits = { earlier: { obsIds: [...earlier.obsIds], mjd: earlier.mjd },
         later: { obsIds: [...later.obsIds], mjd: later.mjd } };
     const diff = difference(earlier.data, later.data, grid);
-    const pairedEarlier = diff.some((value) => !Number.isFinite(value))
-        ? earlier.data.map((value, i) => Number.isFinite(diff[i]!) ? value : NaN) : earlier.data;
     const wavelength = (value: number): string => Number.isFinite(value) ? `${value.toFixed(3)} µm` : 'unknown';
     result.notes.push(`Earlier visit at ${wavelength(earlier.lambda)}, later at ${wavelength(later.lambda)}.`
         + (Number.isFinite(earlier.lambda) && Number.isFinite(later.lambda) && earlier.lambda.toFixed(3) !== later.lambda.toFixed(3)
@@ -1415,6 +1451,44 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         result.notes.push(`The two visits were not compared: their wavelengths differ by more than ${opt.maxDeltaLambda} µm.`);
         return { ...result, visits } as VisitChangeResult;
     }
+    const a = earlier.lambdaGrid, b = later.lambdaGrid;
+    let wavelengthMasked = false, leftOut: Uint8Array | undefined;
+    if (a && b && a.nx === b.nx && a.ny === b.ny && a.nx >= 2 && a.ny >= 2
+        && a.values.length === a.nx * a.ny && b.values.length === b.nx * b.ny) {
+        let had = 0, cut = 0, unknown = 0;
+        const out = new Uint8Array(diff.length);
+        for (let y = 0; y < grid.height; y++) {
+            for (let x = 0; x < grid.width; x++) {
+                const i = y * grid.width + x;
+                if (!Number.isFinite(diff[i]!)) { continue; }
+                had++;
+                const gap = Math.abs(latticeValue(a, x, y, grid) - latticeValue(b, x, y, grid));
+                if (!(gap <= opt.maxDeltaLambda + 1e-9)) {
+                    diff[i] = NaN;
+                    out[i] = Number.isFinite(gap) ? 1 : 2; // 1: the wavelengths differ; 2: one is unknown
+                    cut++;
+                    if (!Number.isFinite(gap)) { unknown++; }
+                }
+            }
+        }
+        if (cut) {
+            wavelengthMasked = true;
+            leftOut = out;
+            // `had` counts the pixels that hold a value in both visits, so the share is of that area, not of the frame.
+            const share = cut / had, percent = Math.round(share * 100);
+            const differ = `the two visits' wavelengths differ by more than ${opt.maxDeltaLambda} µm`;
+            const why = !unknown ? differ : unknown === cut ? 'the wavelength of at least one visit could not be worked out'
+                : `${differ} or could not be worked out`;
+            result.notes.push(share >= 0.995
+                ? `Almost none of the area both visits cover could be compared: over the rest, ${why}.`
+                : percent >= 1 ? `About ${percent}% of the area both visits cover was left out of the comparison: there ${why}.`
+                    : `A small part of the area both visits cover (under 1%) was left out of the comparison: there ${why}.`);
+            earlier = { ...earlier, data: earlier.data.map((v, i) => Number.isFinite(diff[i]!) ? v : NaN) };
+            later = { ...later, data: later.data.map((v, i) => Number.isFinite(diff[i]!) ? v : NaN) };
+        }
+    }
+    const pairedEarlier = diff.some((value) => !Number.isFinite(value))
+        ? earlier.data.map((value, i) => Number.isFinite(diff[i]!) ? value : NaN) : earlier.data;
     let varSum: Float32Array | undefined;
     if ((earlier.variance && earlier.variance.length !== diff.length)
         || (later.variance && later.variance.length !== diff.length)) {
@@ -1424,7 +1498,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         varSum = new Float32Array(diff.length);
         for (let i = 0; i < varSum.length; i++) {
             const a = earlier.variance[i]!, b = later.variance[i]!;
-            varSum[i] = Number.isFinite(a) && a > 0 && Number.isFinite(b) && b > 0 ? a + b : NaN;
+            varSum[i] = (!wavelengthMasked || Number.isFinite(diff[i]!)) && Number.isFinite(a) && a > 0 && Number.isFinite(b) && b > 0 ? a + b : NaN;
         }
     }
     const { found, measurement } = blobs(diff, grid, opt, result, 3.75, varSum, true);
@@ -2034,7 +2108,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         result.notes.push(opt.plain ? `${wobble} ${wobble === 1 ? 'spot that a shift of up to 1.5″ between the two pictures can explain is' : 'spots that a shift of up to 1.5″ between the two pictures can explain are'} not listed.` : `${wobble} ${wobble === 1 ? 'spot' : 'spots'} consistent with a shift of up to 1.5″ between visits not listed.`);
     }
     if (opt.plain) {
-        result.candidates = plainList(result.candidates, found, earlier, later, grid, stars, opt, diff, measurement);
+        result.candidates = plainList(result.candidates, found, earlier, later, grid, stars, opt, diff, measurement, leftOut);
         result.notes = result.notes.filter((note) => !note.startsWith('Catalogue stars have no ids'));
     }
     result.candidates.forEach((c) => {
@@ -2075,7 +2149,8 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     const unmapped = measurement.usedErrorMap ? finished.candidates.filter((c) => !showsSnr(c)).length : 0;
     if (opt.plain && finished.candidates.length) {
         finished.notes.unshift(PLAIN_LEAD);
-        finished.notes.push(...plainListNotes(finished.candidates, measurement.usedErrorMap, opt.matchArcsec));
+        finished.notes.push(...plainListNotes(finished.candidates, measurement.usedErrorMap, opt.matchArcsec,
+            Number.isFinite(opt.starCover.radiusPix) ? opt.starCover.radiusPix * grid.pixelArcsec / 3600 : undefined));
     }
     if (!opt.plain && unmapped > 0) {
         finished.notes.push(`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`);

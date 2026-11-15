@@ -46,11 +46,42 @@ function image(visit: RegriddedFrame[]): VisitImage
 {
     const stack = stackVisit(visit);
     const lambda = visit.reduce((sum, f) => sum + f.lambdaAtCenter, 0) / visit.length;
+    const first = visit[0]?.lambdaGrid;
+    let lambdaGrid: VisitImage['lambdaGrid'];
+    if (first && visit.every(f => f.lambdaGrid && f.lambdaGrid.nx === first.nx && f.lambdaGrid.ny === first.ny
+        && f.lambdaGrid.values.length === first.nx * first.ny)) {
+        const values = new Float32Array(first.nx * first.ny);
+        for (let i = 0; i < values.length; i++) {
+            // The stacked picture at this point holds only the frames with data here, so average only those.
+            // Where no frame has data, keep every frame's value (its own wavelengths carried past its edge).
+            const x = first.nx > 1 ? (i % first.nx) / (first.nx - 1) : 0.5, y = first.ny > 1 ? Math.floor(i / first.nx) / (first.ny - 1) : 0.5;
+            const here = visit.filter(f => hasDataNear(f, x, y));
+            const used = (here.length ? here : visit).map(f => f.lambdaGrid!.values[i]!).filter(Number.isFinite);
+            values[i] = used.length ? used.reduce((sum, v) => sum + v, 0) / used.length : NaN;
+        }
+        lambdaGrid = { nx: first.nx, ny: first.ny, values };
+    }
     return {
         data: stack.data, lambda, mjd: middle(visit),
         obsIds: visit.slice().sort((a, b) => a.frame.tMin - b.frame.tMin).map((f) => f.frame.obsId),
         ...(stack.variance ? { variance: stack.variance } : {}),
+        ...(lambdaGrid ? { lambdaGrid } : {}),
     };
+}
+
+// Whether a frame holds a value within two pixels of a point given as fractions (0 to 1) of its grid.
+function hasDataNear(f: RegriddedFrame, fx: number, fy: number): boolean
+{
+    const { width, height } = f.grid;
+    const x = Math.round(fx * (width - 1)), y = Math.round(fy * (height - 1));
+    for (let j = Math.max(0, y - 2); j <= Math.min(height - 1, y + 2); j++) {
+        for (let i = Math.max(0, x - 2); i <= Math.min(width - 1, x + 2); i++) {
+            if (Number.isFinite(f.data[j * width + i]!)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 function placed(stars: GaiaStar[], grid: OutputGrid, mjd: number, margin: number, visit: 'earlier' | 'later'): StarPix[]
@@ -111,9 +142,21 @@ export function changeInput(result: SkyResult, opts: ChangeInputOptions = {}): C
 export function findChanges(result: SkyResult, opts: ChangeInputOptions = {}, changeOpts?: ChangeOptions): VisitChangeResult
 {
     const input = changeInput(result, opts);
-    const found = compareVisits(input.earlier, input.later, result.grid, input.stars, changeOpts);
+    const cover = result.starCover;
+    const center = cover ? gridSkyToPix(result.grid, cover.center) : undefined;
+    // A cone that reaches the picture's corners covers all of it: no spot is then outside the star list. Measured on
+    // the picture itself (its farthest corner from the cone's centre), with one pixel of slack for grid rounding.
+    const radiusPix = cover ? cover.radiusDeg * 3600 / result.grid.pixelArcsec : 0;
+    const corner = center ? Math.hypot(Math.max(center.x + 0.5, result.grid.width - 0.5 - center.x),
+        Math.max(center.y + 0.5, result.grid.height - 0.5 - center.y)) : 0;
+    const starCover = center && corner > radiusPix + 1 ? { ...center, radiusPix } : undefined;
+    const found = compareVisits(input.earlier, input.later, result.grid, input.stars,
+        { ...changeOpts, ...(changeOpts?.starCover ? {} : starCover ? { starCover } : {}) });
     const noiseReported = found.notes.some((note) => /noise from the difference image/i.test(note));
     found.notes.push(...input.notes.filter((note) => !((noiseReported || !Number.isFinite(found.sigma)) && note.startsWith('No error maps'))
         && !(!Number.isFinite(found.sigma) && note.startsWith('No catalogue stars for this view:'))));
+    if (cover?.cut) {
+        found.notes.push(`The Gaia star list for this view was cut to its ${cover.kept ?? result.stars.length} brightest stars, so a fainter catalogue star can be missing from it.`);
+    }
     return found;
 }

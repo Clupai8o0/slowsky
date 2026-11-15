@@ -43,6 +43,15 @@ export function sampleWave(grid: WaveGrid, p: PixelCoord): WaveSample
     };
 }
 
+// Use the nearest cell beyond the grid, continuing its slope rather than clamping it.
+export function sampleWaveLinear(grid: WaveGrid, p: PixelCoord): WaveSample
+{
+    const [ix] = locate(grid.xs, p.x), [iy] = locate(grid.ys, p.y);
+    const fx = (p.x - at(grid.xs, ix)) / (at(grid.xs, ix + 1) - at(grid.xs, ix));
+    const fy = (p.y - at(grid.ys, iy)) / (at(grid.ys, iy + 1) - at(grid.ys, iy));
+    return { lambda: bilinear(grid.lambda, ix, iy, fx, fy), bandwidth: bilinear(grid.bandwidth, ix, iy, fx, fy) };
+}
+
 // A visit is a run of frames on one detector that starts within maxGapDays of the visit's first frame.
 // Bounding the length (not just the gap) keeps near-daily coverage, as near the ecliptic poles,
 // from chaining a whole year into one visit.

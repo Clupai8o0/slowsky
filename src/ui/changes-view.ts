@@ -3,7 +3,7 @@
 // claim of its own: each line is labelled "Candidate N" so the word stays on every line, and the marks over the
 // sky carry the same N. The finder's counts, noise and threshold are not shown. Pure string builders, no DOM.
 
-import { isSnrNote, PLAIN_CAUSES, PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
+import { coverNote, COVER_NOTE, UNCHECKED_LAST, hasSnrFigure, isSnrNote, PLAIN_CAUSES, PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
 import { HELPER_LABEL, type Classification } from '../lib/classify';
 import { hintHtml } from './ml-hint';
 
@@ -18,7 +18,7 @@ export type Reading = ChangeReading | 'moreLater' | 'lessLater';
 export type CandidateEnd = Omit<ChangeEnd, 'radiusPix'> & { radiusPix?: number };
 export type PanelCandidate = Omit<ChangeCandidate, 'lightEnds' | 'ends' | 'reading'> & {
     sentence?: string; caveat?: string; lightVisit?: 'earlier' | 'later'; x?: number; y?: number;
-    reading?: Reading; ends?: CandidateEnd[]; lightEnds?: CandidateEnd[]; nearCatalogue?: boolean; hint?: Classification;
+    reading?: Reading; ends?: CandidateEnd[]; lightEnds?: CandidateEnd[]; nearCatalogue?: boolean; catalogueChecked?: boolean; hint?: Classification;
 };
 export interface FinderVisits { earlier: { obsIds: string[] }; later: { obsIds: string[] } }
 
@@ -42,7 +42,7 @@ export const LIST_CAP = 8;
 export function groupOf(c: PanelCandidate): number
 {
     const two = c.reading === 'pair' || c.reading === 'moved' || (c.ends ?? c.lightEnds ?? []).length > 1;
-    return c.nearCatalogue ? 2 : two ? 1 : 0;
+    return c.nearCatalogue || c.catalogueChecked === false ? 2 : two ? 1 : 0;
 }
 
 // How the list is ordered, in words; only says "away from catalogue stars" when the finder says so.
@@ -56,9 +56,11 @@ export function orderNote(candidates: (PanelCandidate & { line?: string })[]): s
         return `Listed ${by}.`;
     }
     // "away from catalogue stars" only for a group whose every candidate the finder says is not near one.
-    const away = (g: number) => candidates.filter((c) => groupOf(c) === g).every((c) => c.nearCatalogue === false) ? ' away from catalogue stars' : '';
+    const away = (g: number) => candidates.filter((c) => groupOf(c) === g).every((c) => c.nearCatalogue === false && c.catalogueChecked !== false) ? ' away from catalogue stars' : '';
     const pairs = groups.includes(1) || candidates.some((c) => groupOf(c) === 2 && (c.ends ?? c.lightEnds ?? []).length > 1);
-    const label = [(pairs ? 'single spots' : 'spots') + away(0), 'pairs of spots' + away(1), pairs ? 'spots or pairs near catalogue stars' : 'spots near catalogue stars'];
+    const unchecked = candidates.some(c => c.catalogueChecked === false);
+    const label = [(pairs ? 'single spots' : 'spots') + away(0), 'pairs of spots' + away(1), unchecked
+        ? (pairs ? 'other spots or pairs' : 'other spots') : pairs ? 'spots or pairs near catalogue stars' : 'spots near catalogue stars'];
     return `Listed in groups, each ${by}: ${groups.map((g) => label[g]).join(', then ')}.`;
 }
 
@@ -74,10 +76,26 @@ function listed(v: ChangesView, all: boolean): ChangesView['candidates']
     if (all) { return v.candidates; }
     const match = v.plainListInfo?.matchArcsec;
     if (isPlain(v.candidates) && typeof match === 'number' && Number.isFinite(match)) {
-        const firstNear = v.candidates.findIndex(c => c.nearCatalogue === true);
+        const firstNear = v.candidates.findIndex(c => c.nearCatalogue === true || c.catalogueChecked === false);
         return v.candidates.slice(0, Math.min(LIST_CAP, firstNear < 0 ? v.candidates.length : firstNear));
     }
     return v.candidates.slice(0, LIST_CAP);
+}
+
+// Flag screening can remove candidates and change their order after the finder has finished.
+function coveredView(v: ChangesView): ChangesView
+{
+    const old = v.notes.find(n => COVER_NOTE.test(n));
+    if (!old && !v.candidates.some(c => c.catalogueChecked === false)) { return v; }
+    const candidates = [...v.candidates].sort((a, b) => {
+        const group = (c: PanelCandidate) => c.nearCatalogue ? 1 : c.catalogueChecked === false ? 2 : 0;
+        return group(a) - group(b) || Number(hasSnrFigure(b.line)) - Number(hasSnrFigure(a.line));
+    });
+    const count = candidates.filter(c => c.catalogueChecked === false).length;
+    const radius = old?.match(COVER_NOTE)?.[1];
+    // With no unchecked spot left, the order note must not say they come last.
+    const notes = v.notes.flatMap(n => n !== old ? [count ? n : n.replace(UNCHECKED_LAST, '')] : count && radius ? [coverNote(count, radius)] : []);
+    return { ...v, candidates, notes };
 }
 
 // From what findChanges returns, or the message of the error it threw (for example "needs two visits").
@@ -126,6 +144,7 @@ export function withCaveats(candidates: { caveat?: string; line: string }[]): st
 // `all` shows every candidate; the closed plain list stops at the first near-star spot or LIST_CAP.
 export function changesHtml(v: ChangesView, all = false): string
 {
+    v = coveredView(v);
     const plain = isPlain(v.candidates);
     const clause = `; ${PLAIN_CAUSES} (`;
     const shared = plain && v.candidates.every(c => c.line.split(clause).length === 2);
@@ -135,11 +154,16 @@ export function changesHtml(v: ChangesView, all = false): string
     const match = v.plainListInfo?.matchArcsec;
     const fold = plain && typeof match === 'number' && Number.isFinite(match);
     if (fold) {
-        const starCount = hidden.filter(c => c.nearCatalogue === true).length;
+        const starCount = hidden.filter(c => c.nearCatalogue === true && c.catalogueChecked !== false).length;
+        const loose = hidden.filter(c => c.catalogueChecked === false).length;
         const spots = `${hidden.length}${closed.length ? ' more' : ''} ${hidden.length === 1 ? 'spot' : 'spots'}`;
         const hiddenText = !closed.length && hidden.length === starCount
             ? `No spot is shown: ${hidden.length === 1 ? 'the 1 candidate lies' : hidden.length === 2 ? 'both candidates lie' : `all ${hidden.length} candidates lie`} within ${match}″ of a catalogue star.`
-            : `Not shown: ${spots}${hidden.length === starCount ? ` within ${match}″ of a catalogue star` : starCount ? `; ${starCount} of them ${starCount === 1 ? 'lies' : 'lie'} within ${match}″ of a catalogue star` : ''}.`;
+            : `Not shown: ${spots}${hidden.length === starCount ? ` within ${match}″ of a catalogue star`
+                : hidden.length === loose ? ` that ${loose === 1 ? 'was' : 'were'} not checked against the Gaia star list`
+                : [starCount ? `${starCount} of them ${starCount === 1 ? 'lies' : 'lie'} within ${match}″ of a catalogue star` : '',
+                    loose ? `${loose} of them ${loose === 1 ? 'was' : 'were'} not checked against the Gaia star list` : '']
+                    .filter(Boolean).map((part, i) => (i ? ' and ' : '; ') + part).join('')}.`;
         const button = closed.length ? `Show ${hidden.length} more` : hidden.length === 1 ? 'Show it' : 'Show them';
         const more = hidden.length ? `<p class="sk-chg-more-row">${all ? '' : esc(hiddenText) + ' '}<button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? (closed.length ? 'Show fewer' : hidden.length === 1 ? 'Hide it' : 'Hide them') : button}</button></p>` : '';
         const items = listed(v, all);
@@ -166,6 +190,7 @@ export function changesHtml(v: ChangesView, all = false): string
 // Numbered rings over the sky, on the picture's own pixel grid, for the listed candidates only.
 export function changesMarks(v: ChangesView, width: number, height: number, all = false): string
 {
+    v = coveredView(v);
     if (!v.candidates.length || !(width > 0) || !(height > 0)) {
         return '';
     }

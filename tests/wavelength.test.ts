@@ -6,13 +6,21 @@ import w2 from './fixtures/frame/frame2.wcs.json';
 import v1 from './fixtures/frame/frame1.wave.json';
 import v2 from './fixtures/frame/frame2.wave.json';
 import type { FrameRecord, WaveGrid } from '../src/lib/types';
-import { groupVisits, sampleWave } from '../src/lib/wavelength';
+import { groupVisits, sampleWave, sampleWaveLinear } from '../src/lib/wavelength';
 
 const FILES: Record<string, any> = {
     'frame1.json': f1, 'frame2.json': f2,
     'frame1.wcs.json': w1, 'frame2.wcs.json': w2,
     'frame1.wave.json': v1, 'frame2.wave.json': v2,
 };
+
+it('linearly extrapolates the nearest wave cell without changing interior values', () => {
+    const grid: WaveGrid = { xs: [0, 10, 20], ys: [0, 10],
+        lambda: [[1, 2, 4], [3, 4, 6]], bandwidth: [[2, 4, 8], [6, 8, 12]] };
+    expect(sampleWaveLinear(grid, { x: 5, y: 5 })).toEqual(sampleWave(grid, { x: 5, y: 5 }));
+    expect(sampleWaveLinear(grid, { x: -5, y: 15 })).toEqual({ lambda: 3.5, bandwidth: 7 });
+    expect(sampleWaveLinear(grid, { x: 25, y: 5 })).toEqual({ lambda: 6, bandwidth: 12 });
+});
 
 function load(name: string): any
 {
