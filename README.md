@@ -129,6 +129,8 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 2. **Frame lookup.** It asks NASA's Infrared Science Archive (IRSA) for the SPHEREx frames that cover the spot.
    The question goes through a small server function, `api/sia.ts`, because IRSA's search service does not accept
    calls from other websites' pages. Only the DR1 and QR3 releases are allowed through.
+   When IRSA answers 502, 503 or 504, the server function tries up to three times; when its own answer is still 502 or
+   503, the page asks again, up to twice, after 1 and 2 seconds.
 3. **Only the needed bytes.** The frames are FITS files in NASA's public storage on Amazon S3 (bucket
    `nasa-irsa-spherex`). The page reads the file header, the wavelength table, and then only the rows of the image
    that cover the view, using HTTP range requests. It never downloads a whole file.

@@ -158,10 +158,22 @@ export async function searchFrames(q: FrameQuery, signal?: AbortSignal, fetcher:
     let truncated = false;
     if (first.overflow) {
         const [t0, t1] = q.timeRange ?? [MISSION_START_MJD, Math.ceil(mjdNow()) + 1];
-        const parts = await Promise.all(timeWindows(t0, t1, SIA_TIME_SPLITS).map((timeRange) => queryOnce({ ...q, timeRange }, signal, fetcher)));
-        for (const part of parts) {
-            rows.push(...part.rows);
-            truncated ||= part.overflow;
+        const controller = new AbortController();
+        const abort = (): void => controller.abort(signal?.reason);
+        if (signal?.aborted) {
+            abort();
+        } else {
+            signal?.addEventListener('abort', abort, { once: true });
+        }
+        try {
+            const parts = await Promise.all(timeWindows(t0, t1, SIA_TIME_SPLITS).map((timeRange) => queryOnce({ ...q, timeRange }, controller.signal, fetcher)));
+            for (const part of parts) {
+                rows.push(...part.rows);
+                truncated ||= part.overflow;
+            }
+        } finally {
+            signal?.removeEventListener('abort', abort);
+            controller.abort();
         }
     }
     const frames = new Map<string, FrameRecord>();

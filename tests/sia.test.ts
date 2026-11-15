@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createLiveSource } from '../src/lib/source';
 import fixture from './fixtures/sia/rwaur_dr1.xml?raw';
 import { buildUpstreamUrl, GET, isVotable, OPTIONS, parseParams, queryFailed, RETRY_DELAYS_MS } from '../api/sia';
 import { DETECTOR_BAND_UM, parseSiaXml, queryStatus, rowToFrame, searchFrames, SIA_PAGE_RETRY_DELAYS_MS, SIA_TIME_SPLITS, timeWindows } from '../src/lib/sia';
@@ -369,6 +370,42 @@ describe('SIA rows', () => {
         expect(fetcher).toHaveBeenCalledOnce();
         expect(vi.getTimerCount()).toBe(0);
     });
+    it('removes the abort listener after a successful retry wait', async () => {
+        vi.useFakeTimers();
+        const controller = new AbortController();
+        const removed = vi.spyOn(controller.signal, 'removeEventListener');
+        const fetcher = vi.fn().mockResolvedValueOnce(new Response('', { status: 502 })).mockResolvedValueOnce(new Response(fixture));
+        const pending = searchFrames(q, controller.signal, fetcher);
+        await vi.advanceTimersByTimeAsync(1000);
+        await pending;
+        expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
+    });
+    it('rejects an aborted retry wait with AbortError when the signal has no reason', async () => {
+        vi.useFakeTimers();
+        const controller = new AbortController();
+        vi.spyOn(controller.signal, 'reason', 'get').mockReturnValue(undefined);
+        const pending = expect(searchFrames(q, controller.signal, vi.fn(async () => new Response('', { status: 502 })))).rejects.toMatchObject({ name: 'AbortError' });
+        await vi.advanceTimersByTimeAsync(500);
+        controller.abort();
+        await pending;
+    });
+    it('ends a live read when the retry fetch stalls', async () => {
+        vi.useFakeTimers();
+        const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+            if (!String(input).startsWith('/api/sia?')) {
+                return new Response('');
+            }
+            if (fetcher.mock.calls.filter(([url]) => String(url).startsWith('/api/sia?')).length === 1) {
+                return new Response('', { status: 503 });
+            }
+            return new Promise<Response>(() => {});
+        });
+        const pending = createLiveSource({ fetch: fetcher, stallTimeoutMs: 50 }).load({ center: q.center, fovDeg: 0.05, detector: 1 });
+        const rejected = expect(pending).rejects.toThrow();
+        await vi.advanceTimersByTimeAsync(1050);
+        await rejected;
+        expect(fetcher.mock.calls.filter(([url]) => String(url).startsWith('/api/sia?'))).toHaveLength(2);
+    });
     it('aborts a retry wait immediately and clears its timer', async () => {
         vi.useFakeTimers();
         const controller = new AbortController();
@@ -413,6 +450,40 @@ describe('SIA rows', () => {
         expect(frames.length).toBeGreaterThan(0);
         expect(windowTries).toBe(2);
         expect(fetcher).toHaveBeenCalledTimes(1 + SIA_TIME_SPLITS + 1);
+    });
+    it('keeps a frame appearing in sibling windows only once', async () => {
+        const empty = '<VOTABLE><RESOURCE><TABLE><DATA><TABLEDATA/></DATA></TABLE></RESOURCE></VOTABLE>';
+        const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+            const time = new URL(String(input), 'http://x').searchParams.get('TIME');
+            return new Response(time === '61000 61100' ? empty.replace('<RESOURCE>', '<RESOURCE><INFO name="QUERY_STATUS" value="OVERFLOW"/>') : fixture);
+        });
+        const frames = await searchFrames({ ...q, timeRange: [61000, 61100] }, undefined, fetcher);
+        const single = await searchFrames(q, undefined, mockFetch());
+        expect(frames.map(frame => frame.obsId)).toEqual(single.map(frame => frame.obsId));
+    });
+    it('aborts sibling window fetches when one window fails', async () => {
+        const error = new Error('window failed');
+        const signals: AbortSignal[] = [];
+        let calls = 0;
+        const fetcher: typeof fetch = async (_input, init) => {
+            if (++calls === 1) {
+                return new Response(withStatus('OVERFLOW'));
+            }
+            signals.push(init!.signal as AbortSignal);
+            if (calls === 2) {
+                throw error;
+            }
+            return new Promise<Response>(() => {});
+        };
+        await expect(searchFrames(q, undefined, fetcher)).rejects.toBe(error);
+        expect(signals).toHaveLength(SIA_TIME_SPLITS);
+        expect(signals.every(signal => signal.aborted)).toBe(true);
+    });
+    it('cancels the final failed response body', async () => {
+        const cancel = vi.fn();
+        const fetcher = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({ cancel }), { status: 504 }));
+        await expect(searchFrames(q, undefined, fetcher)).rejects.toThrow('SIA request failed (504)');
+        expect(cancel).toHaveBeenCalledOnce();
     });
     it.each([false, true])('cancels the failed body before retry even if cancellation rejects: %s', async rejects => {
         vi.useFakeTimers();
