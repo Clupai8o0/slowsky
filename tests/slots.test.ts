@@ -752,5 +752,7 @@ describe('preview switch', () => {
     it('ships with the build defaults when the variable is not set', () => {
         expect(import.meta.env.VITE_PREVIEW_FEATURES).toBeUndefined();
         expect(FEATURES).toEqual(DEFAULT_FEATURES);
+        expect(FEATURES.shareCard).toBe(false);
+        expect(featuresFrom('shareCard').shareCard).toBe(true);
     });
 });
