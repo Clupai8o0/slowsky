@@ -5,7 +5,7 @@ targets, and it shows how that patch of sky looked on each visit by NASA's SPHER
 real NASA frames. SPHEREx is a NASA space telescope that maps the whole sky in infrared light and comes back to
 each part of it again and again, so the same spot is pictured on many dates.
 
-Live site: https://slowsky.vercel.app (code: https://github.com/Clupai8o0/slowsky).
+Live site: https://slowsky.clupai.com (code: https://github.com/Clupai8o0/slowsky).
 
 Built by team Clupai (Melbourne) for the NASA Space Apps Challenge 2026, challenge "Planet X and SPHEREx".
 The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; the table under
