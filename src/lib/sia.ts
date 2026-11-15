@@ -51,6 +51,10 @@ export function queryStatus(xml: string): { status: string; message: string } | 
 
 export const SIA_MAXREC = 2000;
 
+// The proxy already tried three times, and the archive fails in bursts.
+// Three page tries allow up to nine upstream tries.
+export const SIA_PAGE_RETRY_DELAYS_MS = Object.freeze([1000, 2000] as const);
+
 // Every frame on a detector has the same em_min..em_max (measured from SIA rows, µm):
 // D1 0.746-1.117, D3 1.630-2.435, D4 2.403-3.847, D6 4.412-5.010; D2 and D5 sit between.
 // A BAND at a value only one detector covers keeps busy fields (the ecliptic poles,
@@ -70,6 +74,29 @@ function mjdNow(): number
     return Date.now() / 86_400_000 + 40587;
 }
 
+function waitForRetry(ms: number, signal?: AbortSignal): Promise<void>
+{
+    return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+            return;
+        }
+        const cleanup = (): void => {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
+        };
+        const onAbort = (): void => {
+            cleanup();
+            reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+        };
+        const timer = setTimeout(() => {
+            cleanup();
+            resolve();
+        }, ms);
+        signal?.addEventListener('abort', onAbort, { once: true });
+    });
+}
+
 async function queryOnce(q: FrameQuery, signal: AbortSignal | undefined, fetcher: typeof fetch): Promise<{ rows: VoRow[]; overflow: boolean }>
 {
     const params = new URLSearchParams({ POS: `CIRCLE ${q.center.ra} ${q.center.dec} ${q.radiusDeg}` });
@@ -82,7 +109,20 @@ async function queryOnce(q: FrameQuery, signal: AbortSignal | undefined, fetcher
     if (q.timeRange) {
         params.set('TIME', q.timeRange.join(' '));
     }
-    const response = await fetcher(`/api/sia?${params}`, { signal });
+    const url = `/api/sia?${params}`;
+    let response = await fetcher(url, { signal });
+    for (const delay of SIA_PAGE_RETRY_DELAYS_MS) {
+        if (![502, 503, 504].includes(response.status)) {
+            break;
+        }
+        try {
+            await response.body?.cancel();
+        } catch {
+            // A failed cancellation must not prevent the retry.
+        }
+        await waitForRetry(delay, signal);
+        response = await fetcher(url, { signal });
+    }
     if (!response.ok) {
         throw new Error(`SIA request failed (${response.status})`);
     }

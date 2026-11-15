@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fixture from './fixtures/sia/rwaur_dr1.xml?raw';
 import { buildUpstreamUrl, GET, isVotable, OPTIONS, parseParams, queryFailed, RETRY_DELAYS_MS } from '../api/sia';
-import { DETECTOR_BAND_UM, parseSiaXml, queryStatus, rowToFrame, searchFrames, SIA_TIME_SPLITS, timeWindows } from '../src/lib/sia';
+import { DETECTOR_BAND_UM, parseSiaXml, queryStatus, rowToFrame, searchFrames, SIA_PAGE_RETRY_DELAYS_MS, SIA_TIME_SPLITS, timeWindows } from '../src/lib/sia';
 
 const valid = 'POS=CIRCLE+76.956+30.401+0.01';
 const req = (query = valid) => new Request(`https://example.test/api/sia?${query}`);
@@ -301,6 +301,136 @@ describe('SIA rows', () => {
         expect(deduped.length).toBe(frames.length);
     });
     const withStatus = (status: string) => fixture.replace(/<(\w*:?)RESOURCE\b([^>]*)>/, `<$1RESOURCE$2><$1INFO name="QUERY_STATUS" value="${status}"/>`);
+    it('retries 502 after exactly one second with the same URL and signal', async () => {
+        vi.useFakeTimers();
+        const signal = new AbortController().signal;
+        const fetcher = vi.fn().mockResolvedValueOnce(new Response('', { status: 502 })).mockResolvedValueOnce(new Response(fixture));
+        expect(SIA_PAGE_RETRY_DELAYS_MS).toEqual([1000, 2000]);
+        expect(Object.isFrozen(SIA_PAGE_RETRY_DELAYS_MS)).toBe(true);
+        const pending = searchFrames(q, signal, fetcher);
+        await vi.advanceTimersByTimeAsync(999);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect((await pending).length).toBeGreaterThan(0);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+        expect(fetcher.mock.calls[1]).toEqual(fetcher.mock.calls[0]);
+    });
+    it('retries 503 and 504 after one and two seconds', async () => {
+        vi.useFakeTimers();
+        const fetcher = vi.fn().mockResolvedValueOnce(new Response('', { status: 503 }))
+            .mockResolvedValueOnce(new Response('', { status: 504 })).mockResolvedValueOnce(new Response(fixture));
+        const pending = searchFrames(q, undefined, fetcher);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(1999);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(1);
+        expect((await pending).length).toBeGreaterThan(0);
+        expect(fetcher).toHaveBeenCalledTimes(3);
+    });
+    it('stops after three failed replies without a timer', async () => {
+        vi.useFakeTimers();
+        const fetcher = vi.fn(async () => new Response('', { status: 502 }));
+        const pending = expect(searchFrames(q, undefined, fetcher)).rejects.toThrow('SIA request failed (502)');
+        await vi.advanceTimersByTimeAsync(3000);
+        await pending;
+        expect(fetcher).toHaveBeenCalledTimes(3);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it('reports the last retryable status', async () => {
+        vi.useFakeTimers();
+        const fetcher = vi.fn().mockResolvedValueOnce(new Response('', { status: 502 }))
+            .mockResolvedValueOnce(new Response('', { status: 503 })).mockResolvedValueOnce(new Response('', { status: 504 }));
+        const pending = expect(searchFrames(q, undefined, fetcher)).rejects.toThrow('SIA request failed (504)');
+        await vi.advanceTimersByTimeAsync(3000);
+        await pending;
+        expect(fetcher).toHaveBeenCalledTimes(3);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it.each([400, 500, 404, 429])('does not retry status %s', async status => {
+        vi.useFakeTimers();
+        const fetcher = vi.fn(async () => new Response('', { status }));
+        await expect(searchFrames(q, undefined, fetcher)).rejects.toThrow(`SIA request failed (${status})`);
+        expect(fetcher).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it.each([['non-VOTable', '<html/>'], ['query error', withStatus('ERROR')]])('does not retry a 200 %s reply', async (_name, xml) => {
+        vi.useFakeTimers();
+        const fetcher = vi.fn(async () => new Response(xml));
+        await expect(searchFrames(q, undefined, fetcher)).rejects.toThrow();
+        expect(fetcher).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it('does not retry a rejected fetch', async () => {
+        vi.useFakeTimers();
+        const error = new TypeError('network');
+        const fetcher = vi.fn().mockRejectedValue(error);
+        await expect(searchFrames(q, undefined, fetcher)).rejects.toBe(error);
+        expect(fetcher).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it('aborts a retry wait immediately and clears its timer', async () => {
+        vi.useFakeTimers();
+        const controller = new AbortController();
+        const reason = new Error('superseded');
+        const fetcher = vi.fn(async () => new Response('', { status: 502 }));
+        const pending = expect(searchFrames(q, controller.signal, fetcher)).rejects.toBe(reason);
+        await vi.advanceTimersByTimeAsync(500);
+        controller.abort(reason);
+        await pending;
+        expect(fetcher).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it('does not wait when the signal is aborted as a 502 arrives', async () => {
+        vi.useFakeTimers();
+        const controller = new AbortController();
+        const reason = new Error('superseded');
+        const fetcher = vi.fn(async () => {
+            controller.abort(reason);
+            return new Response('', { status: 502 });
+        });
+        await expect(searchFrames(q, controller.signal, fetcher)).rejects.toBe(reason);
+        expect(fetcher).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it('retries an overflowing search window and merges its frames', async () => {
+        vi.useFakeTimers();
+        const empty = '<VOTABLE><RESOURCE><TABLE><DATA><TABLEDATA/></DATA></TABLE></RESOURCE></VOTABLE>';
+        let windowTries = 0;
+        const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+            const time = new URL(String(input), 'http://x').searchParams.get('TIME');
+            if (time === '61000 61100') {
+                return new Response(empty.replace('<RESOURCE>', '<RESOURCE><INFO name="QUERY_STATUS" value="OVERFLOW"/>'));
+            }
+            if (time === '61025 61050') {
+                return ++windowTries === 1 ? new Response('', { status: 502 }) : new Response(fixture);
+            }
+            return new Response(empty);
+        });
+        const pending = searchFrames({ ...q, timeRange: [61000, 61100] }, undefined, fetcher);
+        await vi.advanceTimersByTimeAsync(1000);
+        const frames = await pending;
+        expect(frames.length).toBeGreaterThan(0);
+        expect(windowTries).toBe(2);
+        expect(fetcher).toHaveBeenCalledTimes(1 + SIA_TIME_SPLITS + 1);
+    });
+    it.each([false, true])('cancels the failed body before retry even if cancellation rejects: %s', async rejects => {
+        vi.useFakeTimers();
+        const cancel = vi.fn(async () => {
+            if (rejects) {
+                throw new Error('cancel failed');
+            }
+        });
+        const fetcher = vi.fn().mockResolvedValueOnce(new Response(new ReadableStream<Uint8Array>({ cancel }), { status: 502 }))
+            .mockResolvedValueOnce(new Response(fixture));
+        const pending = searchFrames(q, undefined, fetcher);
+        await vi.advanceTimersByTimeAsync(999);
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(fetcher).toHaveBeenCalledOnce();
+        await vi.advanceTimersByTimeAsync(1);
+        expect((await pending).length).toBeGreaterThan(0);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+    });
     it('sends MAXREC and surfaces QUERY_STATUS ERROR', async () => {
         const fetcher = mockFetch();
         await searchFrames(q, undefined, fetcher);
