@@ -17,8 +17,8 @@ describe('Tonight\'s sky slot', () => {
     });
 
     it('is switched off by default, and a preview build can switch it on', () => {
-        expect(DEFAULT_FEATURES.upTonight).toBe(false);
-        expect(featuresFrom('upTonight').upTonight).toBe(true);
+        expect(DEFAULT_FEATURES.upTonight).toBe(true);
+        expect(featuresFrom('-upTonight').upTonight).toBe(false);
     });
 
     it('off: the box stays hidden and empty and no timer is started', () => {

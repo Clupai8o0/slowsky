@@ -211,8 +211,8 @@ describe('comet: labels, chart, caption', () => {
 
 describe('comet: the switch', () => {
     it('is off by default; a preview build can switch it on', () => {
-        expect(DEFAULT_FEATURES.comet).toBe(false);
-        expect(featuresFrom('comet').comet).toBe(true);
+        expect(DEFAULT_FEATURES.comet).toBe(true);
+        expect(featuresFrom('-comet').comet).toBe(false);
     });
 
     it('off: adds nothing and fetches nothing', async () => {

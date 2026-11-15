@@ -37,7 +37,7 @@ const ROOT = 'https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/dr1/hips5_cub
 export const CUBE_FOLDER = 'hips_20261026';
 export const CUBE_UNIT = 'MJy/sr';
 export const CUBE_QUANTITY = 'surface brightness, mean of 3 × 3 pixels minus the local background';
-export const CUBE_CAPTION = 'Quick look from the one-year all-sky cube. Each wavelength was observed on a different date, so a star that varies can look jagged. Not for measurement.';
+export const CUBE_CAPTION = 'Quick look from the first-year all-sky cube. Its colours were not all observed at the same time, so a star that varies can look jagged. Not for measurement.';
 const cache = new Map<string, { image: Hdu; primary: Hdu; lambda: Float64Array }>();
 
 export function clearCubeCache(): void

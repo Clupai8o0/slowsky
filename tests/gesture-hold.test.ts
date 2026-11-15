@@ -51,8 +51,8 @@ function createFakeHoldView(init?: { canHold?: boolean; token?: unknown; index?:
 
 describe('gestures feature switch', () => {
     it('is switched off by default, and a preview build can switch it on', () => {
-        expect(DEFAULT_FEATURES.gestures).toBe(false);
-        expect(featuresFrom('gestures').gestures).toBe(true);
+        expect(DEFAULT_FEATURES.gestures).toBe(true);
+        expect(featuresFrom('-gestures').gestures).toBe(false);
     });
 });
 

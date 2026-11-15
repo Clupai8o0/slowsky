@@ -19,6 +19,12 @@ Where the facts in this repo come from. Licences and credit lines are in [DATA-L
 - On 15 Nov 2026 the help text was added and checked the same way: Claude Opus 5.5 with the sources open, then
   Gemini Argon as a first-time reader (see "Help text").
 - These checks were run by AI tools. No person has gone through this list line by line.
+- On 15 Nov 2026 Claude Opus 5.5 opened the pages for the "Spectrum (SPHEREx all-sky cube)" rows (the DR1
+  overview, Explanatory Supplement version 2.1 of 10 Nov 2026, IRSA's cloud and data access pages, the HiPS cube
+  tutorial, the NIST tables and the arXiv papers) and checked each row against them. The same day two more AI
+  tools checked those rows: Gemini Argon read them against the README and the page text, and Codex opened the
+  pages again. What they questioned was reworded (the zodiacal-light model, the helium airglow line, "can
+  change", the label count), and our own reads are marked as ours.
 - Numbers the page measures itself (brightness curves, shifts, noise bands) are not here. They come from the code
   in `src/lib/` and its tests.
 
@@ -101,6 +107,31 @@ them names a spectral feature. The numbers stay on the checker's list of known f
 | Water ice near 3.05, carbon dioxide ice at 4.27, carbon monoxide ice at 4.67 µm | `src/lib/insight.ts` | [arXiv:2603.22135][ices] | The three ice features at these wavelengths |
 | PAHs at 3.3 µm | `src/lib/insight.ts` | [arXiv:2503.21876][pah], abstract | The 3.3 µm PAH band |
 
+## Spectrum (SPHEREx all-sky cube)
+
+The Spectrum panel (`src/lib/cube.ts`, `src/lib/spectrum-chart.ts`, `src/ui/spectrum-view.ts`) and the README's
+lines about it. Checked on 15 Nov 2026 against the pages linked here.
+
+| Claim | Where in this repo | Source | What the source gives |
+|---|---|---|---|
+| The all-sky cube is part of SPHEREx DR1 and covers the whole sky in 102 colours | `README.md`, `src/ui/spectrum-view.ts` (`idle`, `linkEnd` "(SPHEREx DR1 all-sky cube, doi:10.26131/IRSA679)"), `src/lib/cube.ts` (the 102-plane check) | [DR1 overview][dr1]; [Explanatory Supplement 2.1][supp21], section 2.5 | DR1 includes an all-sky cube with full-sky coverage in the 102 nominal channels. The supplement says the cube uses channels 1 to 17 of each of the six detectors, 102 in all |
+| The cube was made from the first year of calibrated frames ("first-year all-sky cube") | `src/lib/cube.ts` (`CUBE_CAPTION`, on the page), `README.md` | [Explanatory Supplement 2.1][supp21], sections 1.4, 2.1 and 2.5 | The cubes were built in the Year 1 reprocessing from the Year 1/DR1 calibrated images, over 1.2 million of them, leaving out about 2000 with bad artefacts. Year 1 is surveys 1 and 2, from the first 12.5 months of science operations |
+| Each pixel of each colour is the average of the good frame pixels that landed on it, after the archive's zodiacal-light model was subtracted | `README.md` | [Explanatory Supplement 2.1][supp21], sections 2.5 and 3.4 | The ZODI layer is subtracted before the cube is made; input pixels with any of a list of bad flags are rejected; each output pixel is the sum of the input values divided by their count |
+| The sky is cut into 12,288 tiles of 512 × 512 pixels of 12.9 arcsec, each tile one FITS file with 102 planes | `README.md`, `src/lib/cube.ts` (`TILE_ORDER`, `TILE_WIDTH`, the size check) | [Explanatory Supplement 2.1][supp21], sections 2.5 and 2.5.1; [IRSA HiPS cube tutorial][hipscube] | HEALPix order 5 tiles, 12,288 of about 1.8° × 1.8°, 512 × 512 pixels of 12.9 arcsec each; the IMAGE layer is a 512 × 512 × 102 cube |
+| The values are surface brightness in MJy/sr | `README.md`, `src/lib/cube.ts` (`CUBE_UNIT`; the page prints the file's own `BUNIT`) | [Explanatory Supplement 2.1][supp21], section 2.5.1 | IMAGE holds surface brightness in MJy/sr |
+| The colours run from 0.75 to 4.99 µm (the range the summary line can print) | `src/lib/spectrum-chart.ts` (the summary), `README.md` (our reads) | [Explanatory Supplement 2.1][supp21], Tables 29 and 34 | Channel 1 of band 1 is centred at 0.753 µm and channel 17 of band 6 at 4.989 µm. The page reads each plane's wavelength from the tile's own WCS-WAVE table |
+| Two colours near 2.4 µm, the ones next to the instrument's beam splitter, are blank everywhere in this cube | `README.md`, `src/lib/cube.ts` (`BLANKCH`) | [Explanatory Supplement 2.1][supp21], section 2.5.2 and Tables 31 and 32; [IRSA HiPS cube tutorial][hipscube] | The two channels next to the dichroic beam splitter (band 3 channel 17 at 2.399 µm, band 4 channel 1 at 2.445 µm) hold no data in the Year 1 cube and are listed in `BLANKCH` |
+| The tiles sit in the public bucket `nasa-irsa-spherex`, under `dr1/hips5_cube/` | `README.md`, `src/lib/cube.ts` (`ROOT`, `CUBE_FOLDER`) | [IRSA cloud access][cloud]; [SPHEREx data access][access], "Browsable directories"; our own listing of the bucket, 15 Nov 2026 | Bucket `nasa-irsa-spherex`, region us-east-1, S3 prefix `dr1` for DR1; the browsable path is `hips5_cube/hips_20261026/Norder5/Dir…/`. On 15 Nov 2026 the bucket listed one folder under `dr1/hips5_cube/`: `hips_20261026` |
+| The cube is for a quick look, not for measurement ("Not for measurement.") | `src/lib/cube.ts` (`CUBE_CAPTION`), `README.md` | [IRSA HiPS cube tutorial][hipscube], section 6.3; [Explanatory Supplement 2.1][supp21], sections 2.5.1 and 3.4.1 | The tutorial warns that a spectrum taken from the cube "should only be used for visualization" and points to IRSA's spectrophotometry tool for science. The supplement says the cube's wavelength table is fit for visualization, and recommends the single calibrated frames for precision photometry |
+| A spot's colours were not all observed at the same time, so a star that varies can look jagged | `src/lib/cube.ts` (`CUBE_CAPTION`), `README.md` | [Explanatory Supplement 2.1][supp21], sections 1.3 and 1.4; [SPHEREx Ices overview][ices], sections III and V.2 and appendix A.2 | Each detector has a filter whose wavelength changes across it, and full spectra come from successive exposures at offset pointings. The Ices paper says a spectrum is built up over days or weeks: a few neighbouring wavelength steps in a row, the next ones hours or days later, and variability on those timescales can add false features. The cube then averages each colour over Year 1. "Jagged" is our own word for that |
+| Airglow from Earth's atmosphere leaves stripes in the cube, most of all at the helium line at 1.083 µm; bright lines in nebulae such as Brackett α at 4.05 µm do too | `README.md` (Limits) | [Explanatory Supplement 2.1][supp21], section 2.5.2; [IRSA HiPS cube tutorial][hipscube], section 6 | The supplement names the helium line at 1.083 µm as the most significant airglow stripe, and Brackett α at 4.052 µm from nebulae as a source of stripes. The tutorial names Pa-α, PAH 3.3 µm and Br-α as lines near which the cube shows striping |
+| Label "He I" at 1.083 µm | `src/lib/cube.ts` (`LINES`) | [NIST helium table][nisthe]; [Explanatory Supplement 2.1][supp21], sections 2.3 and 2.5.2 | NIST lists He I lines at 10829.09, 10830.25 and 10830.34 Å (air), which round to 1.083 µm. The supplement calls the 1.083 µm helium line atmospheric |
+| Label "Paschen α" at 1.875 µm | `src/lib/cube.ts` (`LINES`) | [NIST hydrogen table][nist]; [Murgia et al. 2026][hii], introduction | NIST lists the H I line at 18751.01 Å (air) without naming its series; the SPHEREx Galactic plane paper names Paschen α at 1.87 µm |
+| Label "H2O ice" at 3.05 µm, "CO2 ice" at 4.27 µm, "CO ice" at 4.67 µm | `src/lib/cube.ts` (`LINES`) | [SPHEREx Ices overview][ices], Figure 6 caption | H2O at 3.05 µm, CO2 at 4.27 µm and CO at 4.67 µm among the main ice features SPHEREx covers. The abstract alone gives no wavelengths |
+| Label "CH4 and PAH" at 3.3 µm | `src/lib/cube.ts` (`LINES`) | [Noll et al. 2000][ch4], abstract; [arXiv:2503.21876][pah], title and abstract; [Murgia et al. 2026][hii], abstract | Noll et al. name "the strong nu(3) methane band at 3.3 microns", seen in brown dwarfs. The other two name the 3.3 µm PAH emission band |
+| Label "Brackett α" at 4.05 µm | `src/lib/cube.ts` (`LINES`) | [NIST hydrogen table][nist]; [Explanatory Supplement 2.1][supp21], section 2.5.2; [Murgia et al. 2026][hii], abstract | NIST lists H I at 40511.6 Å (air). The supplement gives Brackett α at 4.052 µm, and the Galactic plane paper maps Brackett α at 4.05 µm |
+| The cube's DOI is doi:10.26131/IRSA679, not DR1's image DOI | `DATA-LICENSES.md`, `README.md` | [DR1 overview][dr1] | IRSA asks for 10.26131/IRSA678 for the DR1 spectral images and 10.26131/IRSA679 for the Spectral All-Sky Cube, with the SPHEREx acknowledgement |
+
 ## Planet Nine comparison
 
 The README's "Limits" section uses these. The chart in `src/lib/planetx.ts` is not on the page.
@@ -130,7 +161,7 @@ All read from the HiPS properties file on 14 Nov 2026, as `src/lib/epoch.ts` rec
 | 2MASS is a joint project of the University of Massachusetts and IPAC/Caltech, funded by NASA and the National Science Foundation | `README.md` (Data and credits), `DATA-LICENSES.md` | [IRSA's 2MASS page][2mass], "Acknowledgement" | The standard acknowledgement, which names both institutions and both funders; the survey paper is Skrutskie et al. 2006, AJ 131, 1163 |
 | Credit: 2MASS, University of Massachusetts & IPAC/Caltech; HiPS tiles CNRS/Unistra, served by IRSA | `src/ui/epoch-view.ts` (the note, built by `epochCredit` in `src/lib/epoch.ts`) | [2MASS K HiPS properties][2massk], `obs_copyright`; tile host from `baseUrl` | The survey's credit holder and its web page; the tiles come from `irsa.ipac.caltech.edu` |
 
-## Comet card (switched off)
+## Comet card
 
 Opened by Claude Opus 5.5 on 15 Nov 2026. The card's numbers come from `scripts/bake_comet.py` and
 `public/comet/3i-atlas.json`, not from these pages.
@@ -284,8 +315,20 @@ The licences in [DATA-LICENSES.md](DATA-LICENSES.md) were read from each package
 - **W2's wavelength.** 4.6 µm is given in the WISE supplement; the table number quoted in
   `src/lib/planetx.ts` may be off by one.
 - **VizieR and the STScI Gaia service.** Their own usage terms could not be reached.
-- **Code comments not checked against a source.** The wavelength-grid note in `src/lib/fits.ts` and the caption
-  in `src/lib/cube.ts` (not on the page).
+- **Code comments not checked against a source.** The wavelength-grid note in `src/lib/fits.ts`.
+- **The Spectrum panel's read: our own method and timings.** The 3 × 3 pixel mean minus the median of the pixels 3
+  or more pixels away in an 11 × 11 patch, the noise band (1.4826 times the median absolute deviation of those
+  background pixels) and the rule that a colour has no value where any of the nine pixels is blank, or every background
+  pixel is, are our own choices, in `src/lib/cube.ts`. No source prescribes them; IRSA's tutorial uses its own aperture and annulus.
+- **The Spectrum panel's cost.** About 2 MB and about half a minute per read (`src/ui/spectrum-view.ts`, README).
+  These come from our own six reads on a live build on 15 Nov 2026 (Barnard's Star, RW Aurigae and WISE 0855−0714,
+  each at desktop and phone size): 34 to 36 seconds, 110 requests and 2.09 MB each. They depend on the connection.
+- **The Spectrum panel's example results.** Barnard's Star with 9 of 102 colours, RW Aurigae with 85, and WISE
+  0855−0714 with 100, where the read at its position was a flat line near zero with one high value near 1.1 µm
+  (README, Limits): our own reads of 15 Nov 2026, not repeated by anyone else. Why the counts differ, and what
+  the high value is, are not checked here, and we do not claim it is light from that object.
+- **"A star that moves, or a neighbour inside the same pixels, can change what is read"** (`src/ui/spectrum-view.ts`,
+  README). Our own reasoning from the cube's 12.9 arcsec pixels and its year of averaged frames; no source says it.
 
 [bock]: https://arxiv.org/abs/2511.02985
 [l2]: https://arxiv.org/abs/2511.15823
@@ -316,6 +359,12 @@ The licences in [DATA-LICENSES.md](DATA-LICENSES.md) were read from each package
 [visible]: https://science.nasa.gov/ems/09_visiblelight/
 [nist]: https://physics.nist.gov/PhysRefData/Handbook/Tables/hydrogentable2.htm
 [ices]: https://arxiv.org/abs/2603.22135
+[supp21]: https://irsa.ipac.caltech.edu/data/SPHEREx/docs/SPHEREx_Expsupp.pdf
+[hipscube]: https://caltech-ipac.github.io/irsa-tutorials/spherex-hipscube/
+[access]: https://irsa.ipac.caltech.edu/spherex-archive-documentation/spherex-data-access/
+[nisthe]: https://physics.nist.gov/PhysRefData/Handbook/Tables/heliumtable2.htm
+[hii]: https://arxiv.org/abs/2603.23620
+[ch4]: https://arxiv.org/abs/astro-ph/0007449
 [pah]: https://arxiv.org/abs/2503.21876
 [ps1]: https://arxiv.org/abs/2401.17977
 [orbit]: https://arxiv.org/abs/2108.09868

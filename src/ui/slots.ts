@@ -1,7 +1,9 @@
 // Empty, feature-flagged slots for modules built in their own lanes, so those lanes edit this file and never
-// the shared UI. A slot shows only when its flag is on AND it has something to show. Flags and falseColour are on; the rest are off.
-// - spectrum: a panel under the colour step, for src/lib/spectrum-chart.ts. Ships only once the owner logs it
-//   in DECISIONS.md.
+// the shared UI. A slot shows only when its flag is on AND it has something to show. fcReading, halo and mlHint are off;
+// the rest are on (spectrum, upTonight, shareCard, comet and gestures since 15 Nov 2026).
+// - spectrum: a panel under the colour step (src/ui/spectrum-view.ts). After a press it reads one spot's spectrum
+//   from the SPHEREx DR1 all-sky cube (src/lib/cube.ts) and draws it (src/lib/spectrum-chart.ts). Switched on
+//   15 Nov 2026 (lane spec-on); its claims are sourced in SOURCES.md, "Spectrum (SPHEREx all-sky cube)".
 // - flags: a "Flagged pixels" toggle in the sky legend, a layer over the sky and a line under the legend, from
 //   src/lib/flags.ts (read) and src/lib/flags-view.ts (mask on the picture's grid, counts, sentence).
 // - changes: a "Candidate changes" panel in the right rail and a marks layer over the sky, for the change finder
@@ -34,8 +36,8 @@ import { readVariance } from './error-maps';
 
 export type Feature = 'spectrum' | 'flags' | 'changes' | 'falseColour' | 'fcReading' | 'halo' | 'mlHint' | 'epoch' | 'upTonight' | 'shareCard' | 'comet' | 'gestures';
 export const DEFAULT_FEATURES: Readonly<Record<Feature, boolean>> =
-    Object.freeze({ spectrum: false, flags: true, changes: true, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true,
-        upTonight: false, shareCard: false, comet: false, gestures: false });
+    Object.freeze({ spectrum: true, flags: true, changes: true, falseColour: true, fcReading: false, halo: false, mlHint: false, epoch: true,
+        upTonight: true, shareCard: true, comet: true, gestures: true });
 
 // Preview builds only: VITE_PREVIEW_FEATURES="halo,falseColour" switches those slots on, "-flags" switches one off.
 // Unset or empty keeps the defaults above; unknown names are ignored. Set it on a Vercel preview, never production.
