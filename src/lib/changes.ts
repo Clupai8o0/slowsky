@@ -1482,7 +1482,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 if (!Number.isFinite(diff[i]!)) { continue; }
                 had++;
                 const gap = perPixel ? Math.abs(mapA![i]! - mapB![i]!) : Math.abs(latticeValue(a!, x, y, grid) - latticeValue(b!, x, y, grid));
-                if (!(gap <= opt.maxDeltaLambda + 1e-9)) {
+                // The wavelengths are held as 32-bit floats, whose rounding can add about 5e-7 µm to a gap: a gap of
+                // exactly the limit must not read as more than it.
+                if (!(gap <= opt.maxDeltaLambda + 1e-6)) {
                     diff[i] = NaN;
                     out[i] = Number.isFinite(gap) ? 1 : 2; // 1: the wavelengths differ; 2: one is unknown
                     cut++;

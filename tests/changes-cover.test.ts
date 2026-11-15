@@ -293,6 +293,18 @@ describe('comparison coverage', () => {
         expect(result.notes.some(n => n.includes('overlapping'))).toBe(false);
         expect(result.candidates).toEqual([]);
     });
+    it('does not call a gap of exactly 0.02 µm more than 0.02 µm', () => {
+        const [a, b] = pictures();
+        const size = grid.width * grid.height;
+        // As 32-bit floats, 2.13 - 2.11 comes to 0.0200002.
+        const result = compareVisits({ ...a, lambdaMap: new Float32Array(size).fill(2.11) },
+            { ...b, lambdaMap: new Float32Array(size).fill(2.13) }, grid, [], { plain: true });
+        expect(result.notes.some(n => n.includes('differ by more than'))).toBe(false);
+        expect(result.candidates.length).toBeGreaterThan(0);
+        const over = compareVisits({ ...a, lambdaMap: new Float32Array(size).fill(2.11) },
+            { ...b, lambdaMap: new Float32Array(size).fill(2.1301) }, grid, [], { plain: true });
+        expect(over.notes).toContain("None of the area both visits cover could be compared: there the two visits' wavelengths differ by more than 0.02 µm.");
+    });
     it('reads a wavelength on a lattice line from that line alone', () => {
         // The right-hand nodes are unknown. On the left edge they carry no weight, so the wavelength there is known.
         const right = { nx: 2, ny: 2, values: Float32Array.from([3, NaN, 3, NaN]) };
