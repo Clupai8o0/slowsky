@@ -4,6 +4,7 @@
 // The UI only talks to SkySource.
 import './fonts/fonts.css';
 import './styles.css';
+import './tool.css';
 import targetsJson from '../data/targets.json';
 import type { Detector, PlayerFrame, SkyCoord, Stretch, Target, TargetId, ViewState } from '../lib/types';
 import type { SkyProgress, SkyRequest, SkyResult, SkySource } from '../lib/source';
@@ -16,12 +17,14 @@ import { formatDec, formatRa, parseCoords, resolveName } from '../lib/coords';
 import { createDemoSource } from './demo-source';
 import { diffScale, fillCores, renderDiverging, type DiffScale } from './compose';
 import { stackVisit, subtract, StackError } from '../lib/stack';
-import { initLayout } from './layout';
+import { History, mountTool, type View } from './tool';
+import { mountMine } from './mine';
+import { gridPixToSky } from '../lib/regrid';
 import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
 import { mountAsk } from './ask-panel';
-import { CONTROL_HELP, GLOSSARY } from './help';
-import { helpAltButtonHtml, helpButtonHtml, helpDialogHtml, mountHelp } from './help-view';
+import { AI_LINE, AI_LINK, CONTROL_HELP, GLOSSARY, HELP_INTRO } from './help';
+import { helpButtonHtml, helpDialogHtml, mountHelp } from './help-view';
 import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, type LayerState } from './slots';
 import { mountEpoch } from './epoch-view';
 import { mountSpectrum } from './spectrum-view';
@@ -49,6 +52,8 @@ const SKY_EPOCH_MJD = 61041;
 // Gaia lists hundreds of stars in a 0.1° field, most too faint to see here. Ring only the brightest.
 const GAIA_RINGS = 40;
 const FPS = 1.5;
+// Three real SPHEREx cutouts of Groombridge 1830 (IRSA, DR1/QR3), trimmed to the IMAGE and ZODI extensions.
+const SAMPLE_FITS = ['20250427_D1_2025W20_2D_0483_3D1.fits', '20251122_D1_2025W48_2A_0523_1D1.fits', '20260503_D1_2026W21_2A_0412_1D1.fits'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ICON = {
     play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.6v12.8l10.2-6.4z" fill="currentColor" stroke="none"/></svg>',
@@ -77,6 +82,27 @@ const ICON = {
     focus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/></svg>',
     note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 4.5h13v15h-13z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg>',
     link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.1-1.1"/></svg>',
+    chev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>',
+    undo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.5L4 10l4.5 4.5M4.5 10H15a5 5 0 0 1 0 10h-4"/></svg>',
+    redo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5.5L20 10l-4.5 4.5M19.5 10H9a5 5 0 0 0 0 10h4"/></svg>',
+    upload: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5V4M7.5 8.5L12 4l4.5 4.5M4 15v5h16v-5"/></svg>',
+    tag: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M7 15h10M7 11.5h6"/></svg>',
+    theme: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/></svg>',
+    loupe: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="13" height="13" rx="1"/><path d="M16.5 16.5l4 4M10 7v6M7 10h6"/></svg>',
+    hold: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="10" height="10" rx="1"/><rect x="10.5" y="9.5" width="10" height="10" rx="1" stroke-dasharray="2.5 2"/></svg>',
+    ring: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22"/></svg>',
+    trail: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="18.5" r="1.2" fill="currentColor"/><circle cx="10" cy="14" r="1.2" fill="currentColor"/><circle cx="14.5" cy="9.5" r="1.2" fill="currentColor"/><circle cx="18.5" cy="5.5" r="2.6"/></svg>',
+    find: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/><path d="M13.5 7h7M3.5 17h7" stroke-dasharray="2 2"/></svg>',
+    gaia: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="4"/><circle cx="17" cy="15.5" r="3"/></svg>',
+    flags: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="1"/><path d="M8 8h3v3H8zM13 13h3v3h-3z" fill="currentColor"/></svg>',
+    fc: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="5.6"/><circle cx="15" cy="12" r="5.6"/></svg>',
+    epoch: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2.3"/></svg>',
+    zoom: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5l5 5M7.5 10.5h6M10.5 7.5v6"/></svg>',
+    fit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>',
+    inspect: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="1.5"/><path d="M15 4v16"/></svg>',
+    close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    warn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l9.5 17h-19z"/><path d="M12 10v4.5M12 17.3v.01"/></svg>',
+    lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="1.5"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></svg>',
 };
 
 interface State {
@@ -245,172 +271,285 @@ const axisPct = (lam: number) => ((lam - AXIS_MIN) / (LAM_MAX - AXIS_MIN)) * 100
 
 export function shell(shareCard = FEATURES.shareCard): string
 {
-    const targets = ORDER.map((id) => `<button type="button" data-target="${id}" aria-pressed="false"><span class="ic k">${ICON[COPY[id].kind]}</span><b>${esc(COPY[id].display)}</b><small>${esc(COPY[id].short)}</small></button>`).join('');
+    const targets = ORDER.map((id) => `<button type="button" role="option" data-target="${id}" aria-pressed="false"><span class="ic k">${ICON[COPY[id].kind]}</span><span class="nm"><b>${esc(COPY[id].display)}</b><small>${esc(COPY[id].short)}</small></span></button>`).join('');
     const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
     const ticks = [0.4, 1, 2, 3, 4, 5].map((t) => `<span style="left:${axisPct(t).toFixed(2)}%">${t}</span>`).join('');
+    const tool = (name: string, icon: string, label: string, help: string, extra = '') =>
+        `<button type="button" class="tool" data-tool="${name}" ${extra} data-help="${esc(help)}"><span class="ic">${icon}</span><span class="tl">${label}</span></button>`;
     return `
-<button type="button" class="sk-mini sk-mini-l" data-act="fold-left" aria-controls="sk-left" aria-label="Show the targets panel" title="Show the targets panel"><span class="ic">${ICON.panelL}</span><span class="t">Target</span><span class="v" data-bind="name"></span></button>
-<button type="button" class="sk-mini sk-mini-r" data-act="fold-right" aria-controls="sk-right" aria-label="Show the colour panel" title="Show the colour panel"><span class="t">Colour</span><span class="v"><span data-bind="lam"></span> µm</span><span class="ic">${ICON.panelR}</span></button>
-<aside class="sk-rail sk-left" id="sk-left">
-  <a class="sk-skip" href="#sk-h2">Skip to the sky</a>
-  <div class="sk-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span>${helpButtonHtml()}<span class="sk-tag">Watch the sky change.</span><span class="sk-sub2">Infrared frames from NASA’s SPHEREx</span></div>
-  <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
-    <h2 class="sk-mh" id="sk-h1"><i>01</i>Choose a target</h2>
-    <nav class="sk-tg" aria-label="Targets">${targets}</nav>
-    <form class="sk-search" data-ref="search" role="search"><span class="ic">${ICON.search}</span><input name="q" placeholder="Any star, or RA, Dec" autocomplete="off" aria-label="Search the sky: a star name, or RA and Dec"></form>
-  </section>
-  <section class="sk-mod sk-m-about" aria-labelledby="sk-h4">
-    <h2 class="sk-mh" id="sk-h4"><span class="ic">${ICON.look}</span>What to look for</h2>
-    <p class="sk-h" data-bind="headline"></p>
-    <p class="sk-coord"><span data-bind="name"></span><a class="sk-src" data-ref="coords" target="_blank" rel="noopener"></a></p>
-    <div class="sk-figs">
-      <figure class="sk-fig"><span data-ref="map"></span><figcaption>Where in the sky</figcaption></figure>
-      <figure class="sk-fig" data-ref="pmfig" hidden><span data-ref="pm"></span><figcaption data-bind="pm"></figcaption></figure>
-    </div>
-    <p class="sk-body sk-up" data-ref="up" hidden></p>
-    <p class="sk-body" data-bind="show"></p>
-    <p class="sk-body sk-fact" data-ref="fact" hidden><span class="sk-sub">Measured here.</span> <span data-bind="fact"></span></p>
-    <p class="sk-body mute"><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
-  </section>
-</aside>
-<div class="sk-gut sk-gut-l">
-  <div class="sk-split" data-side="left" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sk-left" aria-label="Resize the targets panel. Arrow keys resize, Enter folds" aria-valuemin="0" aria-valuemax="420" aria-valuenow="0"></div>
-  <button type="button" class="sk-fold" data-act="fold-left" aria-controls="sk-left" aria-expanded="true" aria-label="Fold the targets panel" title="Fold or open the targets panel"><span class="ic">${ICON.prev}</span></button>
-</div>
-<main class="sk-mid">
-  <section class="sk-mod sk-m-watch" aria-labelledby="sk-h2">
-    <div class="sk-mhrow">
-      <h2 class="sk-mh" id="sk-h2" tabindex="-1"><i>02</i><span class="w">Watch it change</span></h2>
-      <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
-      ${helpAltButtonHtml()}
-      <button type="button" class="sk-focus" data-act="focus" aria-pressed="false" title="Fold both panels (F)"><span class="ic">${ICON.focus}</span><span>Focus</span></button>
-    </div>
+<a class="sk-skip" href="#sk-stage">Skip to the sky</a>
+<header class="tb-bar">
+  <span class="tb-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span><span class="tb-tag">Watch the sky change</span></span>
+  <div class="tb-seg tb-ws" role="tablist" aria-label="Workspace">
+    <button type="button" role="tab" data-ws="sky" aria-selected="true" data-help="The saved targets and any spot you search: real SPHEREx pixels from NASA’s archive.">Sky library</button>
+    <button type="button" role="tab" data-ws="mine" aria-selected="false" data-help="Your own frames, processed in this browser. They are never uploaded.">My frames <span class="tb-count" data-ref="wsCount"></span></button>
+  </div>
+  <button type="button" class="tb-target" data-act="picker" aria-haspopup="dialog" aria-controls="tb-picker" data-help="${esc(CONTROL_HELP.target.line)} (⌘K or Ctrl+K)"><span class="ic k" data-ref="targetIcon">${ICON.look}</span><span class="nm" data-bind="name"></span><span class="ic chev">${ICON.chev}</span><kbd>⌘K</kbd></button>
+  <span class="tb-gap"></span>
+  <div class="tb-hist" role="group" aria-label="History">
+    <button type="button" class="tb-icon" data-act="undo" aria-label="Undo" aria-keyshortcuts="Meta+Z Control+Z" data-help="Undo: go back one step, such as a target, view, date or zoom change (⌘Z or Ctrl+Z)." disabled><span class="ic">${ICON.undo}</span></button>
+    <button type="button" class="tb-icon" data-act="redo" aria-label="Redo" aria-keyshortcuts="Meta+Shift+Z Control+Shift+Z Control+Y" data-help="Redo: go forward again (⇧⌘Z or Ctrl+Y)." disabled><span class="ic">${ICON.redo}</span></button>
+  </div>
+  <div class="tb-seg tb-mode" role="group" aria-label="View"><button type="button" data-mode="blink" data-help="${esc(CONTROL_HELP.blink.line)} (B)">Blink<kbd>B</kbd></button><button type="button" data-mode="stack" data-help="${esc(CONTROL_HELP.stack.line)} (S)">Stack<kbd>S</kbd></button><button type="button" data-mode="diff" data-help="${esc(CONTROL_HELP.subtract.line)} (D)">Subtract<kbd>D</kbd></button></div>
+  <button type="button" class="tb-btn sk-golive" data-act="live" data-ref="golive" hidden data-help="Read this target live from NASA’s archive instead of the saved copy (about 30 s)."><i aria-hidden="true"></i>Go live</button>
+  <button type="button" class="tb-btn tb-primary tb-upload" data-act="upload" data-help="Add your own FITS, PNG or JPG frames. They stay in this browser."><span class="ic">${ICON.upload}</span><span>Upload</span></button>
+  <input type="file" data-ref="file" multiple accept=".fits,.fit,.fts,.gz,.png,.jpg,.jpeg" hidden>
+  ${helpButtonHtml()}
+  <div class="tb-acts" role="group" aria-label="Labels, link and picture">
+    <button type="button" class="tb-icon" data-act="labels" aria-label="Tool labels" aria-pressed="true" data-help="Labels under every tool: on. Press to hide them once you know the tools."><span class="ic">${ICON.tag}</span></button>
+    <button type="button" class="tb-icon" data-act="copy" aria-label="Copy link" data-help="Copy a link to this view."><span class="ic">${ICON.link}</span></button>
+    ${shareCard ? `<button type="button" class="tb-icon sk-save" data-act="save-picture" aria-label="Save a picture of A, B and B − A" data-help="In Subtract: save one picture of A, B and B − A, with the dates and the data credit."><span class="ic">${ICON.file}</span></button>` : ''}
+    <button type="button" class="tb-icon" data-act="theme" aria-label="Switch to the light theme" data-help="Dark or light (T)."><span class="ic">${ICON.theme}</span></button>
+  </div>
+</header>
+<main class="tb-work" data-ref="work" aria-label="Workspace">
+  <div class="tb-stage" id="sk-stage" tabindex="-1" data-ref="stage">
     <div class="sk-sky" data-ref="sky">
-      <canvas class="sk-glow" data-ref="glow" width="24" height="24" aria-hidden="true"></canvas>
-      <canvas class="sk-img" data-ref="canvas" role="img" aria-label="Sky image"></canvas>
-      <div class="sk-slot-layer sk-slot-fc" data-ref="fc" hidden></div>
-      <div class="sk-slot-layer sk-slot-ep" data-ref="epoch" aria-hidden="true" hidden></div>
-      <svg class="sk-ov" data-ref="ov" aria-hidden="true" preserveAspectRatio="none"></svg>
-      <div class="sk-slot-flags" data-ref="flags" hidden></div>
-      <div class="sk-slot-layer" data-ref="changesMarks" hidden></div>
+      <div class="tb-zoom" data-ref="zoom">
+        <canvas class="sk-glow" data-ref="glow" width="24" height="24" aria-hidden="true"></canvas>
+        <canvas class="sk-img" data-ref="canvas" role="img" aria-label="Sky image"></canvas>
+        <div class="sk-slot-layer sk-slot-fc" data-ref="fc" hidden></div>
+        <div class="sk-slot-layer sk-slot-ep" data-ref="epoch" aria-hidden="true" hidden></div>
+        <svg class="sk-ov" data-ref="ov" aria-hidden="true" preserveAspectRatio="none"></svg>
+        <div class="sk-slot-flags" data-ref="flags" hidden></div>
+        <div class="sk-slot-layer" data-ref="changesMarks" hidden></div>
+      </div>
       <div class="sk-bar" data-ref="bar" aria-hidden="true"><b data-bind="bar"></b><i></i></div>
       <div class="sk-sim" data-ref="sim" hidden>Simulated sky · not real data</div>
       <button type="button" class="sk-ep-tag" data-act="epoch-tag" data-ref="epochTag" hidden></button>
-      <div class="sk-load" data-ref="load" hidden><p data-bind="stage"></p><div class="sk-prog"><i data-ref="prog"></i></div></div>
+      <div class="tb-loupe" data-ref="loupe" hidden><canvas width="150" height="150"></canvas></div>
+      <div class="sk-load" data-ref="load" hidden><div class="tb-loadbox"><svg class="tb-orbit" viewBox="0 0 24 24" aria-hidden="true"><circle class="t" cx="12" cy="12" r="8.5"/><circle class="d" cx="12" cy="3.5" r="2"/><circle class="s" cx="12" cy="12" r="2.2"/></svg><p data-bind="stage"></p></div><div class="sk-prog"><i data-ref="prog"></i></div></div>
       <div class="sk-err" data-ref="err" hidden><p data-bind="err" role="alert"></p><button type="button" class="sk-btn2" data-act="retry"><span class="ic">${ICON.retry}</span>Try again</button></div>
     </div>
-    <div class="sk-ctrl">
-    <div class="sk-legrow">
-      <div class="sk-leg">
-        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" title="${esc(CONTROL_HELP.gaia.line)}" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://www.cosmos.esa.int/web/gaia/dr3" target="_blank" rel="noopener" title="Rings: ESA, Gaia DPAC; Gaia DR3, doi:10.5270/esa-qa4lep3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
-        <button type="button" class="sk-key g f" data-act="flags" title="${esc(CONTROL_HELP.flags.line)}" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Flagged pixels</button>
-        <button type="button" class="sk-key g c" data-act="falsecolour" title="${esc(CONTROL_HELP.falseColour.line)}" data-ref="fcKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>False colour</button>
-        <button type="button" class="sk-key g e" data-act="epoch" title="${esc(CONTROL_HELP.epoch.line)}" data-ref="epochKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Older picture</button>
-        <span class="sk-key t" data-bind="trackLeg"></span>
-        <span class="sk-key d"><i class="b"></i>more light earlier<i class="o"></i>more light later</span>
-      </div>
-      <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" title="${esc(CONTROL_HELP.field.line)}" aria-label="Field of view">${fovs}</select></label>
+    <div class="tb-mine" data-ref="mineView" hidden></div>
+    <div class="tb-empty" data-ref="empty" hidden>
+      <span class="ic big">${ICON.upload}</span>
+      <p class="t">Drop frames of the same patch of sky</p>
+      <p class="s">FITS (also .gz), PNG or JPG · 2 to 20 files · dates come from FITS headers, or the file date for pictures</p>
+      <div class="a"><button type="button" class="tb-btn tb-primary" data-act="upload">Choose files</button><button type="button" class="tb-btn" data-act="samples" data-help="Three real SPHEREx FITS cutouts of Groombridge 1830, a star that drifts quickly across the sky, run through the same steps.">Try real FITS samples</button></div>
+      <p class="l"><span class="ic">${ICON.lock}</span>Your files stay in this browser. They are never uploaded.</p>
     </div>
-    <p class="sk-gloss sk-gaia-gloss" data-ref="gaiaGloss" hidden>${esc(GLOSSARY.gaia.short)}</p>
+  </div>
+
+  <section class="tb-hud tb-id" aria-label="Current frame">
+    <div class="n" data-bind="name"></div>
+    <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
+    <div class="s" data-bind="statusShort" aria-live="polite">Connecting to the archive</div>
+  </section>
+
+  <section class="tb-hud tb-jobs" data-ref="jobs" hidden aria-label="Processing">
+    <header><b>Processing</b><span data-ref="jobsCount"></span><button type="button" class="tb-btn sm" data-act="jobs-cancel">Cancel</button></header>
+    <ol data-ref="jobsList"></ol>
+  </section>
+
+  <nav class="tb-hud tb-tools" aria-label="Tools">
+    ${tool('loupe', ICON.loupe, 'Loupe', 'Loupe: magnifies the real pixels under the pointer, 2x (L).', 'aria-pressed="false" aria-keyshortcuts="L"')}
+    ${tool('hold', ICON.hold, 'Compare', 'Hold to compare: press and hold to see the first frame; let go to come back (H). Blink only.', 'aria-keyshortcuts="H"')}
+    <span class="tool-gap"></span>
+    ${tool('ring', ICON.ring, 'Ring', 'Ring: where the target’s catalogue motion puts it on this date (R).', 'aria-pressed="true" aria-keyshortcuts="R"')}
+    ${tool('trail', ICON.trail, 'Trail', 'Trail: dots where the ring would be on the other dates.', 'aria-pressed="false"')}
+    ${tool('cands', ICON.find, 'Candidates', CONTROL_HELP.changes.line, '')}
+    <span class="tool-gap"></span>
+    <button type="button" class="tool sk-key" data-act="gaia" aria-pressed="true" data-help="${esc(CONTROL_HELP.gaia.line)}"><span class="ic">${ICON.gaia}</span><span class="tl">Gaia</span></button>
+    <button type="button" class="tool sk-key" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden data-help="${esc(CONTROL_HELP.flags.line)}"><span class="ic">${ICON.flags}</span><span class="tl">Flags</span></button>
+    <button type="button" class="tool sk-key" data-act="falsecolour" data-ref="fcKey" aria-pressed="false" hidden data-help="${esc(CONTROL_HELP.falseColour.line)}"><span class="ic">${ICON.fc}</span><span class="tl">False colour</span></button>
+    <button type="button" class="tool sk-key" data-act="epoch" data-ref="epochKey" aria-pressed="false" hidden data-help="${esc(CONTROL_HELP.epoch.line)}"><span class="ic">${ICON.epoch}</span><span class="tl">Older picture</span></button>
+    <span class="tool-gap"></span>
+    ${tool('zoomin', ICON.zoom, 'Zoom', 'Zoom in on the picture (+). Scroll or pinch on the sky also zooms; drag to pan when zoomed.', '')}
+    ${tool('fit', ICON.fit, 'Fit', 'Fit the whole picture again (0, or double-click the sky).', '')}
+    <span class="tool-gap"></span>
+    ${tool('inspect', ICON.inspect, 'Inspect', 'Inspector: the target, this frame, candidates, charts, the AI note and extras (I).', 'aria-pressed="false" aria-keyshortcuts="I"')}
+    ${tool('focus', ICON.focus, 'Focus', 'Focus: hide the side cards so the sky has the room (F).', 'aria-pressed="false" aria-keyshortcuts="F"')}
+  </nav>
+
+  <section class="tb-hud tb-scale" aria-label="Scale and field">
+    <span class="tb-compass" aria-label="North up, east left"><b>N</b>↑ <b>E</b>←</span>
+    <span class="tb-lam"><span data-bind="lam"></span> µm</span>
+    <label class="sk-fov" data-help="${esc(CONTROL_HELP.field.line)}"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
+    <span class="tb-zl" data-ref="zoomLabel" aria-live="off">1×</span>
+  </section>
+
+  <section class="tb-hud tb-caveat" aria-label="What this can’t tell you">
+    <span class="ic">${ICON.warn}</span><p><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
+  </section>
+
+  <section class="tb-hud tb-map" aria-label="Where in the sky">
+    <figure class="sk-fig"><span data-ref="map"></span><figcaption>Where in the sky</figcaption></figure>
+  </section>
+
+  <section class="tb-hud tb-coach" data-ref="coach" hidden role="dialog" aria-labelledby="tb-coach-h">
+    <p class="k">New here?</p>
+    <h2 id="tb-coach-h">What am I looking at?</h2>
+    <p data-ref="coachText"></p>
+    <div class="a"><button type="button" class="tb-btn tb-primary" data-act="tour">Show me around</button><button type="button" class="tb-btn ghost" data-act="coach-close">Got it</button></div>
+  </section>
+
+  <aside class="tb-hud tb-insp" data-ref="insp" hidden aria-label="Inspector">
+    <header>
+      <div class="tb-tabs" role="tablist" aria-label="Inspector">
+        <button type="button" role="tab" data-tab="info" aria-selected="true">Target</button>
+        <button type="button" role="tab" data-tab="frame" aria-selected="false">Frame</button>
+        <button type="button" role="tab" data-tab="cands" aria-selected="false">Candidates</button>
+        <button type="button" role="tab" data-tab="charts" aria-selected="false">Charts</button>
+        <button type="button" role="tab" data-tab="ai" aria-selected="false">AI note</button>
+        <button type="button" role="tab" data-tab="extras" aria-selected="false">Extras</button>
+      </div>
+      <button type="button" class="tb-icon sm" data-act="insp-close" aria-label="Close the inspector"><span class="ic">${ICON.close}</span></button>
+    </header>
+    <div class="tb-panel" data-panel="info" role="tabpanel">
+      <section class="sk-mod sk-m-about" aria-labelledby="sk-h4">
+        <h2 class="sk-mh" id="sk-h4"><span class="ic">${ICON.look}</span>What to look for</h2>
+        <p class="sk-h" data-bind="headline"></p>
+        <p class="sk-coord"><span data-bind="name"></span><a class="sk-src" data-ref="coords" target="_blank" rel="noopener"></a></p>
+        <div class="sk-figs">
+          <figure class="sk-fig" data-ref="pmfig" hidden><span data-ref="pm"></span><figcaption data-bind="pm"></figcaption></figure>
+        </div>
+        <p class="sk-body sk-up" data-ref="up" hidden></p>
+        <p class="sk-body" data-bind="show"></p>
+        <p class="sk-body sk-fact" data-ref="fact" hidden><span class="sk-sub">Measured here.</span> <span data-bind="fact"></span></p>
+        <p class="sk-body mute"><span class="sk-sub">What this can’t tell you.</span> <span data-bind="not"></span></p>
+      </section>
+    </div>
+    <div class="tb-panel" data-panel="frame" role="tabpanel" hidden>
+      <section class="sk-mod sk-m-details" aria-labelledby="sk-h5">
+        <h2 class="sk-mh" id="sk-h5"><span class="ic">${ICON.info}</span><span data-bind="dlh">This frame</span></h2>
+        <dl data-ref="dl"></dl>
+        <ul class="sk-notes" data-ref="notes"></ul>
+      </section>
+      <p class="sk-gloss sk-gaia-gloss" data-ref="gaiaGloss" hidden>${esc(GLOSSARY.gaia.short)}</p>
+      <p class="sk-body"><a class="sk-src" data-ref="gaiaSrc" href="https://www.cosmos.esa.int/web/gaia/dr3" target="_blank" rel="noopener" title="Rings: ESA, Gaia DPAC; Gaia DR3, doi:10.5270/esa-qa4lep3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></p>
+      <footer class="sk-credit"><p data-bind="status"></p></footer>
+      <div class="tb-minepanel" data-ref="mineNotes"></div>
+    </div>
+    <div class="tb-panel" data-panel="cands" role="tabpanel" hidden>
+      <section class="sk-mod sk-m-slot sk-m-changes" aria-labelledby="sk-h9" data-ref="changes" hidden>
+        <h2 class="sk-mh" id="sk-h9"><span class="ic">${ICON.diff}</span>Candidate changes</h2>
+        <div data-ref="changesBox"></div>
+      </section>
+      <div class="tb-minepanel" data-ref="mineCands"></div>
+      <p class="sk-body mute" data-ref="candsNone">Candidate changes are listed for a live view in Subtract. Every line is a candidate only, never a discovery.</p>
+    </div>
+    <div class="tb-panel" data-panel="charts" role="tabpanel" hidden>
+      <section class="sk-mod sk-m-curve" aria-labelledby="sk-h6" data-ref="curve" hidden>
+        <h2 class="sk-mh" id="sk-h6"><span class="ic">${ICON.curve}</span>Brightness over time</h2>
+        <div class="sk-lc" data-ref="lcwrap"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
+        <div class="sk-lcx" data-ref="lcx" aria-hidden="true"></div>
+        <p class="sk-body mute" data-bind="lcNote"></p>
+      </section>
+      <section class="sk-mod sk-m-slot sk-m-halo" aria-labelledby="sk-h10" data-ref="halo" hidden>
+        <h2 class="sk-mh" id="sk-h10"><span class="ic">${ICON.curve}</span>Halo over time</h2>
+        <div data-ref="haloBox"></div>
+      </section>
+      <section class="sk-mod sk-m-spec" aria-labelledby="sk-h8" data-ref="spec" hidden>
+        <h2 class="sk-mh" id="sk-h8" data-sp="heading"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
+        <div class="sk-sp-body" data-ref="specBox" data-sp="body">
+          <p class="sk-body" data-sp="intro"></p>
+          <div class="sk-sp-result" data-sp="result" hidden>
+            <div class="sk-sp-chart" data-sp="chart"></div>
+            <p class="sk-body" data-sp="summary"></p>
+            <p class="sk-body" data-sp="reference"></p>
+            <p class="sk-body" data-sp="caption"></p>
+            <div class="sk-sp-notes" data-sp="notes"></div>
+            <p class="sk-body" data-sp="facts"></p>
+            <p class="sk-body"><span data-sp="readBytes"></span><a class="sk-sp-link" data-sp="link" target="_blank" rel="noopener"></a><span data-sp="linkEnd"></span></p>
+            <p class="sk-body" data-sp="spot"></p>
+          </div>
+          <p class="sk-body sk-sp-status" data-sp="status" aria-live="polite"></p>
+          <div class="sk-sp-actions"><button type="button" class="sk-btn2" data-sp="read"></button><button type="button" class="sk-btn2" data-sp="stop" hidden></button><button type="button" class="sk-btn2" data-sp="clear" hidden></button></div>
+          <small class="sk-sp-estimate" data-sp="estimate"></small>
+        </div>
+      </section>
+      <p class="sk-body mute" data-ref="chartsNone">Charts appear here when this view has one: a brightness curve, a halo curve or a spectrum.</p>
+    </div>
+    <div class="tb-panel" data-panel="ai" role="tabpanel" hidden>
+      <section class="sk-mod sk-m-ai" aria-labelledby="sk-h7" data-ref="ai" data-ai-generated="true" hidden>
+        <h2 class="sk-mh" id="sk-h7" tabindex="-1"><span class="ic">${ICON.note}</span>AI note<span class="sk-ai-tag" data-ai="tag">AI-generated</span></h2>
+        <p class="sk-body mute">A short reading of this view by a language model, from the numbers this page measured.</p>
+        <form class="sk-ai-lock" data-ai="lock" hidden><label><span>Passcode</span><input type="password" autocomplete="off" data-ai="pass" aria-label="AI note passcode"></label><button type="submit" class="sk-btn2">Unlock</button></form>
+        <button type="button" class="sk-btn2 sk-ai-go" data-ai="go" hidden>Write an AI note</button>
+        <p class="sk-ai-msg sk-sr" data-ai="msg" role="status"></p>
+        <div class="sk-ai-out" data-ai="out" aria-live="polite"></div>
+        <details class="sk-ai-given" data-ai="given" hidden><summary>What this page told the AI</summary><ul data-ai="givenList"></ul></details>
+        <p class="sk-ai-disc" data-ai="disc"></p>
+        <p class="sk-ai-left" data-ai="left" hidden></p>
+      </section>
+      <p class="sk-body mute" data-ref="aiNone">The AI note appears here once a view has loaded.</p>
+    </div>
+    <div class="tb-panel" data-panel="extras" role="tabpanel" hidden>
+      <div data-ref="extrasAnchor"></div>
+    </div>
+  </aside>
+  <div class="tb-drop" data-ref="drop" hidden><div><span class="ic big">${ICON.upload}</span><b>Drop to process</b><span>FITS, PNG or JPG · stays in this browser</span></div></div>
+</main>
+
+<section class="tb-time sk-ctrl" aria-label="Timeline">
+  <div class="tb-transport sk-player">
+    <div class="sk-tr">
+      <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame" data-help="Previous frame (←)."><span class="ic">${ICON.prev}</span></button>
+      <button type="button" class="sk-btn go" data-act="play" aria-label="Play" data-help="Play or pause the frames in date order (Space)."></button>
+      <button type="button" class="sk-btn" data-act="next" aria-label="Next frame" data-help="Next frame (→)."><span class="ic">${ICON.next}</span></button>
+    </div>
+    <div class="tb-seg tb-speed" role="group" aria-label="Speed"><button type="button" data-speed="0.5" aria-pressed="false" data-help="Half speed.">½×</button><button type="button" data-speed="1" aria-pressed="true" data-help="Normal speed.">1×</button><button type="button" data-speed="2" aria-pressed="false" data-help="Double speed.">2×</button></div>
+    <div class="sk-sub tb-ab" data-ref="sub" hidden>
+      <label class="sk-fov"><span class="tb-a">A</span><select data-ref="subA" aria-label="Earlier visit (A)"></select></label>
+      <label class="sk-fov"><span class="tb-b">B</span><select data-ref="subB" aria-label="Later visit (B)"></select></label>
+      <div class="tb-seg sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true" data-help="B − A takes visit A away from visit B, so what stayed the same cancels: orange marks more light later, blue more light earlier.">B − A</button><button type="button" data-subop="sum" aria-pressed="false" data-help="A + B shows visits A and B together (their average), so a moving star shows in both places.">A + B</button></div>
+    </div>
+  </div>
+  <div class="tb-tracks">
+    <div class="tb-track">
+      <span class="tb-k">Dates</span>
+      <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
+      <div class="sk-strip tb-minestrip" data-ref="mineStrip" role="group" aria-label="Your frames in date order"></div>
+    </div>
+    <div class="tb-track tb-colour">
+      <span class="tb-k" data-help="${esc(CONTROL_HELP.colour.line)}">Colour</span>
+      <div class="sk-spec">
+        <div class="sk-axis"><i class="vis" style="width:${axisPct(0.7).toFixed(2)}%" title="Visible light"></i>
+          <input class="sk-rng" type="range" data-ref="lam" min="${LAM_MIN}" max="${LAM_MAX}" step="0.01" style="left:${axisPct(LAM_MIN).toFixed(2)}%;width:${(100 - axisPct(LAM_MIN)).toFixed(2)}%" data-help="${esc(CONTROL_HELP.colour.line)}" aria-label="Wavelength in micrometres"></div>
+        <div class="sk-ticks" aria-hidden="true">${ticks}</div>
+        <div class="sk-axl" aria-hidden="true"><span>your eyes</span><span>SPHEREx · µm</span></div>
+      </div>
+      <div class="sk-readout"><p><b data-bind="lam"></b><small>µm</small></p><span data-bind="det"></span></div>
+    </div>
+  </div>
+  <div class="tb-ab tb-mineab" data-ref="mineAb" hidden>
+    <label class="sk-fov"><span class="tb-a">A</span><select data-mine="a" aria-label="Earlier frame (A)"></select></label>
+    <label class="sk-fov"><span class="tb-b">B</span><select data-mine="b" aria-label="Later frame (B)"></select></label>
+  </div>
+  <div class="tb-notes">
+    <div class="sk-leg"><span class="sk-key t" data-bind="trackLeg"></span><span class="sk-key d"><i class="b"></i>more light earlier<i class="o"></i>more light later</span></div>
     <p class="sk-flagnote" data-ref="flagsNote" hidden></p>
     <p class="sk-flagnote" data-ref="fcNote" hidden></p>
     <p class="sk-flagnote sk-ep-note" data-ref="epochNote" role="status" hidden></p>
     <p class="sk-gloss sk-epoch-gloss" data-ref="epochGloss" hidden>${esc(GLOSSARY.twomass.short)}</p>
-    <div class="sk-player">
-      <div class="sk-tr">
-        <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
-        <button type="button" class="sk-btn go" data-act="play" aria-label="Play"></button>
-        <button type="button" class="sk-btn" data-act="next" aria-label="Next frame"><span class="ic">${ICON.next}</span></button>
-      </div>
-      <div class="sk-seg" role="group" aria-label="View"><button type="button" data-mode="blink" title="${esc(CONTROL_HELP.blink.line)}"><span class="ic">${ICON.blink}</span>Blink</button><button type="button" data-mode="stack" title="${esc(CONTROL_HELP.stack.line)}"><span class="ic">${ICON.stack}</span>Stack</button><button type="button" data-mode="diff" title="${esc(CONTROL_HELP.subtract.line)}"><span class="ic">${ICON.diff}</span>Subtract</button></div>
-    </div>
-    <div class="sk-sub" data-ref="sub" hidden>
-      <label class="sk-fov">A <select data-ref="subA" aria-label="Earlier visit (A)"></select></label>
-      <label class="sk-fov">B <select data-ref="subB" aria-label="Later visit (B)"></select></label>
-      <div class="sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true">B − A</button><button type="button" data-subop="sum" aria-pressed="false">A + B</button></div>${shareCard ? '<button type="button" class="sk-save" data-act="save-picture" title="Save a picture of A, B and B − A" aria-label="Save a picture of A, B and B − A">Save picture</button>' : ''}
-    </div>
     <p class="sk-hint" data-bind="hint"></p>
     <p class="sk-gest-hint" hidden>Swipe the picture to step through frames. On a later frame, press and hold to compare it with the first.</p>
-    <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
-    </div>
-  </section>
-</main>
-<div class="sk-gut sk-gut-r">
-  <div class="sk-split" data-side="right" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sk-right" aria-label="Resize the colour panel. Arrow keys resize, Enter folds" aria-valuemin="0" aria-valuemax="420" aria-valuenow="0"></div>
-  <button type="button" class="sk-fold" data-act="fold-right" aria-controls="sk-right" aria-expanded="true" aria-label="Fold the colour panel" title="Fold or open the colour panel"><span class="ic">${ICON.next}</span></button>
+    <p class="sk-gloss">${esc(GLOSSARY.um.short)} All of this is infrared: your eyes stop at 0.70 µm. Drag the colour, then let go to load it.</p>
+  </div>
+</section>
+
+<footer class="tb-status">
+  <span class="tb-help" data-ref="statusHelp"></span>
+  <button type="button" class="tb-coord" data-ref="coord" data-help="Sky position under the pointer (RA, Dec). Press to copy it.">—</button>
+  <button type="button" class="tb-ailink" data-act="about" aria-haspopup="dialog" aria-expanded="false">AI used</button>
+  <div class="tb-about" data-ref="about" hidden role="dialog" aria-label="AI used"><p>${esc(AI_LINE)}</p><p>The AI note names the model that wrote it each time. Every claim on this page is listed with its source.</p><a href="${esc(AI_LINK)}" target="_blank" rel="noopener">Source list</a></div>
+</footer>
+
+<div class="tb-picker" id="tb-picker" data-ref="picker" hidden role="dialog" aria-modal="true" aria-label="Pick a target">
+  <div class="tb-pbox">
+    <form class="sk-search" data-ref="search" role="search"><span class="ic">${ICON.search}</span><input name="q" placeholder="Any star, or RA, Dec" autocomplete="off" aria-label="Search the sky: a star name, or RA and Dec"><kbd>Esc</kbd></form>
+    <nav class="sk-tg" role="listbox" aria-label="Targets">${targets}</nav>
+    <p class="tb-pnote">Press Enter to search the archive for a star name, or RA and Dec like 269.45, 4.69.</p>
+  </div>
 </div>
-<aside class="sk-rail sk-right" id="sk-right">
-  <div class="sk-status"><p><span class="dot" aria-hidden="true"></span><span data-bind="statusShort" aria-live="polite">Connecting to the archive</span></p><div class="sk-acts"><button type="button" class="sk-btn2 sk-golive" data-act="live" data-ref="golive" hidden><i aria-hidden="true"></i>Go live</button><button type="button" class="sk-btn2" data-act="copy"><span class="ic">${ICON.link}</span>Copy link</button></div></div>
-  <section class="sk-mod sk-m-colour" aria-labelledby="sk-h3">
-    <h2 class="sk-mh" id="sk-h3"><i>03</i>Change the colour</h2>
-    <div class="sk-readout"><p><b data-bind="lam"></b><small>µm</small></p><span data-bind="det"></span></div>
-    <div class="sk-spec">
-      <div class="sk-axis"><i class="vis" style="width:${axisPct(0.7).toFixed(2)}%" title="Visible light"></i>
-        <input class="sk-rng" type="range" data-ref="lam" min="${LAM_MIN}" max="${LAM_MAX}" step="0.01" style="left:${axisPct(LAM_MIN).toFixed(2)}%;width:${(100 - axisPct(LAM_MIN)).toFixed(2)}%" title="${esc(CONTROL_HELP.colour.line)}" aria-label="Wavelength in micrometres"></div>
-      <div class="sk-ticks" aria-hidden="true">${ticks}</div>
-      <div class="sk-axl" aria-hidden="true"><span>your eyes</span><span>SPHEREx · µm</span></div>
-    </div>
-    <p class="sk-body mute">All of this is infrared: your eyes stop at 0.70 µm. Drag, then let go to load that colour.</p>
-    <p class="sk-gloss">${esc(GLOSSARY.um.short)}</p>
-  </section>
-  <section class="sk-mod sk-m-spec" aria-labelledby="sk-h8" data-ref="spec" hidden>
-    <h2 class="sk-mh" id="sk-h8" data-sp="heading"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
-    <div class="sk-sp-body" data-ref="specBox" data-sp="body">
-      <p class="sk-body" data-sp="intro"></p>
-      <div class="sk-sp-result" data-sp="result" hidden>
-        <div class="sk-sp-chart" data-sp="chart"></div>
-        <p class="sk-body" data-sp="summary"></p>
-        <p class="sk-body" data-sp="reference"></p>
-        <p class="sk-body" data-sp="caption"></p>
-        <div class="sk-sp-notes" data-sp="notes"></div>
-        <p class="sk-body" data-sp="facts"></p>
-        <p class="sk-body"><span data-sp="readBytes"></span><a class="sk-sp-link" data-sp="link" target="_blank" rel="noopener"></a><span data-sp="linkEnd"></span></p>
-        <p class="sk-body" data-sp="spot"></p>
-      </div>
-      <p class="sk-body sk-sp-status" data-sp="status" aria-live="polite"></p>
-      <div class="sk-sp-actions"><button type="button" class="sk-btn2" data-sp="read"></button><button type="button" class="sk-btn2" data-sp="stop" hidden></button><button type="button" class="sk-btn2" data-sp="clear" hidden></button></div>
-      <small class="sk-sp-estimate" data-sp="estimate"></small>
-    </div>
-  </section>
-  <section class="sk-mod sk-m-slot sk-m-changes" aria-labelledby="sk-h9" data-ref="changes" hidden>
-    <h2 class="sk-mh" id="sk-h9"><span class="ic">${ICON.diff}</span>Candidate changes</h2>
-    <div data-ref="changesBox"></div>
-  </section>
-  <section class="sk-mod sk-m-ai" aria-labelledby="sk-h7" data-ref="ai" data-ai-generated="true" hidden>
-    <h2 class="sk-mh" id="sk-h7" tabindex="-1"><span class="ic">${ICON.note}</span>AI note<span class="sk-ai-tag" data-ai="tag">AI-generated</span></h2>
-    <p class="sk-body mute">A short reading of this view by a language model, from the numbers this page measured.</p>
-    <form class="sk-ai-lock" data-ai="lock" hidden><label><span>Passcode</span><input type="password" autocomplete="off" data-ai="pass" aria-label="AI note passcode"></label><button type="submit" class="sk-btn2">Unlock</button></form>
-    <button type="button" class="sk-btn2 sk-ai-go" data-ai="go" hidden>Write an AI note</button>
-    <p class="sk-ai-msg sk-sr" data-ai="msg" role="status"></p>
-    <div class="sk-ai-out" data-ai="out" aria-live="polite"></div>
-    <details class="sk-ai-given" data-ai="given" hidden><summary>What this page told the AI</summary><ul data-ai="givenList"></ul></details>
-    <p class="sk-ai-disc" data-ai="disc"></p>
-    <p class="sk-ai-left" data-ai="left" hidden></p>
-  </section>
-  <section class="sk-mod sk-m-curve" aria-labelledby="sk-h6" data-ref="curve" hidden>
-    <h2 class="sk-mh" id="sk-h6"><span class="ic">${ICON.curve}</span>Brightness over time</h2>
-    <div class="sk-lc" data-ref="lcwrap"><svg data-ref="lc" role="img" preserveAspectRatio="none" viewBox="0 0 300 100"></svg><div class="sk-lcy" data-ref="lcy" aria-hidden="true"></div></div>
-    <div class="sk-lcx" data-ref="lcx" aria-hidden="true"></div>
-    <p class="sk-body mute" data-bind="lcNote"></p>
-  </section>
-  <section class="sk-mod sk-m-slot sk-m-halo" aria-labelledby="sk-h10" data-ref="halo" hidden>
-    <h2 class="sk-mh" id="sk-h10"><span class="ic">${ICON.curve}</span>Halo over time</h2>
-    <div data-ref="haloBox"></div>
-  </section>
-  <section class="sk-mod sk-m-details" aria-labelledby="sk-h5">
-    <h2 class="sk-mh" id="sk-h5"><span class="ic">${ICON.info}</span><span data-bind="dlh">This frame</span></h2>
-    <dl data-ref="dl"></dl>
-    <ul class="sk-notes" data-ref="notes"></ul>
-  </section>
-  <footer class="sk-credit"><p data-bind="status"></p></footer>
-</aside>
 <p class="sk-sr" aria-live="polite" data-ref="live"></p>
 <div class="sk-toast" data-ref="toast" role="status"></div>${helpDialogHtml()}`;
 }
 
 export function mount(root: HTMLElement): void
 {
-    root.classList.add('sk');
+    root.classList.add('sk', 'tb');
     root.innerHTML = shell();
     mountHelp(root);
     const q = <T extends Element>(sel: string) => root.querySelector(sel) as T;
@@ -425,9 +564,9 @@ export function mount(root: HTMLElement): void
     const spectrumSlot = mountSpectrum(ref<HTMLElement>('spec'), { enabled: FEATURES.spectrum });
     const upSlot = mountUpTonight(ref<HTMLElement>('up'), { enabled: FEATURES.upTonight });
     // Comet card (FEATURES.comet): off adds nothing to the page and fetches nothing.
-    const comet = mountComet(root.querySelector<HTMLElement>('.sk-m-about'), { enabled: FEATURES.comet });
-    // Planet Nine chart (FEATURES.planetx): under the comet card, or under "What to look for" when that is off.
-    mountPlanetX(comet.section ?? root.querySelector<HTMLElement>('.sk-m-about'), { enabled: FEATURES.planetx });
+    const comet = mountComet(ref<HTMLElement>('extrasAnchor'), { enabled: FEATURES.comet });
+    // Planet Nine chart (FEATURES.planetx): under the comet card in the Extras tab.
+    mountPlanetX(comet.section ?? ref<HTMLElement>('extrasAnchor'), { enabled: FEATURES.planetx });
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderText());
     // Older picture (2MASS): off unless FEATURES.epoch; Play, False colour and Flagged pixels switch it off.
     const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),
@@ -486,6 +625,7 @@ export function mount(root: HTMLElement): void
     let stretch: ReturnType<typeof sharedStretch> | null = null;
     let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale; sumStretch?: Stretch; subKey?: string } = {};
     let timer = 0;
+    let speed = 1; // playback speed: ½×, 1× or 2×
     let savingPicture = false;
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
@@ -495,6 +635,119 @@ export function mount(root: HTMLElement): void
     let fcFailure: { result: SkyResult; mode: Mode; source: SourceKind; note: string } | null = null;
     let lookup: AbortController | null = null; // pending name lookup; any newer navigation cancels it
     let holdCompare: ReturnType<typeof createHoldCompare> | null = null;
+
+    // ---------- undo and redo: view steps (target, view, dates, visits, zoom, layers) ----------
+    interface Snap {
+        target?: TargetId;
+        center: SkyCoord;
+        label: string;
+        fovDeg: number;
+        detector: Detector;
+        lambda?: number;
+        live: boolean;
+        mode: Mode;
+        index: number;
+        subA: number;
+        subB: number;
+        subOp: SubOp;
+        gaia: boolean;
+        frame?: string;
+        view: View;
+        ring: boolean;
+        trail: boolean;
+        loupe: boolean;
+    }
+    const steps = new History<Snap>();
+    let applying = false;
+    let amendNext = false;
+    function snap(): Snap
+    {
+        return { target: st.target, center: st.center, label: st.label, fovDeg: st.fovDeg, detector: st.detector, lambda: st.lambda,
+            live: st.live, mode: st.mode, index: st.index, subA: st.subA, subB: st.subB, subOp: st.subOp, gaia: st.gaia,
+            frame: view(true).frame, view: tool.view, ring: tool.ring, trail: tool.trail, loupe: tool.loupe };
+    }
+    function syncHistory(): void
+    {
+        tool.setHistory(steps.canUndo, steps.canRedo);
+    }
+    function record(): void
+    {
+        if (applying || st.playing) {
+            return;
+        }
+        if (amendNext) {
+            steps.amend(snap());
+            amendNext = !!root.dataset.loading;
+        } else {
+            steps.record(snap());
+        }
+        syncHistory();
+    }
+    function applySnap(s: Snap | undefined): void
+    {
+        if (!s) {
+            return;
+        }
+        applying = true;
+        try {
+            holdCompare?.cancel();
+            play(false);
+            tool.setView(s.view, true);
+            tool.setLayers(s.ring, s.trail, s.loupe);
+            st.gaia = s.gaia;
+            st.mode = s.mode;
+            st.subOp = s.subOp;
+            const same = s.target === st.target && s.center.ra === st.center.ra && s.center.dec === st.center.dec && s.fovDeg === st.fovDeg
+                && s.detector === st.detector && s.lambda === st.lambda && s.live === st.live;
+            if (!same || !result) {
+                st.target = s.target;
+                st.center = s.center;
+                st.label = s.label;
+                st.fovDeg = s.fovDeg;
+                st.detector = s.detector;
+                st.lambda = s.lambda;
+                st.live = s.live;
+                st.wantFrame = s.mode === 'blink' ? s.frame : undefined;
+                st.wantSub = s.mode === 'diff' ? { a: s.subA, b: s.subB, op: s.subOp } : undefined;
+                swapText();
+                void load();
+            } else {
+                st.index = Math.min(s.index, result.frames.length - 1);
+                st.subA = s.subA;
+                st.subB = s.subB;
+                draw();
+                history.replaceState(null, '', linkFor(!st.playing));
+            }
+        } finally {
+            applying = false;
+        }
+        syncHistory();
+    }
+    const tool = mountTool(root, {
+        isLoading: () => !!root.dataset.loading,
+        onView: () => record(),
+        onLayers: () => {
+            overlay();
+            record();
+        },
+        loupeOn: () => record(),
+        holdStart: () => holdCompare?.start(),
+        holdEnd: () => holdCompare?.end(),
+        canHold: () => !!(holdCompare && result && result.frames.length >= 2 && st.mode === 'blink' && st.index > 0),
+        coordAt: (fx, fy) => {
+            if (!result) {
+                return null;
+            }
+            const g = result.grid;
+            const c = gridPixToSky(g, { x: fx * g.width - 0.5, y: fy * g.height - 0.5 });
+            return `${formatRa(c.ra)} ${formatDec(c.dec)}`;
+        },
+        undo: () => applySnap(steps.undo()),
+        redo: () => applySnap(steps.redo()),
+        setWs: (ws) => setWs(ws),
+        files: (list) => addFiles([...list]),
+        coachText: () => HELP_INTRO,
+    });
 
     function activeVisits(): { a: Visit; b: Visit } | null
     {
@@ -592,6 +845,11 @@ export function mount(root: HTMLElement): void
         const wantSub = st.wantSub;
         st.wantSub = undefined;
         lamDraft = null; // a half-dragged colour belongs to the old view
+        if (!applying) {
+            steps.record(snap());
+        }
+        amendNext = true; // the finished load fills in this step (frame, visits) instead of adding one
+        syncHistory();
         ctrl?.abort();
         ctrl = new AbortController();
         const signal = ctrl.signal;
@@ -914,7 +1172,7 @@ export function mount(root: HTMLElement): void
     // The white block behind the chosen view slides to it (styles.css .sk-seg::before) instead of jumping.
     function placeSeg(): void
     {
-        const seg = q<HTMLElement>('.sk-seg');
+        const seg = q<HTMLElement>('.tb-mode');
         const on = seg.querySelector<HTMLElement>('[aria-pressed="true"]');
         if (!on || on.offsetWidth === 0) {
             return;
@@ -1034,7 +1292,16 @@ export function mount(root: HTMLElement): void
             }
             return track.reduce((best, p) => (Math.abs(p.mjd - t) < Math.abs(best.mjd - t) ? p : best));
         };
-        if (track && track.length && frames.length) {
+        if (track && track.length && frames.length && tool.trail && (kind === 'mover' || kind === 'spectrum')) {
+            // Trail: where the ring would be on every other date, as small dots.
+            const here = st.mode === 'blink' ? at(st.index) : undefined;
+            for (const p of new Set(frames.map((_, k) => at(k)))) {
+                if (p && p !== here) {
+                    parts.push(`<circle cx="${(p.pix.x + 0.5).toFixed(2)}" cy="${(p.pix.y + 0.5).toFixed(2)}" r="${Math.max(0.9, scale * 0.3).toFixed(2)}" class="trail"/>`);
+                }
+            }
+        }
+        if (track && track.length && frames.length && tool.ring) {
             const pair = st.mode === 'diff' ? activeVisits() : null;
             const ks = st.mode === 'blink'
                 ? [st.index]
@@ -1218,6 +1485,11 @@ export function mount(root: HTMLElement): void
     {
         const pair = activeVisits();
         root.dataset.mode = st.mode;
+        const icon = ref<HTMLElement>('targetIcon');
+        const kindIcon = st.target ? ICON[COPY[st.target].kind] : ICON.look;
+        if (icon.innerHTML !== kindIcon) {
+            icon.innerHTML = kindIcon;
+        }
         root.dataset.subop = pair ? st.subOp : 'diff';
         root.dataset.gaia = String(st.gaia);
         root.dataset.source = sourceKind;
@@ -1487,6 +1759,7 @@ export function mount(root: HTMLElement): void
         }
         const skyColour = colourPicture ? colourPicture.map(band => `${band.lambda.toFixed(2)} µm`).join(' and ') : `${lam.toFixed(2)} µm`;
         canvas.setAttribute('aria-label', `Sky image. ${nowShowing}, ${skyColour}`);
+        mineText();
     }
 
     // ---------- playback ----------
@@ -1499,7 +1772,7 @@ export function mount(root: HTMLElement): void
         holdCompare?.cancel();
         st.index = stepIndex(st.index, result.frames.length, 1);
         draw();
-        timer = window.setTimeout(tick, frameDelayMs(FPS));
+        timer = window.setTimeout(tick, frameDelayMs(FPS * speed));
     }
 
     // The card's measured lines. Every number comes from the frames on screen, never from notes.
@@ -1588,7 +1861,7 @@ export function mount(root: HTMLElement): void
                 st.mode = 'blink';
                 draw();
             }
-            timer = window.setTimeout(tick, frameDelayMs(FPS));
+            timer = window.setTimeout(tick, frameDelayMs(FPS * speed));
             ref<HTMLElement>('live').textContent = `Playing ${result!.frames.length} frames. Space pauses.`;
         }
         renderText();
@@ -1640,6 +1913,144 @@ export function mount(root: HTMLElement): void
     function writeUrl(): void
     {
         history.replaceState(null, '', linkFor(!st.playing));
+        record();
+    }
+
+    // ---------- My frames: the visitor's own files, processed in this browser ----------
+    const mine = mountMine({ view: ref<HTMLElement>('mineView'), jobs: ref<HTMLElement>('jobs'), jobsList: ref<HTMLElement>('jobsList'),
+        jobsCount: ref<HTMLElement>('jobsCount'), cands: ref<HTMLElement>('mineCands'), notes: ref<HTMLElement>('mineNotes'),
+        ab: ref<HTMLElement>('mineAb'), strip: ref<HTMLElement>('mineStrip'), count: ref<HTMLElement>('wsCount') },
+        { toast, onChange: () => mineText() });
+    let mineMode: Mode = 'blink';
+    let mineTimer = 0;
+    const inMine = () => root.dataset.ws === 'mine';
+
+    function setWs(ws: 'sky' | 'mine'): void
+    {
+        tool.setWs(ws);
+        const on = ws === 'mine';
+        if (on) {
+            play(false);
+            holdCompare?.cancel();
+            minePlay(false);
+            mine.draw(mineMode);
+            mineText();
+        } else {
+            minePlay(false);
+            renderText();
+        }
+        syncMine();
+    }
+
+    // Tools that read the Sky library's archive data do nothing on the visitor's own frames.
+    const SKY_ONLY = '[data-tool="ring"], [data-tool="trail"], [data-tool="loupe"], [data-tool="hold"], [data-tool="zoomin"], [data-tool="fit"], [data-act="gaia"], [data-act="flags"], [data-act="falsecolour"], [data-act="epoch"]';
+    function syncMine(): void
+    {
+        const on = inMine();
+        for (const b of qa<HTMLButtonElement>(SKY_ONLY)) {
+            b.disabled = on;
+        }
+        const has = !!mine.session;
+        ref<HTMLElement>('empty').hidden = !on || has;
+        ref<HTMLElement>('mineView').hidden = !on || !has;
+        ref<HTMLElement>('sky').hidden = on;
+        ref<HTMLElement>('stage').classList.toggle('tb-is-empty', on && !has);
+    }
+
+    function mineText(): void
+    {
+        if (!inMine()) {
+            return;
+        }
+        syncMine();
+        const t = mine.frameText();
+        bind('name', mine.label());
+        bind('frame', t.frame);
+        bind('when', t.when);
+        bind('statusShort', 'Processed in this browser');
+        for (const b of qa<HTMLButtonElement>('[data-mode]')) {
+            b.setAttribute('aria-pressed', String(b.dataset.mode === mineMode));
+        }
+        q<HTMLButtonElement>('[data-act="play"]').innerHTML = mineTimer ? ICON.pause : ICON.play;
+        q<HTMLButtonElement>('[data-act="play"]').setAttribute('aria-label', mineTimer ? 'Pause' : 'Play');
+    }
+
+    function minePlay(on: boolean): void
+    {
+        window.clearTimeout(mineTimer);
+        mineTimer = 0;
+        if (on && mine.session && mine.session.frames.length > 1) {
+            mineMode = 'blink';
+            const tickMine = () => {
+                mine.step(1);
+                mineTimer = window.setTimeout(tickMine, frameDelayMs(FPS * speed));
+            };
+            mineTimer = window.setTimeout(tickMine, frameDelayMs(FPS * speed));
+        }
+        mineText();
+    }
+
+    // Clicks that mean something else while My frames is showing. True when handled here.
+    function mineClick(b: HTMLButtonElement): boolean
+    {
+        if (b.dataset.mode) {
+            minePlay(false);
+            mineMode = b.dataset.mode as Mode;
+            mine.draw(mineMode);
+            mineText();
+            return true;
+        }
+        if (b.dataset.mk !== undefined) {
+            minePlay(false);
+            mineMode = 'blink';
+            mine.pick(Number(b.dataset.mk));
+            return true;
+        }
+        if (b.dataset.act === 'play') {
+            minePlay(!mineTimer);
+            return true;
+        }
+        if (b.dataset.act === 'prev' || b.dataset.act === 'next') {
+            minePlay(false);
+            mineMode = 'blink';
+            mine.step(b.dataset.act === 'next' ? 1 : -1);
+            return true;
+        }
+        if (b.dataset.act === 'jobs-cancel') {
+            mine.cancel();
+            return true;
+        }
+        if (b.dataset.act === 'samples') {
+            void loadSamples();
+            return true;
+        }
+        if (b.dataset.act === 'save-picture') {
+            toast('Save picture works on the Sky library targets.');
+            return true;
+        }
+        return false;
+    }
+
+    function addFiles(files: File[]): void
+    {
+        setWs('mine');
+        mine.add(files);
+    }
+
+    async function loadSamples(): Promise<void>
+    {
+        try {
+            const files = await Promise.all(SAMPLE_FITS.map(async (name) => {
+                const res = await fetch(`/samples/${name}`);
+                if (!res.ok) {
+                    throw new Error(String(res.status));
+                }
+                return new File([await res.blob()], name, { type: 'application/fits' });
+            }));
+            addFiles(files);
+        } catch {
+            toast('Couldn’t load the sample files. Try again in a moment.');
+        }
     }
 
     // ---------- events ----------
@@ -1650,8 +2061,19 @@ export function mount(root: HTMLElement): void
         if (!b || !root.contains(b)) {
             return;
         }
+        if ((inMine() || b.dataset.act === 'samples') && mineClick(b)) {
+            return;
+        }
         if (b.dataset.target) {
+            setWs('sky');
             setTarget(b.dataset.target as TargetId);
+        } else if (b.dataset.speed) {
+            speed = Number(b.dataset.speed) || 1;
+            qa<HTMLButtonElement>('[data-speed]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+            if (st.playing) {
+                window.clearTimeout(timer);
+                timer = window.setTimeout(tick, frameDelayMs(FPS * speed));
+            }
         } else if (b.dataset.mode) {
             holdCompare?.cancel();
             st.mode = b.dataset.mode as Mode;
@@ -1842,8 +2264,6 @@ export function mount(root: HTMLElement): void
         }
     });
 
-    const layout = initLayout(root);
-
     document.addEventListener('keydown', (e) => {
         holdCompare?.end();
         // The guide is a modal dialog: the page's own shortcuts must not act behind it.
@@ -1854,8 +2274,15 @@ export function mount(root: HTMLElement): void
         if (el.closest?.('input, textarea, select, [contenteditable], [role=separator]') || e.metaKey || e.ctrlKey || e.altKey) {
             return;
         }
-        if ((e.key === 'f' || e.key === 'F') && matchMedia('(min-width: 1081px)').matches) {
-            layout.toggleFocus();
+        if (inMine()) {
+            if (e.key === ' ' && !el.closest?.('button, summary, a, label')) {
+                e.preventDefault();
+                minePlay(!mineTimer);
+            } else if (e.key === 'ArrowRight' || e.key === ']' || e.key === 'ArrowLeft' || e.key === '[') {
+                minePlay(false);
+                mineMode = 'blink';
+                mine.step(e.key === 'ArrowRight' || e.key === ']' ? 1 : -1);
+            }
             return;
         }
         if (e.key === ' ' && !el.closest?.('button, summary, a, label')) {
@@ -1918,7 +2345,7 @@ export function mount(root: HTMLElement): void
         }
     }
 
-    new ResizeObserver(() => placeSeg()).observe(q<HTMLElement>('.sk-seg'));
+    new ResizeObserver(() => placeSeg()).observe(q<HTMLElement>('.tb-mode'));
 
     let shared = decodeView(location.search);
     // A link with a preset target but no position (?t=rwaur&lam=1.11) opens that target, at its own position.
