@@ -10,6 +10,11 @@ export function helpButtonHtml(): string
     return `<button type="button" class="sk-btn2 sk-help-open" data-act="help" aria-haspopup="dialog" aria-label="${escapeHtml(HELP_TITLE)}"><span class="sk-help-wide" aria-hidden="true">${escapeHtml(HELP_TITLE)}</span><span class="sk-help-short" aria-hidden="true">Help</span></button>`;
 }
 
+export function helpAltButtonHtml(): string
+{
+    return `<button type="button" class="sk-help-alt" data-act="help" aria-haspopup="dialog" aria-label="${escapeHtml(HELP_TITLE)}">Help</button>`;
+}
+
 export function helpDialogHtml(): string
 {
     const terms = TERM_ORDER.map((id) => `<dt>${escapeHtml(GLOSSARY[id].term)}</dt><dd>${escapeHtml(GLOSSARY[id].long)}</dd>`).join('');
@@ -43,11 +48,13 @@ export function syncGloss(host: HTMLElement, ids: readonly TermId[]): void
 
 export function mountHelp(root: HTMLElement): void
 {
-    const opener = root.querySelector<HTMLButtonElement>('[data-act="help"]')!;
+    // Two buttons open the guide: the one beside the wordmark, and one beside Focus for when that panel is folded.
+    const openers = [...root.querySelectorAll<HTMLButtonElement>('[data-act="help"]')];
+    let opener = openers[0]!;
     const dialog = root.querySelector<HTMLDialogElement>('.sk-help')!;
     const list = dialog.querySelector<HTMLElement>('[data-help-controls]')!;
     const optional: Partial<Record<ControlId, string>> = {
-        flags: '[data-act="flags"]', falseColour: '[data-act="falsecolour"]', epoch: '[data-act="epoch"]',
+        gaia: '[data-act="gaia"]', flags: '[data-act="flags"]', falseColour: '[data-act="falsecolour"]', epoch: '[data-act="epoch"]',
         changes: '[data-ref="changes"]', spectrum: '[data-ref="spec"]', aiNote: '[data-ref="ai"]',
     };
     const ids: ControlId[] = ['target', 'blink', 'stack', 'subtract', 'colour', 'field', 'gaia', 'flags', 'falseColour', 'epoch', 'changes', 'spectrum', 'aiNote'];
@@ -60,7 +67,9 @@ export function mountHelp(root: HTMLElement): void
             opener.focus();
         }
     }
-    opener.addEventListener('click', () => {
+    function open(from: HTMLButtonElement): void
+    {
+        opener = from;
         list.replaceChildren();
         for (const id of ids) {
             const selector = optional[id];
@@ -77,13 +86,27 @@ export function mountHelp(root: HTMLElement): void
         if (typeof dialog.showModal === 'function') {
             dialog.showModal();
         } else {
+            // A browser with no <dialog>: show it as a fixed panel on top of the page.
+            dialog.classList.add('sk-help-plain');
             dialog.setAttribute('open', '');
             dialog.querySelector<HTMLButtonElement>('[data-help-close]')?.focus();
         }
-    });
+    }
+    for (const button of openers) {
+        button.addEventListener('click', () => open(button));
+    }
     dialog.querySelector('[data-help-close]')?.addEventListener('click', close);
     dialog.addEventListener('close', () => opener.focus());
     dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
-    dialog.addEventListener('click', (event) => { if (event.target === dialog) { close(); } });
+    dialog.addEventListener('click', (event) => {
+        if (event.target !== dialog) {
+            return;
+        }
+        // A click on the guide's own padding also lands on the dialog, so only a click outside its box closes it.
+        const box = dialog.getBoundingClientRect();
+        if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) {
+            close();
+        }
+    });
     dialog.addEventListener('keydown', (event) => { if (event.key === 'Escape' && typeof dialog.showModal !== 'function') { event.preventDefault(); close(); } });
 }

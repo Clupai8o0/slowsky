@@ -24,7 +24,7 @@ export const CONTROL_HELP: Readonly<Record<ControlId, ControlHelp>> = Object.fre
     colour: { name: 'Change the colour', line: 'Picks which colour of light to show. SPHEREx photographs the sky in 102 colours, from just past the reddest light eyes can see out into the infrared.' },
     field: { name: 'Field', line: 'Sets how wide a patch of sky the picture covers.' },
     gaia: { name: 'Brightest Gaia stars', line: 'Rings the brightest stars in the picture that the Gaia space telescope has already measured. A spot with no ring can still be a known star.' },
-    flags: { name: 'Flagged pixels', line: 'Marks pixels that the SPHEREx data files themselves flag for a problem, such as a cosmic-ray hit. A change seen there may come from the camera, not the sky.' },
+    flags: { name: 'Flagged pixels', line: 'Marks pixels that the SPHEREx data files themselves flag for a problem, such as a cosmic-ray hit (a fast particle from space striking the camera). A change seen there may come from the camera, not the sky.' },
     falseColour: { name: 'False colour', line: 'Paints two infrared colours as one picture. The colours are chosen for the screen: it is for looking, not measuring.' },
     epoch: { name: 'Older picture', line: 'Lets you flip between the SPHEREx picture and a picture of the same patch of sky taken between 1997 and 2001. A star that moved sits in a different place. The two cameras differ, so not every difference is a real change.' },
     changes: { name: 'Candidate changes', line: 'Lists spots where two visits differ. Each is a candidate only: it can be a real change, noise (random speckle in the picture), a satellite trail or a camera fault.' },

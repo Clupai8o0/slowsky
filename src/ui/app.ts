@@ -21,7 +21,7 @@ import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, type Curve } 
 import { mountAiNote } from './ai-note';
 import { mountAsk } from './ask-panel';
 import { CONTROL_HELP, GLOSSARY } from './help';
-import { helpButtonHtml, helpDialogHtml, mountHelp } from './help-view';
+import { helpAltButtonHtml, helpButtonHtml, helpDialogHtml, mountHelp } from './help-view';
 import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, type LayerState } from './slots';
 import { mountEpoch } from './epoch-view';
 import { mountSpectrum } from './spectrum-view';
@@ -276,6 +276,7 @@ export function shell(): string
     <div class="sk-mhrow">
       <h2 class="sk-mh" id="sk-h2" tabindex="-1"><i>02</i><span class="w">Watch it change</span></h2>
       <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
+      ${helpAltButtonHtml()}
       <button type="button" class="sk-focus" data-act="focus" aria-pressed="false" title="Fold both panels (F)"><span class="ic">${ICON.focus}</span><span>Focus</span></button>
     </div>
     <div class="sk-sky" data-ref="sky">
@@ -304,6 +305,7 @@ export function shell(): string
       </div>
       <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" title="${esc(CONTROL_HELP.field.line)}" aria-label="Field of view">${fovs}</select></label>
     </div>
+    <p class="sk-gloss sk-gaia-gloss" data-ref="gaiaGloss" hidden>${esc(GLOSSARY.gaia.short)}</p>
     <p class="sk-flagnote" data-ref="flagsNote" hidden></p>
     <p class="sk-flagnote" data-ref="fcNote" hidden></p>
     <p class="sk-flagnote sk-ep-note" data-ref="epochNote" role="status" hidden></p>
@@ -1270,6 +1272,7 @@ export function mount(root: HTMLElement): void
         // No catalogue stars came back: hide the toggle rather than offer an empty one.
         gaiaBtn.hidden = !result || result.stars.length === 0;
         ref<HTMLElement>('gaiaSrc').hidden = gaiaBtn.hidden;
+        ref<HTMLElement>('gaiaGloss').hidden = gaiaBtn.hidden;
         fovSelect.value = String(st.fovDeg);
         bind('det', `Detector ${lamDraft === null ? st.detector : detectorOf(lamDraft)} of 6`);
 

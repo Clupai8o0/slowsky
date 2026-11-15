@@ -13,6 +13,9 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 
 ## What you can do
 
+- New to astronomy? Press **What am I looking at?** for a plain-language guide: one line on each control and a
+  short list of the words the page uses. Its facts are listed, each with its source, in
+  [SOURCES.md](SOURCES.md#help-text).
 - Pick a preset target: Barnard's Star (moves fastest across our sky), RW Aurigae (changes its brightness),
   Epsilon Indi B (dim at the colours that methane and water absorb), WISE 0855−0714 (the coldest brown dwarf
   known) or R Draconis (its centre is too bright for the camera in every saved frame). Each one comes with a short

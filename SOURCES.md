@@ -174,6 +174,7 @@ checked against this repo's code and the rows under "What the page does".
 | 2MASS used two telescopes on the ground, one in Arizona and one in Chile | `src/ui/help.ts` (2MASS) | [IPAC, about 2MASS][2massabout] | Two 1.3 m telescopes, at Mt. Hopkins, Arizona, and at CTIO, Chile |
 | One SPHEREx frame is one exposure of about two minutes | `src/ui/help.ts` (frame) | Our own reading of `public/snapshot/*/index.json` | Each frame's end time is 0.00133 days (about 115 s) after its start |
 | An S/N figure can read too high beside a bright star, and figures above 50 show as "S/N > 50" | `src/ui/help.ts` (S/N) | `src/lib/changes.ts` | The code's own notes say the figure can be several times too high near anything bright, and its text for the figure caps at "S/N > 50" |
+| A cosmic ray is a fast particle from space | `src/ui/help.ts` (Flagged pixels) | [NASA Goddard, cosmic rays][gsfccr] | Cosmic rays are charged particles that travel through space at close to the speed of light. That one can strike a SPHEREx detector and get a pixel flagged is in the row on the cosmic-ray flag above |
 | The Spectrum chart reads the spot at the centre of the view from the SPHEREx all-sky map | `src/ui/help.ts` (Spectrum) | `src/ui/spectrum-view.ts` | The panel's own text says it reads the centre spot, colour by colour, from the SPHEREx all-sky cube. The panel is switched off on the live page |
 | A target can be one of the listed ones, a star name or a sky position | `src/ui/help.ts` (Choose a target) | `src/ui/app.ts` | The target list and its search box ("Any star, or RA, Dec") |
 
@@ -320,3 +321,4 @@ The licences in [DATA-LICENSES.md](DATA-LICENSES.md) were read from each package
 [chandrascale]: https://chandra.si.edu/photo/scale.html
 [esagaia]: https://www.esa.int/Science_Exploration/Space_Science/Gaia
 [2massabout]: https://www.ipac.caltech.edu/2mass/overview/about2mass.html
+[gsfccr]: https://imagine.gsfc.nasa.gov/science/toolbox/cosmic_rays1.html

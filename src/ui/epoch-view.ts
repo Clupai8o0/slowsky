@@ -579,7 +579,8 @@ function drawInto(els: EpochElements): (o: EpochOut) => void
         }
         els.note.hidden = !o.key;
         if (els.gloss) {
-            els.gloss.hidden = !o.key || o.note.length === 0;
+            // The 2MASS line shows only while the note names 2MASS, not while loading or after a failure.
+            els.gloss.hidden = !o.key || !o.note.some((part) => (typeof part === 'string' ? part : part.text).includes('2MASS'));
         }
     };
 }

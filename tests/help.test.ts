@@ -26,8 +26,8 @@ describe('beginner help', () => {
         expect(glossFor('nothing', TERM_ORDER)).toEqual([]);
         expect(glossFor('Catalogue star nearby', ['catalogueStar'])).toEqual([GLOSSARY.catalogueStar.short]);
     });
-    it('includes one help button and every glossary entry and source link', () => {
-        expect(shell().match(/data-act="help"/g)).toHaveLength(1);
+    it('includes both help buttons and every glossary entry and source link', () => {
+        expect(shell().match(/data-act="help"/g)).toHaveLength(2);
         const html = helpDialogHtml();
         for (const id of TERM_ORDER) {
             expect(html).toContain(GLOSSARY[id].term);

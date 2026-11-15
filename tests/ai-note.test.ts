@@ -356,6 +356,9 @@ describe('mountAiNote', () => {
         expect(doc.el('tag').textContent).toBe('AI-generated: Claude Opus 5.5');
         expect(doc.el('left').textContent).toBe('4 AI notes left today');
         expect(fetchCalls.at(-1)?.passcode).toBeUndefined();
+        // A new view has no note yet, so the label must not keep the last note's model name.
+        ai.update(noteView(61001));
+        expect(doc.el('tag').textContent).toBe('AI-generated');
     });
 
     it('drops the note while allowing the request to finish when the view changes', async () => {
