@@ -747,6 +747,8 @@ describe('preview switch', () => {
         expect(featuresFrom('halo,-halo')).toEqual(DEFAULT_FEATURES);
         expect(DEFAULT_FEATURES.epoch).toBe(true);
         expect(featuresFrom('-epoch')).toEqual({ ...DEFAULT_FEATURES, epoch: false });
+        expect(DEFAULT_FEATURES.gestures).toBe(false);
+        expect(featuresFrom('gestures').gestures).toBe(true);
     });
 
     it('ships with the build defaults when the variable is not set', () => {

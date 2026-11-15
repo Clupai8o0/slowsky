@@ -27,6 +27,8 @@ import { mountUpTonight } from './uptonight-slot';
 import { saveShareCard } from './share-view';
 import { releaseCredits } from '../lib/sharecard';
 import { mountComet } from './comet-view';
+import { attachGestures } from './gestures';
+import { createHoldCompare, HOLD_LINE } from './gesture-hold';
 import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
 
@@ -322,6 +324,7 @@ export function shell(shareCard = FEATURES.shareCard): string
       <div class="sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true">B − A</button><button type="button" data-subop="sum" aria-pressed="false">A + B</button></div>${shareCard ? '<button type="button" class="sk-save" data-act="save-picture" title="Save a picture of A, B and B − A" aria-label="Save a picture of A, B and B − A">Save picture</button>' : ''}
     </div>
     <p class="sk-hint" data-bind="hint"></p>
+    <p class="sk-gest-hint" hidden>Swipe the picture to step through frames. On a later frame, press and hold to compare it with the first.</p>
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
     </div>
   </section>
@@ -481,6 +484,7 @@ export function mount(root: HTMLElement): void
     let fcState: LayerState = { key: false, layer: false, note: '' };
     let fcFailure: { result: SkyResult; mode: Mode; source: SourceKind; note: string } | null = null;
     let lookup: AbortController | null = null; // pending name lookup; any newer navigation cancels it
+    let holdCompare: ReturnType<typeof createHoldCompare> | null = null;
 
     function activeVisits(): { a: Visit; b: Visit } | null
     {
@@ -581,6 +585,7 @@ export function mount(root: HTMLElement): void
         ctrl?.abort();
         ctrl = new AbortController();
         const signal = ctrl.signal;
+        holdCompare?.cancel();
         play(false);
         // Drop the previous view so nothing (play, strip, details) acts on frames of another spot.
         result = null;
@@ -854,6 +859,7 @@ export function mount(root: HTMLElement): void
             clearSubCache();
             // Fall back to Blink for real, so the readout, legend and URL match what is drawn.
             toast(`These frames can’t be combined, so this shows them one by one. ${e.message}`);
+            holdCompare?.cancel();
             st.mode = 'blink';
             writeUrl();
         }
@@ -1478,6 +1484,7 @@ export function mount(root: HTMLElement): void
         if (!result) {
             return;
         }
+        holdCompare?.cancel();
         st.index = stepIndex(st.index, result.frames.length, 1);
         draw();
         timer = window.setTimeout(tick, frameDelayMs(FPS));
@@ -1561,6 +1568,7 @@ export function mount(root: HTMLElement): void
         window.clearTimeout(timer);
         st.playing = on && !!result && result.frames.length > 1;
         if (on) {
+            holdCompare?.cancel();
             epochSlot.off(); // the older picture and frame playback are never on together
         }
         if (st.playing) {
@@ -1582,6 +1590,7 @@ export function mount(root: HTMLElement): void
         if (!result) {
             return;
         }
+        holdCompare?.cancel();
         st.mode = 'blink';
         play(false);
         st.index = stepIndex(st.index, result.frames.length, dir);
@@ -1600,7 +1609,7 @@ export function mount(root: HTMLElement): void
         if (st.target) {
             v.target = st.target;
         }
-        const f = result?.frames[st.index];
+        const f = result?.frames[holdCompare?.heldIndex() ?? st.index];
         if (withFrame && f && st.mode === 'blink') {
             v.frame = f.frame.frame.obsId;
         }
@@ -1624,6 +1633,7 @@ export function mount(root: HTMLElement): void
     // ---------- events ----------
 
     root.addEventListener('click', (e) => {
+        holdCompare?.end();
         const b = (e.target as Element).closest('button');
         if (!b || !root.contains(b)) {
             return;
@@ -1631,6 +1641,7 @@ export function mount(root: HTMLElement): void
         if (b.dataset.target) {
             setTarget(b.dataset.target as TargetId);
         } else if (b.dataset.mode) {
+            holdCompare?.cancel();
             st.mode = b.dataset.mode as Mode;
             if (st.mode !== 'blink') {
                 play(false);
@@ -1642,6 +1653,7 @@ export function mount(root: HTMLElement): void
             draw();
             writeUrl();
         } else if (b.dataset.k !== undefined) {
+            holdCompare?.cancel();
             st.mode = 'blink';
             play(false);
             st.index = Number(b.dataset.k);
@@ -1723,6 +1735,7 @@ export function mount(root: HTMLElement): void
         if (!result || !Number.isInteger(k) || k < 0 || !result.frames[k]) {
             return;
         }
+        holdCompare?.cancel();
         st.mode = 'blink';
         play(false);
         st.index = k;
@@ -1820,6 +1833,7 @@ export function mount(root: HTMLElement): void
     const layout = initLayout(root);
 
     document.addEventListener('keydown', (e) => {
+        holdCompare?.end();
         const el = e.target as HTMLElement;
         if (el.closest?.('input, textarea, select, [contenteditable], [role=separator]') || e.metaKey || e.ctrlKey || e.altKey) {
             return;
@@ -1839,6 +1853,54 @@ export function mount(root: HTMLElement): void
     });
 
     // ---------- start ----------
+
+    if (FEATURES.gestures) {
+        const sky = ref<HTMLElement>('sky');
+        const live = ref<HTMLElement>('live');
+        const loadEl = ref<HTMLElement>('load');
+        const errEl = ref<HTMLElement>('err');
+        const epochEl = ref<HTMLElement>('epoch');
+        const vv = window.visualViewport;
+        const zoomed = (): boolean => !!vv && vv.scale > 1.01;
+        const hold = createHoldCompare({
+            // False colour and the older picture cover the frame, so a hold there would change nothing a visitor can see.
+            canHold: () => !!(result && stretch && result.frames.length >= 2 && st.mode === 'blink' && !fcState.layer
+                && !epochSlot.on && epochEl.hidden && loadEl.hidden && errEl.hidden),
+            token: () => result,
+            index: () => st.index,
+            put: (index) => { st.index = index; },
+            show: (index) => {
+                st.index = index;
+                draw();
+            },
+            pause: () => play(false),
+            say: (text) => {
+                if (text || live.textContent === HOLD_LINE) {
+                    live.textContent = text;
+                }
+            },
+        });
+        holdCompare = hold;
+        attachGestures(sky, {
+            prev: () => step(-1),
+            next: () => step(1),
+            holdStart: () => hold.start(),
+            holdEnd: () => hold.end(),
+        }, {
+            touchAction: 'pan-y pinch-zoom',
+            ignore: (event) => zoomed() || (event instanceof Event && event.target instanceof Element
+                && !!event.target.closest('button, a, input, select, textarea, label, summary, [role="button"], [role="separator"], [role="slider"]')),
+        });
+        const syncTouchAction = (): void => {
+            sky.style.touchAction = zoomed() ? 'auto' : 'pan-y pinch-zoom';
+        };
+        syncTouchAction();
+        vv?.addEventListener('resize', syncTouchAction);
+        sky.classList.add('sk-gest');
+        if (matchMedia('(pointer: coarse)').matches) {
+            q<HTMLElement>('.sk-gest-hint').hidden = false;
+        }
+    }
 
     new ResizeObserver(() => placeSeg()).observe(q<HTMLElement>('.sk-seg'));
 

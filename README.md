@@ -80,6 +80,11 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 - Use it on a phone: on a narrow screen the page becomes one column, and its web app manifest lets you add it to
   the home screen.
 
+Touch gestures on the sky picture exist behind the `gestures` switch in `src/ui/slots.ts` and are off by default.
+With the switch on, swiping steps through frames and pressing and holding on a later frame shows the first frame until
+you let go. A mouse does not trigger them, and pinch-zoom still works. While the page is pinch-zoomed in, gestures switch
+off so the picture pans normally. On a device with a touchscreen, text inside the picture box cannot be selected.
+
 ## How it works
 
 1. **Position.** The page starts from a sky position. For the presets, positions and proper motions (the slow
