@@ -677,7 +677,7 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
     const dialog = root.querySelector<HTMLDialogElement>('dialog.sk-help');
     if (dialog) {
         const box = doc.createElement('input');
-        box.type = 'search';
+        box.type = 'text';
         box.className = 'tb-gsearch';
         box.placeholder = 'Search the guide';
         box.setAttribute('aria-label', 'Search the guide');

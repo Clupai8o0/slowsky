@@ -673,13 +673,13 @@ export function mount(root: HTMLElement): void
     }
     function record(): void
     {
-        if (applying || st.playing) {
+        if (applying) {
             return;
         }
         if (amendNext) {
+            // The load that started this step has finished (or is still running): fill the step in, even while playing.
             steps.amend(snap());
-            amendNext = !!root.dataset.loading;
-        } else {
+        } else if (!st.playing) {
             steps.record(snap());
         }
         syncHistory();
@@ -984,6 +984,13 @@ export function mount(root: HTMLElement): void
         reading = null;
         ref<HTMLElement>('load').hidden = true;
         delete root.dataset.loading;
+        // The page settles (frame, visits, play) in the next moments; those writes still fill in this load's step.
+        record();
+        window.setTimeout(() => {
+            if (!root.dataset.loading) {
+                amendNext = false;
+            }
+        }, 400);
         lamInput.disabled = false;
         if (!res || res.frames.length === 0) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1972,7 +1979,7 @@ export function mount(root: HTMLElement): void
         for (const b of qa<HTMLButtonElement>('[data-mode]')) {
             b.setAttribute('aria-pressed', String(b.dataset.mode === mineMode));
         }
-        q<HTMLButtonElement>('[data-act="play"]').innerHTML = mineTimer ? ICON.pause : ICON.play;
+        q<HTMLButtonElement>('[data-act="play"]').innerHTML = `<span class="ic">${mineTimer ? ICON.pause : ICON.play}</span>`;
         q<HTMLButtonElement>('[data-act="play"]').setAttribute('aria-label', mineTimer ? 'Pause' : 'Play');
     }
 

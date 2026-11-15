@@ -13,9 +13,15 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 
 ## What you can do
 
-- New to astronomy? Press **What am I looking at?** for a plain-language guide: one line on each control and a
-  short list of the words the page uses. On a phone the button reads **Help**; when the targets panel is folded, a
-  **Help** button beside Focus opens the same guide. Short notes on the page explain µm, Gaia, 2MASS, S/N,
+- Find your way round the page: the target and the views (Blink, Stack, Subtract) sit in the bar at the top, the
+  tools (loupe, compare, ring, trail, Gaia rings, flagged pixels, false colour, older picture, zoom, fit) in a
+  labelled column left of the sky, the dates and the colour slider in the timeline under it, and the target's
+  notes, the frame details, candidate changes, charts, the AI note and extras in the inspector's tabs on the right.
+  Hover or focus any control for a line of help at the foot of the page. **Show me around** gives a short tour,
+  and undo and redo (⌘Z or Ctrl+Z, ⇧⌘Z or Ctrl+Y) step back through targets, views, dates, zoom and layers.
+- New to astronomy? Press **What am I looking at?** for a plain-language guide, with a search box: one line on
+  each control and a short list of the words the page uses. On a phone and on narrow laptops the button reads
+  **Help**; a second **Help** button at the foot of the page opens the same guide. Short notes on the page explain µm, Gaia, 2MASS, S/N,
   "catalogue star" and the ″ (arcsecond) mark where they come up. The guide's facts are listed, each with its
   source, in [SOURCES.md](SOURCES.md#help-text).
 - Pick a preset target: Barnard's Star (moves fastest across our sky), RW Aurigae (changes its brightness),
@@ -85,7 +91,7 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   sharper star image in one visit or a small shift between the two pictures, and it says so above the list. A
   saved copy lists nothing, because it is not checked against the error maps and flags (`src/lib/changes.ts`,
   `src/ui/changes-view.ts`, `src/ui/flag-screen.ts`).
-- Below the colour step, in the **Spectrum** panel, press **Read the spectrum here** to read the light of the spot at
+- In the inspector's **Charts** tab, in the **Spectrum** card, press **Read the spectrum here** to read the light of the spot at
   the centre of the view in SPHEREx's 102 colours, from the archive's all-sky cube. Nothing is read until you
   press. A small chart shows the result, with a shaded band for the scatter of the sky around the spot, a gold
   line at the colour on screen, and labels at up to seven wavelengths where well-known features fall (a label
@@ -96,21 +102,28 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode, and in Subtract the two
   visits and whether they are subtracted or added.
+- Try your own frames: **My frames** (or **Upload**, or drop files on the page) takes 2 to 20 FITS, PNG or JPG
+  pictures of the same patch of sky, lines them up and shows them in Blink, Stack and Subtract, with a list of
+  candidate changes between two picked frames. It all runs in the browser and the files are never uploaded
+  (`src/lib/upload-engine.ts`, `src/ui/mine.ts`). For PNG and JPG pictures the brightness is already stretched, so
+  the σ beside each candidate is marked rough (≈) and is for choosing where to look, not a measurement; past
+  1000σ it reads "over 1000σ". **Try real FITS samples** runs three SPHEREx cutouts of Groombridge 1830 (IRSA,
+  DR1/QR3, trimmed to their image and zodiacal-light planes) through the same steps.
 - Use it on a phone: on a narrow screen the page becomes one column, and its web app manifest lets you add it to
   the home screen.
-- Read the **Tonight's sky** line under the sky map: when the spot on screen stands highest in tonight's dark hours
+- Read the **Tonight's sky** line in the inspector's **Target** tab: when the spot on screen stands highest in tonight's dark hours
   as seen from Melbourne, about how high, and facing which way. It says where the spot is in the sky, never whether
   anything can be seen there. The sums run in the browser (`src/lib/uptonight.ts`), ask the visitor for nothing,
   and are checked against astropy 8.0.2 (`tests/fixtures/uptonight-astropy.json`, made by
   `scripts/uptonight_fixture.py`).
-- In Subtract, press **Save picture**, beside the B − A and A + B buttons: it draws one PNG in the browser with the
+- In Subtract, press **Save picture** (the download button in the top bar): it draws one PNG in the browser with the
   earlier visit, the later visit and their difference side by side. Under them it prints what the colours of the
   difference mean, the SPHEREx data release (on the simulated sky, a line saying it is not NASA data instead), a
   line saying the code was written with AI tools, a line saying a difference is a candidate only, and the link to
   the view. The credit lines are also stored in the PNG's text fields. Where the browser can share files it opens
   the share sheet; otherwise it downloads the file. The page itself sends the picture nowhere
   (`src/lib/sharecard.ts`, `src/ui/share-view.ts`).
-- Look at the **Comet 3I/ATLAS across the CO₂ band** card at the foot of the left panel: twelve small pictures of
+- Look at the **Comet 3I/ATLAS across the CO₂ band** card in the inspector's **Extras** tab: twelve small pictures of
   the interstellar comet from SPHEREx frames taken on 14 Dec 2025, and a chart of its core's brightness by
   wavelength. See "Comet card" below.
 - Look at the **Planet Nine: how faint, how deep?** chart under the comet card: published estimates of how bright
