@@ -315,10 +315,10 @@ describe('SIA rows', () => {
         expect(fetcher).toHaveBeenCalledTimes(2);
         expect(fetcher.mock.calls[1]).toEqual(fetcher.mock.calls[0]);
     });
-    it('retries 503 and 504 after one and two seconds', async () => {
+    it('retries 503 then 502 after one and two seconds', async () => {
         vi.useFakeTimers();
         const fetcher = vi.fn().mockResolvedValueOnce(new Response('', { status: 503 }))
-            .mockResolvedValueOnce(new Response('', { status: 504 })).mockResolvedValueOnce(new Response(fixture));
+            .mockResolvedValueOnce(new Response('', { status: 502 })).mockResolvedValueOnce(new Response(fixture));
         const pending = searchFrames(q, undefined, fetcher);
         await vi.advanceTimersByTimeAsync(1000);
         expect(fetcher).toHaveBeenCalledTimes(2);
@@ -347,7 +347,7 @@ describe('SIA rows', () => {
         expect(fetcher).toHaveBeenCalledTimes(3);
         expect(vi.getTimerCount()).toBe(0);
     });
-    it.each([400, 500, 404, 429])('does not retry status %s', async status => {
+    it.each([400, 500, 404, 429, 504])('does not retry status %s', async status => {
         vi.useFakeTimers();
         const fetcher = vi.fn(async () => new Response('', { status }));
         await expect(searchFrames(q, undefined, fetcher)).rejects.toThrow(`SIA request failed (${status})`);

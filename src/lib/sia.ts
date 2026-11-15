@@ -53,6 +53,7 @@ export const SIA_MAXREC = 2000;
 
 // The proxy already tried three times, and the archive fails in bursts.
 // Three page tries allow up to nine upstream tries.
+// A 504 is not retried: the proxy sends it only after its own 25 s deadline, so a hung archive would cost 78 s.
 export const SIA_PAGE_RETRY_DELAYS_MS = Object.freeze([1000, 2000] as const);
 
 // Every frame on a detector has the same em_min..em_max (measured from SIA rows, µm):
@@ -112,7 +113,7 @@ async function queryOnce(q: FrameQuery, signal: AbortSignal | undefined, fetcher
     const url = `/api/sia?${params}`;
     let response = await fetcher(url, { signal });
     for (const delay of SIA_PAGE_RETRY_DELAYS_MS) {
-        if (![502, 503, 504].includes(response.status)) {
+        if (![502, 503].includes(response.status)) {
             break;
         }
         try {
@@ -124,6 +125,8 @@ async function queryOnce(q: FrameQuery, signal: AbortSignal | undefined, fetcher
         response = await fetcher(url, { signal });
     }
     if (!response.ok) {
+        // The failed reply is never read, so release it before giving up.
+        await response.body?.cancel().catch(() => undefined);
         throw new Error(`SIA request failed (${response.status})`);
     }
     const xml = await response.text();
