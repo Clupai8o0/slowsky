@@ -153,7 +153,7 @@ All read from the HiPS properties file on 14 Nov 2026, as `src/lib/epoch.ts` rec
 
 The plain-language guide and its word list (`src/ui/help.ts`), written on 15 Nov 2026. Claude Opus 5.5 opened each
 source below. Gemini Argon read the sentences as a first-time reader, with no web access, and marked what could
-mislead. Several sentences were reworded after the two checks. What the guide says about the page's own controls was
+mislead. Several sentences were reworded after the two checks. Both checks were run by AI tools; no person has re-checked each row. What the guide says about the page's own controls was
 checked against this repo's code and the rows under "What the page does".
 
 | Claim | Where in this repo | Source | What the source gives |
@@ -163,7 +163,7 @@ checked against this repo's code and the rows under "What the page does".
 | SPHEREx photographs 0.75 to 5.0 µm in 102 colours, from just past the reddest light eyes can see out into the infrared | `src/ui/help.ts` (µm, Change the colour, Spectrum) | [Bock et al. 2025][bock], abstract | 102 bands from 0.75 to 5 µm. NASA's mission page calls the range optical and near-infrared, and NASA's glossary starts infrared at 0.78 µm, so the short end is just past what eyes see rather than strictly infrared |
 | A micrometre is a thousandth of a millimetre | `src/ui/help.ts` (µm) | [NIST SI prefixes][nistsi] | Micro means one millionth, so 1 µm is a millionth of a metre, which is a thousandth of a millimetre |
 | Infrared is light with longer waves than red light, which eyes cannot see | `src/ui/help.ts` (infrared) | [NASA Science, infrared waves][nasair] | Infrared lies past the red end of visible light, and the eye cannot see it |
-| Cool objects such as brown dwarfs give off most of their light as infrared | `src/ui/help.ts` (infrared) | [JPL, coldest brown dwarfs][jplbd] | Cold brown dwarfs emit most of their light at infrared wavelengths. That page is about the coldest ones |
+| Cool objects such as brown dwarfs give off most of their light as infrared; brown dwarfs are sometimes called failed stars and never get hot enough to shine the way stars do | `src/ui/help.ts` (infrared) | [JPL, coldest brown dwarfs][jplbd] | Cold brown dwarfs emit most of their light at infrared wavelengths, and are not hot enough for the nuclear burning that powers stars; a caption there calls one a "failed star". That page is about the coldest ones |
 | An arcsecond is 1/3600 of a degree | `src/ui/help.ts` (″) | [Chandra X-ray Center, angular scale][chandrascale] | 60 arcminutes to a degree and 60 arcseconds to an arcminute. The centre is run for NASA by the Smithsonian Astrophysical Observatory |
 | The full Moon is about half a degree, roughly 1,800″, across | `src/ui/help.ts` (″) | [Chandra X-ray Center, angular scale][chandrascale] | The Sun and Moon are about half a degree across. 1,800″ is our own arithmetic (0.5 × 3600) |
 | A SPHEREx pixel is about 6″ wide | `src/ui/help.ts` (″, pixel) | [Bock et al. 2025][bock], abstract; [Explanatory Supplement][supp], Table 2 | 6.2″ pixels in the abstract, 6.15″ in the supplement |
@@ -174,6 +174,8 @@ checked against this repo's code and the rows under "What the page does".
 | 2MASS used two telescopes on the ground, one in Arizona and one in Chile | `src/ui/help.ts` (2MASS) | [IPAC, about 2MASS][2massabout] | Two 1.3 m telescopes, at Mt. Hopkins, Arizona, and at CTIO, Chile |
 | One SPHEREx frame is one exposure of about two minutes | `src/ui/help.ts` (frame) | Our own reading of `public/snapshot/*/index.json` | Each frame's end time is 0.00133 days (about 115 s) after its start |
 | An S/N figure can read too high beside a bright star, and figures above 50 show as "S/N > 50" | `src/ui/help.ts` (S/N) | `src/lib/changes.ts` | The code's own notes say the figure can be several times too high near anything bright, and its text for the figure caps at "S/N > 50" |
+| The Spectrum chart reads the spot at the centre of the view from the SPHEREx all-sky map | `src/ui/help.ts` (Spectrum) | `src/ui/spectrum-view.ts` | The panel's own text says it reads the centre spot, colour by colour, from the SPHEREx all-sky cube. The panel is switched off on the live page |
+| A target can be one of the listed ones, a star name or a sky position | `src/ui/help.ts` (Choose a target) | `src/ui/app.ts` | The target list and its search box ("Any star, or RA, Dec") |
 
 ## AI-generated content
 
@@ -187,12 +189,12 @@ The tools themselves, with their makers, are listed in the README under [AI tool
 |---|---|---|---|---|
 | AI note | The AI note panel on the page, when it is switched on | Claude API; model `claude-opus-5-5` by default (the server setting `INSIGHT_MODEL` can name another, and the note names the model the API reports) | Write a short note from the page's own fact sheet, under three fixed headings. A checker (`checkNote` in `src/lib/insight.ts`) drops any sentence that does not match the sheet. The note stays off until the site owner sets it up | Instructions: `src/lib/insight-prompt.ts`, sent by `api/insight.ts`. Checker: `src/lib/insight.ts` |
 | Help text and page wording | Help text (`src/ui/help.ts`); other page text | Help text: Claude Fable 5.2 (`claude-fable-5-2`) in Claude Code, 15 Nov 2026, fact-checked by Claude Opus 5.5 (with web access) and Gemini Argon. Other page text: drafted with Claude Code; model per sentence not recorded | Draft plain-language wording for the page | `src/ui/help.ts` (the result). The prompts are not recorded in this repo |
-| Site icon | Browser tab, home-screen icon | Claude Opus 5.5 (`claude-opus-5-5`) in Claude Code, 15 Nov 2026 | Draw an icon as SVG code. It drew four options and Sam chose one: ten blue-to-orange stripes and one white star. It is decoration, not data. The PNG sizes were rendered from the SVG | `public/icon.svg` (the result); `public/icon-192.png`, `public/icon-512.png`, `public/apple-touch-icon.png`. The prompt is in the Claude Code session log, not in this repo |
+| Site icon | Browser tab, home-screen icon | Claude Opus 5.5 (`claude-opus-5-5`) in Claude Code, 15 Nov 2026 | Draw an icon as SVG code. It drew four options and Sam chose one: ten blue-to-orange stripes and one white star. It is decoration, not data. The PNG files are the same icon at three sizes | `public/icon.svg` (the result); `public/icon-192.png`, `public/icon-512.png`, `public/apple-touch-icon.png`. The prompt is in the Claude Code session log, not in this repo |
 | Code | The whole site | Claude Code (Claude Fable, Opus, Sonnet and Haiku models), Codex (GPT-6.1 Sol and Terra), Gemini (Argon and Carbon); Grok 4.7 for review only. Which model wrote each file is not recorded | Write and review code and tests | This repo's commit history and the README table |
-| Demo film images | The demo film's backgrounds and picture elements: `bg_title`, `bg_pluto`, `el_plates`, `bg_sky`, `bg_survey`, `el_telescope`, `bg_world`, `el_browndwarf`, `bg_end` (all nine are in the final cut) | OpenAI GPT Image, model `gpt-image-2`, high quality | Paint decorative pictures in one shared style. They are never sky data | Prompts below. Kept with the film's working files (`video/experiments/gen_assets.sh` and one log per image in `video/experiments/ai-logs/`), not in this repo |
+| Demo film images | The demo film's backgrounds and picture elements: `bg_title`, `bg_pluto`, `el_plates`, `bg_sky`, `bg_survey`, `el_telescope`, `bg_world`, `el_browndwarf`, `bg_end` (all nine are used in the film's scene code) | OpenAI GPT Image, model `gpt-image-2`, high quality | Paint decorative pictures in one shared style. They are never sky data | Prompts below. Kept with the film's working files (`video/experiments/gen_assets.sh` and one log per image in `video/experiments/ai-logs/`), not in this repo |
 | Demo film voice | The demo film's narration | ElevenLabs, model `eleven_multilingual_v2`, voice Adam Stone ("Smooth, Deep and Relaxed") | Read the six narration lines aloud, one take per line | Kept with the film's working files (`video/experiments/voice_lines.py`), not in this repo |
-| Demo film script and animation code | The demo film's scenes, captions and on-screen text | Claude in Claude Code (a main session and Opus subagents). Exact model ids not recorded. Who drafted the narration words is not recorded | Build the film's scenes and timing in code | Kept with the film's working files (`video/film-c/HANDOFF.md`, `src/film/copy.ts`), not in this repo |
-| Change sort hint | Nowhere: it is switched off | A small neural network trained in this repo. It is not generative AI and writes no text or pictures | Trained, not prompted: to label each spot in the change list by kind of change. It is not used | `public/models/change-classifier.card.json` |
+| Demo film script and animation code | The demo film's scenes, captions and on-screen text | Claude in Claude Code (a main session and Opus subagents); exact model ids not recorded. The narration words were first drafted with Claude Code in the film plan on 14 Nov 2026. Parts of the code were reviewed with Codex (OpenAI) | Build the film's scenes and timing in code | Kept with the film's working files (`VIDEO-PLAN.md`, `video/film-c/HANDOFF.md`, `src/film/copy.ts`), not in this repo |
+| Change sort hint | Nowhere: it is switched off | A small neural network, trained in this repo with PyTorch by scripts that Codex and Claude wrote. It is not generative AI and writes no text or pictures | Trained, not prompted: to label each spot in the change list by kind of change. It is not used | `public/models/change-classifier.json` (the network) and `public/models/change-classifier.card.json` (its description) |
 
 ### Prompts
 
@@ -227,9 +229,12 @@ SPHEREx pixels." "Volunteers found over three thousand brown dwarf candidates." 
 
 ### Labels
 
-- The AI note's heading shows "AI-generated" and, whenever a note or an answer is on screen, the model's name after
-  it (for example "AI-generated: Claude Opus 5.5"). The name comes from the model the server reports. The line
-  under each note starts "Written by AI from the measurements on this page."
+- The AI note's heading shows "AI-generated" and, whenever a note is on screen, the model's name after it (for
+  example "AI-generated: Claude Opus 5.5"). The name comes from the model the server reports. The line under each
+  note starts "Written by AI from the measurements on this page."
+- An answer to a typed question is made of the page's own measured lines; the AI model only chooses which lines to
+  show. It is labelled "Chosen by AI (model name) from the measurements on this page." Typed questions are switched
+  off on the live page.
 - The guide on the page ("What am I looking at?") ends with a line saying the code, the wording and the icon were
   made with AI tools, and links to this list.
 - The demo film carries one line on screen: "AI images: OpenAI gpt-image-2 · AI voice: ElevenLabs

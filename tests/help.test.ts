@@ -7,7 +7,7 @@ import { disclaimer } from '../src/ui/ai-note';
 
 describe('beginner help', () => {
     it('has safe text for every control and term', () => {
-        const controls: ControlId[] = ['blink', 'stack', 'subtract', 'colour', 'field', 'gaia', 'flags', 'falseColour', 'epoch', 'changes', 'spectrum', 'aiNote'];
+        const controls: ControlId[] = ['target', 'blink', 'stack', 'subtract', 'colour', 'field', 'gaia', 'flags', 'falseColour', 'epoch', 'changes', 'spectrum', 'aiNote'];
         expect(Object.keys(CONTROL_HELP)).toHaveLength(controls.length);
         expect(new Set(TERM_ORDER).size).toBe(Object.keys(GLOSSARY).length);
         for (const id of controls) {
@@ -24,6 +24,7 @@ describe('beginner help', () => {
     it('returns matching glosses in the requested order', () => {
         expect(glossFor('S/N and ″', ['arcsec', 'catalogueStar', 'snr'])).toEqual([GLOSSARY.arcsec.short, GLOSSARY.snr.short]);
         expect(glossFor('nothing', TERM_ORDER)).toEqual([]);
+        expect(glossFor('Catalogue star nearby', ['catalogueStar'])).toEqual([GLOSSARY.catalogueStar.short]);
     });
     it('includes one help button and every glossary entry and source link', () => {
         expect(shell().match(/data-act="help"/g)).toHaveLength(1);

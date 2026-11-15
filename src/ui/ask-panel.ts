@@ -186,7 +186,8 @@ export function mountAsk(panel: HTMLElement, deps: AskPanelDeps = {}): AskPanel
                 render({ kind: 'failed' });
             }
             if (answer.kind === 'answer' || answer.kind === 'none') {
-                attribution.textContent = `AI-generated: ${modelName(answer.model)}`;
+                // The lines themselves are this page's measurements; the AI model only chose which ones answer.
+                attribution.textContent = `Chosen by AI (${modelName(answer.model)}) from the measurements on this page.`;
                 attribution.hidden = false;
             }
         } catch (err) {

@@ -522,9 +522,10 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         if (shown.get(box) !== html) {
             box.innerHTML = html;
             shown.set(box, html);
-        }
-        if (box.ownerDocument && box.children) {
-            syncGloss(box, ['snr', 'catalogueStar', 'arcsec']);
+            // Setting innerHTML removed the old gloss, so add it again only now (not on every render).
+            if (box.ownerDocument && box.children) {
+                syncGloss(box, ['snr', 'catalogueStar', 'arcsec']);
+            }
         }
         const svg = changesMarks(v, view.result.grid.width, view.result.grid.height, all);
         if (shown.get(marks) !== svg) {

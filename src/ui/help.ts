@@ -5,7 +5,7 @@
 // The wording was drafted with an AI tool (Claude Fable 5.2), then corrected after two fact-checks: Claude Opus 5.5
 // (with web access, against the sources and this repo's code) and Gemini Argon (as a zero-knowledge reader).
 
-export type ControlId = 'blink' | 'stack' | 'subtract' | 'colour' | 'field' | 'gaia' | 'flags' | 'falseColour'
+export type ControlId = 'target' | 'blink' | 'stack' | 'subtract' | 'colour' | 'field' | 'gaia' | 'flags' | 'falseColour'
     | 'epoch' | 'changes' | 'spectrum' | 'aiNote';
 
 export const HELP_TITLE = 'What am I looking at?';
@@ -17,6 +17,7 @@ export const HELP_INTRO = 'Small patches of sky, photographed by NASA’s SPHERE
 export interface ControlHelp { name: string; line: string }
 
 export const CONTROL_HELP: Readonly<Record<ControlId, ControlHelp>> = Object.freeze({
+    target: { name: 'Choose a target', line: 'Picks the patch of sky to look at: one of the listed targets, or any star name or sky position you type in.' },
     blink: { name: 'Blink', line: 'Flips through the pictures in date order when you press play or the arrows. A spot that moved seems to jump; a spot that changed brightness seems to flicker.' },
     stack: { name: 'Stack', line: 'Averages all the pictures into one. Faint, steady things get clearer; anything that moved is blurred or split into fainter copies.' },
     subtract: { name: 'Subtract', line: 'Takes an earlier visit away from a later one, so what stayed the same cancels out. Blue marks more light earlier, orange more light later. The A + B button adds the two visits instead.' },
@@ -27,7 +28,7 @@ export const CONTROL_HELP: Readonly<Record<ControlId, ControlHelp>> = Object.fre
     falseColour: { name: 'False colour', line: 'Paints two infrared colours as one picture. The colours are chosen for the screen: it is for looking, not measuring.' },
     epoch: { name: 'Older picture', line: 'Lets you flip between the SPHEREx picture and a picture of the same patch of sky taken between 1997 and 2001. A star that moved sits in a different place. The two cameras differ, so not every difference is a real change.' },
     changes: { name: 'Candidate changes', line: 'Lists spots where two visits differ. Each is a candidate only: it can be a real change, noise (random speckle in the picture), a satellite trail or a camera fault.' },
-    spectrum: { name: 'Spectrum', line: 'A chart of how bright the spot at the centre of the view is in each of SPHEREx’s 102 colours, read from its all-sky map. Each colour was seen on a different date.' },
+    spectrum: { name: 'Spectrum', line: 'A chart of how bright the spot at the centre of the view is in each of SPHEREx’s 102 colours, read from its all-sky map.' },
     aiNote: { name: 'AI note', line: 'A short description of this view, written by an AI language model from numbers this page measured. It carries the model’s name and can be wrong.' },
 });
 
@@ -48,7 +49,7 @@ export const GLOSSARY: Readonly<Record<TermId, Term>> = Object.freeze({
         term: 'S/N',
         find: 'S/N',
         short: 'S/N = signal-to-noise: how many times bigger the change is than the noise (random speckle) expected at that spot.',
-        long: 'Signal-to-noise: how many times bigger a change is than the noise (random speckle) expected at that spot. A higher figure is less likely to be noise alone, but it is not proof: beside a bright star, or on a faulty pixel, it can read too high. Figures above 50 show as "S/N > 50".',
+        long: 'Signal-to-noise: how many times bigger a change is than the noise (random speckle) expected at that spot. A higher figure is less likely to be noise alone, but it is not proof: beside a bright star it can read too high. Figures above 50 show as "S/N > 50".',
     },
     catalogueStar: {
         term: 'catalogue star',
@@ -78,7 +79,7 @@ export const GLOSSARY: Readonly<Record<TermId, Term>> = Object.freeze({
         term: 'infrared',
         find: 'infrared',
         short: 'Infrared = light with longer waves than red light, which eyes cannot see.',
-        long: 'Light with longer waves than red light, which eyes cannot see. Cool objects such as brown dwarfs (heavier than planets, too light to shine like stars) give off most of their light as infrared.',
+        long: 'Light with longer waves than red light, which eyes cannot see. Cool objects such as brown dwarfs (sometimes called failed stars: they never get hot enough to shine the way stars do) give off most of their light as infrared.',
     },
     frame: {
         term: 'frame',

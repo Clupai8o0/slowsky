@@ -18,7 +18,9 @@ export function helpDialogHtml(): string
 
 export function glossFor(text: string, ids: readonly TermId[]): string[]
 {
-    return ids.filter((id) => text.includes(GLOSSARY[id].find)).map((id) => GLOSSARY[id].short);
+    // Case does not matter: "Catalogue star" at the start of a sentence is the same term.
+    const lower = text.toLowerCase();
+    return ids.filter((id) => lower.includes(GLOSSARY[id].find.toLowerCase())).map((id) => GLOSSARY[id].short);
 }
 
 export function syncGloss(host: HTMLElement, ids: readonly TermId[]): void
@@ -48,7 +50,7 @@ export function mountHelp(root: HTMLElement): void
         flags: '[data-act="flags"]', falseColour: '[data-act="falsecolour"]', epoch: '[data-act="epoch"]',
         changes: '[data-ref="changes"]', spectrum: '[data-ref="spec"]', aiNote: '[data-ref="ai"]',
     };
-    const ids: ControlId[] = ['blink', 'stack', 'subtract', 'colour', 'field', 'gaia', 'flags', 'falseColour', 'epoch', 'changes', 'spectrum', 'aiNote'];
+    const ids: ControlId[] = ['target', 'blink', 'stack', 'subtract', 'colour', 'field', 'gaia', 'flags', 'falseColour', 'epoch', 'changes', 'spectrum', 'aiNote'];
     function close(): void
     {
         if (typeof dialog.close === 'function' && dialog.open) {
