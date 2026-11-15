@@ -1,7 +1,8 @@
 # Data licences and credits
 
 The code is MIT (see [LICENSE](LICENSE)). The data Slowsky shows or ships keeps its own terms, listed here.
-Each licence and credit line was checked on the provider's own page on 14 Nov 2026, unless marked "not confirmed".
+Each licence and credit line was checked on the provider's own page on 14 Nov 2026 (the all-sky cube row on
+15 Nov 2026), unless marked "not confirmed".
 
 ## Data sources
 
@@ -9,6 +10,7 @@ Each licence and credit line was checked on the provider's own page on 14 Nov 20
 |---|---|---|---|---|
 | SPHEREx DR1, IRSA | Frames, live or snapshot | IRSA terms (1) | SPHEREx, IRSA (3), doi:10.26131/IRSA678 | [DR1][dr1] |
 | SPHEREx QR3, IRSA | Frames, live or snapshot | IRSA terms (1) | SPHEREx, IRSA (3), doi:10.26131/IRSA662 | [QR3][qr3] |
+| SPHEREx DR1 all-sky cube, IRSA | One spot's spectrum, read live after a press (Spectrum panel) | IRSA terms (1) | SPHEREx, IRSA (3), doi:10.26131/IRSA679 | [DR1][dr1] |
 | IRSA SIA search | Lists of frames for a spot | IRSA terms (1) | IRSA line (3) | [Terms][irsa] |
 | Gaia DR3, ESA | Star rings, live or snapshot | CC BY-NC 3.0 IGO (2) | "Credit: ESA, Gaia DPAC" | [Licence][gaia] |
 | SIMBAD, CfA mirror | Name lookup; target positions | ODbL, per the mirror | SIMBAD line (3) | [SIMBAD][simbad] |
@@ -19,9 +21,13 @@ Where each one is used:
 
 - SPHEREx frames are read live from the public S3 bucket `nasa-irsa-spherex`. The snapshot in `public/snapshot/`
   holds cutouts of the same files, made by `scripts/bake.py`.
+- The all-sky cube tiles are read live from the same bucket, under `dr1/hips5_cube/`, only after a visitor presses
+  **Read the spectrum here**. IRSA gives the cube its own DOI (10.26131/IRSA679); DR1's image DOI (IRSA678) does
+  not cover it (checked on the DR1 overview page, 15 Nov 2026). No cube pixels are stored in the snapshot.
 - The SIA search runs through `api/sia.ts` in the site, and directly from `scripts/`.
-- `tests/fixtures/` holds small SPHEREx DR1 and QR3 cutouts and IRSA SIA replies used by the tests, under the
-  same IRSA terms. The scripts that made them are listed in `scripts/README.md`.
+- `tests/fixtures/` holds small SPHEREx DR1 and QR3 cutouts, small byte ranges of all-sky cube tiles
+  (`tests/fixtures/cube/`) and IRSA SIA replies used by the tests, under the same IRSA terms. The scripts that
+  made them are listed in `scripts/README.md`.
 - Gaia DR3 rows (`public/snapshot/*/gaia.json`) were fetched at bake time from STScI's Gaia cone service
   (`gsss.stsci.edu`), with the CfA VizieR mirror as fallback. For live views the page calls the same two services.
 - SIMBAD answers name searches typed into the page. `scripts/targets.py` took the five targets' positions and

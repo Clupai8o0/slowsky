@@ -85,12 +85,38 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   sharper star image in one visit or a small shift between the two pictures, and it says so above the list. A
   saved copy lists nothing, because it is not checked against the error maps and flags (`src/lib/changes.ts`,
   `src/ui/changes-view.ts`, `src/ui/flag-screen.ts`).
+- Below the colour step, in the **Spectrum** panel, press **Read the spectrum here** to read the light of the spot at
+  the centre of the view in SPHEREx's 102 colours, from the archive's all-sky cube. Nothing is read until you
+  press. A small chart shows the result, with a shaded band for the scatter of the sky around the spot, a gold
+  line at the colour on screen, and labels at up to seven wavelengths where well-known features fall (a label
+  that would overlap another is left out). It is a quick
+  look, not a measurement: it reads a spot, not a named object, and a label does not mean that feature is there.
+  It is not offered on the simulated sky (`src/lib/cube.ts`, `src/ui/spectrum-view.ts`).
 - Read each frame's details: when it was taken, its wavelength at the spot, detector, data release, file name,
   and links to the original FITS file and to the archive's own page.
 - Copy a link that reopens the exact view: position, field, colour, frame and mode, and in Subtract the two
   visits and whether they are subtracted or added.
 - Use it on a phone: on a narrow screen the page becomes one column, and its web app manifest lets you add it to
   the home screen.
+- Read the **Tonight's sky** line under the sky map: when the spot on screen stands highest in tonight's dark hours
+  as seen from Melbourne, about how high, and facing which way. It says where the spot is in the sky, never whether
+  anything can be seen there. The sums run in the browser (`src/lib/uptonight.ts`), ask the visitor for nothing,
+  and are checked against astropy 8.0.2 (`tests/fixtures/uptonight-astropy.json`, made by
+  `scripts/uptonight_fixture.py`).
+- In Subtract, press **Save picture**, beside the B − A and A + B buttons: it draws one PNG in the browser with the
+  earlier visit, the later visit and their difference side by side. Under them it prints what the colours of the
+  difference mean, the SPHEREx data release (on the simulated sky, a line saying it is not NASA data instead), a
+  line saying the code was written with AI tools, a line saying a difference is a candidate only, and the link to
+  the view. The credit lines are also stored in the PNG's text fields. Where the browser can share files it opens
+  the share sheet; otherwise it downloads the file. The page itself sends the picture nowhere
+  (`src/lib/sharecard.ts`, `src/ui/share-view.ts`).
+- Look at the **Comet 3I/ATLAS across the CO₂ band** card at the foot of the left panel: twelve small pictures of
+  the interstellar comet from SPHEREx frames taken on 14 Dec 2025, and a chart of its core's brightness by
+  wavelength. See "Comet card" below.
+- On a touchscreen, swipe on the sky picture to step through frames, and press and hold on a later frame to see the
+  first frame until you let go. A mouse does not trigger these gestures, and pinch-zoom still works. While the page
+  is pinch-zoomed in, the gestures switch off so the picture pans normally. On a device with a touchscreen, text
+  inside the picture box cannot be selected (the `gestures` switch in `src/ui/slots.ts`).
 
 ## How it works
 
@@ -128,6 +154,17 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 The snapshot holds 24 frames for each of the 5 targets, as 112 × 112 pixel cutouts on one detector per target,
 plus Gaia DR3 stars brighter than magnitude 19 within 0.1° (counts from `public/snapshot/manifest.json` and the
 files in each target folder).
+
+**The spectrum.** The Spectrum panel reads a different product: the SPHEREx DR1 all-sky cube. It was made in
+SPHEREx's first-year reprocessing from the first year of calibrated frames, after the archive's model of the
+zodiacal light was subtracted: each pixel
+of each colour is the average of the good frame pixels that landed on it. The sky is cut into 12,288 tiles, and each
+tile is one FITS file of 512 × 512 pixels (12.9 arcsec each) by 102 colours, in MJy/sr, in the same S3 bucket (under
+`dr1/hips5_cube/`). After the press, the page works out which tile and pixel hold the centre of the view, reads that
+file's headers and wavelength table, and then, for each colour, reads with range requests only the rows that hold an
+11 × 11 pixel patch around the spot. A colour's value is the mean of the 3 × 3 pixels at the spot minus the median
+of the patch pixels 3 or more pixels away (the local background). A colour has no value where any of the nine pixels
+is blank, or the whole background is. Nothing is read before the press.
 
 ## Run it
 
@@ -172,15 +209,20 @@ More on the scripts: [scripts/README.md](scripts/README.md).
   epochs (`tests/regrid.test.ts`).
 
 Other tests cover the archive proxy, the snapshot files, coordinate input, the player, stacking and the link
-format.
+format. For the Spectrum panel, `tests/cube.test.ts` checks the cube reader against spectra worked out
+separately with numpy from small byte ranges of real cube tiles (`tests/fixtures/cube/`), and
+`tests/spectrum-chart.test.ts` and `tests/spectrum-view.test.ts` cover the chart, its text and the panel.
 
 ## Data and credits
 
 The frames are from NASA's SPHEREx mission (DR1 and QR3), served by the NASA/IPAC Infrared Science Archive.
 Star rings use ESA's Gaia DR3 (credit: ESA, Gaia DPAC), read through STScI's Gaia cone service with the CfA
 VizieR mirror as a fallback. Names and target positions come from the SIMBAD database through the CfA mirror.
+The Spectrum panel reads the SPHEREx DR1 all-sky cube (doi:10.26131/IRSA679), served by IRSA from the same
+bucket.
 The older picture is from the Two Micron All Sky Survey (2MASS; University of Massachusetts and IPAC/Caltech,
 funded by NASA and the National Science Foundation), as image tiles made by CDS (CNRS/Unistra) and served by IRSA.
+The comet card uses IRSA's Moving Object Search Tool for the comet's frames and positions.
 The full list, with licences and credit lines: [DATA-LICENSES.md](DATA-LICENSES.md).
 Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md).
 
@@ -254,32 +296,66 @@ in it.
 - The picture's brightness scale is for viewing. The brightness curve is relative to nearby stars, not in physical
   units. The centre of R Draconis is too bright for the camera in every saved frame, and Barnard's Star's in most
   of them, so neither gets a curve.
+- The Spectrum panel is a quick look, not a measurement. IRSA's own guide to the cube says spectra taken from it
+  are for display only, and points to its photometry tool for science.
+  - It reads the spot at the centre of the view, not a named object. A star that moves, or a neighbour within the
+    same pixels (each 12.9 arcsec wide), can change what is read.
+  - A spot's colours were not all observed at the same time: SPHEREx takes a few neighbouring colours in a row
+    and the next ones hours or days later, so one spot's full set builds up over days or weeks, and the cube
+    averages each colour over the first year. A star that varies
+    can look jagged.
+  - Some spots have data in only some colours. In our reads on 15 Nov 2026, Barnard's Star had 9 of 102, RW
+    Aurigae 85 and WISE 0855−0714 100; we have not checked why they differ. The read at the position of WISE
+    0855−0714 was a flat line near zero with one high value near 1.1 µm; we have not checked what that value is,
+    and we do not claim it is light from that object. Two colours near 2.4 µm, the ones next to the instrument's
+    beam splitter, are blank everywhere in this version of the cube.
+  - The labels mark where features fall; a label does not mean the feature is there. The helium label at 1.083 µm
+    is also where a helium line from Earth's atmosphere (airglow) falls, and IRSA names it as the airglow that
+    leaves the most marked stripes in the cube, so a bump there may not come from the spot. Bright lines in nebulae, such as Brackett α
+    at 4.05 µm, can leave stripes too.
+  - In our six reads on 15 Nov 2026 (three targets, each at desktop and phone size), each read took 34 to 36
+    seconds and about 2.1 MB in 110 requests. It depends on the connection and on the archive.
 - Stack is a plain average of all frames, pixel by pixel, with nothing thrown out, so a cosmic-ray hit or a trail
   in one frame still shows, only fainter. A pixel that is blank in some frames is the average of the frames that
   have it. Subtract compares two visits at a time (the first and last frame when there is only one visit). A
   visit with several frames is a plain average of them too, so a spot that was in only one of its frames can
   still show.
 
+## Comet card
+
+`scripts/bake_comet.py` asks IRSA's Moving Object Search Tool which SPHEREx frames hold comet
+3I/ATLAS (C/2025 N1) and where it should be in each. It takes the twelve detector-5 DR1 frames from three visits on
+14 Dec 2025, which step from 3.96 to 4.36 µm, and reads by byte range only the rows it needs from each file (about
+4.9 MB in all). It writes `public/comet/3i-atlas.json`: a 41 × 41 pixel cut-out around the predicted spot, the mean
+of the 3 × 3 pixels there, and the median of the cut-out's 5-pixel border. The card draws the cut-outs on one shared
+linear scale (its top is the brightest pixel in any 3 × 3 box) and charts core minus border against wavelength (`src/lib/comet.ts`, `src/ui/comet-view.ts`).
+- What the numbers are: raw L2 image values in MJy/sr, with nothing subtracted except that border median.
+- What they are not: a calibrated measurement of the comet. The 3 × 3 box is not an aperture and sits on the
+  predicted position, not on the brightest pixel. The border is not empty sky: the reported coma (about 3 arcminutes
+  in radius) is wider than the cut-out (about 4 arcminutes across). The frames were taken over about 3.3 hours,
+  each at a different wavelength, so the row mixes colour and time. The values 39 (at 4.25 µm) and 1 MJy/sr (at
+  4.36 µm) come from four frames that started within 7 minutes of each other.
+- At 4.25 µm core minus border is 39 MJy/sr; at 3.96 to 4.18 µm it is 0.6 to 0.7 MJy/sr, over 50 times less
+  (36 to 47 times less before the border is taken off). The SPHEREx team reports carbon dioxide gas emission at
+  4.25 to 4.27 µm in this comet and a carbon dioxide coma about 3 arcminutes in radius (Lisse et al. 2025, RNAAS 9,
+  242, arXiv:2508.15469; Lisse et al. 2026, RNAAS 10, 26, arXiv:2601.06759). The card does not separate gas light
+  from dust light. It redraws public frames with rough numbers of its own and adds nothing new to that work.
+- Blank pixels (no value in the archive) are drawn dark red; a white speck can be a star, a hot pixel or a
+  cosmic-ray hit. The pictures keep the detector's orientation and are not turned north up.
+
 ## In the repository but not switched on
 
 These parts are in the code but switched off on the site, so a visitor cannot use them (`FEATURES` in
-`src/ui/slots.ts`; Flagged pixels, False colour, Older picture and Candidate changes are on). A preview build can
-switch the first two on with `VITE_PREVIEW_FEATURES`. The sort hint is connected to the Candidate changes list
-behind its switch (`mlHint`) and stays off; the reason is given below.
+`src/ui/slots.ts`; Flagged pixels, False colour, Older picture, Candidate changes, Spectrum, Tonight's sky, Save
+picture, the comet card and touch gestures are on). A preview build can switch the first two below on with
+`VITE_PREVIEW_FEATURES`. The sort hint is connected to the Candidate changes list behind its switch (`mlHint`) and
+stays off; the reason is given below.
 
 - A sentence that reads the colour at one spot of the False colour picture (`fcReading`). It stays off: the page
   shows the picture and does not measure a colour.
 - For R Draconis, the light in a ring around its too-bright centre, look by look, as a line or a table
   (`src/lib/halo.ts`, `src/ui/halo-view.ts`).
 - A machine-learning sort hint for each candidate change, described below.
-- A Spectrum panel: after a press it reads one spot's 102 colours from the SPHEREx all-sky cube in the public
-  archive and draws a small chart (`src/lib/cube.ts`, `src/ui/spectrum-view.ts`). While it is switched off the
-  page does not show it and reads nothing from the cube. A preview build can switch it on in the same way.
-- A "Tonight's sky" line under the sky map (`upTonight`): when the spot on screen stands highest in tonight's dark
-  hours as seen from Melbourne, about how high, and facing which way. It says where the spot is in the sky, never
-  whether anything can be seen there. The sums run in the browser (`src/lib/uptonight.ts`), ask the visitor for
-  nothing, and are checked against astropy 8.0.2 (`tests/fixtures/uptonight-astropy.json`, made by
-  `scripts/uptonight_fixture.py`).
 
 **The change sort hint.** A small neural network (`public/models/change-classifier.json`, run by
 `src/lib/classify.ts`). Its card is `public/models/change-classifier.card.json`; its test results are in `models/`.

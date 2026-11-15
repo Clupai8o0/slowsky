@@ -1,6 +1,6 @@
 // Visit grouping, per-visit plain averaging, and two-visit combination for Subtract mode.
 // Pure functions only (no DOM globals).
-import { StackError, stackVisit, subtract } from '../lib/stack';
+import { AVERAGED_VISIT_NOTE, StackError, stackVisit, subtract } from '../lib/stack';
 import type { SkyResult } from '../lib/source';
 import { frameMjd } from './measure';
 
@@ -112,7 +112,7 @@ export function subtractText(a: Visit, b: Visit, op: SubOp): string
     const looksA = looksText(a.n);
     const looksB = looksText(b.n);
     // A plain average keeps a spot that was in only one of its looks, at a fraction of its level.
-    const avg = a.n > 1 || b.n > 1 ? ' An averaged visit can show a spot that was in only one of its looks.' : '';
+    const avg = a.n > 1 || b.n > 1 ? ` ${AVERAGED_VISIT_NOTE}` : '';
     if (op === 'diff') {
         return `Later minus earlier: ${dateB} (${looksB}) minus ${dateA} (${looksA}). Blue marks more light in the earlier visit, orange more in the later one. Black means about the same, or a pixel blank in either visit.${avg}`;
     }

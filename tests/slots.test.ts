@@ -70,9 +70,9 @@ const flush = () => new Promise(r => setTimeout(r, 0));
 const view = (result: SkyResult, index = 0, over: Partial<SlotView> = {}): SlotView => ({ result, index, mode: 'blink', source: 'live', ...over });
 
 describe('flags slot', () => {
-    it('ships switched on (spectrum stays off); switched off it shows nothing and reads nothing', () => {
+    it('ships switched on (spectrum too); switched off it shows nothing and reads nothing', () => {
         expect(FEATURES.flags).toBe(true);
-        expect(FEATURES.spectrum).toBe(false);
+        expect(FEATURES.spectrum).toBe(true);
         const { slot, calls } = harness({ enabled: false });
         expect(slot.update(view(sky([frame('a')])), true)).toEqual({ key: false, layer: false, note: '' });
         expect(calls).toHaveLength(0);
@@ -747,10 +747,14 @@ describe('preview switch', () => {
         expect(featuresFrom('halo,-halo')).toEqual(DEFAULT_FEATURES);
         expect(DEFAULT_FEATURES.epoch).toBe(true);
         expect(featuresFrom('-epoch')).toEqual({ ...DEFAULT_FEATURES, epoch: false });
+        expect(DEFAULT_FEATURES.gestures).toBe(true);
+        expect(featuresFrom('-gestures').gestures).toBe(false);
     });
 
     it('ships with the build defaults when the variable is not set', () => {
         expect(import.meta.env.VITE_PREVIEW_FEATURES).toBeUndefined();
         expect(FEATURES).toEqual(DEFAULT_FEATURES);
+        expect(FEATURES.shareCard).toBe(true);
+        expect(featuresFrom('-shareCard').shareCard).toBe(false);
     });
 });

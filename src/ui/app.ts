@@ -26,6 +26,11 @@ import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, type 
 import { mountEpoch } from './epoch-view';
 import { mountSpectrum } from './spectrum-view';
 import { mountUpTonight } from './uptonight-slot';
+import { saveShareCard } from './share-view';
+import { releaseCredits } from '../lib/sharecard';
+import { mountComet } from './comet-view';
+import { attachGestures } from './gestures';
+import { createHoldCompare, HOLD_LINE } from './gesture-hold';
 import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
 
@@ -237,7 +242,7 @@ const LAM_MAX = (DETECTORS[DETECTORS.length - 1] as [number, number])[1];
 const AXIS_MIN = 0.4;
 const axisPct = (lam: number) => ((lam - AXIS_MIN) / (LAM_MAX - AXIS_MIN)) * 100;
 
-export function shell(): string
+export function shell(shareCard = FEATURES.shareCard): string
 {
     const targets = ORDER.map((id) => `<button type="button" data-target="${id}" aria-pressed="false"><span class="ic k">${ICON[COPY[id].kind]}</span><b>${esc(COPY[id].display)}</b><small>${esc(COPY[id].short)}</small></button>`).join('');
     const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
@@ -321,9 +326,10 @@ export function shell(): string
     <div class="sk-sub" data-ref="sub" hidden>
       <label class="sk-fov">A <select data-ref="subA" aria-label="Earlier visit (A)"></select></label>
       <label class="sk-fov">B <select data-ref="subB" aria-label="Later visit (B)"></select></label>
-      <div class="sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true">B − A</button><button type="button" data-subop="sum" aria-pressed="false">A + B</button></div>
+      <div class="sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true">B − A</button><button type="button" data-subop="sum" aria-pressed="false">A + B</button></div>${shareCard ? '<button type="button" class="sk-save" data-act="save-picture" title="Save a picture of A, B and B − A" aria-label="Save a picture of A, B and B − A">Save picture</button>' : ''}
     </div>
     <p class="sk-hint" data-bind="hint"></p>
+    <p class="sk-gest-hint" hidden>Swipe the picture to step through frames. On a later frame, press and hold to compare it with the first.</p>
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
     </div>
   </section>
@@ -417,6 +423,8 @@ export function mount(root: HTMLElement): void
     const changesSlot = mountChanges(() => renderSlots());
     const spectrumSlot = mountSpectrum(ref<HTMLElement>('spec'), { enabled: FEATURES.spectrum });
     const upSlot = mountUpTonight(ref<HTMLElement>('up'), { enabled: FEATURES.upTonight });
+    // Comet card (FEATURES.comet): off adds nothing to the page and fetches nothing.
+    mountComet(root.querySelector<HTMLElement>('.sk-m-about'), { enabled: FEATURES.comet });
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderText());
     // Older picture (2MASS): off unless FEATURES.epoch; Play, False colour and Flagged pixels switch it off.
     const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),
@@ -475,6 +483,7 @@ export function mount(root: HTMLElement): void
     let stretch: ReturnType<typeof sharedStretch> | null = null;
     let composed: { stack?: Float32Array; diff?: Float32Array; scale?: DiffScale; sumStretch?: Stretch; subKey?: string } = {};
     let timer = 0;
+    let savingPicture = false;
     let ctrl: AbortController | null = null;
     let lamDraft: number | null = null;
     let flagsOn = false; // the Flags layer over the sky
@@ -482,6 +491,7 @@ export function mount(root: HTMLElement): void
     let fcState: LayerState = { key: false, layer: false, note: '' };
     let fcFailure: { result: SkyResult; mode: Mode; source: SourceKind; note: string } | null = null;
     let lookup: AbortController | null = null; // pending name lookup; any newer navigation cancels it
+    let holdCompare: ReturnType<typeof createHoldCompare> | null = null;
 
     function activeVisits(): { a: Visit; b: Visit } | null
     {
@@ -582,6 +592,7 @@ export function mount(root: HTMLElement): void
         ctrl?.abort();
         ctrl = new AbortController();
         const signal = ctrl.signal;
+        holdCompare?.cancel();
         play(false);
         // Drop the previous view so nothing (play, strip, details) acts on frames of another spot.
         result = null;
@@ -606,6 +617,9 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('err').hidden = true;
         ref<HTMLElement>('load').hidden = false;
         root.dataset.loading = 'true';
+        if (FEATURES.shareCard) {
+            q<HTMLButtonElement>('[data-act="save-picture"]').disabled = true;
+        }
         progress({ stage: 'search', done: 0, total: 1 });
         if (wantFrame === undefined && wantSub === undefined) {
             // The address bar names the spot being opened, not the last one (no stale f=).
@@ -852,6 +866,7 @@ export function mount(root: HTMLElement): void
             clearSubCache();
             // Fall back to Blink for real, so the readout, legend and URL match what is drawn.
             toast(`These frames can’t be combined, so this shows them one by one. ${e.message}`);
+            holdCompare?.cancel();
             st.mode = 'blink';
             writeUrl();
         }
@@ -1142,7 +1157,8 @@ export function mount(root: HTMLElement): void
             return;
         }
         const view = result ? { result, targetId: st.target, index: st.index, mode: st.mode, source: sourceKind } : null;
-        spectrumSlot.update({ center: st.center, lambda: result?.locked[st.index]?.lambda, source: sourceKind, available: !!view });
+        // The centre of the picture on screen: a saved copy of a target is centred on the target, whatever position the link named.
+        spectrumSlot.update({ center: result?.grid.center ?? st.center, lambda: result?.locked[st.index]?.lambda, source: sourceKind, available: !!view });
         const changes = !!(FEATURES.changes && view && changesSlot.render(ref<HTMLElement>('changesBox'), ref<HTMLElement>('changesMarks'), view));
         ref<HTMLElement>('changes').hidden = !changes;
         ref<HTMLElement>('changesMarks').hidden = !changes;
@@ -1235,6 +1251,9 @@ export function mount(root: HTMLElement): void
         ref<HTMLElement>('fact').hidden = !card.fact;
         bind('hint', fcState.layer ? FALSE_COLOUR_HINT : st.mode === 'diff' && pair ? subtractText(pair.a, pair.b, st.subOp) : MODE_HINT[st.mode]);
         subBox.hidden = !(st.mode === 'diff' && pair !== null);
+        if (FEATURES.shareCard) {
+            q<HTMLButtonElement>('[data-act="save-picture"]').disabled = !pair || !result || !!root.dataset.loading || savingPicture;
+        }
         if (pair) {
             const aHtml = visits.slice(0, -1).map((v, i) => `<option value="${i}">${esc(visitLabel(v))}</option>`).join('');
             if (aHtml !== subAHtml) {
@@ -1474,6 +1493,7 @@ export function mount(root: HTMLElement): void
         if (!result) {
             return;
         }
+        holdCompare?.cancel();
         st.index = stepIndex(st.index, result.frames.length, 1);
         draw();
         timer = window.setTimeout(tick, frameDelayMs(FPS));
@@ -1557,6 +1577,7 @@ export function mount(root: HTMLElement): void
         window.clearTimeout(timer);
         st.playing = on && !!result && result.frames.length > 1;
         if (on) {
+            holdCompare?.cancel();
             epochSlot.off(); // the older picture and frame playback are never on together
         }
         if (st.playing) {
@@ -1578,6 +1599,7 @@ export function mount(root: HTMLElement): void
         if (!result) {
             return;
         }
+        holdCompare?.cancel();
         st.mode = 'blink';
         play(false);
         st.index = stepIndex(st.index, result.frames.length, dir);
@@ -1596,7 +1618,7 @@ export function mount(root: HTMLElement): void
         if (st.target) {
             v.target = st.target;
         }
-        const f = result?.frames[st.index];
+        const f = result?.frames[holdCompare?.heldIndex() ?? st.index];
         if (withFrame && f && st.mode === 'blink') {
             v.frame = f.frame.frame.obsId;
         }
@@ -1620,6 +1642,7 @@ export function mount(root: HTMLElement): void
     // ---------- events ----------
 
     root.addEventListener('click', (e) => {
+        holdCompare?.end();
         const b = (e.target as Element).closest('button');
         if (!b || !root.contains(b)) {
             return;
@@ -1627,6 +1650,7 @@ export function mount(root: HTMLElement): void
         if (b.dataset.target) {
             setTarget(b.dataset.target as TargetId);
         } else if (b.dataset.mode) {
+            holdCompare?.cancel();
             st.mode = b.dataset.mode as Mode;
             if (st.mode !== 'blink') {
                 play(false);
@@ -1638,6 +1662,7 @@ export function mount(root: HTMLElement): void
             draw();
             writeUrl();
         } else if (b.dataset.k !== undefined) {
+            holdCompare?.cancel();
             st.mode = 'blink';
             play(false);
             st.index = Number(b.dataset.k);
@@ -1682,6 +1707,27 @@ export function mount(root: HTMLElement): void
         } else if (b.dataset.act === 'copy') {
             const url = linkFor(true);
             navigator.clipboard?.writeText(url).then(() => toast('Link copied. It opens this exact view.'), () => toast(url));
+        } else if (b.dataset.act === 'save-picture' && FEATURES.shareCard && !savingPicture && !root.dataset.loading) {
+            const pair = activeVisits();
+            if (pair && result && stretch && st.mode === 'diff') {
+                const url = new URL(linkFor(false));
+                url.searchParams.delete('op');
+                const name = st.target ? COPY[st.target].display : st.label;
+                const slug = name.normalize('NFKD').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'position';
+                const date = (mjd: number) => new Date((mjd - 40587) * 86400000).toISOString().slice(0, 10);
+                const records = [...pair.a.ks, ...pair.b.ks].map(k => result!.frames[k]!.frame.frame);
+                const releases = releaseCredits(records.map(r => RELEASE_DOI[r.release]?.cite ?? r.collection));
+                // Everything that can throw is built before the lock is taken, so the button cannot stay stuck.
+                const card = { name, position: st.center, labelA: visitLabel(pair.a), labelB: visitLabel(pair.b), averaged: pair.a.n > 1 || pair.b.n > 1, releases, wavelength: result.lambda,
+                    field: result.grid.fovDeg, rings: false, url: url.toString(), simulated: sourceKind === 'demo' };
+                const filename = `slowsky-${slug}-${date(pair.a.mjd)}-${date(pair.b.mjd)}.png`;
+                savingPicture = true;
+                b.disabled = true;
+                void saveShareCard({ result, a: pair.a, b: pair.b, stretch, card, filename }, toast).finally(() => {
+                    savingPicture = false;
+                    b.disabled = !!root.dataset.loading || !activeVisits() || !result;
+                });
+            }
         } else if (b.dataset.act === 'retry') {
             void load();
         } else if (b.dataset.act === 'live') {
@@ -1698,6 +1744,7 @@ export function mount(root: HTMLElement): void
         if (!result || !Number.isInteger(k) || k < 0 || !result.frames[k]) {
             return;
         }
+        holdCompare?.cancel();
         st.mode = 'blink';
         play(false);
         st.index = k;
@@ -1795,6 +1842,7 @@ export function mount(root: HTMLElement): void
     const layout = initLayout(root);
 
     document.addEventListener('keydown', (e) => {
+        holdCompare?.end();
         // The guide is a modal dialog: the page's own shortcuts must not act behind it.
         if (root.querySelector('dialog[open]')) {
             return;
@@ -1818,6 +1866,54 @@ export function mount(root: HTMLElement): void
     });
 
     // ---------- start ----------
+
+    if (FEATURES.gestures) {
+        const sky = ref<HTMLElement>('sky');
+        const live = ref<HTMLElement>('live');
+        const loadEl = ref<HTMLElement>('load');
+        const errEl = ref<HTMLElement>('err');
+        const epochEl = ref<HTMLElement>('epoch');
+        const vv = window.visualViewport;
+        const zoomed = (): boolean => !!vv && vv.scale > 1.01;
+        const hold = createHoldCompare({
+            // False colour and the older picture cover the frame, so a hold there would change nothing a visitor can see.
+            canHold: () => !!(result && stretch && result.frames.length >= 2 && st.mode === 'blink' && !fcState.layer
+                && !epochSlot.on && epochEl.hidden && loadEl.hidden && errEl.hidden),
+            token: () => result,
+            index: () => st.index,
+            put: (index) => { st.index = index; },
+            show: (index) => {
+                st.index = index;
+                draw();
+            },
+            pause: () => play(false),
+            say: (text) => {
+                if (text || live.textContent === HOLD_LINE) {
+                    live.textContent = text;
+                }
+            },
+        });
+        holdCompare = hold;
+        attachGestures(sky, {
+            prev: () => step(-1),
+            next: () => step(1),
+            holdStart: () => hold.start(),
+            holdEnd: () => hold.end(),
+        }, {
+            touchAction: 'pan-y pinch-zoom',
+            ignore: (event) => zoomed() || (event instanceof Event && event.target instanceof Element
+                && !!event.target.closest('button, a, input, select, textarea, label, summary, [role="button"], [role="separator"], [role="slider"]')),
+        });
+        const syncTouchAction = (): void => {
+            sky.style.touchAction = zoomed() ? 'auto' : 'pan-y pinch-zoom';
+        };
+        syncTouchAction();
+        vv?.addEventListener('resize', syncTouchAction);
+        sky.classList.add('sk-gest');
+        if (matchMedia('(pointer: coarse)').matches) {
+            q<HTMLElement>('.sk-gest-hint').hidden = false;
+        }
+    }
 
     new ResizeObserver(() => placeSeg()).observe(q<HTMLElement>('.sk-seg'));
 

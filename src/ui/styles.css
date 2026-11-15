@@ -136,6 +136,7 @@ button { cursor: pointer; }
     .sk[data-side] .sk-seg { flex: none; }
     .sk[data-side] .sk-seg .ic { display: inline-block; }
     .sk[data-side] .sk-sub, .sk[data-side] .sk-hint { order: 2; margin-top: 12px; }
+    .sk[data-side] .sk-gest-hint { order: 2; }
     .sk[data-side] .sk-strip { order: 3; flex-wrap: wrap; padding-top: 16px; }
     .sk[data-side] .sk-legrow { order: 4; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 18px; padding-top: 0; }
     .sk[data-side] .sk-legrow > .sk-fov { margin-left: 0; }
@@ -268,10 +269,18 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
     transition: transform var(--t-press) var(--ease); }
 .sk-seg2 button:hover { color: #fff; border-color: rgba(255, 255, 255, .45); }
 .sk-seg2 button[aria-pressed=true] { background: #fff; border-color: #fff; color: #000; }
+.sk-save { height: 32px; padding: 0 12px; border: 1px solid var(--hair2); border-radius: 2px; background: none; color: var(--ink2); font: var(--fs-label) var(--mono); }
+.sk-save:hover:not(:disabled) { color: #fff; border-color: rgba(255, 255, 255, .45); }
+.sk-save:disabled { opacity: .5; }
+@media (max-width: 1080px), (pointer: coarse) { .sk-save { min-height: 44px; } }
 /* Two lines reserved, so a longer hint never shoves the frames below it. */
 .sk-hint { margin: 8px 0 0; font-size: var(--fs-small); line-height: 20px; color: var(--mute); min-height: 40px; text-wrap: pretty; }
+.sk-gest-hint { margin: 6px 0 0; font-size: var(--fs-small); line-height: 20px; color: var(--mute); text-wrap: pretty; }
 
 .sk-sky { position: relative; width: 100%; aspect-ratio: 1 / 1; background: #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, .06); }
+@media (any-pointer: coarse) {
+    .sk-sky.sk-gest { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}
 /* The halo sits behind everything: a shadow on the sky itself would paint over the controls below it. */
 .sk-sky::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; box-shadow: 0 0 110px rgba(44, 86, 235, .26), 0 0 260px rgba(36, 70, 210, .14); }
 /* A 24 px copy of the frame, blown up and blurred: the glow follows the stars on screen. Tinted blue, faded round.
@@ -696,6 +705,7 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
     .sk-coord span:first-child { display: inline; color: var(--ink2); }
     .sk-body { max-width: 68ch; }
     .sk-hint { min-height: 42px; font-size: 14px; line-height: 21px; }
+    .sk-gest-hint { padding-left: 18px; padding-right: 18px; font-size: 14px; line-height: 21px; }
     .sk-m-details dl { grid-template-columns: minmax(0, 47%) minmax(0, 1fr); gap: 2px 14px; }
     .sk-m-details dd { text-align: left; }
 }
@@ -759,3 +769,31 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 @keyframes sk-rise { from { opacity: 0; transform: translateY(6px); } }
 /* A new target's notes change by a short opacity step (app.ts adds data-swap for one beat). */
 .sk[data-swap] .sk-m-about > :not(.sk-mh) { animation: sk-fade 160ms var(--ease) both; }
+
+/* ---------- Comet 3I/ATLAS card (FEATURES.comet; off by default) ---------- */
+.sk-m-comet { margin: 32px 0 24px; gap: 12px; padding: 14px; border: 1px solid var(--hair2); border-radius: 3px; background: rgba(255, 255, 255, .02); flex: none; }
+.sk-cm-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 8px; }
+.sk-cm-cell { margin: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sk-cm-cell canvas { display: block; width: 100%; aspect-ratio: 1; image-rendering: pixelated; background: var(--void); border-radius: 2px; }
+.sk-cm-cell figcaption { display: flex; flex-direction: column; font: var(--fs-label)/1.3 var(--mono); color: var(--mute); }
+.sk-cm-cell figcaption b { font-weight: 500; color: var(--ink); }
+.sk-cm-fig { margin: 4px 0 8px; }
+.sk-cm-chart { display: block; width: 100%; height: auto; max-width: 420px; overflow: visible; }
+.sk-cm-chart .ax { fill: none; stroke: var(--hair2); }
+.sk-cm-chart .tk text, .sk-cm-chart .al { font: 10px var(--mono); fill: var(--mute); }
+.sk-cm-chart .ln { fill: none; stroke: var(--gold); stroke-width: 1.5; stroke-linejoin: round; }
+.sk-cm-chart .pt { fill: var(--gold); }
+.sk-cm-cap { display: flex; flex-direction: column; gap: 8px; }
+.sk-cm-cap p { margin: 0; font-size: var(--fs-small); line-height: 1.45; color: var(--ink2); }
+.sk-cm-cap .sk-cm-refs { color: var(--mute); }
+.sk-cm-papers { margin: -4px 0 0; padding: 0; list-style: none; font-size: var(--fs-small); }
+.sk-cm-papers a { color: var(--ink2); text-decoration: underline; text-underline-offset: 2px; display: inline-flex; align-items: center; min-height: 28px; }
+.sk-cm-more summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font: 500 var(--fs-label)/1 var(--mono); letter-spacing: var(--track); text-transform: uppercase; color: var(--mute); }
+.sk-cm-more summary:hover, .sk-cm-more summary:focus-visible { color: var(--ink); }
+.sk-cm-tab { width: 100%; border-collapse: collapse; font: var(--fs-label)/1.4 var(--mono); color: var(--ink2); }
+.sk-cm-tab caption { text-align: left; color: var(--mute); padding-bottom: 6px; }
+.sk-cm-tab th { text-align: left; font-weight: 500; color: var(--mute); padding: 0 6px 4px 0; vertical-align: bottom; }
+.sk-cm-tab td { padding: 2px 6px 2px 0; font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) { .sk-cm-papers a { min-height: 44px; } }
+/* Narrow layouts stack every module in one column: the card goes near the end, after the sky and its details. */
+@media (max-width: 1080px) { .sk-m-comet { order: 7; margin-top: 40px; width: calc(100% - 36px); max-width: 644px; align-self: center; } }
