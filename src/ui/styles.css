@@ -795,6 +795,8 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-cm-tab th { text-align: left; font-weight: 500; color: var(--mute); padding: 0 6px 4px 0; vertical-align: bottom; }
 .sk-cm-tab td { padding: 2px 6px 2px 0; font-variant-numeric: tabular-nums; }
 @media (max-width: 720px) { .sk-cm-papers a { min-height: 44px; } }
+.sk-m-px { margin: 32px 0 24px; gap: 12px; flex: none; }
+.sk-m-comet + .sk-m-px { margin-top: 8px; }
 .sk-px-fig { margin: 4px 0 8px; }
 .sk-px-fig svg { display: block; width: 100%; height: auto; overflow: visible; }
 .sk-px-fig figcaption, .sk-px-more p { margin: 0; font-size: var(--fs-small); line-height: 1.45; color: var(--ink2); }
@@ -807,5 +809,6 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
 .sk-px-refs { margin: 8px 0 0; padding: 0; list-style: none; font-size: var(--fs-small); }
 .sk-px-refs a { color: var(--ink2); text-decoration: underline; text-underline-offset: 2px; display: inline-flex; align-items: center; min-height: 28px; border-radius: 2px; }
 @media (max-width: 720px) { .sk-px-refs a { min-height: 44px; } }
+@media (max-width: 1080px) { .sk-m-px { order: 7; margin-top: 40px; } }
 /* Narrow layouts stack every module in one column: the card goes near the end, after the sky and its details. */
 @media (max-width: 1080px) { .sk-m-comet { order: 7; margin-top: 40px; width: calc(100% - 36px); max-width: 644px; align-self: center; } }

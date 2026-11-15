@@ -1,8 +1,8 @@
 // Planet Nine chart card (FEATURES.planetx). Off: nothing is added to the page. On: a card goes right after `after`
 // (the comet card, or "What to look for" when that is off) with the chart from src/lib/planetx-chart.ts, its title and
 // caption, and the notes and references in a closed "About these numbers" block. Every word but the heading and the
-// summary label comes from planetxChartText(). The chart's text is in SVG units, so it is drawn at the card's real
-// width and redrawn when that width changes.
+// summary label comes from planetxChartText(). The chart's text is in SVG units, so it is drawn at the real width
+// of its holder inside the card and redrawn when that width changes.
 
 import { planetxChartSvg, planetxChartText } from '../lib/planetx-chart';
 import { esc } from './comet-view';
@@ -43,19 +43,27 @@ export function mountPlanetX(after: HTMLElement | null, deps: PlanetXDeps): Plan
     section.className = 'sk-mod sk-m-px';
     section.setAttribute('aria-labelledby', 'sk-hpx');
     after.insertAdjacentElement('afterend', section);
-    let drawn = widthOf(section);
-    section.innerHTML = `<h2 class="sk-mh" id="sk-hpx">Planet Nine: how faint, how deep?</h2>${planetxBodyHtml((deps.text ?? planetxChartText)(), drawn)}`;
+    const text = (deps.text ?? planetxChartText)();
+    section.innerHTML = `<h2 class="sk-mh" id="sk-hpx">Planet Nine: how faint, how deep?</h2>${planetxBodyHtml(text, FALLBACK_WIDTH)}`;
+    const holder = section.querySelector<HTMLElement>('.sk-px-svg');
+    if (!holder) {
+        return { section };
+    }
+    // The holder is the card's inner width (the card has side padding on a phone), so the chart is never scaled down
+    // from a wider drawing. A redraw changes the holder's height, not its width, so the observer cannot loop.
+    let drawn = FALLBACK_WIDTH;
+    const redraw = (): void => {
+        const w = widthOf(holder);
+        if (w !== drawn) {
+            drawn = w;
+            holder.innerHTML = planetxChartSvg({ width: w });
+        }
+    };
+    redraw();
     const view = doc.defaultView as (Window & { ResizeObserver?: typeof ResizeObserver }) | null;
     const RO = view?.ResizeObserver;
     if (typeof RO === 'function') {
-        const holder = section.querySelector<HTMLElement>('.sk-px-svg')!;
-        new RO(() => {
-            const w = widthOf(section);
-            if (w !== drawn) {
-                drawn = w;
-                holder.innerHTML = planetxChartSvg({ width: w });
-            }
-        }).observe(section);
+        new RO(redraw).observe(holder);
     }
     return { section };
 }

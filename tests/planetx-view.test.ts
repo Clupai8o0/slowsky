@@ -10,7 +10,7 @@ const readFileSync = nodeRead as (path: URL, encoding: 'utf8') => string;
 // its HTML as a string, and `.sk-px-svg` is the holder the resize path redraws.
 function fakePage(opts: { width?: number; observer?: boolean } = {})
 {
-    const holder = { innerHTML: '' };
+    const holder = { innerHTML: '', clientWidth: opts.width ?? 0 };
     const section = { className: '', innerHTML: '', clientWidth: opts.width ?? 0, attrs: {} as Record<string, string>,
         setAttribute(k: string, v: string) {
             this.attrs[k] = v;
@@ -71,30 +71,39 @@ describe('planetx view', () => {
         expect(html).toContain('<ul class="sk-px-refs">');
     });
 
-    it('draws at the card width, and at 360 when the width is 0 (no layout)', () => {
+    it('draws at the holder width, and at 360 when the width is 0 (no layout)', () => {
         const none = fakePage({ width: 0 });
         mountPlanetX(none.after, { enabled: true });
         expect(none.section.innerHTML).toContain(planetxChartSvg({ width: 360 }));
+        expect(none.holder.innerHTML).toBe('');
         const wide = fakePage({ width: 512.4 });
         mountPlanetX(wide.after, { enabled: true });
-        expect(wide.section.innerHTML).toContain(planetxChartSvg({ width: 512 }));
+        expect(wide.holder.innerHTML).toBe(planetxChartSvg({ width: 512 }));
     });
 
-    it('redraws only when the rounded width changes', () => {
+    it('watches the holder and redraws only when its rounded width changes', () => {
         const page = fakePage({ width: 400, observer: true });
         mountPlanetX(page.after, { enabled: true });
-        expect(page.observed).toEqual([page.section]);
+        expect(page.observed).toEqual([page.holder]);
+        expect(page.holder.innerHTML).toBe(planetxChartSvg({ width: 400 }));
+        page.holder.innerHTML = '';
         page.fire();
         expect(page.holder.innerHTML).toBe('');
-        page.section.clientWidth = 400.3;
+        page.holder.clientWidth = 400.3;
         page.fire();
         expect(page.holder.innerHTML).toBe('');
-        page.section.clientWidth = 600;
+        page.holder.clientWidth = 600;
         page.fire();
         expect(page.holder.innerHTML).toBe(planetxChartSvg({ width: 600 }));
         page.holder.innerHTML = 'kept';
         page.fire();
         expect(page.holder.innerHTML).toBe('kept');
+    });
+
+    it('sits after the comet card on a narrow screen, not at the top of the page', () => {
+        const css = readFileSync(new URL('../src/ui/styles.css', import.meta.url), 'utf8');
+        expect(css).toContain('@media (max-width: 1080px) { .sk-m-px { order: 7; margin-top: 40px; } }');
+        expect(css).toContain('@media (max-width: 1080px) { .sk-m-comet { order: 7;');
     });
 
     it('escapes < & > and quotes in every string it is given', () => {

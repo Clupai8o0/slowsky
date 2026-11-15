@@ -2,7 +2,7 @@
 // the shared UI. A slot shows only when its flag is on AND it has something to show. fcReading, halo and mlHint are off;
 // the rest are on (spectrum, upTonight, shareCard, comet, gestures and planetx since 15 Nov 2026).
 // - planetx: the "Planet Nine: how faint, how deep?" card under the comet card (src/ui/planetx-view.ts), drawing
-//   the chart in src/lib/planetx-chart.ts from the published numbers in src/lib/planetx.ts. Switched on 15 Nov 2026.
+//   the chart in src/lib/planetx-chart.ts from the published and worked-out numbers in src/lib/planetx.ts. Switched on 15 Nov 2026.
 // - spectrum: a panel under the colour step (src/ui/spectrum-view.ts). After a press it reads one spot's spectrum
 //   from the SPHEREx DR1 all-sky cube (src/lib/cube.ts) and draws it (src/lib/spectrum-chart.ts). Switched on
 //   15 Nov 2026 (lane spec-on); its claims are sourced in SOURCES.md, "Spectrum (SPHEREx all-sky cube)".

@@ -74,9 +74,10 @@ export function planetxChartText(): { title: string; caption: string; notes: str
 {
     return {
         title: 'How faint would Planet Nine be, and how deep do the searches go?',
-        caption: 'The rows are in different bands, so their numbers are not interchangeable. This is an estimate from published numbers, not a search result.',
-        notes: [TEXT.bandNote, TEXT.caveat, TEXT.wiseNote, TEXT.stackGain, modelExample().label, `Optical searches have ruled out about ${Math.round(EXCLUDED_FRACTION.value * 100)}% of the synthetic reference population`].map(sentence),
-        references: references(),
+        caption: "The rows are in different bands, so their numbers are not interchangeable. The Planet Nine rows are optical brightness: the chart does not estimate how bright it would be at SPHEREx's wavelengths. This is an estimate from published numbers, not a search result.",
+        notes: [TEXT.bandNote, TEXT.caveat, TEXT.wiseNote, TEXT.stackGain, modelExample().label, `Together, the ZTF, DES and Pan-STARRS1 searches have ruled out about ${Math.round(EXCLUDED_FRACTION.value * 100)}% of the synthetic reference population`].map(sentence),
+        // Chen et al. 2025 backs only magChangeWithDistance(), which nothing in the chart or its notes uses.
+        references: references().filter(ref => ref.key !== 'inverse-fourth'),
     };
 }
 
