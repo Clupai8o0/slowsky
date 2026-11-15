@@ -3,7 +3,7 @@
 // with its Gaia source_id, so both entries of one star share an id. Pure, no DOM, so it runs in a Worker.
 // Not wired into the page yet.
 
-import { compareVisits, type ChangeOptions, type VisitChangeResult, type StarPix, type VisitImage } from './changes';
+import { compareVisits, latticeValue, type ChangeOptions, type VisitChangeResult, type StarPix, type VisitImage } from './changes';
 import { gridSkyToPix } from './regrid';
 import type { GaiaStar, SkyResult } from './source';
 import { groupByVisit, stackVisit } from './stack';
@@ -46,42 +46,42 @@ function image(visit: RegriddedFrame[]): VisitImage
 {
     const stack = stackVisit(visit);
     const lambda = visit.reduce((sum, f) => sum + f.lambdaAtCenter, 0) / visit.length;
-    const first = visit[0]?.lambdaGrid;
-    let lambdaGrid: VisitImage['lambdaGrid'];
-    if (first && visit.every(f => f.lambdaGrid && f.lambdaGrid.nx === first.nx && f.lambdaGrid.ny === first.ny
-        && f.lambdaGrid.values.length === first.nx * first.ny)) {
-        const values = new Float32Array(first.nx * first.ny);
-        for (let i = 0; i < values.length; i++) {
-            // The stacked picture at this point holds only the frames with data here, so average only those.
-            // Where no frame has data, keep every frame's value (its own wavelengths carried past its edge).
-            const x = first.nx > 1 ? (i % first.nx) / (first.nx - 1) : 0.5, y = first.ny > 1 ? Math.floor(i / first.nx) / (first.ny - 1) : 0.5;
-            const here = visit.filter(f => hasDataNear(f, x, y));
-            const used = (here.length ? here : visit).map(f => f.lambdaGrid!.values[i]!).filter(Number.isFinite);
-            values[i] = used.length ? used.reduce((sum, v) => sum + v, 0) / used.length : NaN;
-        }
-        lambdaGrid = { nx: first.nx, ny: first.ny, values };
-    }
+    const lambdaMap = wavelengthMap(visit);
     return {
         data: stack.data, lambda, mjd: middle(visit),
         obsIds: visit.slice().sort((a, b) => a.frame.tMin - b.frame.tMin).map((f) => f.frame.obsId),
         ...(stack.variance ? { variance: stack.variance } : {}),
-        ...(lambdaGrid ? { lambdaGrid } : {}),
+        ...(lambdaMap ? { lambdaMap } : {}),
     };
 }
 
-// Whether a frame holds a value within two pixels of a point given as fractions (0 to 1) of its grid.
-function hasDataNear(f: RegriddedFrame, fx: number, fy: number): boolean
+// The visit's wavelength at each pixel: the mean over the frames that hold a value there, each frame's own wavelength
+// being read at that pixel first. (Averaging the frames' lattices and interpolating afterwards smeared the edge of a
+// frame's coverage across a lattice cell.) NaN where no frame holds a value, and where the wavelength of a frame that
+// does is unknown: the stacked picture there mixes in light of an unknown wavelength.
+// Undefined unless every frame carries a wavelength lattice of at least two by two nodes.
+function wavelengthMap(visit: RegriddedFrame[]): Float32Array | undefined
 {
-    const { width, height } = f.grid;
-    const x = Math.round(fx * (width - 1)), y = Math.round(fy * (height - 1));
-    for (let j = Math.max(0, y - 2); j <= Math.min(height - 1, y + 2); j++) {
-        for (let i = Math.max(0, x - 2); i <= Math.min(width - 1, x + 2); i++) {
-            if (Number.isFinite(f.data[j * width + i]!)) {
-                return true;
+    const grid = visit[0]?.grid;
+    if (!grid || !visit.every(f => f.lambdaGrid && f.lambdaGrid.nx >= 2 && f.lambdaGrid.ny >= 2
+        && f.lambdaGrid.values.length === f.lambdaGrid.nx * f.lambdaGrid.ny)) {
+        return undefined;
+    }
+    const map = new Float32Array(grid.width * grid.height);
+    for (let y = 0; y < grid.height; y++) {
+        for (let x = 0; x < grid.width; x++) {
+            const i = y * grid.width + x;
+            let sum = 0, count = 0;
+            for (const f of visit) {
+                if (Number.isFinite(f.data[i]!)) {
+                    sum += latticeValue(f.lambdaGrid!, x, y, grid);
+                    count++;
+                }
             }
+            map[i] = count ? sum / count : NaN;
         }
     }
-    return false;
+    return map;
 }
 
 function placed(stars: GaiaStar[], grid: OutputGrid, mjd: number, margin: number, visit: 'earlier' | 'later'): StarPix[]
