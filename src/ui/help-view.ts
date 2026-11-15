@@ -74,7 +74,8 @@ export function mountHelp(root: HTMLElement): void
         for (const id of ids) {
             const selector = optional[id];
             const element = selector ? root.querySelector<HTMLElement>(selector) : null;
-            if (selector && (!element || element.closest('[hidden]'))) {
+            // A card on an inspector tab that is not open, or in a closed inspector, is still on the page.
+            if (selector && (!element || element.closest('[hidden]:not([data-panel]):not([data-ref="insp"])'))) {
                 continue;
             }
             const dt = root.ownerDocument.createElement('dt');

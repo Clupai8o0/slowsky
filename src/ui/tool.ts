@@ -130,9 +130,9 @@ export const TOUR: readonly TourStep[] = [
     { sel: '[data-tool="hold"]', title: 'Compare', text: 'Hold to see the first frame; let go to come back.' },
     { sel: '[data-tool="zoomin"]', title: 'Zoom and fit', text: 'Zoom in, scroll or pinch on the sky, and drag to pan. Fit or double-click brings the whole picture back.' },
     { sel: '[data-tool="inspect"]', title: 'Inspector', text: 'Tabs for the target, this frame, candidate changes, charts, the AI note and extras such as the comet 3I/ATLAS.', tab: 'info' },
-    { sel: '[data-act="undo"]', title: 'Undo and redo', text: 'Go back a step: a target, view, date, zoom or layer change. ⌘Z or Ctrl+Z.' },
+    { sel: '[data-act="undo"]', title: 'Undo and redo', text: 'Go back a step: a target, view, date, zoom, ring, trail, loupe or Gaia change. ⌘Z or Ctrl+Z.' },
     { sel: '[data-act="help"]', title: 'Guide', text: 'Every control and every word this page uses, in plain language. G opens it.' },
-    { sel: '[data-act="labels"]', title: 'Tool labels', text: 'Labels under the tools are on. Press here to hide them once you know the tools. Hover any control for a line of help at the foot of the page.' },
+    { sel: '[data-act="labels"]', title: 'Tool labels', text: 'Shows or hides the labels under the tools. Hover any control for a line of help at the foot of the page.' },
 ];
 
 export interface ToolApi
@@ -250,6 +250,10 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
             root.classList.add('tb-booted');
             maybeCoach();
         }
+        if (loading && searched) {
+            searched = false;
+            closePicker();
+        }
         if (!loading) {
             qa<HTMLElement>('.is-busy').forEach((el) => el.classList.remove('is-busy'));
         } else if (lastControl && Date.now() - lastControlAt < 600 && root.contains(lastControl)) {
@@ -305,6 +309,7 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
         openTab(next.dataset.tab!);
         next.focus();
         e.preventDefault();
+        e.stopPropagation();
     };
     q<HTMLElement>('.tb-tabs').addEventListener('keydown', tabKeys);
     // Wide screens open the inspector on the Target tab, so every card is one press away; phones keep it shut.
@@ -340,10 +345,12 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
 
     // ---------- target picker (⌘K) ----------
     let pickerFrom: HTMLElement | null = null;
+    let searched = false; // a search was sent from the picker: close it once that search starts loading
     function openPicker(): void
     {
         pickerFrom = doc.activeElement as HTMLElement | null;
         picker.hidden = false;
+        searched = false;
         const input = picker.querySelector('input') as HTMLInputElement;
         input.value = '';
         filterPicker('');
@@ -375,6 +382,7 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
     picker.addEventListener('keydown', (e) => {
         const list = [...picker.querySelectorAll<HTMLButtonElement>('[data-target]')].filter((b) => !b.hidden);
         const i = list.indexOf(doc.activeElement as HTMLButtonElement);
+        e.stopPropagation(); // keys in the picker never reach the page's own shortcuts
         if (e.key === 'Escape') {
             e.preventDefault();
             closePicker();
@@ -395,11 +403,7 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
     });
     // A search that resolves closes the picker (app.ts loads the spot); a failed one leaves it open with the toast.
     picker.querySelector('form')!.addEventListener('submit', () => {
-        window.setTimeout(() => {
-            if (root.dataset.loading) {
-                closePicker();
-            }
-        }, 0);
+        searched = true;
     });
 
     // ---------- workspace: Sky library or My frames ----------
@@ -498,6 +502,12 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
     {
         if (!inside || !picture.width) {
             loupeEl.hidden = true;
+            return;
+        }
+        // False colour and the older picture cover the SPHEREx canvas; the loupe only magnifies SPHEREx pixels.
+        if (ref<HTMLElement>('fc').hidden === false || ref<HTMLElement>('epoch').hidden === false) {
+            loupeEl.hidden = true;
+            say('The loupe magnifies SPHEREx pixels only. Turn off False colour or Older picture to use it.');
             return;
         }
         loupeEl.hidden = false;

@@ -275,7 +275,7 @@ export function shell(shareCard = FEATURES.shareCard): string
     const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
     const ticks = [0.4, 1, 2, 3, 4, 5].map((t) => `<span style="left:${axisPct(t).toFixed(2)}%">${t}</span>`).join('');
     const tool = (name: string, icon: string, label: string, help: string, extra = '') =>
-        `<button type="button" class="tool" data-tool="${name}" ${extra} data-help="${esc(help)}"><span class="ic">${icon}</span><span class="tl">${label}</span></button>`;
+        `<button type="button" class="tool" data-tool="${name}" aria-label="${label}" ${extra} data-help="${esc(help)}"><span class="ic">${icon}</span><span class="tl">${label}</span></button>`;
     return `
 <a class="sk-skip" href="#sk-stage">Skip to the sky</a>
 <header class="tb-bar">
@@ -292,7 +292,7 @@ export function shell(shareCard = FEATURES.shareCard): string
   </div>
   <div class="tb-seg tb-mode" role="group" aria-label="View"><button type="button" data-mode="blink" data-help="${esc(CONTROL_HELP.blink.line)} (B)">Blink<kbd>B</kbd></button><button type="button" data-mode="stack" data-help="${esc(CONTROL_HELP.stack.line)} (S)">Stack<kbd>S</kbd></button><button type="button" data-mode="diff" data-help="${esc(CONTROL_HELP.subtract.line)} (D)">Subtract<kbd>D</kbd></button></div>
   <button type="button" class="tb-btn sk-golive" data-act="live" data-ref="golive" hidden data-help="Read this target live from NASA’s archive instead of the saved copy (about 30 s)."><i aria-hidden="true"></i>Go live</button>
-  <button type="button" class="tb-btn tb-primary tb-upload" data-act="upload" data-help="Add your own FITS, PNG or JPG frames. They stay in this browser."><span class="ic">${ICON.upload}</span><span>Upload</span></button>
+  <button type="button" class="tb-btn tb-primary tb-upload" data-act="upload" aria-label="Upload your own frames" data-help="Add your own FITS, PNG or JPG frames. They stay in this browser."><span class="ic">${ICON.upload}</span><span>Upload</span></button>
   <input type="file" data-ref="file" multiple accept=".fits,.fit,.fts,.gz,.png,.jpg,.jpeg" hidden>
   ${helpButtonHtml()}
   <div class="tb-acts" role="group" aria-label="Labels, link and picture">
@@ -350,10 +350,10 @@ export function shell(shareCard = FEATURES.shareCard): string
     ${tool('trail', ICON.trail, 'Trail', 'Trail: dots where the ring would be on the other dates.', 'aria-pressed="false"')}
     ${tool('cands', ICON.find, 'Candidates', CONTROL_HELP.changes.line, '')}
     <span class="tool-gap"></span>
-    <button type="button" class="tool sk-key" data-act="gaia" aria-pressed="true" data-help="${esc(CONTROL_HELP.gaia.line)}"><span class="ic">${ICON.gaia}</span><span class="tl">Gaia</span></button>
-    <button type="button" class="tool sk-key" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden data-help="${esc(CONTROL_HELP.flags.line)}"><span class="ic">${ICON.flags}</span><span class="tl">Flags</span></button>
-    <button type="button" class="tool sk-key" data-act="falsecolour" data-ref="fcKey" aria-pressed="false" hidden data-help="${esc(CONTROL_HELP.falseColour.line)}"><span class="ic">${ICON.fc}</span><span class="tl">False colour</span></button>
-    <button type="button" class="tool sk-key" data-act="epoch" data-ref="epochKey" aria-pressed="false" hidden data-help="${esc(CONTROL_HELP.epoch.line)}"><span class="ic">${ICON.epoch}</span><span class="tl">Older picture</span></button>
+    <button type="button" class="tool sk-key" data-act="gaia" aria-label="Brightest Gaia stars" aria-pressed="true" data-help="${esc(CONTROL_HELP.gaia.line)}"><span class="ic">${ICON.gaia}</span><span class="tl">Gaia</span></button>
+    <button type="button" class="tool sk-key" data-act="flags" aria-label="Flagged pixels" data-ref="flagsKey" aria-pressed="false" hidden data-help="${esc(CONTROL_HELP.flags.line)}"><span class="ic">${ICON.flags}</span><span class="tl">Flags</span></button>
+    <button type="button" class="tool sk-key" data-act="falsecolour" aria-label="False colour" data-ref="fcKey" aria-pressed="false" hidden data-help="${esc(CONTROL_HELP.falseColour.line)}"><span class="ic">${ICON.fc}</span><span class="tl">False colour</span></button>
+    <button type="button" class="tool sk-key" data-act="epoch" aria-label="Older picture" data-ref="epochKey" aria-pressed="false" hidden data-help="${esc(CONTROL_HELP.epoch.line)}"><span class="ic">${ICON.epoch}</span><span class="tl">Older picture</span></button>
     <span class="tool-gap"></span>
     ${tool('zoomin', ICON.zoom, 'Zoom', 'Zoom in on the picture (+). Scroll or pinch on the sky also zooms; drag to pan when zoomed.', '')}
     ${tool('fit', ICON.fit, 'Fit', 'Fit the whole picture again (0, or double-click the sky).', '')}
@@ -534,7 +534,7 @@ export function shell(shareCard = FEATURES.shareCard): string
   ${helpAltButtonHtml()}
   <button type="button" class="tb-coord" data-ref="coord" data-help="Sky position under the pointer (RA, Dec). Press to copy it.">—</button>
   <button type="button" class="tb-ailink" data-act="about" aria-haspopup="dialog" aria-expanded="false">AI used</button>
-  <div class="tb-about" data-ref="about" hidden role="dialog" aria-label="AI used"><p>${esc(AI_LINE)}</p><p>The AI note names the model that wrote it each time. Every claim on this page is listed with its source.</p><a href="${esc(AI_LINK)}" target="_blank" rel="noopener">Source list</a></div>
+  <div class="tb-about" data-ref="about" hidden role="dialog" aria-label="AI used"><p>${esc(AI_LINE)}</p><p>The AI note names the model that wrote it each time. Every fact in the README, the page text and the target cards is listed with its source.</p><a href="${esc(AI_LINK)}" target="_blank" rel="noopener">Source list</a></div>
 </footer>
 
 <div class="tb-picker" id="tb-picker" data-ref="picker" hidden role="dialog" aria-modal="true" aria-label="Pick a target">
@@ -667,9 +667,11 @@ export function mount(root: HTMLElement): void
             live: st.live, mode: st.mode, index: st.index, subA: st.subA, subB: st.subB, subOp: st.subOp, gaia: st.gaia,
             frame: view(true).frame, view: tool.view, ring: tool.ring, trail: tool.trail, loupe: tool.loupe };
     }
+    // Undo and redo step through Sky library views; My frames has none, so they rest there.
     function syncHistory(): void
     {
-        tool.setHistory(steps.canUndo, steps.canRedo);
+        const sky = root.dataset.ws !== 'mine';
+        tool.setHistory(sky && steps.canUndo, sky && steps.canRedo);
     }
     function record(): void
     {
@@ -679,7 +681,7 @@ export function mount(root: HTMLElement): void
         if (amendNext) {
             // The load that started this step has finished (or is still running): fill the step in, even while playing.
             steps.amend(snap());
-        } else if (!st.playing) {
+        } else {
             steps.record(snap());
         }
         syncHistory();
@@ -726,7 +728,10 @@ export function mount(root: HTMLElement): void
     }
     const tool = mountTool(root, {
         isLoading: () => !!root.dataset.loading,
-        onView: () => record(),
+        onView: () => {
+            sizeBar();
+            record();
+        },
         onLayers: () => {
             overlay();
             record();
@@ -743,8 +748,16 @@ export function mount(root: HTMLElement): void
             const c = gridPixToSky(g, { x: fx * g.width - 0.5, y: fy * g.height - 0.5 });
             return `${formatRa(c.ra)} ${formatDec(c.dec)}`;
         },
-        undo: () => applySnap(steps.undo()),
-        redo: () => applySnap(steps.redo()),
+        undo: () => {
+            if (root.dataset.ws !== 'mine') {
+                applySnap(steps.undo());
+            }
+        },
+        redo: () => {
+            if (root.dataset.ws !== 'mine') {
+                applySnap(steps.redo());
+            }
+        },
         setWs: (ws) => setWs(ws),
         files: (list) => addFiles([...list]),
         coachText: () => HELP_INTRO,
@@ -773,6 +786,10 @@ export function mount(root: HTMLElement): void
 
     function bind(key: string, text: string): void
     {
+        // While My frames shows, the id card and the frame line belong to it (mineText); a Sky load finishing behind it keeps out.
+        if (root.dataset.ws === 'mine' && (key === 'name' || key === 'frame' || key === 'when' || key === 'statusShort')) {
+            return;
+        }
         for (const el of qa<HTMLElement>(`[data-bind="${key}"]`)) {
             if (el.textContent !== text) {
                 el.textContent = text;
@@ -796,6 +813,9 @@ export function mount(root: HTMLElement): void
         const t = targetById(id);
         if (!t) {
             return;
+        }
+        if (inMine()) {
+            setWs('sky');
         }
         st.target = id;
         st.center = positionAt(t.astrometry, SKY_EPOCH_MJD);
@@ -822,6 +842,9 @@ export function mount(root: HTMLElement): void
 
     function setSpot(center: SkyCoord, label: string): void
     {
+        if (inMine()) {
+            setWs('sky');
+        }
         st.target = undefined;
         st.center = center;
         st.label = label;
@@ -1406,7 +1429,7 @@ export function mount(root: HTMLElement): void
             return;
         }
         ref<HTMLElement>('bar').style.visibility = '';
-        const skyPx = ref<HTMLElement>('sky').clientWidth;
+        const skyPx = ref<HTMLElement>('sky').clientWidth * tool.view.zoom;
         const fovArcsec = result.grid.pixelArcsec * result.grid.width;
         // The source may show less than was asked for (the saved copy caps at 0.1°), so size from the grid.
         const bar = result.grid.fovDeg >= 0.5 ? 600 : 60;
@@ -1535,7 +1558,7 @@ export function mount(root: HTMLElement): void
         bind('hint', fcState.layer ? FALSE_COLOUR_HINT : st.mode === 'diff' && pair ? subtractText(pair.a, pair.b, st.subOp) : MODE_HINT[st.mode]);
         subBox.hidden = !(st.mode === 'diff' && pair !== null);
         if (FEATURES.shareCard) {
-            q<HTMLButtonElement>('[data-act="save-picture"]').disabled = !pair || !result || !!root.dataset.loading || savingPicture;
+            q<HTMLButtonElement>('[data-act="save-picture"]').disabled = st.mode !== 'diff' || !pair || !result || !!root.dataset.loading || savingPicture;
         }
         if (pair) {
             const aHtml = visits.slice(0, -1).map((v, i) => `<option value="${i}">${esc(visitLabel(v))}</option>`).join('');
@@ -1945,9 +1968,11 @@ export function mount(root: HTMLElement): void
             mineText();
         } else {
             minePlay(false);
+            bind('name', st.label);
             renderText();
         }
         syncMine();
+        syncHistory();
     }
 
     // Tools that read the Sky library's archive data do nothing on the visitor's own frames.
@@ -1972,10 +1997,11 @@ export function mount(root: HTMLElement): void
         }
         syncMine();
         const t = mine.frameText();
-        bind('name', mine.label());
-        bind('frame', t.frame);
-        bind('when', t.when);
-        bind('statusShort', 'Processed in this browser');
+        q<HTMLElement>('.tb-id .n').textContent = mine.label();
+        q<HTMLElement>('.tb-target .nm').textContent = mine.label();
+        q<HTMLElement>('.tb-id [data-bind="frame"]').textContent = t.frame;
+        q<HTMLElement>('.tb-id [data-bind="when"]').textContent = t.when;
+        q<HTMLElement>('.tb-id [data-bind="statusShort"]').textContent = 'Processed in this browser';
         for (const b of qa<HTMLButtonElement>('[data-mode]')) {
             b.setAttribute('aria-pressed', String(b.dataset.mode === mineMode));
         }
@@ -2034,6 +2060,10 @@ export function mount(root: HTMLElement): void
         }
         if (b.dataset.act === 'save-picture') {
             toast('Save picture works on the Sky library targets.');
+            return true;
+        }
+        if (b.dataset.act === 'copy') {
+            toast('Your own frames stay in this browser, so a link can’t open them. Links open Sky library views.');
             return true;
         }
         return false;
@@ -2273,13 +2303,16 @@ export function mount(root: HTMLElement): void
     });
 
     document.addEventListener('keydown', (e) => {
-        holdCompare?.end();
+        const holdKey = e.key === 'h' || e.key === 'H' || ((e.key === ' ' || e.key === 'Enter') && !!(e.target as Element).closest?.('[data-tool="hold"]'));
+        if (!holdKey) {
+            holdCompare?.end();
+        }
         // The guide is a modal dialog: the page's own shortcuts must not act behind it.
         if (root.querySelector('dialog[open]')) {
             return;
         }
         const el = e.target as HTMLElement;
-        if (el.closest?.('input, textarea, select, [contenteditable], [role=separator]') || e.metaKey || e.ctrlKey || e.altKey) {
+        if (el.closest?.('input, textarea, select, [contenteditable], [role=separator], [role=tab], [role=dialog], .tb-tourtip') || e.metaKey || e.ctrlKey || e.altKey || holdKey) {
             return;
         }
         if (inMine()) {
@@ -2339,7 +2372,7 @@ export function mount(root: HTMLElement): void
             holdEnd: () => hold.end(),
         }, {
             touchAction: 'pan-y pinch-zoom',
-            ignore: (event) => zoomed() || (event instanceof Event && event.target instanceof Element
+            ignore: (event) => zoomed() || tool.view.zoom > 1 || (event instanceof Event && event.target instanceof Element
                 && !!event.target.closest('button, a, input, select, textarea, label, summary, [role="button"], [role="separator"], [role="slider"]')),
         });
         const syncTouchAction = (): void => {

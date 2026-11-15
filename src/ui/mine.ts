@@ -47,7 +47,7 @@ export function sigmaText(c: Candidate, rough: boolean): string
 {
     const v = c.sigma > 0 ? Math.abs(c.peak / c.sigma) : 0;
     if (v >= SIGMA_CAP) {
-        return `over ${SIGMA_CAP}σ`;
+        return `over ${SIGMA_CAP}σ${rough ? ' (rough)' : ''}`;
     }
     return `${rough ? '≈' : ''}${v.toFixed(1)}σ`;
 }
@@ -114,7 +114,10 @@ export function mountMine(els: MineEls, deps: MineDeps): Mine
     const selB = els.ab.querySelector<HTMLSelectElement>('[data-mine="b"]')!;
     for (const [sel, which] of [[selA, 'a'], [selB, 'b']] as const) {
         sel.addEventListener('change', () => {
-            const v = Number(sel.value);
+            const n = session?.frames.length ?? 2;
+            let v = Number(sel.value);
+            // A is always earlier than B: the last frame can only be B, the first only A.
+            v = which === 'a' ? Math.min(v, n - 2) : Math.max(v, 1);
             if (which === 'a') {
                 mine.a = v;
                 if (mine.b <= mine.a) {
@@ -176,6 +179,14 @@ export function mountMine(els: MineEls, deps: MineDeps): Mine
             },
         }).then((s) => {
             if (signal.aborted) {
+                return;
+            }
+            if (s.frames.length < MIN_FILES) {
+                els.jobsCount.textContent = 'Stopped';
+                const li = doc.createElement('li');
+                li.className = 'err';
+                li.textContent = `Only ${s.frames.length} frame could be read. Add at least ${MIN_FILES} frames of the same patch of sky.`;
+                els.jobsList.append(li);
                 return;
             }
             session = s;
@@ -319,7 +330,7 @@ export function mountMine(els: MineEls, deps: MineDeps): Mine
         } else if (mode !== 'diff') {
             out.push(para('Switch to Subtract (D) to list candidate changes between frames A and B.'));
         } else if (!list.length) {
-            out.push(para('No candidates above 5σ for this pair.'));
+            out.push(para(`No candidates above ${rough() ? 'about 5σ (rough, display pictures)' : '5σ'} for this pair.`));
         } else {
             out.push(para('Every line is a candidate only, never a discovery: a spot to look at again, not a finding.', 'sk-body'));
             if (rough()) {
