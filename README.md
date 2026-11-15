@@ -16,7 +16,8 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 - Find your way round the page: the target and the views (Blink, Stack, Subtract) sit in the bar at the top, the
   tools (loupe, compare, ring, trail, Gaia rings, flagged pixels, false colour, older picture, zoom, fit) in a
   labelled column left of the sky, the dates and the colour slider in the timeline under it, and the target's
-  notes, the frame details, candidate changes, charts, the AI note and extras in the inspector's tabs on the right.
+  notes, the frame details, candidate changes, charts and extras in the inspector's tabs on the right (an AI note tab
+  shows only where the note is switched on).
   Hover or focus any control for a line of help at the foot of the page. **Show me around** gives a short tour,
   and undo and redo (⌘Z or Ctrl+Z, ⇧⌘Z or Ctrl+Y) step back through targets, views, dates, zoom and layers.
 - New to astronomy? Press **What am I looking at?** for a plain-language guide, with a search box: one line on

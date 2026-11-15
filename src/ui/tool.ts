@@ -129,11 +129,31 @@ export const TOUR: readonly TourStep[] = [
     { sel: '[data-tool="loupe"]', title: 'Loupe', text: 'Magnifies the real pixels under the pointer.' },
     { sel: '[data-tool="hold"]', title: 'Compare', text: 'Hold to see the first frame; let go to come back.' },
     { sel: '[data-tool="zoomin"]', title: 'Zoom and fit', text: 'Zoom in, scroll or pinch on the sky, and drag to pan. Fit or double-click brings the whole picture back.' },
-    { sel: '[data-tool="inspect"]', title: 'Inspector', text: 'Tabs for the target, this frame, candidate changes, charts, the AI note and extras such as the comet 3I/ATLAS.', tab: 'info' },
+    { sel: '[data-tool="inspect"]', title: 'Inspector', text: 'Tabs for the target, this frame, candidate changes, charts and extras such as the comet 3I/ATLAS.', tab: 'info' },
     { sel: '[data-act="undo"]', title: 'Undo and redo', text: 'Go back a step: a target, view, date, zoom, ring, trail, loupe or Gaia change. ⌘Z or Ctrl+Z.' },
     { sel: '[data-act="help"]', title: 'Guide', text: 'Every control and every word this page uses, in plain language. G opens it.' },
     { sel: '[data-act="labels"]', title: 'Tool labels', text: 'Shows or hides the labels under the tools. Hover any control for a line of help at the foot of the page.' },
 ];
+
+// Inspector tabs whose cards can all be switched off. Candidates and Charts then say so in a line; the AI note
+// tab goes away, because on a site where the note is switched off it has nothing to offer (and never will).
+export const TAB_CARDS: Readonly<Record<string, readonly string[]>> = Object.freeze({ cands: ['changes'], charts: ['curve', 'halo', 'spec'], ai: ['ai'] });
+export const HIDE_EMPTY_TABS: readonly string[] = ['ai'];
+
+export interface TabState
+{
+    tab: string;
+    empty: boolean; // every card on the tab is hidden
+    hide: boolean; // the tab itself is hidden
+}
+
+export function tabStates(cardHidden: (ref: string) => boolean): TabState[]
+{
+    return Object.entries(TAB_CARDS).map(([tab, cards]) => {
+        const empty = cards.every(cardHidden);
+        return { tab, empty, hide: empty && HIDE_EMPTY_TABS.includes(tab) };
+    });
+}
 
 export interface ToolApi
 {
@@ -293,6 +313,10 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
     function openTab(tab: string): void
     {
         openInspector(true);
+        selectTab(tab);
+    }
+    function selectTab(tab: string): void
+    {
         qa<HTMLButtonElement>('.tb-tabs [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
         qa<HTMLElement>('[data-panel]').forEach((p) => {
             p.hidden = p.dataset.panel !== tab;
@@ -300,7 +324,7 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
         store.set('slowsky.tab', tab);
     }
     const tabKeys = (e: KeyboardEvent) => {
-        const tabs = qa<HTMLButtonElement>('.tb-tabs [data-tab]');
+        const tabs = qa<HTMLButtonElement>('.tb-tabs [data-tab]').filter((b) => !b.hidden);
         const i = tabs.indexOf(e.target as HTMLButtonElement);
         if (i < 0 || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) {
             return;
@@ -321,19 +345,25 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
         openInspector(false);
     }
 
-    // A tab whose cards are all switched off for this view says so, instead of showing nothing.
-    const emptyNotes: [string, string[]][] = [['candsNone', ['changes']], ['chartsNone', ['curve', 'halo', 'spec']], ['aiNone', ['ai']]];
+    // A tab whose cards are all switched off for this view says so, instead of showing nothing; see TAB_CARDS.
     const syncEmpty = () => {
-        for (const [note, cards] of emptyNotes) {
-            const none = cards.every((c) => ref<HTMLElement>(c)?.hidden !== false);
-            const el = ref<HTMLElement>(note);
-            if (el.hidden !== !none) {
-                el.hidden = !none;
+        for (const t of tabStates((c) => ref<HTMLElement>(c)?.hidden !== false)) {
+            const note = ref<HTMLElement>(`${t.tab}None`);
+            const showNote = t.empty && !t.hide;
+            if (note && note.hidden !== !showNote) {
+                note.hidden = !showNote;
+            }
+            const button = q<HTMLButtonElement>(`.tb-tabs [data-tab="${t.tab}"]`);
+            if (button.hidden !== t.hide) {
+                button.hidden = t.hide;
+            }
+            if (t.hide && button.getAttribute('aria-selected') === 'true') {
+                selectTab('info');
             }
         }
     };
     const emptyWatch = new MutationObserver(syncEmpty);
-    for (const [, cards] of emptyNotes) {
+    for (const cards of Object.values(TAB_CARDS)) {
         for (const c of cards) {
             const el = ref<HTMLElement>(c);
             if (el) {
