@@ -389,6 +389,22 @@ describe('createGestures state machine', () => {
 });
 
 describe('attachGestures binder', () => {
+    it('passes an ignored second pointer to the active gesture, abandoning the swipe', () => {
+        const { target, emit } = createFakeTarget();
+        const timers = createFakeTimers();
+        const { log, handlers } = recordHandlers();
+        const second = pointerEvent(150, 50, 30, { pointerId: 2, isPrimary: false });
+        const detach = attachGestures(target, handlers, { ...timers, ignore: (event) => event === second });
+
+        emit('pointerdown', pointerEvent(100, 50, 0));
+        emit('pointerdown', second);
+        emit('pointerup', pointerEvent(40, 50, 100));
+        emit('pointerup', pointerEvent(150, 50, 110, { pointerId: 2, isPrimary: false }));
+
+        expect(log).toEqual([]);
+        detach();
+    });
+
     it('leaves an ignored press alone and accepts the next normal press', () => {
         const target = createFakeTarget();
         const root = createFakeTarget();

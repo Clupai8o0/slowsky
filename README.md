@@ -81,9 +81,9 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   the home screen.
 
 Touch gestures on the sky picture exist behind the `gestures` switch in `src/ui/slots.ts` and are off by default.
-With the switch on, swiping steps through frames and pressing and holding shows the first frame until you lift your
-finger. Mouse input is unaffected and pinch-zoom still works. When the page is zoomed in, gestures switch off so the
-picture pans normally.
+With the switch on, swiping steps through frames and pressing and holding on a later frame shows the first frame until
+you let go. A mouse does not trigger them, and pinch-zoom still works. While the page is pinch-zoomed in, gestures switch
+off so the picture pans normally. On a device with a touchscreen, text inside the picture box cannot be selected.
 
 ## How it works
 

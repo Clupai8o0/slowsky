@@ -321,7 +321,7 @@ function shell(): string
       <div class="sk-seg2" role="group" aria-label="Combine"><button type="button" data-subop="diff" aria-pressed="true">B − A</button><button type="button" data-subop="sum" aria-pressed="false">A + B</button></div>
     </div>
     <p class="sk-hint" data-bind="hint"></p>
-    <p class="sk-gest-hint" hidden>Swipe the picture to step through frames. Press and hold to see the first frame.</p>
+    <p class="sk-gest-hint" hidden>Swipe the picture to step through frames. On a later frame, press and hold to compare it with the first.</p>
     <div class="sk-strip" data-ref="strip" role="group" aria-label="Frames in date order"></div>
     </div>
   </section>
@@ -1835,6 +1835,7 @@ export function mount(root: HTMLElement): void
                 && !epochSlot.on && epochEl.hidden && loadEl.hidden && errEl.hidden),
             token: () => result,
             index: () => st.index,
+            put: (index) => { st.index = index; },
             show: (index) => {
                 st.index = index;
                 draw();
@@ -1855,7 +1856,7 @@ export function mount(root: HTMLElement): void
         }, {
             touchAction: 'pan-y pinch-zoom',
             ignore: (event) => zoomed() || (event instanceof Event && event.target instanceof Element
-                && !!event.target.closest('button, a, input, select, textarea, label, [role="button"]')),
+                && !!event.target.closest('button, a, input, select, textarea, label, summary, [role="button"], [role="separator"], [role="slider"]')),
         });
         const syncTouchAction = (): void => {
             sky.style.touchAction = zoomed() ? 'auto' : 'pan-y pinch-zoom';

@@ -1,9 +1,10 @@
-export const HOLD_LINE = 'Showing the first frame. Lift your finger to go back.';
+export const HOLD_LINE = 'Showing the first frame. Let go to go back.';
 
 export interface HoldView {
     canHold(): boolean;
     token(): unknown;
     index(): number;
+    put(index: number): void;
     show(index: number): void;
     pause(): void;
     say(text: string): void;
@@ -42,17 +43,26 @@ export function createHoldCompare(view: HoldView): {
         }
         const prev = held;
         held = null;
-        const sameView = view.token() === prev.token && view.canHold();
-        if (sameView && view.index() === 0) {
+        // Restore only if the same view still shows the temporary frame.
+        if (view.token() === prev.token && view.index() === 0) {
             view.show(prev.index);
-        } else if (!sameView) {
+        } else {
             view.say('');
         }
     }
 
     function cancel(): void
     {
+        if (held === null) {
+            return;
+        }
+        const prev = held;
         held = null;
+        // The caller will draw or choose its own frame after cancellation.
+        if (view.token() === prev.token && view.index() === 0) {
+            view.put(prev.index);
+        }
+        view.say('');
     }
 
     function active(): boolean
