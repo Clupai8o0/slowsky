@@ -239,6 +239,7 @@ The tools themselves, with their makers, are listed in the README under [AI tool
 | Code | The whole site | Claude Code (Claude Fable, Opus, Sonnet and Haiku models), Codex (GPT-6.1 Sol and Terra), Gemini (Argon and Carbon); Grok 4.7 for review only. Which model wrote each file is not recorded | Write and review code and tests | This repo's commit history and the README table |
 | Demo film images | The demo film's backgrounds and picture elements: `bg_title`, `bg_pluto`, `el_plates`, `bg_sky`, `bg_survey`, `el_telescope`, `bg_world`, `el_browndwarf`, `bg_end` (all nine are used in the film's scene code) | OpenAI GPT Image, model `gpt-image-2`, high quality | Paint decorative pictures in one shared style. They are never sky data | Prompts below. Kept with the film's working files (`video/experiments/gen_assets.sh` and one log per image in `video/experiments/ai-logs/`), not in this repo |
 | Demo film voice | The demo film's narration | ElevenLabs, model `eleven_multilingual_v2`, voice Adam Stone ("Smooth, Deep and Relaxed") | Read the six narration lines aloud. Re-recorded on 15 Nov 2026 with the same voice and model: three or more takes per line, one kept, picked by measurement (length, pauses, and a speech-to-text check that every word is there) | Kept with the film's working files (`video/experiments/voice_lines_r7.py`; the first takes: `voice_lines.py`), not in this repo |
+| Demo film sound effects and music bed | The demo film's sound under the narration | Not an AI audio model: synthesised in code with numpy, by Python scripts written with Claude Opus 5.5 (`claude-opus-5-5`) in Claude Code, 15 Nov 2026. No recordings are used | Write code that makes each sound from arithmetic (fixed random seeds) and mixes it under the voice | Kept with the film's working files (`video/experiments/sfx_synth_r7b.py`, `video/experiments/mix_r7d.py`), not in this repo |
 | Demo film script and animation code | The demo film's scenes, captions and on-screen text | Claude in Claude Code (a main session and Opus subagents); exact model ids not recorded. The narration words were first drafted with Claude Code in the film plan on 14 Nov 2026. Parts of the code were reviewed with Codex (OpenAI) | Build the film's scenes and timing in code | Kept with the film's working files (`VIDEO-PLAN.md`, `video/film-c/HANDOFF.md`, `src/film/copy.ts`), not in this repo |
 | Change sort hint | Nowhere: it is switched off | A small neural network, trained in this repo with PyTorch by scripts that Codex and Claude wrote. It is not generative AI and writes no text or pictures | Trained, not prompted: to label each spot in the change list by kind of change. It is not used | `public/models/change-classifier.json` (the network) and `public/models/change-classifier.card.json` (its description) |
 
@@ -285,7 +286,8 @@ SPHEREx pixels." "Volunteers found over three thousand brown dwarf candidates." 
   made with AI tools, and links to this list.
 - The demo film carries one line on screen: "AI images: OpenAI gpt-image-2 · AI voice: ElevenLabs
   eleven_multilingual_v2". Its end credits repeat both.
-- The text written for the video description names the same two models.
+- The text written for the video description names the same two models, and says the sound effects and the music
+  bed are synthesised in code, not recorded and not made by an AI audio model.
 
 ## Software
 
