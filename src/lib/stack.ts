@@ -21,11 +21,16 @@ export interface StackResult {
     // Relative noise map; see regridVariance. Any kept frame with invalid variance makes that pixel NaN.
     variance?: Float32Array;
     n: Uint16Array;
+    // With the `perFrame` option: its mean over the frames kept at each pixel, NaN where none is.
+    perFrameMean?: Float32Array;
 }
 
 export interface StackOptions {
     clipSigma?: number;
     background?: 'median' | 'none';
+    // A value for one frame at one pixel (its wavelength there, say). The result's `perFrameMean` is its mean over
+    // the frames the stack kept at each pixel, so a frame clipped out at a pixel does not count there.
+    perFrame?: (frame: number, pixel: number) => number;
 }
 
 const MAD_TO_SIGMA = 1.4826;
@@ -200,7 +205,9 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
     // No variance buffers or per-pixel variance work unless every frame has V.
     const variances = frames.every((fr) => fr.variance !== undefined) ? frames.map((fr) => fr.variance!) : undefined;
     const variance = variances ? new Float32Array(size) : undefined;
-    const indices = variances ? new Uint32Array(nf) : undefined;
+    const perFrame = opts.perFrame;
+    const perFrameMean = perFrame ? new Float32Array(size) : undefined;
+    const indices = variances || perFrame ? new Uint32Array(nf) : undefined;
 
     for (let p = 0; p < size; p++) {
         let m = 0;
@@ -218,6 +225,9 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
             counts[p] = 0;
             if (variance) {
                 variance[p] = NaN;
+            }
+            if (perFrameMean) {
+                perFrameMean[p] = NaN;
             }
             continue;
         }
@@ -255,6 +265,13 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
         }
         out[p] = sum / m;
         counts[p] = m;
+        if (perFrameMean && perFrame && indices) {
+            let total = 0;
+            for (let i = 0; i < m; i++) {
+                total += perFrame(indices[i]!, p);
+            }
+            perFrameMean[p] = total / m;
+        }
         if (variance && variances && indices) {
             let sumVariance = 0;
             for (let i = 0; i < m; i++) {
@@ -268,7 +285,7 @@ export function stackVisit(frames: RegriddedFrame[], opts: StackOptions = {}): S
             variance[p] = m > 0 ? sumVariance / (m * m) : NaN;
         }
     }
-    return variance ? { data: out, n: counts, variance } : { data: out, n: counts };
+    return { data: out, n: counts, ...(variance ? { variance } : {}), ...(perFrameMean ? { perFrameMean } : {}) };
 }
 
 function asResult(x: StackResult | Float32Array): StackResult

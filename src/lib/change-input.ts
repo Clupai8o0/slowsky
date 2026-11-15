@@ -3,7 +3,7 @@
 // with its Gaia source_id, so both entries of one star share an id. Pure, no DOM, so it runs in a Worker.
 // Not wired into the page yet.
 
-import { compareVisits, type ChangeOptions, type VisitChangeResult, type StarPix, type VisitImage } from './changes';
+import { compareVisits, latticeValue, type ChangeOptions, type VisitChangeResult, type StarPix, type VisitImage } from './changes';
 import { gridSkyToPix } from './regrid';
 import type { GaiaStar, SkyResult } from './source';
 import { groupByVisit, stackVisit } from './stack';
@@ -44,12 +44,23 @@ function middle(visit: RegriddedFrame[]): number
 
 function image(visit: RegriddedFrame[]): VisitImage
 {
-    const stack = stackVisit(visit);
+    // The visit's wavelength at each pixel: the mean over the frames the stack kept there, each frame's own wavelength
+    // being read at that pixel first. (Averaging the frames' lattices and interpolating afterwards smeared the edge of
+    // a frame's coverage across a lattice cell.) A frame clipped out at a pixel does not count there. NaN where no
+    // frame holds a value, and where the wavelength of a kept frame is unknown: the stacked picture there mixes in
+    // light of an unknown wavelength. Left out unless every frame carries a lattice of at least two by two nodes.
+    const grid = visit[0]?.grid;
+    const lattices = visit.every(f => f.lambdaGrid && f.lambdaGrid.nx >= 2 && f.lambdaGrid.ny >= 2
+        && f.lambdaGrid.values.length === f.lambdaGrid.nx * f.lambdaGrid.ny) ? visit.map(f => f.lambdaGrid!) : undefined;
+    const stack = stackVisit(visit, grid && lattices
+        ? { perFrame: (frame, pixel) => latticeValue(lattices[frame]!, pixel % grid.width, Math.floor(pixel / grid.width), grid) } : {});
     const lambda = visit.reduce((sum, f) => sum + f.lambdaAtCenter, 0) / visit.length;
+    const lambdaMap = stack.perFrameMean;
     return {
         data: stack.data, lambda, mjd: middle(visit),
         obsIds: visit.slice().sort((a, b) => a.frame.tMin - b.frame.tMin).map((f) => f.frame.obsId),
         ...(stack.variance ? { variance: stack.variance } : {}),
+        ...(lambdaMap ? { lambdaMap } : {}),
     };
 }
 
@@ -111,9 +122,21 @@ export function changeInput(result: SkyResult, opts: ChangeInputOptions = {}): C
 export function findChanges(result: SkyResult, opts: ChangeInputOptions = {}, changeOpts?: ChangeOptions): VisitChangeResult
 {
     const input = changeInput(result, opts);
-    const found = compareVisits(input.earlier, input.later, result.grid, input.stars, changeOpts);
+    const cover = result.starCover;
+    const center = cover ? gridSkyToPix(result.grid, cover.center) : undefined;
+    // A cone that reaches the picture's corners covers all of it: no spot is then outside the star list. Measured on
+    // the picture itself (its farthest corner from the cone's centre), with one pixel of slack for grid rounding.
+    const radiusPix = cover ? cover.radiusDeg * 3600 / result.grid.pixelArcsec : 0;
+    const corner = center ? Math.hypot(Math.max(center.x + 0.5, result.grid.width - 0.5 - center.x),
+        Math.max(center.y + 0.5, result.grid.height - 0.5 - center.y)) : 0;
+    const starCover = center && corner > radiusPix + 1 ? { ...center, radiusPix } : undefined;
+    const found = compareVisits(input.earlier, input.later, result.grid, input.stars,
+        { ...changeOpts, ...(changeOpts?.starCover ? {} : starCover ? { starCover } : {}) });
     const noiseReported = found.notes.some((note) => /noise from the difference image/i.test(note));
     found.notes.push(...input.notes.filter((note) => !((noiseReported || !Number.isFinite(found.sigma)) && note.startsWith('No error maps'))
         && !(!Number.isFinite(found.sigma) && note.startsWith('No catalogue stars for this view:'))));
+    if (cover?.cut) {
+        found.notes.push(`The Gaia star list for this view was cut to its ${cover.kept ?? result.stars.length} brightest stars, so a fainter catalogue star can be missing from it.`);
+    }
     return found;
 }

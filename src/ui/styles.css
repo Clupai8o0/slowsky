@@ -604,8 +604,9 @@ div.sk-sub { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
     /* The centre starts at the top line instead of one band down: that band is worth 80 px of sky. */
     .sk { --gap: 16px; --pt: 20px; --pb: 16px; --under: 368px; --w: min(100%, max(320px, calc(100dvh - var(--under)))); }
     .sk-m-watch { padding-top: 8px; }
-    .sk[data-left=min][data-right=min] { --under: 408px; }
-    .sk[data-left=min][data-right=min] .sk-m-watch { padding-top: 48px; }
+    /* A folded panel leaves its tab on the top line, so the centre's heading starts under that line. */
+    .sk[data-left=min], .sk[data-right=min], .sk[data-left=min][data-right=min] { --under: 408px; }
+    .sk[data-left=min] .sk-m-watch, .sk[data-right=min] .sk-m-watch, .sk[data-left=min][data-right=min] .sk-m-watch { padding-top: 48px; }
     .sk-tg small { display: none; }
     .sk-tg button { padding: 4px 0 4px 28px; }
     .sk-tg .k { top: 12px; }

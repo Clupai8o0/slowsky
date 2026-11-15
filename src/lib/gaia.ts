@@ -270,7 +270,7 @@ function describe(e: unknown): string
 
 export async function fetchGaia(c: SkyCoord, radiusDeg: number, opts: {
     signal?: AbortSignal; fetcher?: typeof fetch; gMax?: number; maxRows?: number; timeoutMs?: number;
-} = {}): Promise<{ rows: GaiaRow[]; from: GaiaOrigin }>
+} = {}): Promise<{ rows: GaiaRow[]; from: GaiaOrigin; cut: boolean }>
 {
     const gMax = opts.gMax ?? DEFAULT_G_MAX;
     const maxRows = opts.maxRows ?? 400;
@@ -279,9 +279,9 @@ export async function fetchGaia(c: SkyCoord, radiusDeg: number, opts: {
     const signal = opts.signal;
     const stsciUrl = stsciConeUrl(c, radiusDeg);
     const vizierUrl = vizierConeUrl(c, radiusDeg, gMax);
-    const finish = (rows: GaiaRow[], from: GaiaOrigin): { rows: GaiaRow[]; from: GaiaOrigin } => {
+    const finish = (rows: GaiaRow[], from: GaiaOrigin): { rows: GaiaRow[]; from: GaiaOrigin; cut: boolean } => {
         const sorted = rows.slice().sort((a, b) => a.g - b.g);
-        return { rows: sorted.slice(0, Math.max(0, maxRows)), from };
+        return { rows: sorted.slice(0, Math.max(0, maxRows)), from, cut: sorted.length > Math.max(0, maxRows) };
     };
     if (signal?.aborted) {
         throw abortReason(signal);

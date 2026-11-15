@@ -215,6 +215,7 @@ export interface RegriddedFrame {
     // NaN wherever data is NaN, and also where the file's variance was invalid.
     variance?: Float32Array;
     lambdaAtCenter: number; // µm, from the wave grid at the view centre
+    lambdaGrid?: { nx: number; ny: number; values: Float32Array }; // µm on the output grid
     bandwidthAtCenter: number;
     context?: FrameContext; // live source only; the saved copy leaves it out
 }
