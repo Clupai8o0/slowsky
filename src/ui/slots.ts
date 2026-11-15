@@ -25,6 +25,7 @@ import { tryLoadClassifier, type ClassifierModel } from '../lib/classify';
 import type { VisitChangeResult } from '../lib/changes';
 import { PLAIN_LEAD, hasSnrFigure, plainListNotes, isSnrNote } from '../lib/changes';
 import { changesHtml, changesMarks, changesView, type ChangesView } from './changes-view';
+import { syncGloss } from './help-view';
 import { createRangeReader } from '../lib/fits';
 import { groupByVisit } from '../lib/stack';
 import type { RangeReader } from '../lib/types';
@@ -521,6 +522,9 @@ export function mountChanges(onChange: () => void, deps: ChangesDeps = {}): { re
         if (shown.get(box) !== html) {
             box.innerHTML = html;
             shown.set(box, html);
+        }
+        if (box.ownerDocument && box.children) {
+            syncGloss(box, ['snr', 'catalogueStar', 'arcsec']);
         }
         const svg = changesMarks(v, view.result.grid.width, view.result.grid.height, all);
         if (shown.get(marks) !== svg) {
