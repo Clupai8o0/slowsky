@@ -383,6 +383,11 @@ export function mountTool(root: HTMLElement, api: ToolApi): Tool
         const list = [...picker.querySelectorAll<HTMLButtonElement>('[data-target]')].filter((b) => !b.hidden);
         const i = list.indexOf(doc.activeElement as HTMLButtonElement);
         e.stopPropagation(); // keys in the picker never reach the page's own shortcuts
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+            e.preventDefault();
+            closePicker();
+            return;
+        }
         if (e.key === 'Escape') {
             e.preventDefault();
             closePicker();

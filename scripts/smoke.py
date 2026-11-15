@@ -436,10 +436,13 @@ def run_target(browser, base, tid, label, click, mode, timeout, out, brk, live_t
     try:
         pg.goto(base, wait_until="load")
         tsel = f'button[data-target="{tid}"]'
-        pg.locator(tsel + ":visible").first.wait_for(timeout=15000)
+        # The targets sit in the target picker (top bar button, or Ctrl+K); the picker button shows once the page is up.
+        pg.locator(tsel).first.wait_for(state="attached", timeout=15000)
+        pg.locator('[data-act="picker"]:visible').first.wait_for(timeout=15000)
         if click:
             wait_js(pg, "document.querySelector('[data-ref=\"dl\"]')?.textContent.includes('File')", timeout=timeout * 1000)
             old = pg.evaluate("document.querySelector('[data-ref=\"dl\"]').textContent")
+            pg.locator('[data-act="picker"]:visible').first.click()
             pg.locator(tsel + ":visible").first.click()
         try:
             wait_js(pg, "(s) => document.querySelector(s)?.getAttribute('aria-pressed') === 'true'", arg=tsel, timeout=timeout * 1000)
