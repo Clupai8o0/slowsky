@@ -234,7 +234,7 @@ describe('comet: the switch', () => {
         const shell = app.slice(app.indexOf('function shell('), app.indexOf('export function mount('));
         expect(shell.length).toBeGreaterThan(1000);
         expect(shell).not.toMatch(/comet|sk-cm/i);
-        expect(app).toContain("mountComet(root.querySelector<HTMLElement>('.sk-m-about'), { enabled: FEATURES.comet });");
+        expect(app).toContain("mountComet(ref<HTMLElement>('extrasAnchor'), { enabled: FEATURES.comet });");
     });
 
     it('on: puts the card after the section it is given and fetches the file once', async () => {

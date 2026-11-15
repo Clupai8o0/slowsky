@@ -476,3 +476,4 @@
 .tb-cand .w small { display: block; font-size: 11.5px; color: var(--mute); }
 .tb-cand .s { margin-left: auto; font: 12px var(--mono); color: var(--mute); }
 .sk.tb .tb-minestrip small { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }
+.sk.tb .tb-status .sk-help-alt { display: inline-flex; height: 22px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 3px; background: none; color: var(--ink2); font-size: 12px; min-height: 0; }

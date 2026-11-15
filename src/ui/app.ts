@@ -24,7 +24,7 @@ import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, type Curve } 
 import { mountAiNote } from './ai-note';
 import { mountAsk } from './ask-panel';
 import { AI_LINE, AI_LINK, CONTROL_HELP, GLOSSARY, HELP_INTRO } from './help';
-import { helpButtonHtml, helpDialogHtml, mountHelp } from './help-view';
+import { helpAltButtonHtml, helpButtonHtml, helpDialogHtml, mountHelp } from './help-view';
 import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, type LayerState } from './slots';
 import { mountEpoch } from './epoch-view';
 import { mountSpectrum } from './spectrum-view';
@@ -298,7 +298,7 @@ export function shell(shareCard = FEATURES.shareCard): string
   <div class="tb-acts" role="group" aria-label="Labels, link and picture">
     <button type="button" class="tb-icon" data-act="labels" aria-label="Tool labels" aria-pressed="true" data-help="Labels under every tool: on. Press to hide them once you know the tools."><span class="ic">${ICON.tag}</span></button>
     <button type="button" class="tb-icon" data-act="copy" aria-label="Copy link" data-help="Copy a link to this view."><span class="ic">${ICON.link}</span></button>
-    ${shareCard ? `<button type="button" class="tb-icon sk-save" data-act="save-picture" aria-label="Save a picture of A, B and B − A" data-help="In Subtract: save one picture of A, B and B − A, with the dates and the data credit."><span class="ic">${ICON.file}</span></button>` : ''}
+    ${shareCard ? `<button type="button" class="tb-icon sk-save" data-act="save-picture" aria-label="Save picture: A, B and B − A" data-help="In Subtract: save one picture of A, B and B − A, with the dates and the data credit."><span class="ic">${ICON.file}</span></button>` : ''}
     <button type="button" class="tb-icon" data-act="theme" aria-label="Switch to the light theme" data-help="Dark or light (T)."><span class="ic">${ICON.theme}</span></button>
   </div>
 </header>
@@ -531,6 +531,7 @@ export function shell(shareCard = FEATURES.shareCard): string
 
 <footer class="tb-status">
   <span class="tb-help" data-ref="statusHelp"></span>
+  ${helpAltButtonHtml()}
   <button type="button" class="tb-coord" data-ref="coord" data-help="Sky position under the pointer (RA, Dec). Press to copy it.">—</button>
   <button type="button" class="tb-ailink" data-act="about" aria-haspopup="dialog" aria-expanded="false">AI used</button>
   <div class="tb-about" data-ref="about" hidden role="dialog" aria-label="AI used"><p>${esc(AI_LINE)}</p><p>The AI note names the model that wrote it each time. Every claim on this page is listed with its source.</p><a href="${esc(AI_LINK)}" target="_blank" rel="noopener">Source list</a></div>

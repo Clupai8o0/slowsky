@@ -131,6 +131,6 @@ describe('planetx view', () => {
         const view = readFileSync(new URL('../src/ui/planetx-view.ts', import.meta.url), 'utf8');
         expect(view).not.toMatch(/candidate|discovery|detected|confirmed|proves/i);
         const app = readFileSync(new URL('../src/ui/app.ts', import.meta.url), 'utf8');
-        expect(app).toContain("mountPlanetX(comet.section ?? root.querySelector<HTMLElement>('.sk-m-about'), { enabled: FEATURES.planetx });");
+        expect(app).toContain("mountPlanetX(comet.section ?? ref<HTMLElement>('extrasAnchor'), { enabled: FEATURES.planetx });");
     });
 });
