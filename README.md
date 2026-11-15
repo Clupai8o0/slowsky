@@ -75,9 +75,10 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
   most 8 spots that have no Gaia catalogue star
   within 6″; the rest stay behind a button, because a small shift between two pictures of a star can look like a
   change. The list states two more limits in its notes. The Gaia star list covers only a circle around the centre
-  of the view (at most 0.2° in radius) and at most its 400 brightest stars, so on a wide field a spot outside that
-  circle, or within 6″ of its edge, is marked as not checked against the list and comes last, and a note says
-  when the star list was cut short. And because SPHEREx's wavelength changes across each frame, two visits that match at the centre of the
+  of the view (at most 0.2° in radius) and at most its 400 brightest stars, so on a wide field a spot with no
+  listed star within 6″ that lies outside that circle, or within 6″ of its edge, is marked as not checked against
+  the list and comes last, and a note says when the star list was cut short. And because SPHEREx's wavelength
+  changes across each frame, two visits that match at the centre of the
   view can differ away from it: wherever the average wavelengths of the two visits' frames differ by more than
   0.02 µm, that part of the picture is left out of the comparison, and a note gives the share left out. Every line
   is a candidate only: the page cannot tell a real change in the sky from a detector hit, a
