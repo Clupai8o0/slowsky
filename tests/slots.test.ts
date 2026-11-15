@@ -749,6 +749,8 @@ describe('preview switch', () => {
         expect(featuresFrom('-epoch')).toEqual({ ...DEFAULT_FEATURES, epoch: false });
         expect(DEFAULT_FEATURES.gestures).toBe(true);
         expect(featuresFrom('-gestures').gestures).toBe(false);
+        expect(DEFAULT_FEATURES.planetx).toBe(true);
+        expect(featuresFrom('-planetx').planetx).toBe(false);
     });
 
     it('ships with the build defaults when the variable is not set', () => {

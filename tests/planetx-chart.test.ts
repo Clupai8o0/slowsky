@@ -25,7 +25,9 @@ describe('Planet Nine depth chart', () => {
     it('provides sourced, qualified explanatory text', () => {
         const text = planetxChartText();
         expect(text.caption).toMatch(/estimate/i);
-        expect(text.references).toEqual(references());
+        expect(text.references).toEqual(references().filter(ref => ref.key !== 'inverse-fourth'));
+        expect(text.caption).toContain('optical brightness');
+        expect(text.notes.join(' ')).toContain('ZTF, DES and Pan-STARRS1');
         expect(text.references.find(ref => ref.key === 'orbit-v2')).toBeUndefined();
         const refIndexByUrl = new Map(text.references.map((ref, index) => [ref.url, index + 1]));
         for (const mark of planetxRows().flatMap(row => row.marks)) {
