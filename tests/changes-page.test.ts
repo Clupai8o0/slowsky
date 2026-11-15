@@ -11,10 +11,10 @@ import weights from '../public/models/change-classifier.json';
 import { shell } from '../src/ui/app';
 
 describe('share picture switch', () => {
-    it('leaves the page HTML unchanged while disabled', () => {
+    it('ships switched on; switched off the page HTML has no Save picture button', () => {
         const fetcher = vi.spyOn(globalThis, 'fetch');
-        expect(shell()).toBe(shell(false));
-        expect(shell()).not.toContain('Save picture');
+        expect(shell()).toBe(shell(true));
+        expect(shell(false)).not.toContain('Save picture');
         expect(shell(true)).toContain('Save picture');
         expect(fetcher).not.toHaveBeenCalled();
         fetcher.mockRestore();
