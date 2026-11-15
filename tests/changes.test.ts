@@ -2815,7 +2815,11 @@ describe('round 8 measurement guards', () => {
         // Every reason and note is a literal in changes.ts, so check the source as well as the outputs above.
         const source = readFileSync(`${process.cwd()}/src/lib/changes.ts`, 'utf8');
         const literals = source.match(/'[^'\n]*'|`[^`]*`/g) ?? [];
-        expect(literals.filter((s: string) => /detected a|confirmed|proves|discovery|%/i.test(s))).toEqual([]);
+        // A percent sign is allowed only in the two notes that give the share of the picture left out of the
+        // comparison (an area, not a likelihood); nothing about a candidate may carry one.
+        const areaShare = /^`(?:About \$\{percent\}% of the picture was|A small part of the picture \(under 1%\) was) left out of the comparison: /;
+        expect(literals.filter((s: string) => /detected a|confirmed|proves|discovery/i.test(s)
+            || (s.includes('%') && (!areaShare.test(s) || (s.match(/%/g) ?? []).length > 1)))).toEqual([]);
     });
 
     it('hedges a catalogue brightening beside an uncatalogued fade (Codex 3)', () => {

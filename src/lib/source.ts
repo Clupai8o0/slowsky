@@ -11,9 +11,9 @@ import { commonRange, lockWavelength, type LockedFrame } from './lock';
 import { createRangeReader } from './fits';
 import { searchFrames, type FrameList } from './sia';
 import { makeWcs, wcsFromHeader } from './wcs';
-import { groupVisits, sampleWave } from './wavelength';
+import { groupVisits, sampleWave, sampleWaveLinear } from './wavelength';
 import { pickByWavelength, predictPixel } from './footprint';
-import { gridForView, gridSkyToPix, regridNorthUp, regridVariance } from './regrid';
+import { gridForView, gridPixToSky, gridSkyToPix, regridNorthUp, regridVariance } from './regrid';
 import { positionAt, targetById } from './targets';
 import { fetchGaia, type GaiaRow } from './gaia';
 import { flagNames, parseFlagsLayout } from './flags';
@@ -66,6 +66,7 @@ export interface SkyResult {
     lambda: number; // the wavelength the frames are locked to, µm
     lambdaRange?: [number, number]; // what every visit can reach, µm
     stars: GaiaStar[]; // empty when no catalogue is available for this view
+    starCover?: { center: SkyCoord; radiusDeg: number; cut: boolean; kept?: number };
     track?: TrackPoint[]; // same order as frames; only with a target
     credits: string[]; // data credits to show under the player
     notes: string[]; // plain-language notes, e.g. "2 visits dropped: no frame within 0.02 µm"
@@ -289,6 +290,19 @@ export function bestLambda(
 }
 
 // Lock, cut out and regrid. Shared by both sources.
+export function waveLattice(wave: WaveGrid, wcs: Wcs, grid: OutputGrid): NonNullable<RegriddedFrame['lambdaGrid']>
+{
+    const nx = 9, ny = 9, values = new Float32Array(nx * ny);
+    for (let j = 0; j < ny; j++) {
+        for (let i = 0; i < nx; i++) {
+            const sky = gridPixToSky(grid, { x: i * (grid.width - 1) / (nx - 1), y: j * (grid.height - 1) / (ny - 1) });
+            const pix = safeSkyToPix(wcs, sky);
+            values[j * nx + i] = pix ? sampleWaveLinear(wave, pix).lambda : NaN;
+        }
+    }
+    return { nx, ny, values };
+}
+
 async function assemble(
     req: SkyRequest,
     infos: FrameInfo[],
@@ -296,6 +310,7 @@ async function assemble(
     opts: SourceOptions,
     notes: string[],
     skippedVisits = 0,
+    live = false,
 ): Promise<Omit<SkyResult, 'source' | 'stars' | 'credits'>>
 {
     const grid = gridForView(req.center, req.fovDeg, opts.minScreenPx ?? 4, opts.maxSide ?? 721);
@@ -348,6 +363,7 @@ async function assemble(
             grid,
             data,
             lambdaAtCenter: atCentre?.lambda ?? l.lambda,
+            ...(live ? { lambdaGrid: waveLattice(info.wave, info.wcs, grid) } : {}),
             bandwidthAtCenter: atCentre?.bandwidth ?? info.bandwidth,
             ...(info.context ? { context: { wcs: info.wcs, box, ...info.context } } : {}),
         };
@@ -567,16 +583,17 @@ function archiveFetch(fetcher: typeof fetch, load: AbortController, timeoutMs: n
 }
 
 // Runs the Gaia cone search beside the frame work. `rows` never rejects: undefined means "no catalogue".
-function startCatalogue(req: SkyRequest, fetcher: typeof fetch): { rows: Promise<GaiaRow[] | undefined>; stop: () => void }
+function startCatalogue(req: SkyRequest, fetcher: typeof fetch): { rows: Promise<{ rows: GaiaRow[]; cut: boolean } | undefined>; radiusDeg: number; stop: () => void }
 {
     const own = new AbortController();
     const onAbort = (): void => own.abort(req.signal?.reason);
     req.signal?.addEventListener('abort', onAbort, { once: true });
     const radiusDeg = Math.max(0.000001, Math.min(GAIA_MAX_RADIUS_DEG, req.fovDeg * Math.SQRT1_2));
     const rows = fetchGaia(req.center, radiusDeg, { signal: own.signal, fetcher, timeoutMs: 6000 })
-        .then((found) => found.rows, () => undefined);
+        .then((found) => found, () => undefined);
     return {
         rows,
+        radiusDeg,
         stop: () => {
             req.signal?.removeEventListener('abort', onAbort);
             own.abort();
@@ -948,21 +965,22 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
                     if (atEdge > 0) {
                         notes.push(`${plural(atEdge, 'frame')} left out: the spot is at the detector edge.`);
                     }
-                    const core = await assemble(req, usable, visits, opts, notes, skippedVisits);
+                    const core = await assemble(req, usable, visits, opts, notes, skippedVisits, true);
                     if (atEdge > 0) {
                         core.missed = (core.missed ?? 0) + atEdge;
                     }
                     // The picture is ready: give a slow catalogue a short grace time, then go on without it.
                     const rows = await settleWithin(catalogue.rows, GAIA_GRACE_MS, req.signal);
                     req.signal?.throwIfAborted();
-                    const stars = rows ? gaiaStarsOnGrid(rows, core.grid) : [];
+                    const stars = rows ? gaiaStarsOnGrid(rows.rows, core.grid) : [];
                     if (!rows) {
                         notes.push(GAIA_UNAVAILABLE_NOTE);
                     } else if (stars.length > 0 && req.fovDeg * Math.SQRT1_2 > GAIA_MAX_RADIUS_DEG) {
                         notes.push(`Gaia stars are shown only within ${GAIA_MAX_RADIUS_DEG}° of the centre.`);
                     }
                     const records = core.frames.map((f) => f.frame.frame);
-                    return { source: 'live', stars, credits: credits(records, stars.length > 0), ...core };
+                    return { source: 'live', stars, credits: credits(records, stars.length > 0), ...core,
+                        ...(rows ? { starCover: { center: req.center, radiusDeg: catalogue.radiusDeg, cut: rows.cut, kept: rows.rows.length } } : {}) };
                 } finally {
                     catalogue.stop();
                 }

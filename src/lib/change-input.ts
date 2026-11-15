@@ -46,10 +46,22 @@ function image(visit: RegriddedFrame[]): VisitImage
 {
     const stack = stackVisit(visit);
     const lambda = visit.reduce((sum, f) => sum + f.lambdaAtCenter, 0) / visit.length;
+    const first = visit[0]?.lambdaGrid;
+    let lambdaGrid: VisitImage['lambdaGrid'];
+    if (first && visit.every(f => f.lambdaGrid && f.lambdaGrid.nx === first.nx && f.lambdaGrid.ny === first.ny
+        && f.lambdaGrid.values.length === first.nx * first.ny)) {
+        const values = new Float32Array(first.nx * first.ny);
+        for (let i = 0; i < values.length; i++) {
+            const finite = visit.map(f => f.lambdaGrid!.values[i]!).filter(Number.isFinite);
+            values[i] = finite.length ? finite.reduce((a, b) => a + b, 0) / finite.length : NaN;
+        }
+        lambdaGrid = { nx: first.nx, ny: first.ny, values };
+    }
     return {
         data: stack.data, lambda, mjd: middle(visit),
         obsIds: visit.slice().sort((a, b) => a.frame.tMin - b.frame.tMin).map((f) => f.frame.obsId),
         ...(stack.variance ? { variance: stack.variance } : {}),
+        ...(lambdaGrid ? { lambdaGrid } : {}),
     };
 }
 
@@ -111,9 +123,16 @@ export function changeInput(result: SkyResult, opts: ChangeInputOptions = {}): C
 export function findChanges(result: SkyResult, opts: ChangeInputOptions = {}, changeOpts?: ChangeOptions): VisitChangeResult
 {
     const input = changeInput(result, opts);
-    const found = compareVisits(input.earlier, input.later, result.grid, input.stars, changeOpts);
+    const cover = result.starCover;
+    const center = cover ? gridSkyToPix(result.grid, cover.center) : undefined;
+    const starCover = cover && center ? { ...center, radiusPix: cover.radiusDeg * 3600 / result.grid.pixelArcsec } : undefined;
+    const found = compareVisits(input.earlier, input.later, result.grid, input.stars,
+        { ...changeOpts, ...(changeOpts?.starCover ? {} : starCover ? { starCover } : {}) });
     const noiseReported = found.notes.some((note) => /noise from the difference image/i.test(note));
     found.notes.push(...input.notes.filter((note) => !((noiseReported || !Number.isFinite(found.sigma)) && note.startsWith('No error maps'))
         && !(!Number.isFinite(found.sigma) && note.startsWith('No catalogue stars for this view:'))));
+    if (cover?.cut) {
+        found.notes.push(`The Gaia star list for this view was cut to its ${cover.kept ?? result.stars.length} brightest stars, so a fainter catalogue star can be missing from it.`);
+    }
     return found;
 }
