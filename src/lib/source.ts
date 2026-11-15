@@ -66,8 +66,8 @@ export interface SkyResult {
     lambda: number; // the wavelength the frames are locked to, µm
     lambdaRange?: [number, number]; // what every visit can reach, µm
     stars: GaiaStar[]; // empty when no catalogue is available for this view
-    // `capped`: the cone stops short of the picture's corners, so part of the picture has no star list.
-    starCover?: { center: SkyCoord; radiusDeg: number; capped: boolean; cut: boolean; kept?: number };
+    // The cone the Gaia star list was loaded in. `cut`: the list was cut to its `kept` brightest stars.
+    starCover?: { center: SkyCoord; radiusDeg: number; cut: boolean; kept?: number };
     track?: TrackPoint[]; // same order as frames; only with a target
     credits: string[]; // data credits to show under the player
     notes: string[]; // plain-language notes, e.g. "2 visits dropped: no frame within 0.02 µm"
@@ -981,7 +981,7 @@ export function createLiveSource(opts: LiveOptions & { fetch?: typeof fetch } = 
                     }
                     const records = core.frames.map((f) => f.frame.frame);
                     return { source: 'live', stars, credits: credits(records, stars.length > 0), ...core,
-                        ...(rows ? { starCover: { center: req.center, radiusDeg: catalogue.radiusDeg, capped: req.fovDeg * Math.SQRT1_2 > GAIA_MAX_RADIUS_DEG, cut: rows.cut, kept: rows.rows.length } } : {}) };
+                        ...(rows ? { starCover: { center: req.center, radiusDeg: catalogue.radiusDeg, cut: rows.cut, kept: rows.rows.length } } : {}) };
                 } finally {
                     catalogue.stop();
                 }

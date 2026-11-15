@@ -54,7 +54,10 @@ describe('comparison coverage', () => {
         const result = compareVisits({ ...a, lambdaGrid: bad }, { ...b, lambdaGrid: lattice(0) }, grid, [], { plain: true });
         expect(result.notes).toContain('About 25% of the area both visits cover was left out of the comparison: there the wavelength of at least one visit could not be worked out.');
         expect(result.candidates.some(c => Math.abs(c.pix.y - 60) < 5)).toBe(true);
-        expect(result.candidates.some(c => Math.abs(c.pix.y - 20) < 5)).toBe(true);
+        const beside = result.candidates.find(c => Math.abs(c.pix.y - 20) < 5)!;
+        expect(beside).toBeDefined();
+        expect(beside.sentence).toContain('Pixels at or near it were left out of the comparison: there the wavelength of at least one visit could not be worked out.');
+        expect(beside.sentence).not.toContain('wavelengths differ');
     });
     it('describes a mask boundary as missing pixels rather than an image edge', () => {
         const [a, b] = pictures();
@@ -70,8 +73,9 @@ describe('comparison coverage', () => {
         const result = compareVisits({ ...a, lambdaGrid: lattice(0.1) }, { ...b, lambdaGrid: lattice(-0.1) }, grid, [], { plain: true });
         const center = result.candidates.find(c => Math.abs(c.pix.y - 60) < 5)!;
         expect(center).toBeDefined();
-        expect(center.sentence).toContain("Pixels at or near it were left out of the comparison because of the two visits' wavelengths there.");
+        expect(center.sentence).toContain("Pixels at or near it were left out of the comparison: there the two visits' wavelengths differ by more than 0.02 µm.");
         expect(center.sentence).not.toContain('are missing in at least one visit');
+        expect(center.sentence).not.toContain('could not be worked out');
     });
     it('keeps the missing sentence when a pixel has no data', () => {
         const [a, b] = pictures();
@@ -82,7 +86,7 @@ describe('comparison coverage', () => {
         expect(center).toBeDefined();
         expect(center.sentence).toContain('Pixels at or near it are missing in at least one visit.');
         // Its disc also reaches the rows the wavelength check left out, so it gets both sentences.
-        expect(center.sentence).toContain("Pixels at or near it were left out of the comparison because of the two visits' wavelengths there.");
+        expect(center.sentence).toContain("Pixels at or near it were left out of the comparison: there the two visits' wavelengths differ by more than 0.02 µm.");
     });
     it('marks an outside spot unchecked and sorts it after an inside spot', () => {
         const [a, b] = pictures();
@@ -115,6 +119,8 @@ describe('comparison coverage', () => {
         expect(html.indexOf('Candidate 1')).toBeLessThan(html.indexOf('It lies outside the part'));
         view.candidates = view.candidates.filter(c => c.catalogueChecked !== false);
         expect(changesHtml(view, true)).not.toContain('1 spot lies outside');
+        expect(changesHtml(view, true)).not.toContain('come last');
+        expect(changesHtml(view, true)).toContain('Listed with spots that have no catalogue star within 6″ first');
     });
     it('reports whether Gaia kept fewer rows than it received', async () => {
         const fetcher = async () => new Response('source_id,ra,dec,phot_g_mean_mag\n1,20,30,10\n2,20,30,11\n3,20,30,12');
@@ -138,7 +144,7 @@ describe('comparison coverage', () => {
         const frames = [frame(a, 'a', 60000, [1, NaN, NaN, 4]), frame(a, 'b', 60001, [3, 2, NaN, 6]),
             frame(b, 'c', 60100, [2, 2, 2, 2])];
         const sky: SkyResult = { source: 'live', grid, frames: frames.map(f => ({ frame: f, label: '' })), locked: [], lambda: 2,
-            stars: [], credits: [], notes: [], starCover: { center: grid.center, radiusDeg: 0.2, capped: true, cut: true, kept: 17 } };
+            stars: [], credits: [], notes: [], starCover: { center: grid.center, radiusDeg: 0.2, cut: true, kept: 17 } };
         expect(Array.from(changeInput(sky).earlier.lambdaGrid!.values)).toEqual([2, 2, NaN, 5]);
         expect(findChanges(sky).notes).toContain('The Gaia star list for this view was cut to its 17 brightest stars, so a fainter catalogue star can be missing from it.');
         delete (frames[0] as { lambdaGrid?: unknown }).lambdaGrid;
@@ -167,13 +173,16 @@ describe('comparison coverage', () => {
                 url: '', tMin: t, tMax: t + 0.01, lambdaMin: 1, lambdaMax: 3 }, grid, data: img.data,
             lambdaAtCenter: 2, bandwidthAtCenter: 0.1,
         });
-        const sky = (capped: boolean): SkyResult => ({ source: 'live', grid, frames: [frame(a, 'a', 60000), frame(b, 'b', 60100)].map(f => ({ frame: f, label: '' })),
+        const sky = (radiusDeg: number): SkyResult => ({ source: 'live', grid, frames: [frame(a, 'a', 60000), frame(b, 'b', 60100)].map(f => ({ frame: f, label: '' })),
             locked: [], lambda: 2, stars: [], credits: [], notes: [],
-            starCover: { center: grid.center, radiusDeg: 0.01, capped, cut: false, kept: 0 } });
-        const open = findChanges(sky(false), {}, { plain: true });
+            starCover: { center: grid.center, radiusDeg, cut: false, kept: 0 } });
+        // The picture's corners are 0.0365 degrees from its centre: a 0.037 degree cone covers it, a 0.01 degree cone does not.
+        const open = findChanges(sky(0.037), {}, { plain: true });
         expect(open.candidates.length).toBeGreaterThan(1);
         expect(open.candidates.some(c => c.catalogueChecked === false)).toBe(false);
-        expect(findChanges(sky(true), {}, { plain: true }).candidates.some(c => c.catalogueChecked === false)).toBe(true);
+        expect(findChanges(sky(0.01), {}, { plain: true }).candidates.some(c => c.catalogueChecked === false)).toBe(true);
+        // A cone a hair short of the corners through grid rounding still counts as covering the picture.
+        expect(findChanges(sky(0.0364), {}, { plain: true }).candidates.some(c => c.catalogueChecked === false)).toBe(false);
     });
     it('averages a visit wavelength only over the frames that hold data at that point', () => {
         const [a, b] = pictures();
@@ -188,5 +197,8 @@ describe('comparison coverage', () => {
             stars: [], credits: [], notes: [] };
         // Left corners: both frames hold data, so 2. Right corners: only the full frame does, so 3.
         expect(Array.from(changeInput(sky).earlier.lambdaGrid!.values)).toEqual([2, 3, 2, 3]);
+        // The only frame with data at a corner has no wavelength there: unknown, not another frame's value.
+        frames[1]!.lambdaGrid.values[1] = NaN;
+        expect(Array.from(changeInput(sky).earlier.lambdaGrid!.values)).toEqual([2, NaN, 2, 3]);
     });
 });

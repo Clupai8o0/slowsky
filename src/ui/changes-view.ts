@@ -3,7 +3,7 @@
 // claim of its own: each line is labelled "Candidate N" so the word stays on every line, and the marks over the
 // sky carry the same N. The finder's counts, noise and threshold are not shown. Pure string builders, no DOM.
 
-import { coverNote, COVER_NOTE, hasSnrFigure, isSnrNote, PLAIN_CAUSES, PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
+import { coverNote, COVER_NOTE, UNCHECKED_LAST, hasSnrFigure, isSnrNote, PLAIN_CAUSES, PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
 import { HELPER_LABEL, type Classification } from '../lib/classify';
 import { hintHtml } from './ml-hint';
 
@@ -93,7 +93,8 @@ function coveredView(v: ChangesView): ChangesView
     });
     const count = candidates.filter(c => c.catalogueChecked === false).length;
     const radius = old?.match(COVER_NOTE)?.[1];
-    const notes = v.notes.flatMap(n => n !== old ? [n] : count && radius ? [coverNote(count, radius)] : []);
+    // With no unchecked spot left, the order note must not say they come last.
+    const notes = v.notes.flatMap(n => n !== old ? [count ? n : n.replace(UNCHECKED_LAST, '')] : count && radius ? [coverNote(count, radius)] : []);
     return { ...v, candidates, notes };
 }
 
