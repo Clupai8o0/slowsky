@@ -20,6 +20,8 @@ import { initLayout } from './layout';
 import { coreBlank, curveFor, dotBar, frameMjd, ringsOn, shiftFor, type Curve } from './measure';
 import { mountAiNote } from './ai-note';
 import { mountAsk } from './ask-panel';
+import { CONTROL_HELP, GLOSSARY } from './help';
+import { helpAltButtonHtml, helpButtonHtml, helpDialogHtml, mountHelp } from './help-view';
 import { FEATURES, mountChanges, mountFalseColour, mountFlags, renderHalo, type LayerState } from './slots';
 import { mountEpoch } from './epoch-view';
 import { mountSpectrum } from './spectrum-view';
@@ -235,7 +237,7 @@ const LAM_MAX = (DETECTORS[DETECTORS.length - 1] as [number, number])[1];
 const AXIS_MIN = 0.4;
 const axisPct = (lam: number) => ((lam - AXIS_MIN) / (LAM_MAX - AXIS_MIN)) * 100;
 
-function shell(): string
+export function shell(): string
 {
     const targets = ORDER.map((id) => `<button type="button" data-target="${id}" aria-pressed="false"><span class="ic k">${ICON[COPY[id].kind]}</span><b>${esc(COPY[id].display)}</b><small>${esc(COPY[id].short)}</small></button>`).join('');
     const fovs = FOVS.map((f) => `<option value="${f}">${f}°</option>`).join('');
@@ -245,7 +247,7 @@ function shell(): string
 <button type="button" class="sk-mini sk-mini-r" data-act="fold-right" aria-controls="sk-right" aria-label="Show the colour panel" title="Show the colour panel"><span class="t">Colour</span><span class="v"><span data-bind="lam"></span> µm</span><span class="ic">${ICON.panelR}</span></button>
 <aside class="sk-rail sk-left" id="sk-left">
   <a class="sk-skip" href="#sk-h2">Skip to the sky</a>
-  <div class="sk-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span><span class="sk-tag">Watch the sky change.</span><span class="sk-sub2">Infrared frames from NASA’s SPHEREx</span></div>
+  <div class="sk-brand"><span class="sk-word"><i aria-hidden="true"></i>slowsky</span>${helpButtonHtml()}<span class="sk-tag">Watch the sky change.</span><span class="sk-sub2">Infrared frames from NASA’s SPHEREx</span></div>
   <section class="sk-mod sk-m-pick" aria-labelledby="sk-h1">
     <h2 class="sk-mh" id="sk-h1"><i>01</i>Choose a target</h2>
     <nav class="sk-tg" aria-label="Targets">${targets}</nav>
@@ -274,6 +276,7 @@ function shell(): string
     <div class="sk-mhrow">
       <h2 class="sk-mh" id="sk-h2" tabindex="-1"><i>02</i><span class="w">Watch it change</span></h2>
       <p class="sk-read"><b data-bind="frame"></b><span data-bind="when"></span></p>
+      ${helpAltButtonHtml()}
       <button type="button" class="sk-focus" data-act="focus" aria-pressed="false" title="Fold both panels (F)"><span class="ic">${ICON.focus}</span><span>Focus</span></button>
     </div>
     <div class="sk-sky" data-ref="sky">
@@ -293,25 +296,27 @@ function shell(): string
     <div class="sk-ctrl">
     <div class="sk-legrow">
       <div class="sk-leg">
-        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://www.cosmos.esa.int/web/gaia/dr3" target="_blank" rel="noopener" title="Rings: ESA, Gaia DPAC; Gaia DR3, doi:10.5270/esa-qa4lep3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
-        <button type="button" class="sk-key g f" data-act="flags" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Flagged pixels</button>
-        <button type="button" class="sk-key g c" data-act="falsecolour" data-ref="fcKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>False colour</button>
-        <button type="button" class="sk-key g e" data-act="epoch" data-ref="epochKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Older picture</button>
+        <span class="sk-gk"><button type="button" class="sk-key g" data-act="gaia" title="${esc(CONTROL_HELP.gaia.line)}" aria-pressed="true"><i class="box" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i>Brightest Gaia stars</button><a class="sk-src" data-ref="gaiaSrc" href="https://www.cosmos.esa.int/web/gaia/dr3" target="_blank" rel="noopener" title="Rings: ESA, Gaia DPAC; Gaia DR3, doi:10.5270/esa-qa4lep3 (CC BY-NC 3.0 IGO)">Gaia DR3</a></span>
+        <button type="button" class="sk-key g f" data-act="flags" title="${esc(CONTROL_HELP.flags.line)}" data-ref="flagsKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Flagged pixels</button>
+        <button type="button" class="sk-key g c" data-act="falsecolour" title="${esc(CONTROL_HELP.falseColour.line)}" data-ref="fcKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>False colour</button>
+        <button type="button" class="sk-key g e" data-act="epoch" title="${esc(CONTROL_HELP.epoch.line)}" data-ref="epochKey" aria-pressed="false" hidden><i class="box" aria-hidden="true"></i><i class="sw" aria-hidden="true"></i>Older picture</button>
         <span class="sk-key t" data-bind="trackLeg"></span>
         <span class="sk-key d"><i class="b"></i>more light earlier<i class="o"></i>more light later</span>
       </div>
-      <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" aria-label="Field of view">${fovs}</select></label>
+      <label class="sk-fov"><span class="ic">${ICON.field}</span>Field <select data-ref="fov" title="${esc(CONTROL_HELP.field.line)}" aria-label="Field of view">${fovs}</select></label>
     </div>
+    <p class="sk-gloss sk-gaia-gloss" data-ref="gaiaGloss" hidden>${esc(GLOSSARY.gaia.short)}</p>
     <p class="sk-flagnote" data-ref="flagsNote" hidden></p>
     <p class="sk-flagnote" data-ref="fcNote" hidden></p>
     <p class="sk-flagnote sk-ep-note" data-ref="epochNote" role="status" hidden></p>
+    <p class="sk-gloss sk-epoch-gloss" data-ref="epochGloss" hidden>${esc(GLOSSARY.twomass.short)}</p>
     <div class="sk-player">
       <div class="sk-tr">
         <button type="button" class="sk-btn" data-act="prev" aria-label="Previous frame"><span class="ic">${ICON.prev}</span></button>
         <button type="button" class="sk-btn go" data-act="play" aria-label="Play"></button>
         <button type="button" class="sk-btn" data-act="next" aria-label="Next frame"><span class="ic">${ICON.next}</span></button>
       </div>
-      <div class="sk-seg" role="group" aria-label="View"><button type="button" data-mode="blink"><span class="ic">${ICON.blink}</span>Blink</button><button type="button" data-mode="stack"><span class="ic">${ICON.stack}</span>Stack</button><button type="button" data-mode="diff"><span class="ic">${ICON.diff}</span>Subtract</button></div>
+      <div class="sk-seg" role="group" aria-label="View"><button type="button" data-mode="blink" title="${esc(CONTROL_HELP.blink.line)}"><span class="ic">${ICON.blink}</span>Blink</button><button type="button" data-mode="stack" title="${esc(CONTROL_HELP.stack.line)}"><span class="ic">${ICON.stack}</span>Stack</button><button type="button" data-mode="diff" title="${esc(CONTROL_HELP.subtract.line)}"><span class="ic">${ICON.diff}</span>Subtract</button></div>
     </div>
     <div class="sk-sub" data-ref="sub" hidden>
       <label class="sk-fov">A <select data-ref="subA" aria-label="Earlier visit (A)"></select></label>
@@ -334,11 +339,12 @@ function shell(): string
     <div class="sk-readout"><p><b data-bind="lam"></b><small>µm</small></p><span data-bind="det"></span></div>
     <div class="sk-spec">
       <div class="sk-axis"><i class="vis" style="width:${axisPct(0.7).toFixed(2)}%" title="Visible light"></i>
-        <input class="sk-rng" type="range" data-ref="lam" min="${LAM_MIN}" max="${LAM_MAX}" step="0.01" style="left:${axisPct(LAM_MIN).toFixed(2)}%;width:${(100 - axisPct(LAM_MIN)).toFixed(2)}%" aria-label="Wavelength in micrometres"></div>
+        <input class="sk-rng" type="range" data-ref="lam" min="${LAM_MIN}" max="${LAM_MAX}" step="0.01" style="left:${axisPct(LAM_MIN).toFixed(2)}%;width:${(100 - axisPct(LAM_MIN)).toFixed(2)}%" title="${esc(CONTROL_HELP.colour.line)}" aria-label="Wavelength in micrometres"></div>
       <div class="sk-ticks" aria-hidden="true">${ticks}</div>
       <div class="sk-axl" aria-hidden="true"><span>your eyes</span><span>SPHEREx · µm</span></div>
     </div>
     <p class="sk-body mute">All of this is infrared: your eyes stop at 0.70 µm. Drag, then let go to load that colour.</p>
+    <p class="sk-gloss">${esc(GLOSSARY.um.short)}</p>
   </section>
   <section class="sk-mod sk-m-spec" aria-labelledby="sk-h8" data-ref="spec" hidden>
     <h2 class="sk-mh" id="sk-h8" data-sp="heading"><span class="ic">${ICON.spectrum}</span>Spectrum</h2>
@@ -364,7 +370,7 @@ function shell(): string
     <div data-ref="changesBox"></div>
   </section>
   <section class="sk-mod sk-m-ai" aria-labelledby="sk-h7" data-ref="ai" data-ai-generated="true" hidden>
-    <h2 class="sk-mh" id="sk-h7" tabindex="-1"><span class="ic">${ICON.note}</span>AI note<span class="sk-ai-tag">AI-written</span></h2>
+    <h2 class="sk-mh" id="sk-h7" tabindex="-1"><span class="ic">${ICON.note}</span>AI note<span class="sk-ai-tag" data-ai="tag">AI-generated</span></h2>
     <p class="sk-body mute">A short reading of this view by a language model, from the numbers this page measured.</p>
     <form class="sk-ai-lock" data-ai="lock" hidden><label><span>Passcode</span><input type="password" autocomplete="off" data-ai="pass" aria-label="AI note passcode"></label><button type="submit" class="sk-btn2">Unlock</button></form>
     <button type="button" class="sk-btn2 sk-ai-go" data-ai="go" hidden>Write an AI note</button>
@@ -392,13 +398,14 @@ function shell(): string
   <footer class="sk-credit"><p data-bind="status"></p></footer>
 </aside>
 <p class="sk-sr" aria-live="polite" data-ref="live"></p>
-<div class="sk-toast" data-ref="toast" role="status"></div>`;
+<div class="sk-toast" data-ref="toast" role="status"></div>${helpDialogHtml()}`;
 }
 
 export function mount(root: HTMLElement): void
 {
     root.classList.add('sk');
     root.innerHTML = shell();
+    mountHelp(root);
     const q = <T extends Element>(sel: string) => root.querySelector(sel) as T;
     const qa = <T extends Element>(sel: string) => [...root.querySelectorAll(sel)] as T[];
     const ref = <T extends Element>(name: string) => q<T>(`[data-ref="${name}"]`);
@@ -413,7 +420,7 @@ export function mount(root: HTMLElement): void
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderText());
     // Older picture (2MASS): off unless FEATURES.epoch; Play, False colour and Flagged pixels switch it off.
     const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),
-        note: ref<HTMLElement>('epochNote'), thenHides: [ref<HTMLElement>('flags'), ref<HTMLElement>('changesMarks')] },
+        note: ref<HTMLElement>('epochNote'), gloss: ref<HTMLElement>('epochGloss'), thenHides: [ref<HTMLElement>('flags'), ref<HTMLElement>('changesMarks')] },
         { enabled: FEATURES.epoch, pause: () => play(false), hasWiderField: (fov) => mountEpoch.hasWiderField(fov, st.fovDeg) });
     const canvas = ref<HTMLCanvasElement>('canvas');
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
@@ -1265,6 +1272,7 @@ export function mount(root: HTMLElement): void
         // No catalogue stars came back: hide the toggle rather than offer an empty one.
         gaiaBtn.hidden = !result || result.stars.length === 0;
         ref<HTMLElement>('gaiaSrc').hidden = gaiaBtn.hidden;
+        ref<HTMLElement>('gaiaGloss').hidden = gaiaBtn.hidden;
         fovSelect.value = String(st.fovDeg);
         bind('det', `Detector ${lamDraft === null ? st.detector : detectorOf(lamDraft)} of 6`);
 
@@ -1787,6 +1795,10 @@ export function mount(root: HTMLElement): void
     const layout = initLayout(root);
 
     document.addEventListener('keydown', (e) => {
+        // The guide is a modal dialog: the page's own shortcuts must not act behind it.
+        if (root.querySelector('dialog[open]')) {
+            return;
+        }
         const el = e.target as HTMLElement;
         if (el.closest?.('input, textarea, select, [contenteditable], [role=separator]') || e.metaKey || e.ctrlKey || e.altKey) {
             return;

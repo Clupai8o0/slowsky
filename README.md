@@ -13,6 +13,9 @@ The build began on 14 Nov 2026, after kick-off. AI tools helped write the code; 
 
 ## What you can do
 
+- New to astronomy? Press **What am I looking at?** for a plain-language guide: one line on each control and a
+  short list of the words the page uses. Its facts are listed, each with its source, in
+  [SOURCES.md](SOURCES.md#help-text).
 - Pick a preset target: Barnard's Star (moves fastest across our sky), RW Aurigae (changes its brightness),
   Epsilon Indi B (dim at the colours that methane and water absorb), WISE 0855−0714 (the coldest brown dwarf
   known) or R Draconis (its centre is too bright for the camera in every saved frame). Each one comes with a short
@@ -181,9 +184,12 @@ Where each fact on the page and in this file comes from: [SOURCES.md](SOURCES.md
 | Codex (GPT-6.1 Sol and Terra models) | OpenAI | Writing and reviewing code; checking the source list |
 | Gemini (Argon and Carbon models, through Antigravity) | Google | Writing and reviewing code; reviewing the facts and wording in this file and on the page |
 | Grok 4.7 (through Grok Build) | xAI | Reviewing code; checking the source list |
-| ElevenLabs | ElevenLabs | AI voice in the demo video |
-| GPT Image | OpenAI | Decorative images in the demo film, marked "AI-generated images" on screen; never sky data |
+| ElevenLabs (model `eleven_multilingual_v2`) | ElevenLabs | AI voice in the demo film; the film names the model on screen |
+| GPT Image (model `gpt-image-2`) | OpenAI | Decorative images in the demo film; the film names the model on screen. Never sky data |
 | Change sort hint (a small neural network, `public/models/change-classifier.json`) | Trained in this repo with PyTorch, by scripts that Codex and Claude wrote | Nothing yet: it is switched off and the site does not use it (see "In the repository but not switched on") |
+
+Each AI-generated item, with the model that made it, is listed in SOURCES.md under
+[AI-generated content](SOURCES.md#ai-generated-content).
 
 Sam chose the idea and makes every product decision. `DECISIONS.md` is his own log of them; AI tools do not write
 in it.

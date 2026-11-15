@@ -100,7 +100,7 @@ describe('AI label', () => {
     });
 
     it('always says it is AI-written and not a measurement', () => {
-        expect(disclaimer('claude-opus-5-5')).toBe('Written by AI (Claude Opus 5.5) from the measurements on this page. It can be wrong and is not a measurement: check it against the numbers.');
+        expect(disclaimer('claude-opus-5-5')).toBe('Written by AI from the measurements on this page. It can be wrong and is not a measurement: check it against the numbers.');
     });
 });
 
@@ -212,7 +212,7 @@ class FakeDoc {
         this.head = new FakeEl('h2', this);
         this.panel = new FakeEl('section', this);
         this.panel.hidden = true;
-        for (const k of ['lock', 'pass', 'go', 'out', 'msg', 'left', 'disc', 'given', 'givenList']) {
+        for (const k of ['lock', 'pass', 'go', 'out', 'msg', 'left', 'disc', 'given', 'givenList', 'tag']) {
             const el = new FakeEl(k, this, k);
             this.parts.set(k, el);
             this.panel.append(el);
@@ -353,9 +353,12 @@ describe('mountAiNote', () => {
         expect(doc.el('given').hidden).toBe(false);
         expect(doc.el('givenList').children.length).toBeGreaterThan(3);
         expect(doc.el('givenList').textContent).toContain('Visits: 2.');
-        expect(doc.el('disc').textContent).toContain('Claude Opus 5.5');
+        expect(doc.el('tag').textContent).toBe('AI-generated: Claude Opus 5.5');
         expect(doc.el('left').textContent).toBe('4 AI notes left today');
         expect(fetchCalls.at(-1)?.passcode).toBeUndefined();
+        // A new view has no note yet, so the label must not keep the last note's model name.
+        ai.update(noteView(61001));
+        expect(doc.el('tag').textContent).toBe('AI-generated');
     });
 
     it('drops the note while allowing the request to finish when the view changes', async () => {

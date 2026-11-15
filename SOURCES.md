@@ -16,6 +16,8 @@ Where the facts in this repo come from. Licences and credit lines are in [DATA-L
   failed to support its row. Rows they found only partly supported were reworded or given a second source.
 - Where a check questioned a number (the brightness of WISE 0855, and the conditions behind SPHEREx's depth),
   the paper's own table or figure caption settled it.
+- On 15 Nov 2026 the help text was added and checked the same way: Claude Opus 5.5 with the sources open, then
+  Gemini Argon as a first-time reader (see "Help text").
 - These checks were run by AI tools. No person has gone through this list line by line.
 - Numbers the page measures itself (brightness curves, shifts, noise bands) are not here. They come from the code
   in `src/lib/` and its tests.
@@ -147,6 +149,99 @@ All read from the HiPS properties file on 14 Nov 2026, as `src/lib/epoch.ts` rec
 | Live loading reads at most 60 frames per view | `README.md` | `src/lib/source.ts` (60 headers by default) |
 | The Flagged pixels layer reads flags only when switched on, on live frames in Blink; its note gives the number of flagged pixels and the three most common kinds. The Candidate changes list reads flags by itself on a live view, to leave some spots out and caution others. The pictures, the brightness curve and the motion check do not use them | `README.md` | `src/ui/slots.ts` (`mountFlags` reads them for the layer; `mountChanges` reads them for the change list, through `readFrameFlags` and `screen` in `src/ui/flag-screen.ts`); `src/lib/flags.ts` (reads the FLAGS layer and the flag names from the file itself); `src/lib/flags-view.ts` (the mask, the counts and the sentence); `tests/flags.test.ts`, `tests/flags-view.test.ts`, `tests/slots.test.ts` |
 
+## Help text
+
+The plain-language guide and its word list (`src/ui/help.ts`), written on 15 Nov 2026. Claude Opus 5.5 opened each
+source below. Gemini Argon read the sentences as a first-time reader, with no web access, and marked what could
+mislead. Several sentences were reworded after the two checks. Both checks were run by AI tools; no person has re-checked each row. What the guide says about the page's own controls was
+checked against this repo's code and the rows under "What the page does".
+
+| Claim | Where in this repo | Source | What the source gives |
+|---|---|---|---|
+| SPHEREx is a NASA space telescope that surveys the whole sky | `src/ui/help.ts` (intro) | [NASA SPHEREx mission page][spherexnasa] | An all-sky survey in optical and near-infrared light |
+| Eyes see light from about 0.4 to 0.7 µm | `src/ui/help.ts` (µm) | [NASA Science][visible] | The eye sees from 380 to 700 nanometres |
+| SPHEREx photographs 0.75 to 5.0 µm in 102 colours, from just past the reddest light eyes can see out into the infrared | `src/ui/help.ts` (µm, Change the colour, Spectrum) | [Bock et al. 2025][bock], abstract | 102 bands from 0.75 to 5 µm. NASA's mission page calls the range optical and near-infrared, and NASA's glossary starts infrared at 0.78 µm, so the short end is just past what eyes see rather than strictly infrared |
+| A micrometre is a thousandth of a millimetre | `src/ui/help.ts` (µm) | [NIST SI prefixes][nistsi] | Micro means one millionth, so 1 µm is a millionth of a metre, which is a thousandth of a millimetre |
+| Infrared is light with longer waves than red light, which eyes cannot see | `src/ui/help.ts` (infrared) | [NASA Science, infrared waves][nasair] | Infrared lies past the red end of visible light, and the eye cannot see it |
+| Cool objects such as brown dwarfs give off most of their light as infrared; brown dwarfs are sometimes called failed stars and never get hot enough to shine the way stars do | `src/ui/help.ts` (infrared) | [JPL, coldest brown dwarfs][jplbd] | Cold brown dwarfs emit most of their light at infrared wavelengths, and are not hot enough for the nuclear burning that powers stars; a caption there calls one a "failed star". That page is about the coldest ones |
+| An arcsecond is 1/3600 of a degree | `src/ui/help.ts` (″) | [Chandra X-ray Center, angular scale][chandrascale] | 60 arcminutes to a degree and 60 arcseconds to an arcminute. The centre is run for NASA by the Smithsonian Astrophysical Observatory |
+| The full Moon is about half a degree, roughly 1,800″, across | `src/ui/help.ts` (″) | [Chandra X-ray Center, angular scale][chandrascale] | The Sun and Moon are about half a degree across. 1,800″ is our own arithmetic (0.5 × 3600) |
+| A SPHEREx pixel is about 6″ wide | `src/ui/help.ts` (″, pixel) | [Bock et al. 2025][bock], abstract; [Explanatory Supplement][supp], Table 2 | 6.2″ pixels in the abstract, 6.15″ in the supplement |
+| Gaia is an ESA space telescope that measured the positions, motions and brightness of more than a billion stars | `src/ui/help.ts` (Gaia) | [Gaia DR3 page][gaiadr3]; [ESA, Gaia][esagaia] | DR3 gives positions and brightness for about 1.8 billion sources, and motions for about 1.47 billion |
+| Gaia DR3 is the third version of Gaia's star list | `src/ui/help.ts` (Gaia) | [Gaia DR3 page][gaiadr3] | "Gaia Data Release 3", after DR1 and DR2 |
+| Most, not all, Gaia stars have a measured motion | `src/ui/help.ts` (catalogue star) | [Gaia DR3 page][gaiadr3]; `src/lib/change-input.ts` | About 344 million DR3 sources have a position only. The page keeps those stars and takes their motion as zero |
+| 2MASS photographed the whole sky in infrared light between 1997 and 2001 | `src/ui/help.ts` (2MASS, Older picture) | [IPAC, about 2MASS][2massabout]; [IRSA's 2MASS page][2mass] | Observations ran from June 1997 to February 2001 and covered the whole sky in three near-infrared bands |
+| 2MASS used two telescopes on the ground, one in Arizona and one in Chile | `src/ui/help.ts` (2MASS) | [IPAC, about 2MASS][2massabout] | Two 1.3 m telescopes, at Mt. Hopkins, Arizona, and at CTIO, Chile |
+| One SPHEREx frame is one exposure of about two minutes | `src/ui/help.ts` (frame) | Our own reading of `public/snapshot/*/index.json` | Each frame's end time is 0.00133 days (about 115 s) after its start |
+| An S/N figure can read too high beside a bright star, and figures above 50 show as "S/N > 50" | `src/ui/help.ts` (S/N) | `src/lib/changes.ts` | The code's own notes say the figure can be several times too high near anything bright, and its text for the figure caps at "S/N > 50" |
+| A cosmic ray is a fast particle from space | `src/ui/help.ts` (Flagged pixels) | [NASA Goddard, cosmic rays][gsfccr] | Cosmic rays are charged particles that travel through space at close to the speed of light. That one can strike a SPHEREx detector and get a pixel flagged is in the row on the cosmic-ray flag above |
+| The Spectrum chart reads the spot at the centre of the view from the SPHEREx all-sky map | `src/ui/help.ts` (Spectrum) | `src/ui/spectrum-view.ts` | The panel's own text says it reads the centre spot, colour by colour, from the SPHEREx all-sky cube. The panel is switched off on the live page |
+| A target can be one of the listed ones, a star name or a sky position | `src/ui/help.ts` (Choose a target) | `src/ui/app.ts` | The target list and its search box ("Any star, or RA, Dec") |
+
+## AI-generated content
+
+This list names every part of the site and the demo film that an AI tool made, the model that made it, and where
+the record of the request is kept. The sky pictures on the page are real SPHEREx data, and every number on the
+page comes from this repo's own code and data, not from an AI tool.
+
+The tools themselves, with their makers, are listed in the README under [AI tools used](README.md#ai-tools-used).
+
+| What | Where you see it | Tool and model | What it was asked to do | Record |
+|---|---|---|---|---|
+| AI note | The AI note panel on the page, when it is switched on | Claude API; model `claude-opus-5-5` by default (the server setting `INSIGHT_MODEL` can name another, and the note names the model the API reports) | Write a short note from the page's own fact sheet, under three fixed headings. A checker (`checkNote` in `src/lib/insight.ts`) drops any sentence that does not match the sheet. The note stays off until the site owner sets it up | Instructions: `src/lib/insight-prompt.ts`, sent by `api/insight.ts`. Checker: `src/lib/insight.ts` |
+| Help text and page wording | Help text (`src/ui/help.ts`); other page text | Help text: Claude Fable 5.2 (`claude-fable-5-2`) in Claude Code, 15 Nov 2026, fact-checked by Claude Opus 5.5 (with web access) and Gemini Argon. Other page text: drafted with Claude Code; model per sentence not recorded | Draft plain-language wording for the page | `src/ui/help.ts` (the result). The prompts are not recorded in this repo |
+| Site icon | Browser tab, home-screen icon | Claude Opus 5.5 (`claude-opus-5-5`) in Claude Code, 15 Nov 2026 | Draw an icon as SVG code. It drew four options and Sam chose one: ten blue-to-orange stripes and one white star. It is decoration, not data. The PNG files are the same icon at three sizes | `public/icon.svg` (the result); `public/icon-192.png`, `public/icon-512.png`, `public/apple-touch-icon.png`. The prompt is in the Claude Code session log, not in this repo |
+| Code | The whole site | Claude Code (Claude Fable, Opus, Sonnet and Haiku models), Codex (GPT-6.1 Sol and Terra), Gemini (Argon and Carbon); Grok 4.7 for review only. Which model wrote each file is not recorded | Write and review code and tests | This repo's commit history and the README table |
+| Demo film images | The demo film's backgrounds and picture elements: `bg_title`, `bg_pluto`, `el_plates`, `bg_sky`, `bg_survey`, `el_telescope`, `bg_world`, `el_browndwarf`, `bg_end` (all nine are used in the film's scene code) | OpenAI GPT Image, model `gpt-image-2`, high quality | Paint decorative pictures in one shared style. They are never sky data | Prompts below. Kept with the film's working files (`video/experiments/gen_assets.sh` and one log per image in `video/experiments/ai-logs/`), not in this repo |
+| Demo film voice | The demo film's narration | ElevenLabs, model `eleven_multilingual_v2`, voice Adam Stone ("Smooth, Deep and Relaxed") | Read the six narration lines aloud, one take per line | Kept with the film's working files (`video/experiments/voice_lines.py`), not in this repo |
+| Demo film script and animation code | The demo film's scenes, captions and on-screen text | Claude in Claude Code (a main session and Opus subagents); exact model ids not recorded. The narration words were first drafted with Claude Code in the film plan on 14 Nov 2026. Parts of the code were reviewed with Codex (OpenAI) | Build the film's scenes and timing in code | Kept with the film's working files (`VIDEO-PLAN.md`, `video/film-c/HANDOFF.md`, `src/film/copy.ts`), not in this repo |
+| Change sort hint | Nowhere: it is switched off | A small neural network, trained in this repo with PyTorch by scripts that Codex and Claude wrote. It is not generative AI and writes no text or pictures | Trained, not prompted: to label each spot in the change list by kind of change. It is not used | `public/models/change-classifier.json` (the network) and `public/models/change-classifier.card.json` (its description) |
+
+### Prompts
+
+**AI note.** The full instructions are in `src/lib/insight-prompt.ts`. They tell the model to write a short note
+from the fact sheet only, using fixed sentence forms.
+
+**Demo film images.** Each image was asked for with its own text, followed by the same style text. The style text,
+as the record holds it:
+
+> Painterly cinematic digital illustration, like a premium planetarium picture book. Deep navy and indigo palette
+> with soft periwinkle-blue glow and small warm amber accents. Soft volumetric light, fine film grain, gentle
+> gradients, calm and full of awe. No text, no letters, no numbers, no logos, no insignia, no flags, no people, no
+> faces.
+
+| Image | Shape | Its own text, as the record holds it |
+|---|---|---|
+| `bg_title` | 16:9 | View from low orbit at night: the curved limb of Earth along the bottom third with a thin glowing blue atmosphere line and faint city lights, a deep calm starfield above with a faint Milky Way band. The upper middle is dark open space. |
+| `bg_pluto` | 16:9 | Inside a quiet 1930s observatory at night: dark wood panelling, a brass and wood blink comparator machine on a desk in the left third lit by one warm desk lamp, the open dome slit above showing stars. The centre and right are calm and dark. |
+| `bg_sky` | 16:9 | Deep space backdrop: soft indigo nebula wisps and a gentle blue bloom in the centre, sparse fine stars, very calm and mostly dark, made to sit behind an interface. |
+| `bg_survey` | 16:9 | Earth seen from space on the left, half in night with a thin blue atmosphere; behind it the band of the Milky Way sweeps diagonally across a deep navy sky; the right half is calm and dark. |
+| `bg_world` | 16:9 | The night side of Earth seen from orbit, continents traced by warm amber city lights, a thin blue atmospheric rim, stars above; the globe fills the lower two thirds. |
+| `bg_end` | 16:9 | A wide night sky above a dark low horizon of gentle hills, the Milky Way arching across, deep navy and indigo, quiet and spacious, the centre kept dark and open. |
+| `el_telescope` | 1:1 | A small stylised space telescope floating alone: three nested conical shields stacked like a funnel opening upward, sitting on a compact hexagonal body, rim-lit by cool blue light. Isolated on a pure black background, nothing else in frame. |
+| `el_plates` | 16:9 | Two old square glass astronomical photographic plates side by side, negative images with tiny black star dots on pale grey-cream glass, chipped aged edges. Isolated on a pure black background, nothing else in frame. |
+| `el_browndwarf` | 1:1 | A brown dwarf: a dim glowing sphere with deep red, maroon and brown cloud bands, like a small failed star, with a faint red glow. Isolated on a pure black background, nothing else in frame. |
+
+**Demo film voice.** The voice read these lines: "Pluto was found by blinking two photos." "Slow sky: pick a star,
+and watch the sky change." "NASA's SPHEREx maps the sky in a hundred and two infrared colours." "These are real
+SPHEREx pixels." "Volunteers found over three thousand brown dwarf candidates." "Now anyone can join the hunt."
+
+**Site icon, help text, code and film code.** The prompts are in the coding tools' own session logs, not in this repo.
+
+### Labels
+
+- The AI note's heading shows "AI-generated" and, whenever a note is on screen, the model's name after it (for
+  example "AI-generated: Claude Opus 5.5"). The name comes from the model the server reports. The line under each
+  note starts "Written by AI from the measurements on this page."
+- An answer to a typed question is made of the page's own measured lines; the AI model only chooses which lines to
+  show. It is labelled "Chosen by AI (model name) from the measurements on this page." Typed questions are switched
+  off on the live page.
+- The guide on the page ("What am I looking at?") ends with a line saying the code, the wording and the icon were
+  made with AI tools, and links to this list.
+- The demo film carries one line on screen: "AI images: OpenAI gpt-image-2 · AI voice: ElevenLabs
+  eleven_multilingual_v2". Its end credits repeat both.
+- The text written for the video description names the same two models.
+
 ## Software
 
 The licences in [DATA-LICENSES.md](DATA-LICENSES.md) were read from each package's own metadata on 14 Nov 2026:
@@ -219,3 +314,11 @@ The licences in [DATA-LICENSES.md](DATA-LICENSES.md) were read from each package
 [d4]: https://arxiv.org/abs/2506.12854
 [2massk]: https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/properties
 [2mass]: https://irsa.ipac.caltech.edu/Missions/2mass.html
+[spherexnasa]: https://science.nasa.gov/mission/spherex/
+[nistsi]: https://www.nist.gov/pml/owm/metric-si-prefixes
+[nasair]: https://science.nasa.gov/ems/07_infraredwaves/
+[jplbd]: https://www.jpl.nasa.gov/news/coldest-brown-dwarfs-blur-star-planet-lines/
+[chandrascale]: https://chandra.si.edu/photo/scale.html
+[esagaia]: https://www.esa.int/Science_Exploration/Space_Science/Gaia
+[2massabout]: https://www.ipac.caltech.edu/2mass/overview/about2mass.html
+[gsfccr]: https://imagine.gsfc.nasa.gov/science/toolbox/cosmic_rays1.html

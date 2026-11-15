@@ -482,6 +482,7 @@ export interface EpochElements {
     layer: HTMLElement; // over the picture, under the rings
     tag: HTMLButtonElement; // a corner of the sky
     note: HTMLElement; // the line under the legend
+    gloss?: HTMLElement;
     thenHides?: HTMLElement[]; // layers hidden while the older picture shows
 }
 
@@ -577,6 +578,10 @@ function drawInto(els: EpochElements): (o: EpochOut) => void
             }
         }
         els.note.hidden = !o.key;
+        if (els.gloss) {
+            // The 2MASS line shows only while the note names 2MASS, not while loading or after a failure.
+            els.gloss.hidden = !o.key || !o.note.some((part) => (typeof part === 'string' ? part : part.text).includes('2MASS'));
+        }
     };
 }
 
