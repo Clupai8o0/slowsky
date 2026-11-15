@@ -26,6 +26,7 @@ import { mountSpectrum } from './spectrum-view';
 import { mountUpTonight } from './uptonight-slot';
 import { saveShareCard } from './share-view';
 import { releaseCredits } from '../lib/sharecard';
+import { mountComet } from './comet-view';
 import { COPY, CUSTOM_COPY, DETECTORS, FALSE_COLOUR_HINT, MODE_HINT, ORDER, STAGE_TEXT } from './copy';
 import { combineVisits, defaultPicks, subtractText, headerDates, visitGroups, visitImage, visitLabel, visitMonths, type SubOp, type Visit } from './subtract';
 
@@ -412,6 +413,8 @@ export function mount(root: HTMLElement): void
     const changesSlot = mountChanges(() => renderSlots());
     const spectrumSlot = mountSpectrum(ref<HTMLElement>('spec'), { enabled: FEATURES.spectrum });
     const upSlot = mountUpTonight(ref<HTMLElement>('up'), { enabled: FEATURES.upTonight });
+    // Comet card (FEATURES.comet): off adds nothing to the page and fetches nothing.
+    mountComet(root.querySelector<HTMLElement>('.sk-m-about'), { enabled: FEATURES.comet });
     const fcLayer = mountFalseColour(ref<HTMLElement>('fc'), () => renderText());
     // Older picture (2MASS): off unless FEATURES.epoch; Play, False colour and Flagged pixels switch it off.
     const epochSlot = mountEpoch({ key: ref<HTMLButtonElement>('epochKey'), layer: ref<HTMLElement>('epoch'), tag: ref<HTMLButtonElement>('epochTag'),

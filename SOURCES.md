@@ -128,6 +128,19 @@ All read from the HiPS properties file on 14 Nov 2026, as `src/lib/epoch.ts` rec
 | 2MASS is a joint project of the University of Massachusetts and IPAC/Caltech, funded by NASA and the National Science Foundation | `README.md` (Data and credits), `DATA-LICENSES.md` | [IRSA's 2MASS page][2mass], "Acknowledgement" | The standard acknowledgement, which names both institutions and both funders; the survey paper is Skrutskie et al. 2006, AJ 131, 1163 |
 | Credit: 2MASS, University of Massachusetts & IPAC/Caltech; HiPS tiles CNRS/Unistra, served by IRSA | `src/ui/epoch-view.ts` (the note, built by `epochCredit` in `src/lib/epoch.ts`) | [2MASS K HiPS properties][2massk], `obs_copyright`; tile host from `baseUrl` | The survey's credit holder and its web page; the tiles come from `irsa.ipac.caltech.edu` |
 
+## Comet card (switched off)
+
+Opened by Claude Opus 5.5 on 15 Nov 2026. The card's numbers come from `scripts/bake_comet.py` and
+`public/comet/3i-atlas.json`, not from these pages.
+
+| Claim | Where in this repo | Source | What the source gives |
+|---|---|---|---|
+| 3I/ATLAS is the same object as comet C/2025 N1 (ATLAS) | `src/lib/comet.ts` (title), `README.md` | [MPEC 2025-N12][mpec3i]; [IRSA MOST query][most3i] | The circular's title pairs the two names; MOST answers the name "3I" with "ATLAS (C/2025 N1)" |
+| SPHEREx took twelve detector-5 frames of it on 14 Dec 2025, from 04:26 to 07:46 UTC | `src/lib/comet.ts` (caption, labels), `README.md` | [IRSA MOST query][most3i] | Frame list with start times and DR1 file paths; the bake keeps the visits 0685, 0698 and 0712 |
+| The SPHEREx team reports carbon dioxide gas glowing at 4.25 to 4.27 µm in this comet | `src/lib/comet.ts` (`CO2_BAND_UM`, caption) | [Lisse et al. 2026 abstract][lisse26] | Lists CO₂ gas emission at 4.25 to 4.27 µm in the December 2025 SPHEREx data |
+| The SPHEREx team reported a carbon dioxide coma around 3I/ATLAS | `src/lib/comet.ts` (caption, `COMET_PAPERS`), `README.md` | [Lisse et al. 2025 abstract][lisse25]; [Lisse et al. 2026 abstract][lisse26] | August 2025: a resolved CO₂ gas coma about 3 arcmin in radius; December 2025: the CO₂ coma still reaches about 3 arcmin |
+| Lisse et al. 2025 is RNAAS 9, 242; Lisse et al. 2026 is RNAAS 10, 26 | `src/lib/comet.ts` (`COMET_PAPERS`), `README.md` | [Crossref 10.3847/2515-5172/ae0293][cr25]; [Crossref 10.3847/2515-5172/ae3f95][cr26] | Journal, volume and article number for each DOI |
+
 ## What the page does (from this repo's own code and files)
 
 | Claim | Where in this repo | Backed by |
@@ -219,3 +232,9 @@ The licences in [DATA-LICENSES.md](DATA-LICENSES.md) were read from each package
 [d4]: https://arxiv.org/abs/2506.12854
 [2massk]: https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/K/properties
 [2mass]: https://irsa.ipac.caltech.edu/Missions/2mass.html
+[mpec3i]: https://minorplanetcenter.net/mpec/K25/K25N12.html
+[most3i]: https://irsa.ipac.caltech.edu/cgi-bin/MOST/nph-most?catalog=spherex&input_type=name_input&obj_name=3I&obj_type=Comet&obs_begin=2025+12+13&obs_end=2025+12+16&output_mode=Brief
+[lisse25]: https://arxiv.org/abs/2508.15469
+[lisse26]: https://arxiv.org/abs/2601.06759
+[cr25]: https://api.crossref.org/works/10.3847/2515-5172/ae0293
+[cr26]: https://api.crossref.org/works/10.3847/2515-5172/ae3f95
