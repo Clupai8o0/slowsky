@@ -53,8 +53,11 @@ export interface ChangeCandidate {
     nearMissing?: boolean;
     nearGap?: boolean;
     neutral?: string;
-    /** Plain list: the error maps do not cover this spot. */
+    /** Plain list: the error maps, as used in the comparison, do not cover this spot, so no S/N is printed. */
     snrMapMissing?: boolean;
+    /** Plain list: the error maps have values all around the spot; the S/N is left out because pixels beside it are not
+     *  part of the comparison (left out by the wavelength check, or with no value in a visit). */
+    snrBesideUncompared?: boolean;
 }
 export type VisitChangeCandidate = ChangeCandidate & {
     sentence: string;
@@ -106,7 +109,10 @@ export interface ChangeOptions {
 // error map (scaled once to the difference's measured scatter); without it, noise comes from the difference
 // image alone in 64 arcsec tiles, and a noisy patch smaller than a tile can give false candidates.
 export interface VisitImage { data: Float32Array; lambda: number; mjd: number; obsIds: string[]; variance?: Float32Array;
-    lambdaGrid?: { nx: number; ny: number; values: Float32Array }; }
+    lambdaGrid?: { nx: number; ny: number; values: Float32Array };
+    // The visit's wavelength (µm) at each pixel of the grid, NaN where it is unknown. Used in place of `lambdaGrid`
+    // when both visits carry one: a lattice interpolated across the picture smears the edge of a frame's coverage.
+    lambdaMap?: Float32Array; }
 type Image = VisitImage;
 type Settings = Required<ChangeOptions>;
 type Blob = { pix: PixelCoord; snr: number; sign: 1 | -1; area: number; edge: boolean; narrow?: boolean; compactUncertain?: boolean };
@@ -634,24 +640,28 @@ export function stripSnr(text: string): string
 
 export const PLAIN_CAUSES = "a change in a source's brightness, a moving source, a small patch of sky that changed, a detector hit, a sharper star image in one visit or a small shift between the two pictures could cause this";
 
-// The note for spots outside the loaded Gaia star list. Built in one place: the page counts again after its flag
+// The note for spots near or beyond the edge of the loaded Gaia star list. Built in one place: the page counts again after its flag
 // screening (src/ui/changes-view.ts) and must print the same sentence.
-export const COVER_NOTE = /^(?:1 spot lies|\d+ spots lie) outside the part of the picture where the Gaia star list was loaded \(within ([\d.]+)° of the centre\), so /;
+export const COVER_NOTE = /^(?:1 spot lies|\d+ spots lie) near or beyond the edge of the part of the picture where the Gaia star list was loaded \(within ([\d.]+)° of the centre\), so /;
 export function coverNote(count: number, radius: string): string
 {
-    return `${count === 1 ? '1 spot lies' : `${count} spots lie`} outside the part of the picture where the Gaia star list was loaded (within ${radius}° of the centre), so ${count === 1 ? 'it was' : 'they were'} not checked against that list.`;
+    return `${count === 1 ? '1 spot lies' : `${count} spots lie`} near or beyond the edge of the part of the picture where the Gaia star list was loaded (within ${radius}° of the centre), so ${count === 1 ? 'it was' : 'they were'} not checked against that list.`;
 }
 // The clause the order note carries while any spot in the list was not checked against the star list.
 export const UNCHECKED_LAST = '; spots not checked against the Gaia star list come last';
-export function plainListNotes(candidates: { line?: string; sentence?: string; reason: string; snrMapMissing?: boolean; snrFlagRemoved?: boolean; catalogueChecked?: boolean }[],
+export function plainListNotes(candidates: { line?: string; sentence?: string; reason: string; snrMapMissing?: boolean; snrBesideUncompared?: boolean; snrFlagRemoved?: boolean; catalogueChecked?: boolean }[],
     usedErrorMap: boolean, matchArcsec: number, radiusDeg?: number): string[]
 {
     if (!candidates.length) { return []; }
     const shown = candidates.filter(c => hasSnrFigure(c.line ?? c.sentence ?? c.reason)).length;
-    const unmapped = usedErrorMap ? candidates.filter(c => c.snrMapMissing).length : 0;
+    // No S/N figure for two reasons: the error maps have no value at the spot, or they do and pixels beside the spot
+    // are not part of the comparison (left out by the wavelength check, or with no value in a visit).
+    const unmapped = usedErrorMap ? candidates.filter(c => c.snrMapMissing && !c.snrBesideUncompared).length : 0;
+    const beside = usedErrorMap ? candidates.filter(c => c.snrMapMissing && c.snrBesideUncompared).length : 0;
     const base = `Listed with spots that have no catalogue star within ${matchArcsec}″ first, then by how far each stands out from the noise`;
-    // An overflow can hide a mapped S/N even though the ordering still used the error maps.
-    const hiddenMapped = usedErrorMap && candidates.some(c => !c.snrMapMissing && !hasSnrFigure(c.line ?? c.sentence ?? c.reason));
+    // An overflow can hide a mapped S/N even though the ordering still used the error maps. A spot beside pixels that
+    // are not part of the comparison counts as mapped here: its order is not said to come from the difference image.
+    const hiddenMapped = usedErrorMap && candidates.some(c => (!c.snrMapMissing || c.snrBesideUncompared) && !hasSnrFigure(c.line ?? c.sentence ?? c.reason));
     const unchecked = candidates.filter(c => c.catalogueChecked === false).length;
     const last = unchecked ? UNCHECKED_LAST : '';
     const order = !shown && hiddenMapped ? `${base}${last}.` : !shown ? `${base} estimated from the difference image; that figure is used only for this order${last}.`
@@ -661,12 +671,14 @@ export function plainListNotes(candidates: { line?: string; sentence?: string; r
     const subject = (n: number) => count(n).replace(/^./, c => c.toUpperCase());
     return [order, ...(unchecked && radiusDeg !== undefined ? [coverNote(unchecked, String(Number(radiusDeg.toFixed(2))))] : []),
         ...(flagged ? [`${subject(flagged)} ${flagged === 1 ? 'is' : 'are'} marked by an archive overflow flag, so ${flagged === 1 ? 'its' : 'their'} S/N is left out; the S/N figure there can be unreliable.`] : []),
-        ...(unmapped ? [`The frames' error maps have no value at ${count(unmapped)}, so ${unmapped === 1 ? 'its' : 'their'} S/N is left out; the noise there comes from the difference image alone.`] : [])];
+        ...(unmapped ? [`The frames' error maps have no value at ${count(unmapped)}, so ${unmapped === 1 ? 'its' : 'their'} S/N is left out; the noise there comes from the difference image alone.`] : []),
+        ...(beside ? [`${subject(beside)} ${beside === 1 ? 'lies' : 'lie'} beside pixels that are not part of the comparison, so ${beside === 1 ? 'its' : 'their'} S/N is left out.`] : [])];
 }
 export function isSnrNote(note: string): boolean
 {
     return note.startsWith('S/N is left out for ') || (note.endsWith(' S/N is left out; the S/N figure there can be unreliable.') && note.includes(' marked by an archive overflow flag, so '))
-        || (note.startsWith("The frames' error maps have no value at ") && note.endsWith(' S/N is left out; the noise there comes from the difference image alone.'));
+        || (note.startsWith("The frames' error maps have no value at ") && note.endsWith(' S/N is left out; the noise there comes from the difference image alone.'))
+        || / beside pixels that are not part of the comparison, so (?:its|their) S\/N is left out\.$/.test(note);
 }
 export function hasSnrFigure(text: string): boolean
 {
@@ -1299,6 +1311,8 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                 }
             }
             const catalogueArcsec = starDistance !== undefined && starDistance <= opt.matchArcsec ? starDistance : undefined;
+            // Not checked: no star matched, and part of the matching circle around the spot reaches past the star cone
+            // (the spot is outside the cone, or inside it and closer to its edge than the matching radius).
             const unchecked = catalogueArcsec === undefined && Math.hypot(end.x - opt.starCover.x, end.y - opt.starCover.y)
                 > opt.starCover.radiusPix - opt.matchArcsec / grid.pixelArcsec;
             const nearEdge = pix.x < edgePix || pix.y < edgePix || pix.x > grid.width - 1 - edgePix || pix.y > grid.height - 1 - edgePix;
@@ -1328,7 +1342,7 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
                 + (nearLeftOut ? ` Pixels at or near it were left out of the comparison: there the two visits' wavelengths differ by more than ${opt.maxDeltaLambda} µm.` : '')
                 + (nearUnknown ? ' Pixels at or near it were left out of the comparison: there the wavelength of at least one visit could not be worked out.' : '')
                 + (nearGap ? ' It is close to pixels that could not be compared, or to the edge of the picture.' : '')
-                + (unchecked ? ' It lies outside the part of the picture where the Gaia star list was loaded, so it was not checked against that list.' : '');
+                + (unchecked ? ' It lies near or beyond the edge of the part of the picture where the Gaia star list was loaded, so it was not checked against that list.' : '');
             const corrected = (x: number, y: number): number => {
                 const index = y * grid.width + x;
                 const bin = Math.floor(y / measurement.k) * measurement.width + Math.floor(x / measurement.k);
@@ -1415,14 +1429,17 @@ function plainList(candidates: ChangeCandidate[], found: Blob[], earlier: Image,
     return out;
 }
 
-function latticeValue(lattice: NonNullable<VisitImage['lambdaGrid']>, x: number, y: number, grid: OutputGrid): number
+export function latticeValue(lattice: NonNullable<VisitImage['lambdaGrid']>, x: number, y: number, grid: OutputGrid): number
 {
     const gx = grid.width > 1 ? x * (lattice.nx - 1) / (grid.width - 1) : 0;
     const gy = grid.height > 1 ? y * (lattice.ny - 1) / (grid.height - 1) : 0;
     const ix = Math.min(lattice.nx - 2, Math.floor(gx)), iy = Math.min(lattice.ny - 2, Math.floor(gy));
     const fx = gx - ix, fy = gy - iy, v = lattice.values;
-    return (v[iy * lattice.nx + ix]! * (1 - fx) + v[iy * lattice.nx + ix + 1]! * fx) * (1 - fy)
-        + (v[(iy + 1) * lattice.nx + ix]! * (1 - fx) + v[(iy + 1) * lattice.nx + ix + 1]! * fx) * fy;
+    // A node with no weight takes no part: on a lattice line the value comes from that line's nodes alone, so an
+    // unknown (NaN) node beside the line does not make it unknown.
+    const mix = (a: number, b: () => number, f: number): number => f === 0 ? a : f === 1 ? b() : a * (1 - f) + b() * f;
+    const row = (j: number): number => mix(v[j * lattice.nx + ix]!, () => v[j * lattice.nx + ix + 1]!, fx);
+    return mix(row(iy), () => row(iy + 1), fy);
 }
 
 export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, stars: StarPix[], opts?: ChangeOptions): VisitChangeResult
@@ -1451,10 +1468,12 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         result.notes.push(`The two visits were not compared: their wavelengths differ by more than ${opt.maxDeltaLambda} µm.`);
         return { ...result, visits } as VisitChangeResult;
     }
-    const a = earlier.lambdaGrid, b = later.lambdaGrid;
+    const a = earlier.lambdaGrid, b = later.lambdaGrid, mapA = earlier.lambdaMap, mapB = later.lambdaMap;
+    // Per-pixel wavelength maps, when both visits carry one, come before the coarse lattices.
+    const perPixel = mapA !== undefined && mapB !== undefined && mapA.length === diff.length && mapB.length === diff.length;
     let wavelengthMasked = false, leftOut: Uint8Array | undefined;
-    if (a && b && a.nx === b.nx && a.ny === b.ny && a.nx >= 2 && a.ny >= 2
-        && a.values.length === a.nx * a.ny && b.values.length === b.nx * b.ny) {
+    if (perPixel || (a && b && a.nx === b.nx && a.ny === b.ny && a.nx >= 2 && a.ny >= 2
+        && a.values.length === a.nx * a.ny && b.values.length === b.nx * b.ny)) {
         let had = 0, cut = 0, unknown = 0;
         const out = new Uint8Array(diff.length);
         for (let y = 0; y < grid.height; y++) {
@@ -1462,8 +1481,10 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 const i = y * grid.width + x;
                 if (!Number.isFinite(diff[i]!)) { continue; }
                 had++;
-                const gap = Math.abs(latticeValue(a, x, y, grid) - latticeValue(b, x, y, grid));
-                if (!(gap <= opt.maxDeltaLambda + 1e-9)) {
+                const gap = perPixel ? Math.abs(mapA![i]! - mapB![i]!) : Math.abs(latticeValue(a!, x, y, grid) - latticeValue(b!, x, y, grid));
+                // The wavelengths are held as 32-bit floats, whose rounding can add about 5e-7 µm to a gap: a gap of
+                // exactly the limit must not read as more than it.
+                if (!(gap <= opt.maxDeltaLambda + 1e-6)) {
                     diff[i] = NaN;
                     out[i] = Number.isFinite(gap) ? 1 : 2; // 1: the wavelengths differ; 2: one is unknown
                     cut++;
@@ -1479,8 +1500,9 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
             const differ = `the two visits' wavelengths differ by more than ${opt.maxDeltaLambda} µm`;
             const why = !unknown ? differ : unknown === cut ? 'the wavelength of at least one visit could not be worked out'
                 : `${differ} or could not be worked out`;
-            result.notes.push(share >= 0.995
-                ? `Almost none of the area both visits cover could be compared: over the rest, ${why}.`
+            result.notes.push(cut === had
+                ? `None of the area both visits cover could be compared: there ${why}.`
+                : share >= 0.995 ? `Almost none of the area both visits cover could be compared: over the rest, ${why}.`
                 : percent >= 1 ? `About ${percent}% of the area both visits cover was left out of the comparison: there ${why}.`
                     : `A small part of the area both visits cover (under 1%) was left out of the comparison: there ${why}.`);
             earlier = { ...earlier, data: earlier.data.map((v, i) => Number.isFinite(diff[i]!) ? v : NaN) };
@@ -1489,23 +1511,35 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     }
     const pairedEarlier = diff.some((value) => !Number.isFinite(value))
         ? earlier.data.map((value, i) => Number.isFinite(diff[i]!) ? value : NaN) : earlier.data;
-    let varSum: Float32Array | undefined;
+    let varSum: Float32Array | undefined, varAll: Float32Array | undefined;
     if ((earlier.variance && earlier.variance.length !== diff.length)
         || (later.variance && later.variance.length !== diff.length)) {
         throw new Error('Variance input length does not match output grid');
     }
     if (earlier.variance && later.variance) {
         varSum = new Float32Array(diff.length);
+        // `varAll` keeps the maps' own values at pixels that are not part of the comparison, so the two reasons for a
+        // missing S/N (no error-map value, or such a pixel beside the spot) can be told apart.
+        varAll = wavelengthMasked ? new Float32Array(diff.length) : varSum;
         for (let i = 0; i < varSum.length; i++) {
             const a = earlier.variance[i]!, b = later.variance[i]!;
-            varSum[i] = (!wavelengthMasked || Number.isFinite(diff[i]!)) && Number.isFinite(a) && a > 0 && Number.isFinite(b) && b > 0 ? a + b : NaN;
+            const sum = Number.isFinite(a) && a > 0 && Number.isFinite(b) && b > 0 ? a + b : NaN;
+            varAll[i] = sum;
+            // Once the wavelength check has left part of the picture out, a pixel that is not part of the comparison
+            // takes no part in the noise either, and no S/N prints beside it.
+            varSum[i] = !wavelengthMasked || Number.isFinite(diff[i]!) ? sum : NaN;
         }
     }
     const { found, measurement } = blobs(diff, grid, opt, result, 3.75, varSum, true);
     if (!Number.isFinite(measurement.sigma)) {
-        result.notes.push(diff.some(Number.isFinite)
-            ? 'Not enough overlapping image pixels to compare the visits.'
-            : 'The two visits do not overlap here, so nothing was compared.');
+        // When the wavelength check left nothing, its own note above already says so: the visits do overlap. When it
+        // left too little, the pixels did overlap, so the note does not say they did not.
+        if (diff.some(Number.isFinite)) {
+            result.notes.push(wavelengthMasked ? 'Too few image pixels are left to compare the visits.'
+                : 'Not enough overlapping image pixels to compare the visits.');
+        } else if (!wavelengthMasked) {
+            result.notes.push('The two visits do not overlap here, so nothing was compared.');
+        }
         return { ...result, visits } as VisitChangeResult;
     }
     if (measurement.usedErrorMap) {
@@ -2123,8 +2157,8 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
     // maps must have a value at every in-picture pixel within PSF_FWHM + NATIVE of the spot (Codex r11p: one NaN per
     // surrounding bin left the centre pixel valid and still printed an S/N from the difference image).
     const coverPix = (PSF_FWHM + NATIVE) / grid.pixelArcsec;
-    const mappedAt = (p: PixelCoord): boolean => {
-        if (!varSum) {
+    const mappedIn = (map: Float32Array | undefined) => (p: PixelCoord): boolean => {
+        if (!map) {
             return false;
         }
         const r = Math.ceil(coverPix);
@@ -2133,7 +2167,7 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
                 if (Math.hypot(x - p.x, y - p.y) > coverPix) {
                     continue;
                 }
-                const v = varSum[y * grid.width + x]!;
+                const v = map[y * grid.width + x]!;
                 if (!(Number.isFinite(v) && v > 0)) {
                     return false;
                 }
@@ -2141,9 +2175,16 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         }
         return true;
     };
+    const mappedAt = mappedIn(varSum), rawMappedAt = mappedIn(varAll);
     const showsSnr = (c: ChangeCandidate) => measurement.usedErrorMap && (c.ends ?? [c.pix]).every(mappedAt);
+    // The maps have values all around the spot and its S/N is still withheld: `varSum` and `varAll` differ only at
+    // pixels that are not part of the comparison, so one of those lies beside the spot.
+    const leftOutNear = (c: ChangeCandidate) => measurement.usedErrorMap && !showsSnr(c) && (c.ends ?? [c.pix]).every(rawMappedAt);
     if (opt.plain && measurement.usedErrorMap) {
-        result.candidates.forEach(c => { c.snrMapMissing = !showsSnr(c); });
+        result.candidates.forEach(c => {
+            c.snrMapMissing = !showsSnr(c);
+            if (leftOutNear(c)) { c.snrBesideUncompared = true; }
+        });
     }
     const finished = finish(result, opt, singleFrame, showsSnr, opt.plain);
     const unmapped = measurement.usedErrorMap ? finished.candidates.filter((c) => !showsSnr(c)).length : 0;
@@ -2152,8 +2193,12 @@ export function compareVisits(earlier: Image, later: Image, grid: OutputGrid, st
         finished.notes.push(...plainListNotes(finished.candidates, measurement.usedErrorMap, opt.matchArcsec,
             Number.isFinite(opt.starCover.radiusPix) ? opt.starCover.radiusPix * grid.pixelArcsec / 3600 : undefined));
     }
-    if (!opt.plain && unmapped > 0) {
-        finished.notes.push(`S/N is left out for ${unmapped} ${unmapped === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`);
+    const beside = measurement.usedErrorMap ? finished.candidates.filter(leftOutNear).length : 0, bare = unmapped - beside;
+    if (!opt.plain && bare > 0) {
+        finished.notes.push(`S/N is left out for ${bare} ${bare === 1 ? 'candidate' : 'candidates'} where the frames' error maps have no value, because the noise there comes from the difference image alone.`);
+    }
+    if (!opt.plain && beside > 0) {
+        finished.notes.push(`S/N is left out for ${beside} ${beside === 1 ? 'candidate' : 'candidates'} beside pixels that are not part of the comparison.`);
     }
     if (opt.plain) { finished.plainListInfo = { usedErrorMap: measurement.usedErrorMap, matchArcsec: opt.matchArcsec }; }
     return { ...finished, visits, candidates: finished.candidates.map((c) => {
