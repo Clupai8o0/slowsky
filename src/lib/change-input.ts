@@ -52,8 +52,13 @@ function image(visit: RegriddedFrame[]): VisitImage
         && f.lambdaGrid.values.length === first.nx * first.ny)) {
         const values = new Float32Array(first.nx * first.ny);
         for (let i = 0; i < values.length; i++) {
-            const finite = visit.map(f => f.lambdaGrid!.values[i]!).filter(Number.isFinite);
-            values[i] = finite.length ? finite.reduce((a, b) => a + b, 0) / finite.length : NaN;
+            const finite = visit.filter(f => Number.isFinite(f.lambdaGrid!.values[i]!));
+            // The stacked picture at this point holds only the frames with data here, so average only those.
+            // Where no frame has data, keep every frame's value (its own wavelengths carried past its edge).
+            const x = first.nx > 1 ? (i % first.nx) / (first.nx - 1) : 0, y = first.ny > 1 ? Math.floor(i / first.nx) / (first.ny - 1) : 0;
+            const here = finite.filter(f => hasDataNear(f, x, y));
+            const used = here.length ? here : finite;
+            values[i] = used.length ? used.reduce((sum, f) => sum + f.lambdaGrid!.values[i]!, 0) / used.length : NaN;
         }
         lambdaGrid = { nx: first.nx, ny: first.ny, values };
     }
@@ -63,6 +68,21 @@ function image(visit: RegriddedFrame[]): VisitImage
         ...(stack.variance ? { variance: stack.variance } : {}),
         ...(lambdaGrid ? { lambdaGrid } : {}),
     };
+}
+
+// Whether a frame holds a value within two pixels of a point given as fractions (0 to 1) of its grid.
+function hasDataNear(f: RegriddedFrame, fx: number, fy: number): boolean
+{
+    const { width, height } = f.grid;
+    const x = Math.round(fx * (width - 1)), y = Math.round(fy * (height - 1));
+    for (let j = Math.max(0, y - 2); j <= Math.min(height - 1, y + 2); j++) {
+        for (let i = Math.max(0, x - 2); i <= Math.min(width - 1, x + 2); i++) {
+            if (Number.isFinite(f.data[j * width + i]!)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 function placed(stars: GaiaStar[], grid: OutputGrid, mjd: number, margin: number, visit: 'earlier' | 'later'): StarPix[]
@@ -125,7 +145,8 @@ export function findChanges(result: SkyResult, opts: ChangeInputOptions = {}, ch
     const input = changeInput(result, opts);
     const cover = result.starCover;
     const center = cover ? gridSkyToPix(result.grid, cover.center) : undefined;
-    const starCover = cover && center ? { ...center, radiusPix: cover.radiusDeg * 3600 / result.grid.pixelArcsec } : undefined;
+    // A cone that reaches the picture's corners covers all of it: no spot is then outside the star list.
+    const starCover = cover?.capped && center ? { ...center, radiusPix: cover.radiusDeg * 3600 / result.grid.pixelArcsec } : undefined;
     const found = compareVisits(input.earlier, input.later, result.grid, input.stars,
         { ...changeOpts, ...(changeOpts?.starCover ? {} : starCover ? { starCover } : {}) });
     const noiseReported = found.notes.some((note) => /noise from the difference image/i.test(note));

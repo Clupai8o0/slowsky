@@ -3,7 +3,7 @@
 // claim of its own: each line is labelled "Candidate N" so the word stays on every line, and the marks over the
 // sky carry the same N. The finder's counts, noise and threshold are not shown. Pure string builders, no DOM.
 
-import { hasSnrFigure, isSnrNote, PLAIN_CAUSES, PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
+import { coverNote, COVER_NOTE, hasSnrFigure, isSnrNote, PLAIN_CAUSES, PLAIN_LEAD, type ChangeCandidate, type ChangeEnd, type ChangeReading, type ChangeResult } from '../lib/changes';
 import { HELPER_LABEL, type Classification } from '../lib/classify';
 import { hintHtml } from './ml-hint';
 
@@ -85,16 +85,15 @@ function listed(v: ChangesView, all: boolean): ChangesView['candidates']
 // Flag screening can remove candidates and change their order after the finder has finished.
 function coveredView(v: ChangesView): ChangesView
 {
-    const coverNote = v.notes.find(n => /^(?:1 listed spot lies|\d+ listed spots lie) outside the part of the picture where the Gaia star list was loaded \(within /.test(n));
-    if (!coverNote && !v.candidates.some(c => c.catalogueChecked === false)) { return v; }
+    const old = v.notes.find(n => COVER_NOTE.test(n));
+    if (!old && !v.candidates.some(c => c.catalogueChecked === false)) { return v; }
     const candidates = [...v.candidates].sort((a, b) => {
         const group = (c: PanelCandidate) => c.nearCatalogue ? 1 : c.catalogueChecked === false ? 2 : 0;
         return group(a) - group(b) || Number(hasSnrFigure(b.line)) - Number(hasSnrFigure(a.line));
     });
     const count = candidates.filter(c => c.catalogueChecked === false).length;
-    const radius = coverNote?.match(/\(within ([\d.]+)° of the centre\)/)?.[1];
-    const notes = v.notes.flatMap(n => n !== coverNote ? [n] : count && radius
-        ? [`${count === 1 ? '1 listed spot lies' : `${count} listed spots lie`} outside the part of the picture where the Gaia star list was loaded (within ${radius}° of the centre), so ${count === 1 ? 'it was' : 'they were'} not checked against that list.`] : []);
+    const radius = old?.match(COVER_NOTE)?.[1];
+    const notes = v.notes.flatMap(n => n !== old ? [n] : count && radius ? [coverNote(count, radius)] : []);
     return { ...v, candidates, notes };
 }
 
@@ -155,10 +154,15 @@ export function changesHtml(v: ChangesView, all = false): string
     const fold = plain && typeof match === 'number' && Number.isFinite(match);
     if (fold) {
         const starCount = hidden.filter(c => c.nearCatalogue === true && c.catalogueChecked !== false).length;
+        const loose = hidden.filter(c => c.catalogueChecked === false).length;
         const spots = `${hidden.length}${closed.length ? ' more' : ''} ${hidden.length === 1 ? 'spot' : 'spots'}`;
         const hiddenText = !closed.length && hidden.length === starCount
             ? `No spot is shown: ${hidden.length === 1 ? 'the 1 candidate lies' : hidden.length === 2 ? 'both candidates lie' : `all ${hidden.length} candidates lie`} within ${match}″ of a catalogue star.`
-            : `Not shown: ${spots}${hidden.length === starCount ? ` within ${match}″ of a catalogue star` : starCount ? `; ${starCount} of them ${starCount === 1 ? 'lies' : 'lie'} within ${match}″ of a catalogue star` : ''}.`;
+            : `Not shown: ${spots}${hidden.length === starCount ? ` within ${match}″ of a catalogue star`
+                : hidden.length === loose ? ` that ${loose === 1 ? 'was' : 'were'} not checked against the Gaia star list`
+                : [starCount ? `${starCount} of them ${starCount === 1 ? 'lies' : 'lie'} within ${match}″ of a catalogue star` : '',
+                    loose ? `${loose} of them ${loose === 1 ? 'was' : 'were'} not checked against the Gaia star list` : '']
+                    .filter(Boolean).map((part, i) => (i ? ' and ' : '; ') + part).join('')}.`;
         const button = closed.length ? `Show ${hidden.length} more` : hidden.length === 1 ? 'Show it' : 'Show them';
         const more = hidden.length ? `<p class="sk-chg-more-row">${all ? '' : esc(hiddenText) + ' '}<button type="button" class="sk-chg-more" data-chg-more aria-expanded="${all}">${all ? (closed.length ? 'Show fewer' : hidden.length === 1 ? 'Hide it' : 'Hide them') : button}</button></p>` : '';
         const items = listed(v, all);
