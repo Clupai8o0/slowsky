@@ -1,0 +1,3179 @@
+{
+ "base": "http://localhost:5199",
+ "captures": {
+  "desk_barnard": {
+   "target": "barnard",
+   "frames": [
+    {
+     "file": "ui/desk_barnard_f1.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 1
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1217.05,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 1 of 3",
+     "picture": "ui/desk_barnard_pic1.png"
+    },
+    {
+     "file": "ui/desk_barnard_f2.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 1
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1217.05,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 2 of 3",
+     "picture": "ui/desk_barnard_pic2.png"
+    },
+    {
+     "file": "ui/desk_barnard_f3.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 1
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1217.05,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 3 of 3",
+     "picture": "ui/desk_barnard_pic3.png"
+    }
+   ],
+   "fullPage": "ui/desk_barnard_page.png"
+  },
+  "desk_rwaur": {
+   "target": "rwaur",
+   "frames": [
+    {
+     "file": "ui/desk_rwaur_f1.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 1
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1224.09,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 1 of 3",
+     "picture": "ui/desk_rwaur_pic1.png"
+    },
+    {
+     "file": "ui/desk_rwaur_f2.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 1
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1224.09,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 2 of 3",
+     "picture": "ui/desk_rwaur_pic2.png"
+    },
+    {
+     "file": "ui/desk_rwaur_f3.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 1
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1224.09,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 3 of 3",
+     "picture": "ui/desk_rwaur_pic3.png"
+    }
+   ],
+   "fullPage": "ui/desk_rwaur_page.png"
+  },
+  "desk_wise": {
+   "target": "wise0855",
+   "frames": [
+    {
+     "file": "ui/desk_wise_f1.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 1
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1224.09,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 1 of 4",
+     "picture": "ui/desk_wise_pic1.png"
+    },
+    {
+     "file": "ui/desk_wise_f2.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 1
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1217.05,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 2 of 4",
+     "picture": "ui/desk_wise_pic2.png"
+    },
+    {
+     "file": "ui/desk_wise_f3.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 1
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1217.05,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 3 of 4",
+     "picture": "ui/desk_wise_pic3.png"
+    },
+    {
+     "file": "ui/desk_wise_f4.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 1
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1224.09,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 4 of 4",
+     "picture": "ui/desk_wise_pic4.png"
+    }
+   ],
+   "fullPage": "ui/desk_wise_page.png"
+  },
+  "desk_barnard_stack": {
+   "file": "ui/desk_barnard_stack.png",
+   "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "dsf": 1
+   },
+   "scrollY": 0,
+   "boxes": {
+    "picture": {
+     "x": 392,
+     "y": 140,
+     "width": 784,
+     "height": 784
+    },
+    "transport": {
+     "x": 1208,
+     "y": 140,
+     "width": 300,
+     "height": 44
+    },
+    "targets": {
+     "x": 28,
+     "y": 140,
+     "width": 300,
+     "height": 295
+    },
+    "status": {
+     "x": 1572,
+     "y": 28,
+     "width": 320,
+     "height": 62
+    },
+    "frameLabel": {
+     "x": 1160.73,
+     "y": 113,
+     "width": 84.48,
+     "height": 14
+    },
+    "brand": {
+     "x": 28,
+     "y": 28,
+     "width": 300,
+     "height": 22
+    },
+    "gaia": {
+     "x": 1208,
+     "y": 412.34,
+     "width": 149,
+     "height": 24
+    },
+    "targetButtons": {
+     "barnard": {
+      "x": 28,
+      "y": 140,
+      "width": 300,
+      "height": 59
+     },
+     "rwaur": {
+      "x": 28,
+      "y": 199,
+      "width": 300,
+      "height": 59
+     },
+     "epsindb": {
+      "x": 28,
+      "y": 258,
+      "width": 300,
+      "height": 59
+     },
+     "wise0855": {
+      "x": 28,
+      "y": 317,
+      "width": 300,
+      "height": 59
+     },
+     "rdra": {
+      "x": 28,
+      "y": 376,
+      "width": 300,
+      "height": 59
+     }
+    }
+   },
+   "frameLabel": "Average of 3",
+   "mode": "stack"
+  },
+  "desk_barnard_subtract": {
+   "file": "ui/desk_barnard_subtract.png",
+   "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "dsf": 1
+   },
+   "scrollY": 0,
+   "boxes": {
+    "picture": {
+     "x": 392,
+     "y": 140,
+     "width": 784,
+     "height": 784
+    },
+    "transport": {
+     "x": 1208,
+     "y": 140,
+     "width": 300,
+     "height": 44
+    },
+    "targets": {
+     "x": 28,
+     "y": 140,
+     "width": 300,
+     "height": 295
+    },
+    "status": {
+     "x": 1572,
+     "y": 28,
+     "width": 320,
+     "height": 62
+    },
+    "frameLabel": {
+     "x": 1210.02,
+     "y": 113,
+     "width": 35.2,
+     "height": 14
+    },
+    "brand": {
+     "x": 28,
+     "y": 28,
+     "width": 300,
+     "height": 22
+    },
+    "targetButtons": {
+     "barnard": {
+      "x": 28,
+      "y": 140,
+      "width": 300,
+      "height": 59
+     },
+     "rwaur": {
+      "x": 28,
+      "y": 199,
+      "width": 300,
+      "height": 59
+     },
+     "epsindb": {
+      "x": 28,
+      "y": 258,
+      "width": 300,
+      "height": 59
+     },
+     "wise0855": {
+      "x": 28,
+      "y": 317,
+      "width": 300,
+      "height": 59
+     },
+     "rdra": {
+      "x": 28,
+      "y": 376,
+      "width": 300,
+      "height": 59
+     }
+    }
+   },
+   "frameLabel": "B \u2212 A",
+   "mode": "diff"
+  },
+  "desk_switch_rwaur": {
+   "file": "ui/desk_switch_rwaur.png",
+   "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "dsf": 1
+   },
+   "scrollY": 0,
+   "boxes": {
+    "picture": {
+     "x": 392,
+     "y": 140,
+     "width": 784,
+     "height": 784
+    },
+    "transport": {
+     "x": 1208,
+     "y": 140,
+     "width": 300,
+     "height": 44
+    },
+    "targets": {
+     "x": 28,
+     "y": 140,
+     "width": 300,
+     "height": 295
+    },
+    "status": {
+     "x": 1572,
+     "y": 28,
+     "width": 320,
+     "height": 62
+    },
+    "frameLabel": {
+     "x": 1224.09,
+     "y": 113,
+     "width": 84.48,
+     "height": 14
+    },
+    "brand": {
+     "x": 28,
+     "y": 28,
+     "width": 300,
+     "height": 22
+    },
+    "gaia": {
+     "x": 1208,
+     "y": 412.34,
+     "width": 149,
+     "height": 24
+    },
+    "targetButtons": {
+     "barnard": {
+      "x": 28,
+      "y": 140,
+      "width": 300,
+      "height": 59
+     },
+     "rwaur": {
+      "x": 28,
+      "y": 199,
+      "width": 300,
+      "height": 59
+     },
+     "epsindb": {
+      "x": 28,
+      "y": 258,
+      "width": 300,
+      "height": 59
+     },
+     "wise0855": {
+      "x": 28,
+      "y": 317,
+      "width": 300,
+      "height": 59
+     },
+     "rdra": {
+      "x": 28,
+      "y": 376,
+      "width": 300,
+      "height": 59
+     }
+    }
+   },
+   "frameLabel": "Frame 2 of 3",
+   "from": "barnard"
+  },
+  "desk2x_barnard": {
+   "target": "barnard",
+   "frames": [
+    {
+     "file": "ui/desk2x_barnard_f1.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 2
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1217.05,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 1 of 3",
+     "picture": "ui/desk2x_barnard_pic1.png"
+    },
+    {
+     "file": "ui/desk2x_barnard_f2.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 2
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1217.05,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 2 of 3",
+     "picture": "ui/desk2x_barnard_pic2.png"
+    },
+    {
+     "file": "ui/desk2x_barnard_f3.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 2
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1217.05,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 3 of 3",
+     "picture": "ui/desk2x_barnard_pic3.png"
+    }
+   ],
+   "fullPage": "ui/desk2x_barnard_page.png"
+  },
+  "desk2x_rwaur": {
+   "target": "rwaur",
+   "frames": [
+    {
+     "file": "ui/desk2x_rwaur_f1.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 2
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1224.09,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 1 of 3",
+     "picture": "ui/desk2x_rwaur_pic1.png"
+    },
+    {
+     "file": "ui/desk2x_rwaur_f2.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 2
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1224.09,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 2 of 3",
+     "picture": "ui/desk2x_rwaur_pic2.png"
+    },
+    {
+     "file": "ui/desk2x_rwaur_f3.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 2
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1224.09,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 3 of 3",
+     "picture": "ui/desk2x_rwaur_pic3.png"
+    }
+   ],
+   "fullPage": "ui/desk2x_rwaur_page.png"
+  },
+  "desk2x_wise": {
+   "target": "wise0855",
+   "frames": [
+    {
+     "file": "ui/desk2x_wise_f1.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 2
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1224.09,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 1 of 4",
+     "picture": "ui/desk2x_wise_pic1.png"
+    },
+    {
+     "file": "ui/desk2x_wise_f2.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 2
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1217.05,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 2 of 4",
+     "picture": "ui/desk2x_wise_pic2.png"
+    },
+    {
+     "file": "ui/desk2x_wise_f3.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 2
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1217.05,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 3 of 4",
+     "picture": "ui/desk2x_wise_pic3.png"
+    },
+    {
+     "file": "ui/desk2x_wise_f4.png",
+     "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "dsf": 2
+     },
+     "scrollY": 0,
+     "boxes": {
+      "picture": {
+       "x": 392,
+       "y": 140,
+       "width": 784,
+       "height": 784
+      },
+      "transport": {
+       "x": 1208,
+       "y": 140,
+       "width": 300,
+       "height": 44
+      },
+      "targets": {
+       "x": 28,
+       "y": 140,
+       "width": 300,
+       "height": 295
+      },
+      "status": {
+       "x": 1572,
+       "y": 28,
+       "width": 320,
+       "height": 62
+      },
+      "frameLabel": {
+       "x": 1224.09,
+       "y": 113,
+       "width": 84.48,
+       "height": 14
+      },
+      "brand": {
+       "x": 28,
+       "y": 28,
+       "width": 300,
+       "height": 22
+      },
+      "gaia": {
+       "x": 1208,
+       "y": 412.34,
+       "width": 149,
+       "height": 24
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 28,
+        "y": 140,
+        "width": 300,
+        "height": 59
+       },
+       "rwaur": {
+        "x": 28,
+        "y": 199,
+        "width": 300,
+        "height": 59
+       },
+       "epsindb": {
+        "x": 28,
+        "y": 258,
+        "width": 300,
+        "height": 59
+       },
+       "wise0855": {
+        "x": 28,
+        "y": 317,
+        "width": 300,
+        "height": 59
+       },
+       "rdra": {
+        "x": 28,
+        "y": 376,
+        "width": 300,
+        "height": 59
+       }
+      }
+     },
+     "frameLabel": "Frame 4 of 4",
+     "picture": "ui/desk2x_wise_pic4.png"
+    }
+   ],
+   "fullPage": "ui/desk2x_wise_page.png"
+  },
+  "desk2x_barnard_stack": {
+   "file": "ui/desk2x_barnard_stack.png",
+   "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "dsf": 2
+   },
+   "scrollY": 0,
+   "boxes": {
+    "picture": {
+     "x": 392,
+     "y": 140,
+     "width": 784,
+     "height": 784
+    },
+    "transport": {
+     "x": 1208,
+     "y": 140,
+     "width": 300,
+     "height": 44
+    },
+    "targets": {
+     "x": 28,
+     "y": 140,
+     "width": 300,
+     "height": 295
+    },
+    "status": {
+     "x": 1572,
+     "y": 28,
+     "width": 320,
+     "height": 62
+    },
+    "frameLabel": {
+     "x": 1160.73,
+     "y": 113,
+     "width": 84.48,
+     "height": 14
+    },
+    "brand": {
+     "x": 28,
+     "y": 28,
+     "width": 300,
+     "height": 22
+    },
+    "gaia": {
+     "x": 1208,
+     "y": 412.34,
+     "width": 149,
+     "height": 24
+    },
+    "targetButtons": {
+     "barnard": {
+      "x": 28,
+      "y": 140,
+      "width": 300,
+      "height": 59
+     },
+     "rwaur": {
+      "x": 28,
+      "y": 199,
+      "width": 300,
+      "height": 59
+     },
+     "epsindb": {
+      "x": 28,
+      "y": 258,
+      "width": 300,
+      "height": 59
+     },
+     "wise0855": {
+      "x": 28,
+      "y": 317,
+      "width": 300,
+      "height": 59
+     },
+     "rdra": {
+      "x": 28,
+      "y": 376,
+      "width": 300,
+      "height": 59
+     }
+    }
+   },
+   "frameLabel": "Average of 3",
+   "mode": "stack"
+  },
+  "desk2x_barnard_subtract": {
+   "file": "ui/desk2x_barnard_subtract.png",
+   "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "dsf": 2
+   },
+   "scrollY": 0,
+   "boxes": {
+    "picture": {
+     "x": 392,
+     "y": 140,
+     "width": 784,
+     "height": 784
+    },
+    "transport": {
+     "x": 1208,
+     "y": 140,
+     "width": 300,
+     "height": 44
+    },
+    "targets": {
+     "x": 28,
+     "y": 140,
+     "width": 300,
+     "height": 295
+    },
+    "status": {
+     "x": 1572,
+     "y": 28,
+     "width": 320,
+     "height": 62
+    },
+    "frameLabel": {
+     "x": 1210.02,
+     "y": 113,
+     "width": 35.2,
+     "height": 14
+    },
+    "brand": {
+     "x": 28,
+     "y": 28,
+     "width": 300,
+     "height": 22
+    },
+    "targetButtons": {
+     "barnard": {
+      "x": 28,
+      "y": 140,
+      "width": 300,
+      "height": 59
+     },
+     "rwaur": {
+      "x": 28,
+      "y": 199,
+      "width": 300,
+      "height": 59
+     },
+     "epsindb": {
+      "x": 28,
+      "y": 258,
+      "width": 300,
+      "height": 59
+     },
+     "wise0855": {
+      "x": 28,
+      "y": 317,
+      "width": 300,
+      "height": 59
+     },
+     "rdra": {
+      "x": 28,
+      "y": 376,
+      "width": 300,
+      "height": 59
+     }
+    }
+   },
+   "frameLabel": "B \u2212 A",
+   "mode": "diff"
+  },
+  "desk2x_switch_rwaur": {
+   "file": "ui/desk2x_switch_rwaur.png",
+   "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "dsf": 2
+   },
+   "scrollY": 0,
+   "boxes": {
+    "picture": {
+     "x": 392,
+     "y": 140,
+     "width": 784,
+     "height": 784
+    },
+    "transport": {
+     "x": 1208,
+     "y": 140,
+     "width": 300,
+     "height": 44
+    },
+    "targets": {
+     "x": 28,
+     "y": 140,
+     "width": 300,
+     "height": 295
+    },
+    "status": {
+     "x": 1572,
+     "y": 28,
+     "width": 320,
+     "height": 62
+    },
+    "frameLabel": {
+     "x": 1224.09,
+     "y": 113,
+     "width": 84.48,
+     "height": 14
+    },
+    "brand": {
+     "x": 28,
+     "y": 28,
+     "width": 300,
+     "height": 22
+    },
+    "gaia": {
+     "x": 1208,
+     "y": 412.34,
+     "width": 149,
+     "height": 24
+    },
+    "targetButtons": {
+     "barnard": {
+      "x": 28,
+      "y": 140,
+      "width": 300,
+      "height": 59
+     },
+     "rwaur": {
+      "x": 28,
+      "y": 199,
+      "width": 300,
+      "height": 59
+     },
+     "epsindb": {
+      "x": 28,
+      "y": 258,
+      "width": 300,
+      "height": 59
+     },
+     "wise0855": {
+      "x": 28,
+      "y": 317,
+      "width": 300,
+      "height": 59
+     },
+     "rdra": {
+      "x": 28,
+      "y": 376,
+      "width": 300,
+      "height": 59
+     }
+    }
+   },
+   "frameLabel": "Frame 1 of 3",
+   "from": "barnard"
+  },
+  "phone_barnard": {
+   "target": "barnard",
+   "frames": [
+    {
+     "file": "ui/phone_barnard_f1.png",
+     "viewport": {
+      "width": 390,
+      "height": 844,
+      "dsf": 3
+     },
+     "scrollY": 348,
+     "boxes": {
+      "picture": {
+       "x": 0,
+       "y": 40,
+       "width": 390,
+       "height": 390
+      },
+      "transport": {
+       "x": 18,
+       "y": 609,
+       "width": 150,
+       "height": 44
+      },
+      "targets": {
+       "x": 18,
+       "y": -214,
+       "width": 296.66,
+       "height": 144
+      },
+      "status": {
+       "x": 0,
+       "y": 832.38,
+       "width": 390,
+       "height": 44
+      },
+      "frameLabel": {
+       "x": 156.94,
+       "y": 12,
+       "width": 92.17,
+       "height": 16
+      },
+      "brand": {
+       "x": 18,
+       "y": -328,
+       "width": 354,
+       "height": 22
+      },
+      "gaia": {
+       "x": 18,
+       "y": 434,
+       "width": 149,
+       "height": 44
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 18,
+        "y": -214,
+        "width": 138.140625,
+        "height": 44
+       },
+       "rwaur": {
+        "x": 162.140625,
+        "y": -214,
+        "width": 122.125,
+        "height": 44
+       },
+       "epsindb": {
+        "x": 18,
+        "y": -164,
+        "width": 133.578125,
+        "height": 44
+       },
+       "wise0855": {
+        "x": 157.578125,
+        "y": -164,
+        "width": 157.078125,
+        "height": 44
+       },
+       "rdra": {
+        "x": 18,
+        "y": -114,
+        "width": 116.59375,
+        "height": 44
+       }
+      }
+     },
+     "frameLabel": "Frame 1 of 3",
+     "picture": "ui/phone_barnard_pic1.png"
+    },
+    {
+     "file": "ui/phone_barnard_f2.png",
+     "viewport": {
+      "width": 390,
+      "height": 844,
+      "dsf": 3
+     },
+     "scrollY": 348,
+     "boxes": {
+      "picture": {
+       "x": 0,
+       "y": 40,
+       "width": 390,
+       "height": 390
+      },
+      "transport": {
+       "x": 18,
+       "y": 609,
+       "width": 150,
+       "height": 44
+      },
+      "targets": {
+       "x": 18,
+       "y": -214,
+       "width": 296.66,
+       "height": 144
+      },
+      "status": {
+       "x": 0,
+       "y": 832.38,
+       "width": 390,
+       "height": 44
+      },
+      "frameLabel": {
+       "x": 156.94,
+       "y": 12,
+       "width": 92.17,
+       "height": 16
+      },
+      "brand": {
+       "x": 18,
+       "y": -328,
+       "width": 354,
+       "height": 22
+      },
+      "gaia": {
+       "x": 18,
+       "y": 434,
+       "width": 149,
+       "height": 44
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 18,
+        "y": -214,
+        "width": 138.140625,
+        "height": 44
+       },
+       "rwaur": {
+        "x": 162.140625,
+        "y": -214,
+        "width": 122.125,
+        "height": 44
+       },
+       "epsindb": {
+        "x": 18,
+        "y": -164,
+        "width": 133.578125,
+        "height": 44
+       },
+       "wise0855": {
+        "x": 157.578125,
+        "y": -164,
+        "width": 157.078125,
+        "height": 44
+       },
+       "rdra": {
+        "x": 18,
+        "y": -114,
+        "width": 116.59375,
+        "height": 44
+       }
+      }
+     },
+     "frameLabel": "Frame 2 of 3",
+     "picture": "ui/phone_barnard_pic2.png"
+    },
+    {
+     "file": "ui/phone_barnard_f3.png",
+     "viewport": {
+      "width": 390,
+      "height": 844,
+      "dsf": 3
+     },
+     "scrollY": 348,
+     "boxes": {
+      "picture": {
+       "x": 0,
+       "y": 40,
+       "width": 390,
+       "height": 390
+      },
+      "transport": {
+       "x": 18,
+       "y": 609,
+       "width": 150,
+       "height": 44
+      },
+      "targets": {
+       "x": 18,
+       "y": -214,
+       "width": 296.66,
+       "height": 144
+      },
+      "status": {
+       "x": 0,
+       "y": 832.38,
+       "width": 390,
+       "height": 44
+      },
+      "frameLabel": {
+       "x": 156.94,
+       "y": 12,
+       "width": 92.17,
+       "height": 16
+      },
+      "brand": {
+       "x": 18,
+       "y": -328,
+       "width": 354,
+       "height": 22
+      },
+      "gaia": {
+       "x": 18,
+       "y": 434,
+       "width": 149,
+       "height": 44
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 18,
+        "y": -214,
+        "width": 138.140625,
+        "height": 44
+       },
+       "rwaur": {
+        "x": 162.140625,
+        "y": -214,
+        "width": 122.125,
+        "height": 44
+       },
+       "epsindb": {
+        "x": 18,
+        "y": -164,
+        "width": 133.578125,
+        "height": 44
+       },
+       "wise0855": {
+        "x": 157.578125,
+        "y": -164,
+        "width": 157.078125,
+        "height": 44
+       },
+       "rdra": {
+        "x": 18,
+        "y": -114,
+        "width": 116.59375,
+        "height": 44
+       }
+      }
+     },
+     "frameLabel": "Frame 3 of 3",
+     "picture": "ui/phone_barnard_pic3.png"
+    }
+   ],
+   "fullPage": "ui/phone_barnard_page.png"
+  },
+  "phone_rwaur": {
+   "target": "rwaur",
+   "frames": [
+    {
+     "file": "ui/phone_rwaur_f1.png",
+     "viewport": {
+      "width": 390,
+      "height": 844,
+      "dsf": 3
+     },
+     "scrollY": 348,
+     "boxes": {
+      "picture": {
+       "x": 0,
+       "y": 40,
+       "width": 390,
+       "height": 390
+      },
+      "transport": {
+       "x": 18,
+       "y": 591,
+       "width": 150,
+       "height": 44
+      },
+      "targets": {
+       "x": 18,
+       "y": -214,
+       "width": 296.66,
+       "height": 144
+      },
+      "status": {
+       "x": 0,
+       "y": 814.38,
+       "width": 390,
+       "height": 44
+      },
+      "frameLabel": {
+       "x": 164.61,
+       "y": 12,
+       "width": 92.17,
+       "height": 16
+      },
+      "brand": {
+       "x": 18,
+       "y": -328,
+       "width": 354,
+       "height": 22
+      },
+      "gaia": {
+       "x": 18,
+       "y": 434,
+       "width": 149,
+       "height": 44
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 18,
+        "y": -214,
+        "width": 138.140625,
+        "height": 44
+       },
+       "rwaur": {
+        "x": 162.140625,
+        "y": -214,
+        "width": 122.125,
+        "height": 44
+       },
+       "epsindb": {
+        "x": 18,
+        "y": -164,
+        "width": 133.578125,
+        "height": 44
+       },
+       "wise0855": {
+        "x": 157.578125,
+        "y": -164,
+        "width": 157.078125,
+        "height": 44
+       },
+       "rdra": {
+        "x": 18,
+        "y": -114,
+        "width": 116.59375,
+        "height": 44
+       }
+      }
+     },
+     "frameLabel": "Frame 1 of 3",
+     "picture": "ui/phone_rwaur_pic1.png"
+    },
+    {
+     "file": "ui/phone_rwaur_f2.png",
+     "viewport": {
+      "width": 390,
+      "height": 844,
+      "dsf": 3
+     },
+     "scrollY": 348,
+     "boxes": {
+      "picture": {
+       "x": 0,
+       "y": 40,
+       "width": 390,
+       "height": 390
+      },
+      "transport": {
+       "x": 18,
+       "y": 591,
+       "width": 150,
+       "height": 44
+      },
+      "targets": {
+       "x": 18,
+       "y": -214,
+       "width": 296.66,
+       "height": 144
+      },
+      "status": {
+       "x": 0,
+       "y": 814.38,
+       "width": 390,
+       "height": 44
+      },
+      "frameLabel": {
+       "x": 164.61,
+       "y": 12,
+       "width": 92.17,
+       "height": 16
+      },
+      "brand": {
+       "x": 18,
+       "y": -328,
+       "width": 354,
+       "height": 22
+      },
+      "gaia": {
+       "x": 18,
+       "y": 434,
+       "width": 149,
+       "height": 44
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 18,
+        "y": -214,
+        "width": 138.140625,
+        "height": 44
+       },
+       "rwaur": {
+        "x": 162.140625,
+        "y": -214,
+        "width": 122.125,
+        "height": 44
+       },
+       "epsindb": {
+        "x": 18,
+        "y": -164,
+        "width": 133.578125,
+        "height": 44
+       },
+       "wise0855": {
+        "x": 157.578125,
+        "y": -164,
+        "width": 157.078125,
+        "height": 44
+       },
+       "rdra": {
+        "x": 18,
+        "y": -114,
+        "width": 116.59375,
+        "height": 44
+       }
+      }
+     },
+     "frameLabel": "Frame 2 of 3",
+     "picture": "ui/phone_rwaur_pic2.png"
+    },
+    {
+     "file": "ui/phone_rwaur_f3.png",
+     "viewport": {
+      "width": 390,
+      "height": 844,
+      "dsf": 3
+     },
+     "scrollY": 348,
+     "boxes": {
+      "picture": {
+       "x": 0,
+       "y": 40,
+       "width": 390,
+       "height": 390
+      },
+      "transport": {
+       "x": 18,
+       "y": 591,
+       "width": 150,
+       "height": 44
+      },
+      "targets": {
+       "x": 18,
+       "y": -214,
+       "width": 296.66,
+       "height": 144
+      },
+      "status": {
+       "x": 0,
+       "y": 814.38,
+       "width": 390,
+       "height": 44
+      },
+      "frameLabel": {
+       "x": 164.61,
+       "y": 12,
+       "width": 92.17,
+       "height": 16
+      },
+      "brand": {
+       "x": 18,
+       "y": -328,
+       "width": 354,
+       "height": 22
+      },
+      "gaia": {
+       "x": 18,
+       "y": 434,
+       "width": 149,
+       "height": 44
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 18,
+        "y": -214,
+        "width": 138.140625,
+        "height": 44
+       },
+       "rwaur": {
+        "x": 162.140625,
+        "y": -214,
+        "width": 122.125,
+        "height": 44
+       },
+       "epsindb": {
+        "x": 18,
+        "y": -164,
+        "width": 133.578125,
+        "height": 44
+       },
+       "wise0855": {
+        "x": 157.578125,
+        "y": -164,
+        "width": 157.078125,
+        "height": 44
+       },
+       "rdra": {
+        "x": 18,
+        "y": -114,
+        "width": 116.59375,
+        "height": 44
+       }
+      }
+     },
+     "frameLabel": "Frame 3 of 3",
+     "picture": "ui/phone_rwaur_pic3.png"
+    }
+   ],
+   "fullPage": "ui/phone_rwaur_page.png"
+  },
+  "phone_wise": {
+   "target": "wise0855",
+   "frames": [
+    {
+     "file": "ui/phone_wise_f1.png",
+     "viewport": {
+      "width": 390,
+      "height": 844,
+      "dsf": 3
+     },
+     "scrollY": 348,
+     "boxes": {
+      "picture": {
+       "x": 0,
+       "y": 40,
+       "width": 390,
+       "height": 390
+      },
+      "transport": {
+       "x": 18,
+       "y": 591,
+       "width": 150,
+       "height": 44
+      },
+      "targets": {
+       "x": 18,
+       "y": -214,
+       "width": 296.66,
+       "height": 144
+      },
+      "status": {
+       "x": 0,
+       "y": 814.38,
+       "width": 390,
+       "height": 44
+      },
+      "frameLabel": {
+       "x": 164.61,
+       "y": 12,
+       "width": 92.17,
+       "height": 16
+      },
+      "brand": {
+       "x": 18,
+       "y": -328,
+       "width": 354,
+       "height": 22
+      },
+      "gaia": {
+       "x": 18,
+       "y": 434,
+       "width": 149,
+       "height": 44
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 18,
+        "y": -214,
+        "width": 138.140625,
+        "height": 44
+       },
+       "rwaur": {
+        "x": 162.140625,
+        "y": -214,
+        "width": 122.125,
+        "height": 44
+       },
+       "epsindb": {
+        "x": 18,
+        "y": -164,
+        "width": 133.578125,
+        "height": 44
+       },
+       "wise0855": {
+        "x": 157.578125,
+        "y": -164,
+        "width": 157.078125,
+        "height": 44
+       },
+       "rdra": {
+        "x": 18,
+        "y": -114,
+        "width": 116.59375,
+        "height": 44
+       }
+      }
+     },
+     "frameLabel": "Frame 1 of 4",
+     "picture": "ui/phone_wise_pic1.png"
+    },
+    {
+     "file": "ui/phone_wise_f2.png",
+     "viewport": {
+      "width": 390,
+      "height": 844,
+      "dsf": 3
+     },
+     "scrollY": 348,
+     "boxes": {
+      "picture": {
+       "x": 0,
+       "y": 40,
+       "width": 390,
+       "height": 390
+      },
+      "transport": {
+       "x": 18,
+       "y": 591,
+       "width": 150,
+       "height": 44
+      },
+      "targets": {
+       "x": 18,
+       "y": -214,
+       "width": 296.66,
+       "height": 144
+      },
+      "status": {
+       "x": 0,
+       "y": 814.38,
+       "width": 390,
+       "height": 44
+      },
+      "frameLabel": {
+       "x": 156.94,
+       "y": 12,
+       "width": 92.17,
+       "height": 16
+      },
+      "brand": {
+       "x": 18,
+       "y": -328,
+       "width": 354,
+       "height": 22
+      },
+      "gaia": {
+       "x": 18,
+       "y": 434,
+       "width": 149,
+       "height": 44
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 18,
+        "y": -214,
+        "width": 138.140625,
+        "height": 44
+       },
+       "rwaur": {
+        "x": 162.140625,
+        "y": -214,
+        "width": 122.125,
+        "height": 44
+       },
+       "epsindb": {
+        "x": 18,
+        "y": -164,
+        "width": 133.578125,
+        "height": 44
+       },
+       "wise0855": {
+        "x": 157.578125,
+        "y": -164,
+        "width": 157.078125,
+        "height": 44
+       },
+       "rdra": {
+        "x": 18,
+        "y": -114,
+        "width": 116.59375,
+        "height": 44
+       }
+      }
+     },
+     "frameLabel": "Frame 2 of 4",
+     "picture": "ui/phone_wise_pic2.png"
+    },
+    {
+     "file": "ui/phone_wise_f3.png",
+     "viewport": {
+      "width": 390,
+      "height": 844,
+      "dsf": 3
+     },
+     "scrollY": 348,
+     "boxes": {
+      "picture": {
+       "x": 0,
+       "y": 40,
+       "width": 390,
+       "height": 390
+      },
+      "transport": {
+       "x": 18,
+       "y": 591,
+       "width": 150,
+       "height": 44
+      },
+      "targets": {
+       "x": 18,
+       "y": -214,
+       "width": 296.66,
+       "height": 144
+      },
+      "status": {
+       "x": 0,
+       "y": 814.38,
+       "width": 390,
+       "height": 44
+      },
+      "frameLabel": {
+       "x": 156.94,
+       "y": 12,
+       "width": 92.17,
+       "height": 16
+      },
+      "brand": {
+       "x": 18,
+       "y": -328,
+       "width": 354,
+       "height": 22
+      },
+      "gaia": {
+       "x": 18,
+       "y": 434,
+       "width": 149,
+       "height": 44
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 18,
+        "y": -214,
+        "width": 138.140625,
+        "height": 44
+       },
+       "rwaur": {
+        "x": 162.140625,
+        "y": -214,
+        "width": 122.125,
+        "height": 44
+       },
+       "epsindb": {
+        "x": 18,
+        "y": -164,
+        "width": 133.578125,
+        "height": 44
+       },
+       "wise0855": {
+        "x": 157.578125,
+        "y": -164,
+        "width": 157.078125,
+        "height": 44
+       },
+       "rdra": {
+        "x": 18,
+        "y": -114,
+        "width": 116.59375,
+        "height": 44
+       }
+      }
+     },
+     "frameLabel": "Frame 3 of 4",
+     "picture": "ui/phone_wise_pic3.png"
+    },
+    {
+     "file": "ui/phone_wise_f4.png",
+     "viewport": {
+      "width": 390,
+      "height": 844,
+      "dsf": 3
+     },
+     "scrollY": 348,
+     "boxes": {
+      "picture": {
+       "x": 0,
+       "y": 40,
+       "width": 390,
+       "height": 390
+      },
+      "transport": {
+       "x": 18,
+       "y": 591,
+       "width": 150,
+       "height": 44
+      },
+      "targets": {
+       "x": 18,
+       "y": -214,
+       "width": 296.66,
+       "height": 144
+      },
+      "status": {
+       "x": 0,
+       "y": 814.38,
+       "width": 390,
+       "height": 44
+      },
+      "frameLabel": {
+       "x": 164.61,
+       "y": 12,
+       "width": 92.17,
+       "height": 16
+      },
+      "brand": {
+       "x": 18,
+       "y": -328,
+       "width": 354,
+       "height": 22
+      },
+      "gaia": {
+       "x": 18,
+       "y": 434,
+       "width": 149,
+       "height": 44
+      },
+      "targetButtons": {
+       "barnard": {
+        "x": 18,
+        "y": -214,
+        "width": 138.140625,
+        "height": 44
+       },
+       "rwaur": {
+        "x": 162.140625,
+        "y": -214,
+        "width": 122.125,
+        "height": 44
+       },
+       "epsindb": {
+        "x": 18,
+        "y": -164,
+        "width": 133.578125,
+        "height": 44
+       },
+       "wise0855": {
+        "x": 157.578125,
+        "y": -164,
+        "width": 157.078125,
+        "height": 44
+       },
+       "rdra": {
+        "x": 18,
+        "y": -114,
+        "width": 116.59375,
+        "height": 44
+       }
+      }
+     },
+     "frameLabel": "Frame 4 of 4",
+     "picture": "ui/phone_wise_pic4.png"
+    }
+   ],
+   "fullPage": "ui/phone_wise_page.png"
+  }
+ }
+}

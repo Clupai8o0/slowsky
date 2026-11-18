@@ -1,0 +1,4 @@
+node_modules/
+out/
+# written by `sh scripts/render.sh score` from src/film/timing.ts, the same every time
+public/audio/score*
