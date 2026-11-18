@@ -1,0 +1,52 @@
+{
+ "lines": [
+  {
+   "file": "lines/line1.mp3",
+   "start_frame": 24,
+   "trim_s": 0.0,
+   "len_s": 3.5125,
+   "tempo": 1.0,
+   "end_frame": 108
+  },
+  {
+   "file": "lines/line2.mp3",
+   "start_frame": 132,
+   "trim_s": 0.0,
+   "len_s": 3.8406,
+   "tempo": 1.0,
+   "end_frame": 224
+  },
+  {
+   "file": "lines/line3.mp3",
+   "start_frame": 266,
+   "trim_s": 0.0,
+   "len_s": 5.1995,
+   "tempo": 1.0,
+   "end_frame": 391
+  },
+  {
+   "file": "lines/line4.mp3",
+   "start_frame": 413,
+   "trim_s": 0.0,
+   "len_s": 2.2945,
+   "tempo": 1.0,
+   "end_frame": 468
+  },
+  {
+   "file": "lines/line5.mp3",
+   "start_frame": 494,
+   "trim_s": 0.0,
+   "len_s": 3.7695,
+   "tempo": 1.0,
+   "end_frame": 584
+  },
+  {
+   "file": "lines/line6.mp3",
+   "start_frame": 612,
+   "trim_s": 0.0,
+   "len_s": 1.9699,
+   "tempo": 1.0,
+   "end_frame": 659
+  }
+ ]
+}

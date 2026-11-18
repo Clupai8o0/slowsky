@@ -1,0 +1,255 @@
+{
+ "lufs": -15.0,
+ "true_peak": -1.5,
+ "limiter_cut_db": 2.11,
+ "rows": {
+  "voice": {
+   "peak_dbfs": 0.4,
+   "lufs": -14.1
+  },
+  "effects": {
+   "peak_dbfs": -14.7,
+   "lufs": -30.0
+  },
+  "music": {
+   "peak_dbfs": -11.4,
+   "lufs": -24.8
+  }
+ },
+ "voice_typical_peak_dbfs_premaster": -10.2,
+ "effects_only_mp3_gain_db": 12,
+ "muted_vs_r7a": {
+  "identical_24bit": true,
+  "max_diff_dbfs": -144.5,
+  "residual_vs_r7a_db": -131.5,
+  "voice_gain_change_db": 0.1
+ },
+ "effects": [
+  {
+   "effect": "room_tone",
+   "frame": 0,
+   "seconds": 5.42,
+   "on_word": false,
+   "rms_vs_voice_db": -26.0,
+   "peak_vs_voice_typ_peak_db": -23.9,
+   "note": ""
+  },
+  {
+   "effect": "plates_slide",
+   "frame": 32,
+   "seconds": 1.42,
+   "on_word": true,
+   "rms_vs_voice_db": -19.4,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "glass_ping",
+   "frame": 58,
+   "seconds": 1.42,
+   "on_word": true,
+   "rms_vs_voice_db": -19.0,
+   "peak_vs_voice_typ_peak_db": -18.2,
+   "note": "on a word: 6 dB lower"
+  },
+  {
+   "effect": "comparator_clack_a",
+   "frame": 61,
+   "seconds": 0.22,
+   "on_word": true,
+   "rms_vs_voice_db": -21.3,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "comparator_clack_b",
+   "frame": 69,
+   "seconds": 0.22,
+   "on_word": true,
+   "rms_vs_voice_db": -20.4,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "comparator_clack_c",
+   "frame": 77,
+   "seconds": 0.22,
+   "on_word": true,
+   "rms_vs_voice_db": -19.4,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "comparator_clack_d",
+   "frame": 85,
+   "seconds": 0.22,
+   "on_word": true,
+   "rms_vs_voice_db": -21.0,
+   "peak_vs_voice_typ_peak_db": -16.7,
+   "note": "on a word: 6 dB lower"
+  },
+  {
+   "effect": "comparator_clack_a",
+   "frame": 93,
+   "seconds": 0.22,
+   "on_word": true,
+   "rms_vs_voice_db": -21.3,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "comparator_clack_b",
+   "frame": 101,
+   "seconds": 0.22,
+   "on_word": true,
+   "rms_vs_voice_db": -21.0,
+   "peak_vs_voice_typ_peak_db": -16.6,
+   "note": "on a word: 6 dB lower"
+  },
+  {
+   "effect": "comparator_clack_c",
+   "frame": 109,
+   "seconds": 0.22,
+   "on_word": true,
+   "rms_vs_voice_db": -21.0,
+   "peak_vs_voice_typ_peak_db": -17.6,
+   "note": "on a word: 6 dB lower (same level as its run)"
+  },
+  {
+   "effect": "comparator_clack_d",
+   "frame": 117,
+   "seconds": 0.22,
+   "on_word": true,
+   "rms_vs_voice_db": -21.0,
+   "peak_vs_voice_typ_peak_db": -16.7,
+   "note": "on a word: 6 dB lower (same level as its run)"
+  },
+  {
+   "effect": "air_whoosh",
+   "frame": 114,
+   "seconds": 1.3,
+   "on_word": true,
+   "rms_vs_voice_db": -20.0,
+   "peak_vs_voice_typ_peak_db": -16.5,
+   "note": "on a word: 6 dB lower"
+  },
+  {
+   "effect": "mouse_click",
+   "frame": 175,
+   "seconds": 0.14,
+   "on_word": true,
+   "rms_vs_voice_db": -19.8,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "shutter",
+   "frame": 190,
+   "seconds": 0.14,
+   "on_word": true,
+   "rms_vs_voice_db": -23.1,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "counter_roll",
+   "frame": 328,
+   "seconds": 0.95,
+   "on_word": true,
+   "rms_vs_voice_db": -22.0,
+   "peak_vs_voice_typ_peak_db": -17.4,
+   "note": "on a word: 6 dB lower"
+  },
+  {
+   "effect": "glass_shimmer",
+   "frame": 324,
+   "seconds": 2.6,
+   "on_word": true,
+   "rms_vs_voice_db": -23.0,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "shutter",
+   "frame": 430,
+   "seconds": 0.14,
+   "on_word": true,
+   "rms_vs_voice_db": -23.1,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "shutter",
+   "frame": 444,
+   "seconds": 0.14,
+   "on_word": true,
+   "rms_vs_voice_db": -23.1,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "shutter",
+   "frame": 458,
+   "seconds": 0.14,
+   "on_word": true,
+   "rms_vs_voice_db": -23.1,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "shutter",
+   "frame": 472,
+   "seconds": 0.14,
+   "on_word": true,
+   "rms_vs_voice_db": -23.1,
+   "peak_vs_voice_typ_peak_db": -16.0,
+   "note": "on a word: 6 dB lower (same level as its run) (peak held 16 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "night_air",
+   "frame": 486,
+   "seconds": 7.0,
+   "on_word": false,
+   "rms_vs_voice_db": -26.0,
+   "peak_vs_voice_typ_peak_db": -23.6,
+   "note": ""
+  },
+  {
+   "effect": "counter_roll",
+   "frame": 535,
+   "seconds": 0.95,
+   "on_word": true,
+   "rms_vs_voice_db": -22.0,
+   "peak_vs_voice_typ_peak_db": -17.4,
+   "note": "on a word: 6 dB lower"
+  },
+  {
+   "effect": "low_swell",
+   "frame": 548,
+   "seconds": 2.5,
+   "on_word": true,
+   "rms_vs_voice_db": -24.0,
+   "peak_vs_voice_typ_peak_db": -21.3,
+   "note": "on a word: 6 dB lower"
+  },
+  {
+   "effect": "screen_tap",
+   "frame": 610,
+   "seconds": 0.08,
+   "on_word": false,
+   "rms_vs_voice_db": -11.3,
+   "peak_vs_voice_typ_peak_db": -10.0,
+   "note": "moved -3 frames off a word (peak held 10 dB under the voice's typical peak)"
+  },
+  {
+   "effect": "warm_chime",
+   "frame": 660,
+   "seconds": 2.02,
+   "on_word": false,
+   "rms_vs_voice_db": -12.0,
+   "peak_vs_voice_typ_peak_db": -13.4,
+   "note": "moved +2 frames off a word (tail faded at the film's end)"
+  }
+ ],
+ "missing_effects": []
+}

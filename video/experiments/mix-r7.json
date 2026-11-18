@@ -1,0 +1,35 @@
+{
+ "lufs": -15.1,
+ "true_peak": -1.5,
+ "limiter_cut_db": 2.01,
+ "rows": {
+  "voice": {
+   "peak_dbfs": 0.3,
+   "lufs": -14.2
+  },
+  "effects": {
+   "peak_dbfs": -240.0,
+   "lufs": -Infinity
+  },
+  "music": {
+   "peak_dbfs": -11.5,
+   "lufs": -24.9
+  }
+ },
+ "effects": [],
+ "missing_effects": [
+  "air_whoosh",
+  "comparator_clack",
+  "counter_roll",
+  "glass_ping",
+  "glass_shimmer",
+  "low_swell",
+  "mouse_click",
+  "night_air",
+  "plates_slide",
+  "room_tone",
+  "screen_tap",
+  "shutter",
+  "warm_chime"
+ ]
+}

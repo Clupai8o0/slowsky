@@ -1,0 +1,561 @@
+{
+ "date": "2026-11-15T04:51:10+00:00",
+ "voice_model": "eleven_multilingual_v2",
+ "takes": [
+  [
+   0.5,
+   0.25
+  ],
+  [
+   0.52,
+   0.22
+  ],
+  [
+   0.55,
+   0.2
+  ]
+ ],
+ "r6_tempo": 1.0,
+ "lines": [
+  {
+   "line": 1,
+   "text": "Pluto was found by blinking two photos.",
+   "candidates": [
+    {
+     "words": 7,
+     "want": 7,
+     "s0": 0.0,
+     "s1": 3.627,
+     "dur": 4.83,
+     "len": 3.627,
+     "word_gap": 0.116,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 4.83,
+     "head_db": -50.9,
+     "tail_db": -19.1,
+     "last_letter": 3.483,
+     "bad": [],
+     "take": 1,
+     "stability": 0.5,
+     "style": 0.25,
+     "fit": 0.123
+    },
+    {
+     "words": 7,
+     "want": 7,
+     "s0": 0.0,
+     "s1": 3.512,
+     "dur": 4.598,
+     "len": 3.512,
+     "word_gap": 0.116,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 4.598,
+     "head_db": -50.7,
+     "tail_db": -24.5,
+     "last_letter": 3.413,
+     "bad": [],
+     "take": 2,
+     "stability": 0.52,
+     "style": 0.22,
+     "fit": 0.008
+    },
+    {
+     "words": 7,
+     "want": 7,
+     "s0": 0.0,
+     "s1": 3.192,
+     "dur": 3.762,
+     "len": 3.192,
+     "word_gap": 0.116,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 3.762,
+     "head_db": -51.7,
+     "tail_db": -22.7,
+     "last_letter": 3.1,
+     "bad": [],
+     "take": 3,
+     "stability": 0.55,
+     "style": 0.2,
+     "fit": 0.312
+    }
+   ],
+   "chosen": "take 2: passes, closest to r6 length (3.51 vs 3.50 s)"
+  },
+  {
+   "line": 2,
+   "text": "Slow sky: pick a star, and watch the sky change.",
+   "candidates": [
+    {
+     "words": 10,
+     "want": 10,
+     "s0": 0.0,
+     "s1": 3.841,
+     "dur": 4.319,
+     "len": 3.841,
+     "word_gap": 0.093,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 4.319,
+     "head_db": -42.6,
+     "tail_db": -29.9,
+     "last_letter": 3.866,
+     "bad": [],
+     "take": 1,
+     "stability": 0.5,
+     "style": 0.25,
+     "fit": 0.782
+    },
+    {
+     "words": 10,
+     "want": 10,
+     "s0": 0.0,
+     "s1": 5.679,
+     "dur": 6.734,
+     "len": 5.679,
+     "word_gap": 0.604,
+     "inner": 0.889,
+     "first_word": 0.0,
+     "last_word": 6.734,
+     "head_db": -14.7,
+     "tail_db": -22.8,
+     "last_letter": 5.666,
+     "bad": [
+      "cut at start (-15 dB)",
+      "long pause",
+      "too long for slot (5.68 > 5.13 s)"
+     ],
+     "take": 2,
+     "stability": 0.52,
+     "style": 0.22,
+     "fit": 1.056
+    },
+    {
+     "words": 10,
+     "want": 10,
+     "s0": 0.0,
+     "s1": 5.189,
+     "dur": 5.944,
+     "len": 5.189,
+     "word_gap": 0.604,
+     "inner": 0.829,
+     "first_word": 0.0,
+     "last_word": 5.944,
+     "head_db": -27.5,
+     "tail_db": -27.5,
+     "last_letter": 5.19,
+     "bad": [
+      "cut at start (-27 dB)",
+      "long pause",
+      "too long for slot (5.19 > 5.13 s)"
+     ],
+     "take": 3,
+     "stability": 0.55,
+     "style": 0.2,
+     "fit": 0.566
+    },
+    {
+     "words": 10,
+     "want": 10,
+     "s0": 0.0,
+     "s1": 3.897,
+     "dur": 4.458,
+     "len": 3.897,
+     "word_gap": 0.116,
+     "inner": 0.268,
+     "first_word": 0.0,
+     "last_word": 4.458,
+     "head_db": -24.6,
+     "tail_db": -46.2,
+     "last_letter": 3.889,
+     "bad": [
+      "cut at start (-25 dB)"
+     ],
+     "take": 4,
+     "stability": 0.53,
+     "style": 0.21,
+     "fit": 0.726
+    },
+    {
+     "words": 10,
+     "want": 10,
+     "s0": 0.0,
+     "s1": 4.314,
+     "dur": 5.387,
+     "len": 4.314,
+     "word_gap": 0.244,
+     "inner": 0.508,
+     "first_word": 0.0,
+     "last_word": 5.387,
+     "head_db": -20.4,
+     "tail_db": -24.3,
+     "last_letter": 4.307,
+     "bad": [
+      "cut at start (-20 dB)",
+      "long pause"
+     ],
+     "take": 5,
+     "stability": 0.51,
+     "style": 0.23,
+     "fit": 0.309
+    },
+    {
+     "words": 10,
+     "want": 10,
+     "s0": 0.0,
+     "s1": 4.272,
+     "dur": 4.272,
+     "len": 4.272,
+     "word_gap": 0.116,
+     "inner": 0.366,
+     "first_word": 0.0,
+     "last_word": 4.272,
+     "head_db": -19.1,
+     "tail_db": -13.0,
+     "last_letter": 3.901,
+     "bad": [
+      "cut at start (-19 dB)"
+     ],
+     "take": 6,
+     "stability": 0.54,
+     "style": 0.24,
+     "fit": 0.351
+    }
+   ],
+   "chosen": "take 1: passes, closest to r6 length (3.84 vs 4.62 s)"
+  },
+  {
+   "line": 3,
+   "text": "NASA's SPHEREx maps the sky in a hundred and two infrared colours.",
+   "candidates": [
+    {
+     "words": 12,
+     "want": 12,
+     "s0": 0.0,
+     "s1": 4.866,
+     "dur": 5.944,
+     "len": 4.866,
+     "word_gap": 0.151,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 5.944,
+     "head_db": -35.9,
+     "tail_db": -33.0,
+     "last_letter": 4.807,
+     "bad": [],
+     "take": 1,
+     "stability": 0.5,
+     "style": 0.25,
+     "fit": 0.235
+    },
+    {
+     "words": 12,
+     "want": 12,
+     "s0": 0.0,
+     "s1": 5.199,
+     "dur": 5.944,
+     "len": 5.199,
+     "word_gap": 0.209,
+     "inner": 0.344,
+     "first_word": 0.0,
+     "last_word": 5.944,
+     "head_db": -51.4,
+     "tail_db": -50.6,
+     "last_letter": 5.143,
+     "bad": [],
+     "take": 2,
+     "stability": 0.52,
+     "style": 0.22,
+     "fit": 0.098
+    },
+    {
+     "words": 12,
+     "want": 12,
+     "s0": 0.0,
+     "s1": 4.616,
+     "dur": 5.573,
+     "len": 4.616,
+     "word_gap": 0.151,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 5.573,
+     "head_db": -50.4,
+     "tail_db": -48.4,
+     "last_letter": 4.551,
+     "bad": [],
+     "take": 3,
+     "stability": 0.55,
+     "style": 0.2,
+     "fit": 0.485
+    }
+   ],
+   "chosen": "take 2: passes, closest to r6 length (5.20 vs 5.10 s)"
+  },
+  {
+   "line": 4,
+   "text": "These are real SPHEREx pixels.",
+   "candidates": [
+    {
+     "words": 5,
+     "want": 5,
+     "s0": 0.0,
+     "s1": 2.046,
+     "dur": 2.183,
+     "len": 2.046,
+     "word_gap": 0.117,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 2.183,
+     "head_db": -53.0,
+     "tail_db": -49.9,
+     "last_letter": 1.985,
+     "bad": [],
+     "take": 1,
+     "stability": 0.5,
+     "style": 0.25,
+     "fit": 0.347
+    },
+    {
+     "words": 5,
+     "want": 5,
+     "s0": 0.0,
+     "s1": 3.121,
+     "dur": 3.344,
+     "len": 3.121,
+     "word_gap": 0.243,
+     "inner": 0.236,
+     "first_word": 0.0,
+     "last_word": 3.344,
+     "head_db": -49.1,
+     "tail_db": -21.1,
+     "last_letter": 2.995,
+     "bad": [
+      "too long for slot (3.12 > 2.93 s)"
+     ],
+     "take": 2,
+     "stability": 0.52,
+     "style": 0.22,
+     "fit": 0.728
+    },
+    {
+     "words": 5,
+     "want": 5,
+     "s0": 0.0,
+     "s1": 2.294,
+     "dur": 2.694,
+     "len": 2.294,
+     "word_gap": 0.174,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 2.694,
+     "head_db": -45.7,
+     "tail_db": -20.4,
+     "last_letter": 2.241,
+     "bad": [],
+     "take": 3,
+     "stability": 0.55,
+     "style": 0.2,
+     "fit": 0.099
+    }
+   ],
+   "chosen": "take 3: passes, closest to r6 length (2.29 vs 2.39 s)"
+  },
+  {
+   "line": 5,
+   "text": "Volunteers found over three thousand brown dwarf candidates.",
+   "candidates": [
+    {
+     "words": 8,
+     "want": 8,
+     "s0": 0.0,
+     "s1": 3.77,
+     "dur": 4.087,
+     "len": 3.77,
+     "word_gap": 0.081,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 4.087,
+     "head_db": -50.5,
+     "tail_db": -21.9,
+     "last_letter": 3.704,
+     "bad": [],
+     "take": 1,
+     "stability": 0.5,
+     "style": 0.25,
+     "fit": 0.173
+    },
+    {
+     "words": 8,
+     "want": 8,
+     "s0": 0.0,
+     "s1": 4.491,
+     "dur": 5.433,
+     "len": 4.491,
+     "word_gap": 0.116,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 5.433,
+     "head_db": -51.3,
+     "tail_db": -20.9,
+     "last_letter": 4.412,
+     "bad": [
+      "too long for slot (4.49 > 4.47 s)"
+     ],
+     "take": 2,
+     "stability": 0.52,
+     "style": 0.22,
+     "fit": 0.548
+    },
+    {
+     "words": 8,
+     "want": 8,
+     "s0": 0.0,
+     "s1": 4.134,
+     "dur": 4.598,
+     "len": 4.134,
+     "word_gap": 0.116,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 4.598,
+     "head_db": -29.7,
+     "tail_db": -14.7,
+     "last_letter": 4.087,
+     "bad": [
+      "cut at start (-30 dB)"
+     ],
+     "take": 3,
+     "stability": 0.55,
+     "style": 0.2,
+     "fit": 0.191
+    }
+   ],
+   "chosen": "take 1: passes, closest to r6 length (3.77 vs 3.94 s)"
+  },
+  {
+   "line": 6,
+   "text": "Now anyone can join the hunt.",
+   "candidates": [
+    {
+     "words": 6,
+     "want": 6,
+     "s0": 0.0,
+     "s1": 2.04,
+     "dur": 2.322,
+     "len": 2.04,
+     "word_gap": 0.081,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 2.322,
+     "head_db": -65.4,
+     "tail_db": -57.3,
+     "last_letter": 1.962,
+     "bad": [],
+     "take": 1,
+     "stability": 0.5,
+     "style": 0.25,
+     "fit": 0.04
+    },
+    {
+     "words": 6,
+     "want": 6,
+     "s0": 0.0,
+     "s1": 1.97,
+     "dur": 2.276,
+     "len": 1.97,
+     "word_gap": 0.116,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 2.276,
+     "head_db": -78.8,
+     "tail_db": -82.5,
+     "last_letter": 1.916,
+     "bad": [],
+     "take": 2,
+     "stability": 0.52,
+     "style": 0.22,
+     "fit": 0.03
+    },
+    {
+     "words": 6,
+     "want": 6,
+     "s0": 0.0,
+     "s1": 1.831,
+     "dur": 2.183,
+     "len": 1.831,
+     "word_gap": 0.116,
+     "inner": 0.0,
+     "first_word": 0.0,
+     "last_word": 2.183,
+     "head_db": -50.6,
+     "tail_db": -72.2,
+     "last_letter": 1.776,
+     "bad": [],
+     "take": 3,
+     "stability": 0.55,
+     "style": 0.2,
+     "fit": 0.169
+    }
+   ],
+   "chosen": "take 2: passes, closest to r6 length (1.97 vs 2.00 s)"
+  }
+ ],
+ "hit_moved": {},
+ "chars_sent": 144,
+ "costs": [
+  "19",
+  "19",
+  "19"
+ ],
+ "placement": [
+  {
+   "file": "lines/line1.mp3",
+   "start_frame": 24,
+   "trim_s": 0.0,
+   "len_s": 3.5125,
+   "tempo": 1.0,
+   "end_frame": 108
+  },
+  {
+   "file": "lines/line2.mp3",
+   "start_frame": 132,
+   "trim_s": 0.0,
+   "len_s": 3.8406,
+   "tempo": 1.0,
+   "end_frame": 224
+  },
+  {
+   "file": "lines/line3.mp3",
+   "start_frame": 266,
+   "trim_s": 0.0,
+   "len_s": 5.1995,
+   "tempo": 1.0,
+   "end_frame": 391
+  },
+  {
+   "file": "lines/line4.mp3",
+   "start_frame": 413,
+   "trim_s": 0.0,
+   "len_s": 2.2945,
+   "tempo": 1.0,
+   "end_frame": 468
+  },
+  {
+   "file": "lines/line5.mp3",
+   "start_frame": 494,
+   "trim_s": 0.0,
+   "len_s": 3.7695,
+   "tempo": 1.0,
+   "end_frame": 584
+  },
+  {
+   "file": "lines/line6.mp3",
+   "start_frame": 612,
+   "trim_s": 0.0,
+   "len_s": 1.9699,
+   "tempo": 1.0,
+   "end_frame": 659
+  }
+ ]
+}
