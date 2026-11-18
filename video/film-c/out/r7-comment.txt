@@ -1,0 +1,1 @@
+Slowsky demo film (round 7). AI images: OpenAI gpt-image-2; AI voice: ElevenLabs eleven_multilingual_v2; AI sound effects: ElevenLabs eleven_text_to_sound_v3.

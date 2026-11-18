@@ -1,0 +1,13 @@
+Slowsky lets anyone pick a star and watch the sky change, by blinking real NASA SPHEREx pictures of the same spot taken months apart. Try it: slowsky.clupai.com
+
+AI disclosure:
+- Images: the painted backgrounds and elements were made with OpenAI GPT Image (model gpt-image-2). They are decoration only, never data.
+- Voice: the narration is an AI voice, not a person: ElevenLabs, library voice "Adam Stone (Smooth, Deep and Relaxed)", model eleven_multilingual_v2.
+- Sound effects: every sound effect and room sound (plate clacks, clicks, shutter, chimes, night air) was made with ElevenLabs text to sound effects, model eleven_text_to_sound_v3. The music bed is a simple synthesised pad written in code, not AI.
+- Script and code: the narration words and the film's animation code were written with Claude (Anthropic); parts of the code were reviewed with Codex (OpenAI).
+- What each AI tool made, with the prompts: https://github.com/Clupai8o0/slowsky/blob/main/SOURCES.md#ai-generated-content
+
+The sky pictures are real NASA SPHEREx data.
+Data: NASA SPHEREx via IRSA (NASA/IPAC). Gaia: ESA/Gaia/DPAC.
+
+Team Clupai · Melbourne · NASA Space Apps Challenge 2026 · Challenge: Planet X and SPHEREx

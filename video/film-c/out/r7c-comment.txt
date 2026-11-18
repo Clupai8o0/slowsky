@@ -1,0 +1,1 @@
+AI disclosure: images made with OpenAI gpt-image-2 (decoration, never data); narration is an AI voice made with ElevenLabs eleven_multilingual_v2. Sound effects and the music bed are synthesised in code (numpy); the code was written with Claude Opus 5.5. No recordings, no AI audio model for the effects.
