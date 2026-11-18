@@ -1,0 +1,122 @@
+{
+  "__typename": "LocationPage",
+  "id": "aWQ6NTQ2OTI=",
+  "title": "Melbourne",
+  "meta": {
+    "type": "LOCATION",
+    "slug": "melbourne",
+    "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+    "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+    "relativeUrl": "/2026/local-events/melbourne/",
+    "live": true,
+    "parent": {
+      "id": "aWQ6NTM3MzY="
+    }
+  },
+  "breadcrumbs": [
+    {
+      "name": "Home",
+      "link": "/"
+    },
+    {
+      "name": "2026 NASA Space Apps Challenge",
+      "link": "/2026/"
+    },
+    {
+      "name": "2026 Local Events",
+      "link": "/2026/local-events/"
+    },
+    {
+      "name": "Melbourne",
+      "link": "/2026/local-events/melbourne/"
+    }
+  ],
+  "event": "aWQ6NA==",
+  "schedule": [
+    {
+      "title": "Welcome with Guest Speakers",
+      "startDate": "2026-11-14T09:30:00",
+      "endDate": null,
+      "description": "Welcome to the event - in-person and online (Teams)."
+    },
+    {
+      "title": "Event Close",
+      "startDate": "2026-11-15T23:59:00",
+      "endDate": null,
+      "description": "11.59pm is when project submission closes."
+    }
+  ],
+  "isRegistrationOpen": true,
+  "isHostEvent": false,
+  "isHybrid": true,
+  "isVirtual": false,
+  "isWaitlist": false,
+  "cachedRegistrations": 160,
+  "cachedWaitlist": 0,
+  "realTimeRegistrations": 76,
+  "realTimeVirtualRegistrations": 84,
+  "realTimeWaitlist": 0,
+  "realTimeVirtualWaitlist": 0,
+  "displayName": "",
+  "eventType": "Virtual & In-Person",
+  "memberships": [
+    {
+      "user": "aWQ6Y2FhMWM0M2YtNzg2Zi00YmIzLWE5MTUtMWY1Y2I0NTQ0ZTY0",
+      "userDetails": {
+        "id": "aWQ6Y2FhMWM0M2YtNzg2Zi00YmIzLWE5MTUtMWY1Y2I0NTQ0ZTY0",
+        "fullName": "Sarah",
+        "username": "sarahjane",
+        "country": "Cyprus",
+        "avatar": {
+          "id": "aWQ6MTU2Ng==",
+          "meta": {
+            "type": "images.CustomImage",
+            "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/IMG_7207.jpeg"
+          },
+          "title": "avatar.08:52:25.288823",
+          "alt": "avatar.08:52:25.288823",
+          "caption": "avatar.08:52:25.288823",
+          "displaySize": "or",
+          "rendition": {
+            "url": "https://assets.spaceappschallenge.org/media/images/IMG_7207.2e16d0ba.fill-64x64.jpg",
+            "fullUrl": "https://assets.spaceappschallenge.org/media/images/IMG_7207.2e16d0ba.fill-64x64.jpg",
+            "height": 64,
+            "width": 64
+          }
+        }
+      }
+    }
+  ],
+  "contactEmail": "sarah@tomorrowx.com.au",
+  "socialLinks": "",
+  "country": "Australia",
+  "venueName": "Inspire9",
+  "venueAddress": "Level 1, 41–43 Stewart St Richmond VIC 3121",
+  "venueGeoLocation": {
+    "type": "Point",
+    "coordinates": [
+      144.9633,
+      -37.814
+    ]
+  },
+  "featuredImage": null,
+  "contactDescription": "",
+  "richtextAlert": "",
+  "richtextContent": "<blockquote><b><strong style=\"white-space:pre-wrap\">Join us in Melbourne for NASA’s Space Apps Challenge this November 14/15.</strong></b></blockquote><blockquote><b><strong style=\"white-space:pre-wrap\">Sign up to participate now!</strong></b></blockquote><p><b><strong style=\"white-space:pre-wrap\">Who can participate?</strong></b><span style=\"white-space:pre-wrap\"> Anyone from students, programmers, technologists and scientists to designers, entrepreneurs, and artists.</span></p><p><b><strong style=\"white-space:pre-wrap\">What are the challenges?</strong></b><span style=\"white-space:pre-wrap\"> There are challenge categories spanning issues on Earth and in space. More information on the challenges can be found on the Challenges page.</span></p><p><b><strong style=\"white-space:pre-wrap\">What do I need to do?</strong></b><span style=\"white-space:pre-wrap\"> Register now (space is limited) find a team, pick a project and spend as much time as possible building your solution and preparing your presentation.</span></p><p><b><strong style=\"white-space:pre-wrap\">Can I make my team beforehand?</strong></b><span style=\"white-space:pre-wrap\">  Yes. Form a group but register individually. We will let you know how you can meet prospective team members online.</span></p><p><b><strong style=\"white-space:pre-wrap\">How much does it cost?</strong></b><span style=\"white-space:pre-wrap\"> It’s free!</span></p><p><b><strong style=\"white-space:pre-wrap\">When is it? </strong></b><span style=\"white-space:pre-wrap\">The event will run from Friday 13 November (welcome and getting ready) through to 11.59pm on Sunday 15 November.</span></p><p><b><strong style=\"white-space:pre-wrap\">Where is it?</strong></b><span style=\"white-space:pre-wrap\"> The event will be in-person and virtual. The location is </span><a href=\"https://www.inspire9.com/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><span style=\"white-space:pre-wrap\">Inspire9</span></a><span style=\"white-space:pre-wrap\"> in Richmond (</span><a href=\"https://www.inspire9.com/contact\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><span style=\"white-space:pre-wrap\">https://www.inspire9.com/contact</span></a><span style=\"white-space:pre-wrap\">).</span></p><p><span style=\"white-space:pre-wrap\">Thank you to our sponsors for 2026:</span></p><img alt=\"upload_image.22:26:52.640130\" class=\"richtext-image left\" data-format=\"left\" data-id=\"544480\" height=\"86\" src=\"https://assets.spaceappschallenge.org/media/images/sponsors_lsY8Zcs.width-500.jpg\" width=\"500\">",
+  "registrationEnabled": true,
+  "registrationLimit": 200,
+  "virtualRegistrationLimit": 200,
+  "autoPromoteWaitlist": null,
+  "timezone": "Australia/Melbourne",
+  "startDate": null,
+  "endDate": null,
+  "submissionDeadline": null,
+  "liveStreamUrl": "",
+  "liveStreamStartDate": null,
+  "liveStreamEndDate": null,
+  "projectsSubmitted": null,
+  "availableNominations": null,
+  "peoplesChoiceTeam": null,
+  "teamNominations": null,
+  "owner": "aWQ6Y2FhMWM0M2YtNzg2Zi00YmIzLWE5MTUtMWY1Y2I0NTQ0ZTY0"
+}

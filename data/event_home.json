@@ -1,0 +1,178 @@
+{
+  "__typename": "EventHomePage",
+  "id": "aWQ6NTM3MzU=",
+  "title": "2026 NASA Space Apps Challenge",
+  "meta": {
+    "type": "EVENTHOME",
+    "slug": "2026",
+    "firstPublishedAt": "2026-08-03T16:55:52.800000Z",
+    "lastPublishedAt": "2026-11-13T22:41:49.019923Z",
+    "relativeUrl": "/2026/",
+    "live": true,
+    "parent": {
+      "id": "aWQ6Mw=="
+    }
+  },
+  "heroContent": "<h2 data-block-key=\"uhq02\"><b>Welcome to the 2026 NASA Space Apps Challenge!</b></h2><p data-block-key=\"4e2vc\">Join us and explore <i>The Next Frontier</i> on November 14-15.</p>",
+  "includeEventCtas": false,
+  "featuredImage": {
+    "id": "aWQ6MzkyMDg5",
+    "meta": {
+      "type": "images.CustomImage",
+      "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/2026_theme_website_hero_v10.png"
+    },
+    "title": "2026 theme website hero v10",
+    "alt": "The Next Frontier theme shows an astronaut in a blue space suit on the moon looking towards Mars, with Mars appearing in the reflection of the astronaut's helmet.",
+    "caption": "2026 theme website hero v10",
+    "displaySize": "or",
+    "rendition": {
+      "url": "https://assets.spaceappschallenge.org/media/images/2026_theme_website_hero_v10.2e16d0ba.fill-785x660.png",
+      "fullUrl": "https://assets.spaceappschallenge.org/media/images/2026_theme_website_hero_v10.2e16d0ba.fill-785x660.png",
+      "height": 660,
+      "width": 785
+    }
+  },
+  "event": "aWQ6NA==",
+  "content": [
+    {
+      "__typename": "EventTaskGroupBlock",
+      "id": "565cadc7-045c-432e-bc80-fa8751df547f",
+      "type": "EVENTTASKS",
+      "value": {
+        "title": "",
+        "event": {
+          "__typename": "GlobalEvent",
+          "id": "aWQ6NA==",
+          "name": "2026 NASA Space Apps Challenge",
+          "displayName": null,
+          "slug": "2026",
+          "status": 2,
+          "startDate": null,
+          "endDate": null,
+          "certificate": null,
+          "createRegistrationForm": null,
+          "editRegistrationForm": null,
+          "createLocalEventRegistrationForm": null,
+          "editLocalEventRegistrationForm": null,
+          "participantEditLocalEventRegistrationForm": null,
+          "createTeamForm": null,
+          "timezone": null,
+          "teamMemberLimit": null,
+          "eventRegistrationStatus": 2,
+          "localEventRegistrationStatus": 6,
+          "teamRegistrationStatus": 6,
+          "isTeamPagesActive": null,
+          "isAwardsActive": null,
+          "isChallengePagesActive": null,
+          "localEventEditStatus": 5,
+          "teamEditStatus": 5,
+          "teamStreamEditStatus": 0,
+          "projectEditStatus": 4,
+          "localEventJudgingStatus": 0,
+          "nominationJudgingStatus": 0,
+          "projectFields": null
+        },
+        "tasks": [
+          {
+            "title": "CREATE ACCOUNT",
+            "endDate": "2026-08-26T12:00:00Z",
+            "url": "",
+            "popup": "create_account",
+            "completionAction": "popup",
+            "actionLabel": "Create Account",
+            "isComplete": false,
+            "description": "The first step in your hackathon journey is to create a NASA Space Apps account or log in to your existing account.",
+            "completionCondition": "is_user"
+          },
+          {
+            "title": "REGISTER FOR THE HACKATHON",
+            "endDate": "2026-08-26T12:00:00Z",
+            "url": "",
+            "popup": "event_registration",
+            "completionAction": "popup",
+            "actionLabel": "Register",
+            "isComplete": false,
+            "description": "To participate and be eligible for Global Judging, you must first register for the 2026 NASA Space Apps Challenge. You can register up until the hackathon closes on November 15.",
+            "completionCondition": "has_event_registration"
+          },
+          {
+            "title": "CHOOSE A LOCAL EVENT",
+            "endDate": "2026-08-26T12:00:00Z",
+            "url": "/2026/local-events/",
+            "popup": "",
+            "completionAction": "page",
+            "actionLabel": "Choose a Local Event",
+            "isComplete": false,
+            "description": "Connect with the NASA Space Apps community by choosing an in-person or virtual Local Event near you. If you don’t have a Local Event near you, choose the virtual Universal Event. You can choose or change your event up until the hackathon closes on November 15.",
+            "completionCondition": "has_local_event_registration"
+          },
+          {
+            "title": "JOIN OR FORM A TEAM",
+            "endDate": "2026-09-17T12:00:00Z",
+            "url": "/2026/find-a-team/",
+            "popup": "",
+            "completionAction": "page",
+            "actionLabel": "Browse Teams",
+            "isComplete": false,
+            "description": "Collaborate with participants by forming or joining a team according to your chosen challenge. Teams should have no more than six participants. You can choose or change your team up until the hackathon closes on November 15.",
+            "completionCondition": "has_team"
+          },
+          {
+            "title": "SUBMIT A PROJECT",
+            "endDate": "2026-11-15T12:00:00Z",
+            "url": "/resources/project-submission-guide/",
+            "popup": "",
+            "completionAction": "page",
+            "actionLabel": "Learn about Project Submission",
+            "isComplete": false,
+            "description": "To edit and submit your project, go to the Project Tab on your Team’s page. Project submission opens on Saturday, November 14 at 9:00 AM and closes on Sunday, November 15 at 11:59 PM local time. Submit your project to receive a participant certificate and to be eligible for Global Judging. We encourage all participants to submit what they accomplish over the course of the hackathon.",
+            "completionCondition": "has_submitted_project"
+          },
+          {
+            "title": "Complete the Participant Survey",
+            "endDate": "2026-11-30T23:00:00Z",
+            "url": "",
+            "popup": "",
+            "completionAction": "none",
+            "actionLabel": "Take the Survey",
+            "isComplete": false,
+            "description": "Share your feedback about your hackathon journey to help improve future events.",
+            "completionCondition": ""
+          }
+        ]
+      }
+    },
+    {
+      "__typename": "GroupBlock",
+      "id": "b5a751e2-89b8-45a5-b024-7bdeb1fb2a9f",
+      "type": "GROUP",
+      "value": {
+        "theme": "deep-blue",
+        "layout": {
+          "direction": "column",
+          "justify": "start",
+          "align": "top"
+        },
+        "backgroundImage": null,
+        "blocks": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "faebf63e-b00a-4f18-9bf0-0a72c1d409dc",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<h2 data-block-key=\"0fqor\">Global Collaborators</h2><p data-block-key=\"a07nc\">NASA Space Apps Challenge Global Collaborators are companies or organizations that provide free tools and resources, called Global Offers, to support participants in the creation of their projects. Thank you to the 2026 Global Collaborators!</p><ul><li data-block-key=\"f578e\">GoDaddy</li><li data-block-key=\"4gobc\">Google</li><li data-block-key=\"39jru\">Meteomatics</li><li data-block-key=\"90pa2\">Microsoft</li><li data-block-key=\"dqp5d\">Miro</li></ul>"
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "05b3ac98-bb6d-4e69-adcb-c8ae0382d8a6",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<h2 data-block-key=\"1cysj\">Amplification Collaborators</h2><p data-block-key=\"bd3aq\">NASA Space Apps Challenge Amplification Collaborators are companies or organizations that promote the NASA Space Apps Challenge to their communities. Thank you to the 2026 Amplification Collaborators!</p><ul><li data-block-key=\"egugg\">100sClub</li><li data-block-key=\"a19a5\">American International University-Bangladesh</li><li data-block-key=\"2hhe2\">American University of Kuwait</li><li data-block-key=\"2q451\">Association of Public and Land-grant Universities</li><li data-block-key=\"4d1ab\">Astronomy Club of École Nationale Supérieure d’Informatique (Astrotech)</li><li data-block-key=\"9339r\">Bluethumb Technologies</li><li data-block-key=\"5ujmf\">Ceylon Institute of Space Science</li><li data-block-key=\"856im\">CodeCoogs</li><li data-block-key=\"77m9p\">Colegio Teresiano de Managua</li><li data-block-key=\"fp9qi\">Destination Imagination</li><li data-block-key=\"11o3d\">Earth and Beyond</li><li data-block-key=\"drgei\">FAVELAB</li><li data-block-key=\"3idg8\">Fundación Hiperactiva</li><li data-block-key=\"87j\">Google DeepMind</li><li data-block-key=\"6e6d8\">Humansphere Foundation</li><li data-block-key=\"2ab8b\">IEEE Student Branch at Universidad Nacional del Altiplano (IEEE UNAP Student Branch)</li><li data-block-key=\"4npbb\">iXsteam</li><li data-block-key=\"ek0a4\">KCG College of Technology</li><li data-block-key=\"15co6\">Kodland</li><li data-block-key=\"e6frm\">National STEM Honor Society</li><li data-block-key=\"en49f\">Orion's Belt in Space Inc.</li><li data-block-key=\"qikp\">Open Lunar Foundation</li><li data-block-key=\"46jud\">Presidential School in Termez</li><li data-block-key=\"1cjdt\">Purdue Space Program</li><li data-block-key=\"bcvm7\">South Carolina Space Grant Consortium</li><li data-block-key=\"frhn4\">Space Innovation Camp</li><li data-block-key=\"bbps0\">SYGNITO (SpaceSphere Live)</li><li data-block-key=\"ab8p\">Tech and Hi Limited</li><li data-block-key=\"2eter\">The City School-Chenab Campus</li><li data-block-key=\"d6f56\">Unique World Robotics LLC</li><li data-block-key=\"510o4\">Universidad Internacional Isabel I de Castilla</li><li data-block-key=\"4qmak\">Washington University of Science and Technology</li><li data-block-key=\"18qnv\">We Makers Education</li><li data-block-key=\"f7028\">Zone01 Kisumu</li></ul>"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

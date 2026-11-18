@@ -1,0 +1,545 @@
+// Slowsky mockup: the Guide dialog and the tour step list. Plain script, sets window.SlowskyGuide.
+// Words come from help.js (CONTROL_HELP, GLOSSARY), the data-help attributes in index.html and the product's
+// credit lines (slowsky src/ui/app.ts, src/lib/sharecard.ts, src/lib/epoch.ts, DATA-LICENSES.md). Nothing new
+// about the sky is said here; lines with no checked words only say what the control does on this page.
+(function () {
+    'use strict';
+
+    const H = window.CONTROL_HELP || {};
+    const G = window.GLOSSARY || {};
+
+    function ch(id, fallback)
+    {
+        return (H[id] && H[id].line) || fallback || '';
+    }
+
+    function chName(id, fallback)
+    {
+        return (H[id] && H[id].name) || fallback;
+    }
+
+    // ---------- tour: one step per feature group, in the order a beginner meets them ----------
+    const tourSteps = [
+        { sel: '#stage', title: window.HELP_TITLE || 'What am I looking at?', line: window.HELP_INTRO || '', prep: 'close-inspector' },
+        { sel: '#ws-sky', title: 'Sky library and My frames', line: 'Sky library: five saved targets, real SPHEREx pixels. My frames: your own frames, processed in this browser.', prep: null },
+        { sel: '#target-btn', title: 'Pick a target', line: 'Pick a target, or search a star or RA, Dec. Press / or ⌘K.', prep: null },
+        { sel: '#timeline', title: 'Blink and the timeline', line: ch('blink') + ' Play, step and set the speed here; drag along the dates to pick one.', prep: 'mode:blink' },
+        { sel: '[data-mode=stack]', title: chName('stack', 'Stack'), line: ch('stack'), prep: null },
+        { sel: '#ab', title: chName('subtract', 'Subtract'), line: ch('subtract') + ' A + B adds the two visits instead, so both dates show at once.', prep: 'mode:subtract' },
+        { sel: '#inspector', title: chName('changes', 'Candidate changes'), line: ch('changes'), prep: 'inspector:cands' },
+        { sel: '#tools', title: 'Tools', line: 'Loupe magnifies the real pixels under the pointer, 2x. Compare: hold to see the first visit. Ring: where the target\'s measured motion puts it on this date. Trail: the ring\'s place on the other dates.', prep: 'close-inspector' },
+        { sel: '[data-tool=gaia]', title: 'Layers', line: 'Four layers you can turn on over the picture: brightest Gaia stars, flagged pixels, false colour and an older picture.', prep: null },
+        { sel: '#hud-scale', title: 'Zoom, field, fit and focus', line: ch('field') + ' Zoom in and out, fit the whole picture, or press F to hide the side panels so the sky fills the screen.', prep: null },
+        { sel: '#track-colour', title: chName('colour', 'Change the colour'), line: ch('colour'), prep: null },
+        { sel: '#inspector', title: 'Target and Frame tabs', line: 'Details on this target and frame. The Target tab also has what to look for, and when it is up tonight from Melbourne.', prep: 'inspector:info' },
+        { sel: '#inspector', title: 'Charts', line: 'Brightness over time, the spectrum and the halo over time. ' + ch('spectrum'), prep: 'inspector:charts' },
+        { sel: '#inspector', title: chName('aiNote', 'AI note'), line: ch('aiNote'), prep: 'inspector:ai' },
+        { sel: '#inspector', title: 'Extras', line: 'The comet 3I/ATLAS card, the Planet Nine chart, and the sources and credits.', prep: 'inspector:extras' },
+        { sel: '#upload-btn', title: 'Upload', line: 'Add your own FITS, PNG or JPG frames. They stay in this browser.', prep: 'close-inspector' },
+        { sel: '#hist', title: 'Undo, save and share', line: 'Undo or redo a view, date or zoom change. Save a picture of A, B and B − A, with the dates and target name, or copy a link to this view.', prep: null },
+        { sel: '#guide-btn', title: 'The guide lists everything', line: 'Every control, key and word on this page is explained in the guide (G). Labels (?) shows a label under every tool; T switches light or dark.', prep: null },
+    ];
+
+    const STEP = { start: 0, ws: 1, target: 2, blink: 3, stack: 4, sub: 5, cands: 6, tools: 7, layers: 8, zoom: 9,
+        colour: 10, info: 11, charts: 12, ai: 13, extras: 14, upload: 15, hist: 16, guide: 17 };
+
+    // ---------- every control, grouped by where it sits ----------
+    // [icon id or '', name, line, key, tour step]
+    const CONTROLS = [
+        { group: 'Top bar', rows: [
+            ['', 'Sky library', 'Five saved targets, real SPHEREx pixels.', '', STEP.ws],
+            ['', 'My frames', 'Your own frames, processed in this browser.', '', STEP.ws],
+            ['', 'Target', 'Pick a target, or search a star or RA, Dec.', '/ or ⌘K', STEP.target],
+            ['i-undo', 'Undo', 'Undo: go back one step, such as a view, date or zoom change.', '⌘Z', STEP.hist],
+            ['i-redo', 'Redo', 'Redo: go forward again.', '⇧⌘Z, Ctrl+Y', STEP.hist],
+            ['i-upload', 'Upload', 'Add your own FITS, PNG or JPG frames. They stay in this browser.', 'U', STEP.upload],
+            ['i-help', 'Labels', 'Show a label under every tool.', '?', STEP.guide],
+            ['i-book', 'Guide', 'Every control, key and word on this page explained.', 'G', STEP.guide],
+            ['i-share', 'Copy link', 'Copy a link to this view.', '', STEP.hist],
+            ['i-save', 'Save picture', 'Save a picture of A, B and B − A, with the dates and target name.', '', STEP.hist],
+            ['i-theme', 'Theme', 'Light or dark.', 'T', STEP.guide],
+        ] },
+        { group: 'Views', rows: [
+            ['', chName('blink', 'Blink'), ch('blink'), 'B', STEP.blink],
+            ['', chName('stack', 'Stack'), ch('stack'), 'S', STEP.stack],
+            ['', chName('subtract', 'Subtract'), ch('subtract'), 'D', STEP.sub],
+        ] },
+        { group: 'Subtract', rows: [
+            ['', 'A and B dates', 'The two visits being compared: A is the earlier, B the later. Pick them on the timeline.', '', STEP.sub],
+            ['', 'B − A', 'B − A: takes the earlier visit away from the later one.', '', STEP.sub],
+            ['', 'A + B', 'A + B adds the two visits instead, so both dates show at once.', '', STEP.sub],
+        ] },
+        { group: 'Tools', rows: [
+            ['i-loupe', 'Loupe', 'Magnifies the real pixels under the pointer, 2x.', 'L', STEP.tools],
+            ['i-hold', 'Compare', 'Hold to see the first visit; let go to come back.', 'H (hold)', STEP.tools],
+            ['i-ring', 'Ring', 'Gold ring: where the target\'s measured motion puts it on this date.', 'R', STEP.tools],
+            ['i-trail', 'Trail', 'Dots: the ring\'s place on the other dates.', '', STEP.tools],
+            ['i-find', chName('changes', 'Candidate changes'), ch('changes'), '', STEP.cands],
+            ['i-inspect', 'Inspect', 'Details on this target and frame.', 'I', STEP.info],
+            ['i-focus', 'Focus', 'Hide the side panels so the sky fills the screen.', 'F', STEP.zoom],
+        ] },
+        { group: 'Layers', rows: [
+            ['i-gaia', chName('gaia', 'Brightest Gaia stars'), ch('gaia'), '', STEP.layers],
+            ['i-flags', chName('flags', 'Flagged pixels'), ch('flags'), '', STEP.layers],
+            ['i-falsecolour', chName('falseColour', 'False colour'), ch('falseColour'), '', STEP.layers],
+            ['i-epoch', chName('epoch', 'Older picture'), ch('epoch'), '', STEP.layers],
+        ] },
+        { group: 'Picture corners', rows: [
+            ['', chName('field', 'Field'), ch('field') + ' Choose 0.1°, 0.25°, 0.5° or 1°; the saved copy holds the 0.1° field only.', '', STEP.zoom],
+            ['i-zoom', 'Zoom', 'Zoom in and out of the picture.', 'Scroll, pinch', STEP.zoom],
+            ['i-fit', 'Fit', 'Fit the whole picture.', 'Double-click', STEP.zoom],
+            ['', 'Scale bar', 'Shows how much sky a length on the picture covers.', '', STEP.zoom],
+            ['', 'Compass', 'North is up, east is left.', '', STEP.zoom],
+            ['', 'Where in the sky', 'A small map showing where this patch sits in the whole sky.', '', STEP.start],
+            ['i-warn', 'Caveat', 'What this target\'s pictures can\'t tell you.', '', STEP.start],
+        ] },
+        { group: 'Timeline and playback', rows: [
+            ['i-prev', 'Previous date', 'Step back one date.', '← or [', STEP.blink],
+            ['i-play', 'Play / pause', 'Flip through the dates on its own, or stop.', 'Space', STEP.blink],
+            ['i-next', 'Next date', 'Step forward one date.', '→ or ]', STEP.blink],
+            ['', 'Speed', 'Play at ½×, 1× or 2×.', '', STEP.blink],
+            ['', 'Dates', 'One mark per date. Click or drag along it to pick a date.', '← → on the playhead', STEP.blink],
+        ] },
+        { group: 'Colour', rows: [
+            ['', chName('colour', 'Change the colour'), ch('colour'), '← → on the slider', STEP.colour],
+        ] },
+        { group: 'Inspector tabs', rows: [
+            ['', 'Target', 'Details on this target, what to look for, and when it is up tonight from Melbourne.', '', STEP.info],
+            ['', 'Frame', 'Details on the frame on screen.', '', STEP.info],
+            ['', 'Candidates', ch('changes'), '', STEP.cands],
+            ['', 'Charts', 'Brightness over time, the spectrum and the halo over time.', '', STEP.charts],
+            ['', chName('spectrum', 'Spectrum'), ch('spectrum'), '', STEP.charts],
+            ['', chName('aiNote', 'AI note'), ch('aiNote'), '', STEP.ai],
+            ['', 'Extras', 'The comet 3I/ATLAS card, the Planet Nine chart, and the sources and credits.', '', STEP.extras],
+        ] },
+        { group: 'Status bar', rows: [
+            ['', 'Help line', 'Explains whatever the pointer is over.', '', STEP.start],
+            ['', 'Coordinates', 'The sky position under the pointer (RA, Dec). Click to copy it.', '', STEP.start],
+            ['', 'AI used', 'Which parts of this site were made with AI tools.', '', STEP.start],
+        ] },
+    ];
+
+    const KEYS = [
+        ['B, S, D', 'Blink, Stack, Subtract'],
+        ['← → or [ ]', 'Previous or next date'],
+        ['Space', 'Play or pause'],
+        ['H (hold)', 'Compare: see the first visit while held'],
+        ['L', 'Loupe'],
+        ['R', 'Target ring'],
+        ['I', 'Inspector'],
+        ['F', 'Focus: hide the side panels'],
+        ['U', 'Upload'],
+        ['T', 'Light or dark'],
+        ['/ or ⌘K', 'Target picker'],
+        ['↑ ↓, Enter', 'Move through and pick in the target list'],
+        ['?', 'Show labels'],
+        ['G', 'This guide'],
+        ['⌘Z', 'Undo'],
+        ['⇧⌘Z or Ctrl+Y', 'Redo'],
+        ['Esc', 'Close panels'],
+        ['Scroll wheel', 'Zoom the picture'],
+        ['Double-click', 'Fit the whole picture'],
+        ['Drag the picture', 'Move around when zoomed in'],
+        ['Pinch', 'Zoom on a touch screen'],
+        ['Press and hold the picture', 'Compare on a touch screen'],
+    ];
+
+    const DATA = [
+        'SPHEREx DR1, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA678',
+        'SPHEREx QR3, NASA/IPAC Infrared Science Archive, doi:10.26131/IRSA662',
+        'Rings: ESA, Gaia DPAC; Gaia DR3, doi:10.5270/esa-qa4lep3 (CC BY-NC 3.0 IGO)',
+        'Older picture: 2MASS, University of Massachusetts & IPAC/Caltech',
+        'This research has made use of the SIMBAD database, operated at CDS, Strasbourg, France',
+        'Made with AI-written code (Claude, Codex, Gemini)',
+        'A difference between two visits is a candidate only, not a confirmed change.',
+    ];
+
+    // ---------- DOM ----------
+    let root = null;
+    let panel = null;
+    let body = null;
+    let search = null;
+    let navLinks = [];
+    let opener = null;
+    let uid = 0;
+
+    function el(tag, cls, text)
+    {
+        const n = document.createElement(tag);
+        if (cls) {
+            n.className = cls;
+        }
+        if (text != null) {
+            n.textContent = text;
+        }
+        return n;
+    }
+
+    function icon(id)
+    {
+        const ns = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('class', 'ic');
+        svg.setAttribute('aria-hidden', 'true');
+        const use = document.createElementNS(ns, 'use');
+        use.setAttribute('href', '#' + id);
+        svg.appendChild(use);
+        return svg;
+    }
+
+    function section(id, title)
+    {
+        const s = el('section', 'guide-sec');
+        s.id = 'guide-' + id;
+        s.dataset.sec = id;
+        const h = el('h3', 'guide-h', title);
+        s.appendChild(h);
+        return s;
+    }
+
+    function showStep(i)
+    {
+        close();
+        const api = window.SlowskyGuide;
+        if (api && typeof api.onShow === 'function') {
+            api.onShow(i);
+        }
+    }
+
+    function buildStart()
+    {
+        const s = section('start', window.HELP_TITLE || 'What am I looking at?');
+        s.appendChild(el('p', 'guide-lead', window.HELP_INTRO || ''));
+        const b = el('button', 'btn guide-tour', 'Take the tour');
+        b.type = 'button';
+        b.addEventListener('click', () => {
+            showStep(0);
+        });
+        s.appendChild(b);
+        return s;
+    }
+
+    function buildControls()
+    {
+        const s = section('controls', 'Every control');
+        CONTROLS.forEach((g) => {
+            const wrap = el('div', 'guide-group');
+            wrap.appendChild(el('h4', 'guide-gh', g.group));
+            const list = el('ul', 'guide-rows');
+            g.rows.forEach((r) => {
+                const li = el('li', 'guide-row');
+                li.dataset.find = (r[1] + ' ' + r[2] + ' ' + r[3] + ' ' + g.group).toLowerCase();
+                const ic = el('span', 'guide-ic');
+                if (r[0]) {
+                    ic.appendChild(icon(r[0]));
+                }
+                const txt = el('span', 'guide-txt');
+                txt.appendChild(el('b', null, r[1]));
+                txt.appendChild(el('span', null, r[2]));
+                const key = el('span', 'guide-key');
+                if (r[3]) {
+                    key.appendChild(el('kbd', null, r[3]));
+                }
+                const show = el('button', 'guide-show', 'Show me');
+                show.type = 'button';
+                show.setAttribute('aria-label', 'Show me ' + r[1]);
+                show.addEventListener('click', () => {
+                    showStep(r[4]);
+                });
+                li.appendChild(ic);
+                li.appendChild(txt);
+                li.appendChild(key);
+                li.appendChild(show);
+                list.appendChild(li);
+            });
+            wrap.appendChild(list);
+            s.appendChild(wrap);
+        });
+        return s;
+    }
+
+    function buildKeys()
+    {
+        const s = section('keys', 'Keyboard and touch');
+        const t = el('table', 'guide-keys');
+        const tb = el('tbody');
+        KEYS.forEach((k) => {
+            const tr = el('tr');
+            const a = el('td');
+            a.appendChild(el('kbd', null, k[0]));
+            tr.appendChild(a);
+            tr.appendChild(el('td', null, k[1]));
+            tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+        s.appendChild(t);
+        return s;
+    }
+
+    function buildWords()
+    {
+        const s = section('words', 'Words on this page');
+        const dl = el('dl', 'guide-words');
+        const order = window.TERM_ORDER || Object.keys(G);
+        Object.keys(G).forEach((k) => {
+            if (order.indexOf(k) < 0) {
+                order.push(k);
+            }
+        });
+        order.forEach((k) => {
+            const w = G[k];
+            if (!w) {
+                return;
+            }
+            const div = el('div', 'guide-word');
+            const text = w.long || w.short;
+            div.dataset.find = (w.term + ' ' + text).toLowerCase();
+            div.appendChild(el('dt', null, w.term));
+            div.appendChild(el('dd', null, text));
+            dl.appendChild(div);
+        });
+        s.appendChild(dl);
+        return s;
+    }
+
+    function buildData()
+    {
+        const s = section('data', 'Where the data comes from');
+        const ul = el('ul', 'guide-credits');
+        DATA.forEach((d) => {
+            ul.appendChild(el('li', null, d));
+        });
+        s.appendChild(ul);
+        if (window.AI_LINE) {
+            s.appendChild(el('p', 'guide-ai', window.AI_LINE));
+        }
+        if (window.AI_LINK) {
+            const a = el('a', 'guide-link', 'Which AI tools');
+            a.href = window.AI_LINK;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            s.appendChild(a);
+        }
+        return s;
+    }
+
+    function filter()
+    {
+        const q = search.value.trim().toLowerCase();
+        root.classList.toggle('is-filtering', q !== '');
+        let hits = 0;
+        root.querySelectorAll('[data-find]').forEach((n) => {
+            const on = q === '' || n.dataset.find.indexOf(q) >= 0;
+            n.hidden = !on;
+            if (on) {
+                hits++;
+            }
+        });
+        root.querySelectorAll('.guide-group').forEach((g) => {
+            g.hidden = !g.querySelector('.guide-row:not([hidden])');
+        });
+        root.querySelectorAll('.guide-sec[data-sec="controls"], .guide-sec[data-sec="words"]').forEach((sec) => {
+            sec.hidden = q !== '' && !sec.querySelector('[data-find]:not([hidden])');
+        });
+        const none = root.querySelector('.guide-none');
+        none.hidden = q === '' || hits > 0;
+        onScroll();
+    }
+
+    function setCurrent(id)
+    {
+        navLinks.forEach((a) => {
+            if (a.dataset.sec === id) {
+                a.setAttribute('aria-current', 'true');
+            } else {
+                a.removeAttribute('aria-current');
+            }
+        });
+    }
+
+    function onScroll()
+    {
+        const top = body.getBoundingClientRect().top + 24;
+        let cur = 'start';
+        body.querySelectorAll('.guide-sec').forEach((s) => {
+            if (s.offsetParent !== null && s.getBoundingClientRect().top <= top) {
+                cur = s.dataset.sec;
+            }
+        });
+        setCurrent(cur);
+    }
+
+    function focusables()
+    {
+        return Array.prototype.filter.call(
+            panel.querySelectorAll('button, a[href], input, [tabindex]:not([tabindex="-1"])'),
+            (n) => !n.disabled && n.offsetParent !== null
+        );
+    }
+
+    function onKey(e)
+    {
+        if (e.key === 'Escape') {
+            e.stopPropagation();
+            e.preventDefault();
+            if (search.value && document.activeElement === search) {
+                search.value = '';
+                filter();
+                return;
+            }
+            close();
+            return;
+        }
+        if (e.key === 'Tab') {
+            const f = focusables();
+            if (f.length === 0) {
+                return;
+            }
+            const first = f[0];
+            const last = f[f.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+        // Keep the page's own shortcuts (B, S, D, G ...) from firing while the guide is open.
+        e.stopPropagation();
+    }
+
+    function build()
+    {
+        uid++;
+        const titleId = 'guide-title-' + uid;
+        root = el('div', 'guide');
+        root.setAttribute('role', 'dialog');
+        root.setAttribute('aria-modal', 'true');
+        root.setAttribute('aria-labelledby', titleId);
+        root.hidden = true;
+
+        panel = el('div', 'guide-panel');
+        const head = el('header', 'guide-head');
+        const h = el('h2', 'guide-title', 'Guide');
+        h.id = titleId;
+        const x = el('button', 'btn icon guide-close');
+        x.type = 'button';
+        x.setAttribute('aria-label', 'Close guide');
+        x.appendChild(icon('i-close'));
+        x.addEventListener('click', close);
+        head.appendChild(h);
+        head.appendChild(x);
+
+        const tools = el('div', 'guide-bar');
+        const nav = el('nav', 'guide-nav');
+        nav.setAttribute('aria-label', 'Guide sections');
+        [['start', 'Start'], ['controls', 'Controls'], ['keys', 'Keys'], ['words', 'Words'], ['data', 'Data']].forEach((n) => {
+            const a = el('a', null, n[1]);
+            a.href = '#guide-' + n[0];
+            a.dataset.sec = n[0];
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                scrollTo(n[0]);
+            });
+            nav.appendChild(a);
+            navLinks.push(a);
+        });
+        const lab = el('label', 'guide-search');
+        search = el('input');
+        search.type = 'search';
+        search.placeholder = 'Search controls and words';
+        search.setAttribute('aria-label', 'Search controls and words');
+        search.autocomplete = 'off';
+        search.spellcheck = false;
+        search.addEventListener('input', filter);
+        lab.appendChild(icon('i-zoom'));
+        lab.appendChild(search);
+        tools.appendChild(nav);
+        tools.appendChild(lab);
+
+        body = el('div', 'guide-body');
+        body.appendChild(buildStart());
+        body.appendChild(buildControls());
+        body.appendChild(buildKeys());
+        body.appendChild(buildWords());
+        body.appendChild(buildData());
+        const none = el('p', 'guide-none', 'Nothing matches. Try another word.');
+        none.hidden = true;
+        body.appendChild(none);
+        body.addEventListener('scroll', onScroll, { passive: true });
+
+        panel.appendChild(head);
+        panel.appendChild(tools);
+        panel.appendChild(body);
+        root.appendChild(panel);
+        root.addEventListener('keydown', onKey);
+        root.addEventListener('mousedown', (e) => {
+            if (e.target === root) {
+                close();
+            }
+        });
+        document.body.appendChild(root);
+    }
+
+    function scrollTo(id)
+    {
+        const s = root.querySelector('#guide-' + id);
+        if (!s) {
+            return;
+        }
+        body.scrollTop = s.offsetTop - body.offsetTop;
+        setCurrent(id);
+    }
+
+    function open(sectionId)
+    {
+        if (!root) {
+            build();
+        }
+        if (isOpen()) {
+            if (sectionId) {
+                scrollTo(sectionId);
+            }
+            return;
+        }
+        opener = document.activeElement;
+        root.hidden = false;
+        root.classList.remove('is-in');
+        void root.offsetWidth;
+        root.classList.add('is-in');
+        if (sectionId) {
+            scrollTo(sectionId);
+        } else {
+            body.scrollTop = 0;
+            setCurrent('start');
+        }
+        const x = root.querySelector('.guide-close');
+        x.focus();
+    }
+
+    function close()
+    {
+        if (!isOpen()) {
+            return;
+        }
+        root.hidden = true;
+        root.classList.remove('is-in');
+        if (opener && typeof opener.focus === 'function' && document.contains(opener)) {
+            opener.focus();
+        }
+        opener = null;
+    }
+
+    function isOpen()
+    {
+        return !!root && !root.hidden;
+    }
+
+    window.SlowskyGuide = Object.assign(window.SlowskyGuide || {}, {
+        open: open,
+        close: close,
+        isOpen: isOpen,
+        tourSteps: tourSteps,
+    });
+})();

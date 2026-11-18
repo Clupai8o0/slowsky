@@ -1,0 +1,1626 @@
+[
+  {
+    "__typename": "ResourceGuidePage",
+    "id": "aWQ6MTE4MzE=",
+    "title": "Judging & Awards Guide",
+    "meta": {
+      "type": "RESOURCE",
+      "slug": "judging-awards-guide",
+      "firstPublishedAt": "2024-05-31T13:51:30.010000Z",
+      "lastPublishedAt": "2026-11-13T17:26:08.301831Z",
+      "relativeUrl": "/resources/judging-awards-guide/",
+      "live": true,
+      "parent": {
+        "id": "aWQ6NA=="
+      }
+    },
+    "shortName": "",
+    "breadcrumbs": [
+      {
+        "name": "Home",
+        "link": "/"
+      },
+      {
+        "name": "Resources",
+        "link": "/resources/"
+      },
+      {
+        "name": "Judging & Awards Guide",
+        "link": "/resources/judging-awards-guide/"
+      }
+    ],
+    "restrictByRole": "Participants",
+    "summary": "A step-by-step guide about the judging process and the ten Global Awards.",
+    "resources": [
+      {
+        "__typename": "Resource",
+        "id": "aWQ6OQ==",
+        "title": "The Purpose of NASA Space Apps",
+        "slug": "the-purpose-of-nasa-space-apps",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "0eaca80f-fbad-44b1-8519-174acbf43430",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"1e6y5\">While awards are an exciting and compelling reason to participate in the NASA Space Apps Challenge, remember that, at its core, NASA Space Apps is a collaborative event—not a competitive one. We hope that participants have the opportunity to learn, grow, and share. We celebrate all of your ideas and efforts, whether you receive an award or not.</p><p data-block-key=\"4mk0s\"><b>All participants that submit a project on the website by the deadline will receive a certificate of participation.</b></p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTM4",
+        "title": "Navigating the Hackathon: Judging & Awards",
+        "slug": "navigating-the-hackathon-judging-awards",
+        "hasVideo": true,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "b2846146-14d3-4cec-b7b8-2eba32418f05",
+            "type": "EMBED",
+            "value": {
+              "html": "<div>\n    <iframe data-wagtail-youtube width=\"800\" height=\"450\" src=\"https://www.youtube.com/embed/CV7AYfMRyMM?feature=oembed\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen title=\"Project Submission and Judging &amp; Awards | 2026 NASA Space Apps Challenge\"></iframe>\n</div>\n"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6OA==",
+        "title": "Eligibility for Global Judging",
+        "slug": "eligibility-for-global-judging",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "53af09a4-6058-41d7-8396-937c6560a1be",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"zjlzo\">To be eligible to advance to Global Judging from either a Local Event or the Universal Event, your team and project must meet certain requirements. See the <a  href=\"https://www.spaceappschallenge.org/resources/project-submission-guide/\">Project Submission Guide</a> for step-by-step details on how to submit your project.</p><p data-block-key=\"4l0m8\"><b>Minimum requirements:</b></p><ul><li data-block-key=\"8lstl\">Respond to one of the official NASA Space Apps Challenges.</li><li data-block-key=\"2jnnt\">Ensure that all team members are registered for the NASA Space Apps Challenge, have chosen the same Local Event (and are not waitlisted) or Universal Event, and appear on the Members tab of your Team’s page. Teams will not be able to add new members after project submission has closed. Local Event teams must have at least one (1) person and Universal Event teams must have at least two (2) people to be eligible for global judging. Teams may have no more than six (6) members. <b>Note:</b> All teammates, including the Team Owner, must be registered for the same Local Event. Teams that do not meet this requirement are not eligible for Global Judging.</li><li data-block-key=\"bj56g\">Complete all of the required fields on the Project Submission page.</li><li data-block-key=\"o1fc\">Provide a short demonstration (\"demo\") of your project, either in the form of a slide presentation (7-slide limit including title and intro slides) or a video presentation (30-second limit).</li><li data-block-key=\"80mhr\">Use English language on the project submission page and in any linked materials. <b>Exception:</b> If your team creates a video for your Project Demo, you can speak in another language. However, it MUST include English language subtitles.</li><li data-block-key=\"2arl4\">Submit your project by navigating to the Project tab on your team page, click edit, and then \"submit\" before Sunday, November 15 at 11:59 p.m. local time in accordance with your team’s Local Event. <b>Exception:</b> If your team is registered for the Universal Event, your project must be submitted in accordance with the local time of the Team Owner. Contact your Local Lead if you have questions about the deadline for your Local Event.</li><li data-block-key=\"cbvhi\">Agree to and check the box on the project submission page that says: <i>\"I have read and understand the project submission requirements as contained in the NASA Space Apps Project Submission Guide, and I agree to the Participant Terms and Conditions and Privacy Policy.\"</i></li><li data-block-key=\"92csl\">Agree to and check the box on the project submission page that says: <i>\"I confirm that the submitted project represents my team’s original work and that all external resources including code, text and images (even if they are open source or freely available) used in the project are listed in the References field of the project submission form. In creating our solution, my team has not used any copyrighted materials (i.e., music, images, text, etc.) that we don’t have permission to use.\"</i></li><li data-block-key=\"4cuv1\">In accordance with NASA’s China funding restriction policy, teams will undergo review for prohibited bilateral activity with China, or a Chinese-owned entity, in order to be determined eligible to participate in the Global Judging round of NASA Space Apps. China or Chinese-owned entity” means any department, agency, or instrumentality of the government of China and any governmental subdivision thereof, including Hong Kong and Macau, any company owned by China, or any company, university, or similar institution incorporated under the laws of China or any governmental subdivision thereof, including Hong Kong and Macau. Any determination of eligibility shall be made by NASA, in its sole discretion, and will be based on information provided by the applicant. Please refer to the <a  href=\"https://www.spaceappschallenge.org/legal/\">NASA Space Apps Terms and Conditions</a> for Chinese affiliation’s impact on eligibility to be recognized as a NASA Space Apps Global Winner.</li></ul>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6NA==",
+        "title": "Judging Criteria",
+        "slug": "judging-criteria",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "cce55b37-c88f-4755-a7c1-aae269de1627",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"zez71\">At every level of judging, from Local and Universal Events to Executive Judging, your project will be evaluated on a scale of 1-to-5, in each of the following criteria:</p>"
+            }
+          },
+          {
+            "__typename": "AccordionBlock",
+            "id": "02dd070f-8b55-4142-94c9-19782ad9913e",
+            "type": "ACCORDION",
+            "value": {
+              "title": "",
+              "panels": [
+                {
+                  "title": "Impact",
+                  "richText": "<p data-block-key=\"l15qj\">This project makes an impact by addressing either a minor or major problem, which influences the quality and quantity of its overall effect. The extent to which it inspires or helps others varies, ranging from a broad audience to a select few.</p><p data-block-key=\"7oqff\"><i>Score of 5 (Outstanding Impact):</i> This project demonstrates exceptional impact, addressing a significant problem with proposed solutions. Its reach is extensive, inspiring, benefits a large audience, or could change the world. The quality and effectiveness of the project far exceeds expectations, setting a high standard for others.</p>"
+                },
+                {
+                  "title": "Creativity",
+                  "richText": "<p data-block-key=\"t4tke\">This project demonstrates originality and innovation. It introduces a novel concept that has not been attempted before or presents an improvement upon existing ideas in a meaningful way. This project is distinguished by its level of creativity, showcasing a fresh perspective or inventive execution.</p><p data-block-key=\"6vvtk\"><i>Score of 5 (Highly Creative and Innovative):</i> This project showcases remarkable creativity, introducing a groundbreaking approach that has never been attempted before. It challenges conventional methods, presenting an original and inventive proposed solution that stands out in its field. The uniqueness of the idea makes it a true innovation.</p>"
+                },
+                {
+                  "title": "Validity",
+                  "richText": "<p data-block-key=\"t4tke\">This project presents a proposed solution that is grounded in scientific principles and demonstrates technical, functional, or logical feasibility. It is designed to effectively achieve its intended purpose and has the potential to function in real-world applications. The completeness of the proposed solution varies—it may be fully developed or still require significant refinement. Additionally, the usability and user-friendliness of the project influence its practicality and accessibility.</p><p data-block-key=\"cmpuh\"><i>Score of 5 (Highly Valid and Feasible):</i> This proposed solution is scientifically sound and technically feasible, demonstrating strong alignment with established principles. It is fully developed and ready for real-world implementation, effectively achieving its intended purpose. The project is highly usable and user-friendly, making it accessible and practical for widespread application.</p>"
+                },
+                {
+                  "title": "Relevance",
+                  "richText": "<p data-block-key=\"t4tke\">This project fully and directly addresses the challenge for which it was submitted, demonstrating a strong alignment with the intended objectives. It meaningfully integrates NASA data, utilizing it as a core component of the proposed solution rather than a superficial addition. The depth of engagement with the data enhances the project's credibility and effectiveness.</p><p data-block-key=\"4ifum\"><i>Score of 5 (Highly Relevant and Strong NASA Data Integration)</i>: This project thoroughly engages with the challenge, delivering a proposed solution that is deeply connected to the intended goals. NASA data is integral to the project’s success, providing meaningful insights that drive the innovation forward. The use of data is well-executed, enhancing both the credibility and impact of the solution.</p>"
+                },
+                {
+                  "title": "Presentation",
+                  "richText": "<p data-block-key=\"t4tke\">The team effectively communicated their project, clearly conveying the challenge, their proposed solution, and its significance. The storytelling was engaging and well-structured, ensuring the audience understood the project's purpose and impact. The clarity, organization, and delivery of their presentation played a key role in making their ideas compelling and clear. Judges evaluate the demo and full project to compute this score.</p><p data-block-key=\"dfuj5\"><i>Score of 5 (Exceptional Communication and Storytelling)</i>: The team delivered a well-structured and compelling presentation, clearly articulating the challenge, proposed solution, and importance of the project. Their storytelling was engaging, allowing the audience to fully grasp the significance and potential impact of the work. The delivery was polished, structured, and highly effective in communicating their ideas.</p>"
+                }
+              ]
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "ef904fbe-cc11-4a78-ade5-dce2818c26ed",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"vag1k\">While many NASA Space Apps Challenge teams consider the first four judging criteria carefully and excel at developing projects with great potential, remember to pay equal attention to the final criterion: presentation. We recommend devoting time and resources to developing your pitch and building a great story around your project. Be sure to recruit team members with a variety of skills, including expertise in areas like storytelling and design, to help document your project and share the value of your proposed solution with the world. For tips on how to craft an effective project demo, read the <a  href=\"https://www.spaceappschallenge.org/resources/project-submission-guide/\">Project Submission Guide</a>.</p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6Nw==",
+        "title": "Phase 1: Local Event Judging & Global Nominees",
+        "slug": "phase-1-local-event-universal-event-judging",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "7bcb8e7f-2695-43c2-b943-11797d91c618",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"tnnp0\">Following the hackathon, Local Event and Universal Event judges will determine the projects that will advance to Global Judging. These selected teams are known as Global Nominees.</p><p data-block-key=\"agrjp\">Global Nominees from both Local Events and the Universal Event will be announced on December 3, 2026.</p>"
+            }
+          },
+          {
+            "__typename": "AccordionBlock",
+            "id": "5200d1ac-67fd-491d-9ef9-5b8f0055e31e",
+            "type": "ACCORDION",
+            "value": {
+              "title": "",
+              "panels": [
+                {
+                  "title": "Local Event Judging & Global Nominee Selection",
+                  "richText": "<p data-block-key=\"7pvn5\">Following the hackathon, all project submissions from each Local Event will be evaluated by a panel of Local Judges, who are recruited, trained, and organized by the designated Local Lead. Using the NASA Space Apps judging criteria, the panel will select projects to advance to Global Judging.</p><p data-block-key=\"rabh\">Local Leads and Local Judges have the option to provide local awards. These local awards are separate from the Global Judging process and Global Winners that will be announced after all phases of judging are complete. <b>Regardless of Local Judging results, only officially submitted Global Nominees will be considered for Global Judging.</b></p>"
+                },
+                {
+                  "title": "Universal Event Judging Process",
+                  "richText": "<p data-block-key=\"a3pz2\">Following the hackathon, all projects submitted to the Universal Event will be evaluated by a team of subject matter experts (SMEs). Using the NASA Space Apps judging criteria, the Universal Event Judges will select projects to advance to Global Judging. These teams will be known as “Global Nominees.” The number of Universal Event teams that will advance to Global Judging will be proportional to the number of projects that advance to Global Judging from Local Events.</p>"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6Ng==",
+        "title": "Phase 2: Global Finalists & Honorable Mentions",
+        "slug": "phase-2-global-judging",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "decdb26d-21d2-4ca3-9846-5ee868e30def",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"vftps\">During Global Judging, all Global Nominees will be reviewed by a team of expert judges. Each project will be evaluated according to the judging criteria in this guide. These votes will determine the top teams, who will be known as the “Global Finalists.”</p><p data-block-key=\"smgb\">Global Finalists will be announced on December 17, 2026. We also recognize Honorable Mentions at this time. While not advancing to Executive Judging or eligible for awards, Honorable Mentions were ranked highly by our Global Judges for their ingenuity and creativity.</p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6NQ==",
+        "title": "Phase 3: Global Winners",
+        "slug": "phase-3-executive-judging",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "79992577-d7c6-4fec-be70-a77eab14c1c3",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"z9no4\">The Global Finalists will be reviewed by an executive committee from NASA and the 2026 Space Agency Partners. These judges are agency leaders and executives with a variety of subject matter expertise. Each Global Finalist project will be evaluated by each executive judge. This committee will nominate teams for one of ten Global Awards:</p><ul><li data-block-key=\"es5t9\"><b>Best Use of Science:</b> The project that makes the best and most valid use of the scientific method.</li><li data-block-key=\"5c2fo\"><b>Best Use of Data:</b> The project that best makes space data accessible or leverages it to a unique application.</li><li data-block-key=\"634eg\"><b>Best Use of Technology:</b> The project that exemplifies the most innovative use of technology.</li><li data-block-key=\"7ga03\"><b>Galactic Impact:</b> The project with the most potential to improve life on Earth or the universe.</li><li data-block-key=\"77m3a\"><b>Best Mission Concept:</b> The project with the most plausible concept and design.</li><li data-block-key=\"e37cl\"><b>Most Inspirational:</b> The project that captures our hearts.</li><li data-block-key=\"9ned9\"><b>Best Storytelling Award:</b> The project that most creatively communicates the potential of open data through the art of storytelling.</li><li data-block-key=\"34fsv\"><b>Global Connection Award:</b> The project that best connects people around the world through technology.</li><li data-block-key=\"372o6\"><b>Art &amp; Technology Award:</b> The project that most effectively combines technical and creative skills.</li><li data-block-key=\"7bq88\"><b>Local Impact Award:</b> The project that demonstrates the greatest potential for making a difference in their local community.</li></ul><p data-block-key=\"4jrvt\">The team or individual that creates the winning submission for each of the categories above will be known as the “Global Winners” and will be announced on January 26, 2027. Global Winners will also be invited to attend a virtual Winner’s Celebration in early 2027.  </p>"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "__typename": "ResourceGuidePage",
+    "id": "aWQ6MTIzMTk=",
+    "title": "Participant FAQs",
+    "meta": {
+      "type": "RESOURCE",
+      "slug": "participant-faqs",
+      "firstPublishedAt": "2024-06-10T15:33:19.385000Z",
+      "lastPublishedAt": "2026-11-13T17:26:28.747520Z",
+      "relativeUrl": "/resources/participant-faqs/",
+      "live": true,
+      "parent": {
+        "id": "aWQ6NA=="
+      }
+    },
+    "shortName": "",
+    "breadcrumbs": [
+      {
+        "name": "Home",
+        "link": "/"
+      },
+      {
+        "name": "Resources",
+        "link": "/resources/"
+      },
+      {
+        "name": "Participant FAQs",
+        "link": "/resources/participant-faqs/"
+      }
+    ],
+    "restrictByRole": "Participants",
+    "summary": "The most frequently asked questions related to the NASA Space Apps Challenge.",
+    "resources": [
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTc=",
+        "title": "About the NASA Space Apps Challenge",
+        "slug": "participant-faq",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "AccordionBlock",
+            "id": "d288c7a5-8d82-4e5d-becb-64f08047b3cc",
+            "type": "ACCORDION",
+            "value": {
+              "title": "",
+              "panels": [
+                {
+                  "title": "What are the dates for the NASA Space Apps Challenge?",
+                  "richText": "<p data-block-key=\"hh5v2\">The <a  href=\"https://www.spaceappschallenge.org/2026/\">2026 NASA Space Apps Challenge</a> will take place November 14-15, 2026.</p>"
+                },
+                {
+                  "title": "What is the theme for the 2026 NASA Space Apps Challenge?",
+                  "richText": "<p data-block-key=\"yqi6f\">Get ready to explore The Next Frontier! From your own backyard to the edges of the universe, discovery awaits at the NASA Space Apps Challenge. This is your opportunity to collaborate with a community of like-minded problem solvers to turn data into tools that benefit humanity and propel us to the Moon, Mars, and beyond.</p>"
+                },
+                {
+                  "title": "Who should participate in the NASA Space Apps Challenge?",
+                  "richText": "<p data-block-key=\"v35xd\">The NASA Space Apps Challenge offers opportunities for students, technologists, and space science enthusiasts to better understand how to utilize NASA open data to respond to today’s most pressing science and space exploration challenges. No matter your age, skill level, or professional background, when you participate in the NASA Space Apps Challenge, you join a global community that embraces collaboration to develop projects and tools that improve life on Earth and in space.</p>"
+                },
+                {
+                  "title": "Does it cost anything to participate?",
+                  "richText": "<p data-block-key=\"v35xd\">There is no cost to participate in the NASA Space Apps Challenge. If you are asked to pay money to participate in any aspect of a NASA Space Apps event, do not pay anything and please report to <a href=\"mailto:info@spaceappschallenge.org\">info@spaceappschallenge.org</a>.</p>"
+                },
+                {
+                  "title": "Can participants under the age of 18 participate? If so, how?",
+                  "richText": "<p data-block-key=\"v35xd\">The NASA Space Apps Challenge is open to all ages! If under the age of 18, participants must be registered for the event by a parent or legal guardian and must be accompanied by a parent or legal guardian at all times during the event. Please note that Local Events may have additional requirements for persons under 18 to be eligible to participate in person. Check with your Local Lead for more information.</p><p data-block-key=\"d6jft\"></p><p data-block-key=\"d3okl\">Additionally, participants under 18 should not:</p><ul><li data-block-key=\"a9rj9\">Upload a photo of themselves as their Avatar or as part of their Team page</li><li data-block-key=\"fqnkf\">Use photo, video, voices, or likenesses of themselves or others under the age of 18 in their project demonstration or project submission.</li></ul><p data-block-key=\"bvfou\"></p><p data-block-key=\"3e5th\">Please carefully review the <a  href=\"https://www.spaceappschallenge.org/legal/\"><u>Participant Terms &amp; Conditions</u></a> as well as the <a  href=\"https://www.spaceappschallenge.org/resources/team-formation-guide/\">Team Formation</a> and Project Submission Guide for further guidance related to participants under 18.</p>"
+                },
+                {
+                  "title": "Where does the NASA Space Apps Challenge take place?",
+                  "richText": "<p data-block-key=\"pdmql\">The NASA Space Apps Challenge takes place at hundreds of events around the world. You may participate in an in-person or virtual <a  href=\"https://www.spaceappschallenge.org/2026/local-events/\">Local Event</a> near you or the virtual Universal Event if there is not an event near you.</p><p data-block-key=\"cid9o\">Local Events are organized by Local Leads. Learn more about how to <a  href=\"https://www.spaceappschallenge.org/host-an-event/\"><u>host a Local Event</u></a>.</p>"
+                },
+                {
+                  "title": "What should I do if I experience or witness discrimination, harassment, or any form of bullying during the hackathon or other NASA Space Apps activities?",
+                  "richText": "<p data-block-key=\"pdmql\">We strive to ensure that NASA Space Apps is a place where all feel they belong, where all are comfortable being authentic, and where all are empowered to contribute to their fullest.</p><p data-block-key=\"5j908\">If you experience or witness discrimination, harassment, or any form of bullying during the NASA Space Apps Challenge, or have any other concerns, please contact your Local Lead and/or the NASA Space Apps Global Organizing (GO) Team at <a href=\"mailto:conduct@spaceappschallenge.org\"><u>conduct@spaceappschallenge.org</u></a>. The GO Team will take appropriate action, which may include warning or expelling offending participants from the event.</p>"
+                },
+                {
+                  "title": "Where can I find the Participant Terms & Conditions?",
+                  "richText": "<p data-block-key=\"t6rrx\">The 2026 NASA Space Apps Participant Terms &amp; Conditions can be found <a  href=\"https://www.spaceappschallenge.org/legal/\">here</a>.</p>"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTQw",
+        "title": "Important Dates: 2026 NASA Space Apps Challenge",
+        "slug": "important-dates-2026",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "AccordionBlock",
+            "id": "85e0a7fd-9aa5-46e8-9be8-377d635eaf1f",
+            "type": "ACCORDION",
+            "value": {
+              "title": "",
+              "panels": [
+                {
+                  "title": "August",
+                  "richText": "<ul><li data-block-key=\"tvvt5\">August 26: Registration Opens.</li></ul>"
+                },
+                {
+                  "title": "September",
+                  "richText": "<ul><li data-block-key=\"tvvt5\">September 17: Challenge Summaries available and Team Formation opens. Team Formation Participant Guide available.</li></ul>"
+                },
+                {
+                  "title": "October",
+                  "richText": "<ul><li data-block-key=\"1bwmt\">October 28: Challenge Statements available.</li></ul>"
+                },
+                {
+                  "title": "November",
+                  "richText": "<ul><li data-block-key=\"om9so\">November 3: Space Apps Connect Opens. Space Apps Connect Participant Guide available.</li><li data-block-key=\"f0pf8\">November 13: Global Offers available. Challenge resources available. Project Submission and Judging &amp; Awards Participant Guides available.</li><li data-block-key=\"dpbc5\">November 14-15: NASA Space Apps Challenge event.</li></ul>"
+                },
+                {
+                  "title": "After the Hackathon",
+                  "richText": "<ul><li data-block-key=\"1bwmt\">Judging occurs. Experts from NASA, Space Agency Partners, and industry leaders will evaluate the projects and select the winners. See the Judging and Awards Guide for details about the judging process and Global Awards.</li><li data-block-key=\"fs6h7\">December 2026: Global Nominees, Global Finalists, and Honorable Mentions are announced.</li><li data-block-key=\"9b38t\">January 2027: Global Winners are announced!</li></ul>"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTMx",
+        "title": "Navigating Your Hackathon Journey",
+        "slug": "navigating-your-hackathon-journey",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "AccordionBlock",
+            "id": "8403d8d3-0ef1-409e-8930-a167e1162e96",
+            "type": "ACCORDION",
+            "value": {
+              "title": "",
+              "panels": [
+                {
+                  "title": "How do I participate in the NASA Space Apps Challenge?",
+                  "richText": "<p data-block-key=\"oemta\">To participate in the NASA Space Apps Challenge, you must:</p><ol><li data-block-key=\"9r7ud\">Log in or create an account on our website.</li><li data-block-key=\"3r6j0\">Register for the <a  href=\"https://www.spaceappschallenge.org/2026/\">NASA Space Apps Challenge</a> starting on August 26, 2026.</li><li data-block-key=\"fq80k\">Choose a Local Event near you or the virtual Universal Event.</li><li data-block-key=\"8g0ki\">Form or join a team to address one of the challenges. Team formation opens on September 17, 2026.</li><li data-block-key=\"9ba3h\">Join your Local Event on November 14-15, 2026. Look for their schedule and location details on the Local Event’s page.</li><li data-block-key=\"e21ud\">Submit your project for judging according to the ending time of your Local Event.</li></ol>"
+                },
+                {
+                  "title": "How do I register?",
+                  "richText": "<p data-block-key=\"xvqqy\"><b>Step 1: Access Your NASA Space Apps Account</b></p><p data-block-key=\"4tidm\"><b>Returning</b> <b>Participants:</b> Log in to your existing NASA Space Apps account.</p><p data-block-key=\"1b5tr\"><b>New Participants:</b> Sign up for a NASA Space Apps account. Once you input your information, you will receive an email to verify your email address. You will verify your email by clicking the link in the message; afterwards you can log into the NASA Space Apps website.</p><p data-block-key=\"3sg6r\"><b>Step 2: REGISTER FOR THE 2026 NASA SPACE APPS CHALLENGE &amp; CHOOSE AN EVENT</b></p><p data-block-key=\"cm5gc\"><b>Register:</b> Registration for the <a  href=\"https://www.spaceappschallenge.org/2026/\">2026 NASA Space Apps Challenge</a> is open and will remain open through the end of the hackathon on November 15.</p><p data-block-key=\"e9vc9\">Complete the registration form on the 2026 Hackathon page, ensure that you complete all required questions and read the <a  href=\"https://www.spaceappschallenge.org/legal/\"><u>Terms &amp; Conditions</u></a>.</p><p data-block-key=\"470i7\"><b>Choose a Local Event:</b> We suggest that participants choose an in-person or virtual Local Event based on their physical location. The NASA Space Apps Challenge features hundreds of Local Events, allowing participants to find potential teammates located in the same community or time zone, or those who speak the same language.</p><p data-block-key=\"bicpa\">Find a Local Event on the <a  href=\"https://www.spaceappschallenge.org/2026/local-events/\">2026 Local Events</a> page. You can search by your location name or use the map to locate a Local Event near you. If there are no Local Events in your area, you can register for the virtual Universal Event.</p><p data-block-key=\"145n2\">If an event is at capacity, you can select to join the waitlist. If space becomes available, you will be added to the Local Event by the Local Lead. You can change your Local Event by clicking \"Leave this Event\" on the Local Event page you have chosen.</p><p data-block-key=\"bm5dk\">If there is not a Local Event near you, or you prefer to participate virtually, you can sign up for the Universal Event.</p><p data-block-key=\"8j9qf\"><b>Step 3: Connect With Your Local Lead</b></p><p data-block-key=\"4oij7\">Local Leads are the organizers of NASA Space Apps Challenge Local Events. They are available to answer questions and help connect you to potential teammates prior to the hackathon. Local Leads are the primary points of contact for your Local Event and will support your hackathon experience. You may find their contact information on your Local Event’s page. Please reach out to them as you prepare, and for specific details regarding your Local Event!</p><p data-block-key=\"5qi1t\">The NASA Space Apps GO Team will send updates about the hackathon with Space Apps Messages, you can check those from the menu under your profile icon. Additionally, your Local Lead may utilize Space Apps Messages to send updates about your Local Event.</p><p data-block-key=\"5g95p\"><a href=\"https://youtu.be/LhYn_hPfr34\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>Watch the Navigating the Hackathon: How to register video</u></a></p>"
+                },
+                {
+                  "title": "What is the Universal Event?",
+                  "richText": "<p data-block-key=\"p94mp\">The Universal Event is a virtual, asynchronous event that takes place November 14-15. Participants can create and join teams just like in Local Events, and registration works the same. Projects from the Universal Event are judged during the same overall judging period as all Local Event projects; however, Universal Event projects are evaluated only in comparison with other Universal Event submissions. The selection rate for Global Nominees is comparable across both the Universal Event and Local Events, reflecting an equally competitive nature.</p><p data-block-key=\"fntsd\">However, we highly encourage participants to join a Local Event near them if they have the option rather than the Universal Event. Local Events provide access to a closer community, coaching opportunities, and many are in-person. You can find all available Local Events on the Local Events page, and you can change your Local Event at any time.</p><h4 data-block-key=\"1tsu5\"><b>Universal Event Teams</b></h4><p data-block-key=\"a8m13\">You can form or join a team with anyone else registered for the Universal Event. For step-by-step instructions on how to join or form a team, check out the <a  href=\"https://www.spaceappschallenge.org/resources/team-formation-guide/\">Team Formation Guide</a>. <b>In order to be eligible for global judging, a Universal Event Team must have at least two (2) participants. This rule only applies to the Universal Event.</b></p><p data-block-key=\"50b91\">Starting on November 3, use Space Apps Connect’s Find a Team category to connect with potential teammates. Space Apps Connect is the engagement platform where you can communicate with other participants, subject matter experts, local leads, global collaborators, and the Space Apps Global Organizing (GO) Team about everything related to Space Apps.</p>"
+                },
+                {
+                  "title": "How do I learn more about each step of my hackathon journey? What are participant guides?",
+                  "richText": "<p data-block-key=\"ck1bm\">Throughout your hackathon journey, you will receive communications from the NASA Space Apps GO Team about updates and actions you need to take on spaceappschallenge.org as part of the hackathon. You will also receive information from your Local Lead about information specific to your Local Event.</p><p data-block-key=\"4uket\">Each year we provide Participant Guides to help you navigate each step of the hackathon. These provide step-by-step information to help you form teams, use Space Apps connect, submit your project, and learn about judging and awards. These guides can be found on the <a  href=\"https://www.spaceappschallenge.org/resources/\">Resources</a> page and will be updated prior to the hackathon:</p><ul><li data-block-key=\"1l8a6\">September 17: <a  href=\"https://www.spaceappschallenge.org/resources/team-formation-guide/\">Team Formation Guide</a></li><li data-block-key=\"fcdjr\">November 3: <a  href=\"https://www.spaceappschallenge.org/resources/space-app-connect-guide/\">Space Apps Connect Guide</a></li><li data-block-key=\"6pgpb\">November 13: Project Submission Guide</li><li data-block-key=\"fuml0\">November 13: Judging and Awards Guide</li></ul><p data-block-key=\"b3su\">If you have a question not answered in the guides, reach out on our <a  href=\"https://www.spaceappschallenge.org/contact-us/\">Contact Us</a> page.</p>"
+                },
+                {
+                  "title": "What are the challenges?",
+                  "richText": "<p data-block-key=\"zbacv\">Challenges are authored by NASA and Space Agency Partner subject matter experts and encompass a wide variety of Earth and space science topics. Each team must select a challenge to address during the hackathon.</p><p data-block-key=\"60kfh\">A summary of each challenge will be released on September 17, followed by challenge statements on October 28, which include the full details and requirements. Resources for each challenge will be published on November 13. Teams <b>are not allowed</b> to begin working on the challenges prior to the hackathon.</p>"
+                },
+                {
+                  "title": "Do I need to be on a team? When can I join a team?",
+                  "richText": "<p data-block-key=\"gdlhr\">Yes, part of the NASA Space Apps Challenge experience is connecting with like-minded problem solvers from your own community and around the world! Participants are encouraged to create teams that include individuals with a variety of skill sets and backgrounds. Being on a team provides you with the opportunity to learn from one another and sets your team up for hackathon success.</p><p data-block-key=\"25jmh\">Local Event teams must have at least one (1) person and Universal Event teams must have at least two (2) people to be eligible for global judging. Teams may have no more than six (6) members and must be signed up for the same Local Event or the Universal Event. You may only be on one team and teams are only permitted to work on one challenge. We highly recommend that you work with other participants.</p><p data-block-key=\"2pc5q\">Team formation for the 2026 NASA Space Apps Challenge will open on September 17. Once team formation is open, you can join or create a team. Step-by-step instructions on how to create or join a team will be provided in the Team Formation Guide, which will become available on September 17.</p><p data-block-key=\"5v44\">Step-by-step instructions on how to create or join a team are provided in the <a  href=\"https://www.spaceappschallenge.org/resources/team-formation-guide/\">Team Formation Guide</a>.</p>"
+                },
+                {
+                  "title": "How do teams submit their project?",
+                  "richText": "<p data-block-key=\"gdlhr\">In order to be eligible for Global Judging, teams must submit their project through their team’s project page on spaceappschallenge.org. Step-by-step instructions on how to submit your project will be provided in the Project Submission Guide, which will become available on November 13.</p>"
+                },
+                {
+                  "title": "What is Super Intelligence? Can teams utilize it during the hackathon?",
+                  "richText": "<p data-block-key=\"46k33\">In accordance with the September 29, 2026 U.S. Executive Order, <i>\"the executive branch shall use the terms 'Super Intelligence' and 'SI' in place of 'Artificial Intelligence' and 'AI.'\"</i><br/></p><p data-block-key=\"17ghd\">Super Intelligence (SI) refers to computer systems that perform tasks typically associated with human reasoning, decision-making, content creation, and problem-solving. Examples include large language models, conversational assistants, image and video generation tools, foundation models, and code generation tools.<br/></p><p data-block-key=\"5e8un\">Participants may use SI tools to accelerate innovation, streamline development, and enhance creativity in support of their challenge solution. Each team's project submission must include a description of how SI tools were used during the development of their project.</p>"
+                },
+                {
+                  "title": "What is Space Apps Connect?",
+                  "richText": "<p data-block-key=\"gdlhr\">Space Apps Connect serves as the collaborative communication forum for the NASA Space Apps Challenge community. It is completely FREE for registered participants to use. Joining Space Apps Connect is optional but highly encouraged. The platform allows you to connect with other hackathon participants as well as with Local Leads, Navigators, SMEs, Global Collaborators, and the NASA Space Apps Global Organizing (GO) Team. Space Apps Connect will open on November 3 and close at the conclusion of the hackathon.</p><p data-block-key=\"1ai00\">Step-by-step instructions on how to navigate this platform will be provided in the Space Apps Connect Guide, which will become available on November 3.</p>"
+                },
+                {
+                  "title": "Recognition and Awards",
+                  "richText": "<p data-block-key=\"gdlhr\">All NASA Space Apps Challenge participants will receive a certificate on their account’s profile page recognizing their participation upon submitting their project. Projects will then be judged on specific criteria to determine Honorable Mentions, Global Finalists, and Global Winners. Global Winners are announced upon the conclusion of judging. Global Winners will be invited to attend a virtual Winner’s Celebration in early 2027.</p><p data-block-key=\"3lrvf\">Learn more about this process in the <a  href=\"https://www.spaceappschallenge.org/resources/judging-awards-guide/\">Judging &amp; Awards Guide</a>.</p>"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6NDI=",
+        "title": "Navigating the Hackathon (Playlist)",
+        "slug": "navigating-the-hackathon-series-playlist",
+        "hasVideo": true,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "bb18e8e8-800c-440e-85fb-96717409a76c",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"72k6c\">This playlist will walk you through how to participate in the hackathon.</p>"
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "f536834e-12bb-4672-a296-e3bd7352b0a1",
+            "type": "EMBED",
+            "value": {
+              "html": "<div>\n    <iframe data-wagtail-youtube width=\"800\" height=\"450\" src=\"https://www.youtube.com/embed/videoseries?list=PLTPrbzl1eIYU\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen></iframe>\n</div>\n"
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "5b8da9ca-5c42-4118-b9f2-033c6d922d30",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<h2 data-block-key=\"c5o5l\"><a href=\"https://youtube.com/playlist?list=PLTPrbzl1eIYU&amp;si=O12Uo-CJF_t935f7\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><b><span class=\"cta-button cta-button--blue\">WATCH THE NAVIGATING THE HACKATHON PLAYLIST</span class=\"cta-button cta-button--blue\"></b></a></h2>"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "__typename": "ResourceGuidePage",
+    "id": "aWQ6MTE4MzA=",
+    "title": "Project Submission Guide",
+    "meta": {
+      "type": "RESOURCE",
+      "slug": "project-submission-guide",
+      "firstPublishedAt": "2024-05-31T13:47:54.416000Z",
+      "lastPublishedAt": "2026-11-13T18:35:23.353133Z",
+      "relativeUrl": "/resources/project-submission-guide/",
+      "live": true,
+      "parent": {
+        "id": "aWQ6NA=="
+      }
+    },
+    "shortName": "",
+    "breadcrumbs": [
+      {
+        "name": "Home",
+        "link": "/"
+      },
+      {
+        "name": "Resources",
+        "link": "/resources/"
+      },
+      {
+        "name": "Project Submission Guide",
+        "link": "/resources/project-submission-guide/"
+      }
+    ],
+    "restrictByRole": "Participants",
+    "summary": "A step-by-step guide with instructions and best practices for building your Project Submission page and successfully submitting a project.",
+    "resources": [
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTM3",
+        "title": "Navigating the Hackathon: Project Submission",
+        "slug": "navigating-the-hackathon-project-submission",
+        "hasVideo": true,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "d58c0e04-1720-4012-baa0-3c4651c44d0d",
+            "type": "EMBED",
+            "value": {
+              "html": "<div>\n    <iframe data-wagtail-youtube width=\"800\" height=\"450\" src=\"https://www.youtube.com/embed/CV7AYfMRyMM?feature=oembed\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen title=\"Project Submission and Judging &amp; Awards | 2026 NASA Space Apps Challenge\"></iframe>\n</div>\n"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MjE=",
+        "title": "Project Submission Start & End Times",
+        "slug": "project-submission-start-end-times",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "3fe36b19-f4f4-45f1-82e1-79a0fc91067a",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"6e168\">Project submission opens on Saturday, November 14 at 9:00 a.m. in accordance with the time zone of your team’s Local Event. At that time, your team will be able to edit your team’s Project page and submit your project. Project submission closes on Sunday, November 15 at 11:59 p.m. in accordance with the time zone of your team’s Local Event.</p><p data-block-key=\"u5st\"><b>Exceptions:</b> If your team is registered for the Universal Event, Project Submission opens Saturday, November 14 at 9:00 a.m. and closes Sunday, November 15 at 11:59 p.m. in accordance with the local time of your Team Owner's area of residence.</p><p data-block-key=\"f904v\">Check with your Local Lead about times for your Local Event’s local judging and awards which may differ from the global submission times.</p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6Mw==",
+        "title": "Editing Your Project Submission Page",
+        "slug": "editing-your-project-submission-page",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "92e33b63-18d9-43c5-b389-11fa0863961f",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"zgh1j\">Once you create or join a team, you will be able to edit your team’s Project Submission page. The Project Submission page is where your team will provide all of the details about your project. <b>This is the page that the judges will review</b>. The more information you provide on this page, the better the judges can rate your submission!</p><p data-block-key=\"9iqgk\"><b>How to Access Your Team’s Project Page</b></p><ol><li data-block-key=\"f8vjb\">Click on your profile icon on the top right-hand side of the NASA Space Apps website menu.</li><li data-block-key=\"9frh\">Click on “My Team.”</li><li data-block-key=\"7s0ka\">On your team page, select the “Project” tab. <b>Note:</b> The “Project” tab will appear only when the hackathon begins on November 14, 2026 at 9:00 a.m. local time.</li></ol>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "e3e238ef-87fd-48dc-8b0f-50fefe6f2c89",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "center",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6Mjk2NTcy",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/PS_Guide_Project_Page_H2igTWB.png"
+                },
+                "title": "PS Guide_Project Page",
+                "alt": "PS Guide_Project Page",
+                "caption": "PS Guide_Project Page",
+                "displaySize": "lg",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/PS_Guide_Project_Page_H2igTWB.width-1024.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/PS_Guide_Project_Page_H2igTWB.width-1024.png",
+                  "height": 487,
+                  "width": 1024
+                }
+              }
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "a8b1485f-577f-4656-b2d7-656a741ebfd8",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"2ypmz\"><b>How to Edit Your Project Page</b></p><ol><li data-block-key=\"115t7\">Click the blue “Edit” button.</li><li data-block-key=\"30v7f\">Save your project often so you do not lose your work! You can save your work as many times as you like before the end of the hackathon by clicking the blue “Save Progress” button on the right-hand side of the page. Note that your changes will only be viewable to your team until you submit your project for judging.</li><li data-block-key=\"bk2a6\">To prevent multiple team members from editing the project page at the same time, toggle the edit \"Lock\" to 'ON'. This will let other team members know you are making changes to the \"Project\" tab. However, be aware that another team member can still remove the lock and make changes to the project, overwriting any changes you have not yet published. So, stay in close communication with your team members when editing.</li></ol>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "2c3098a1-beca-46e3-8ee0-390e0396ac9f",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "center",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6Mjk2NTY5",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Project_Editing.png"
+                },
+                "title": "Project Editing",
+                "alt": "Project Editing",
+                "caption": "Project Editing",
+                "displaySize": "lg",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Project_Editing.width-1024.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Project_Editing.width-1024.png",
+                  "height": 296,
+                  "width": 863
+                }
+              }
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "145f3fb1-41bd-46f0-81af-7bf397a20fb1",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"swggr\"><b>Sharing Files to Your Project Submission Page</b></p><ul><li data-block-key=\"8ilod\">The Project page <b>DOES</b> allow for the upload or copy/paste of images (JPG, PNG, GIF up to 10MB). However, it <b>DOES NOT</b> allow for the upload of videos or documents.</li><li data-block-key=\"4r7u6\"><b>Including Videos or Documents in Your Project Submission:</b> Upload your files to a cloud service or repository (e.g., YouTube, Google Drive, GitHub, OneDrive, Dropbox, etc.) and <b>share a publicly accessible link with no logins, permissions, or registrations required. If judges can’t access your project, it can’t be evaluated or judged.</b></li><li data-block-key=\"c37mm\">Most platforms have a “share” option that provides a URL.</li><li data-block-key=\"ct967\">Before submitting:<ul><li data-block-key=\"12a2u\">Set the file to public access</li><li data-block-key=\"10kgj\">Test the link in a private browser or with teammates to confirm it works.</li></ul></li><li data-block-key=\"ak8ni\">You’re welcome to link to a slide deck, video, or other visual aids. For additional tools and resources, see the Global Collaborators page.</li><li data-block-key=\"7v0c\">If you created a new website to host your project, we recommend requesting a Web Filter Classification to help ensure that judges can access your website. Please follow these steps:<ul><li data-block-key=\"ecbeq\">Complete the <a href=\"https://www.fortiguard.com/faq/wfratingsubmit\" target=\"_blank\" rel=\"noopener noreferrer\" data-external >FortiGuard Web Filter Classification form</a>.</li><li data-block-key=\"bn2d3\">Fill in required fields. Please note:<ul><li data-block-key=\"d1pb7\">Category: You will need to select a category that best describes your site. This could include education, personal website and blogs, reference, or web-based application. NASA Space Apps is unable to make the categorization determination for you, so select the one from the choices in the form that best describes your final project.</li><li data-block-key=\"d5evf\">Company Name: Write “N/A”</li></ul></li><li data-block-key=\"es45u\">Submit your request for classification.</li></ul></li></ul><p data-block-key=\"2h4o4\">While this is not required for project submission, requesting a classification can help prevent potential website access issues during judging. <b>Please note:</b> the categorization of sites is ultimately at Fortiguard’s discretion and NASA Space Apps has no direct influence.</p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTQz",
+        "title": "Project Page Form Field Instructions",
+        "slug": "project-page-form-field-instructions",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "AccordionBlock",
+            "id": "57d5d7e1-6f66-42f4-b83e-5c13617a1630",
+            "type": "ACCORDION",
+            "value": {
+              "title": "",
+              "panels": [
+                {
+                  "title": "Project Name",
+                  "richText": "<p data-block-key=\"57wq8\">What is the name of your project?</p>"
+                },
+                {
+                  "title": "High-Level Project Summary",
+                  "richText": "<p data-block-key=\"7t8lx\">Provide a high-level summary of your project. What did you develop? How does it address the challenge? Why is it important?</p>"
+                },
+                {
+                  "title": "Link to Project Demo",
+                  "richText": "<p data-block-key=\"7t8lx\">Provide a short demonstration (\"demo\") of your project, either in the form of a 7-slide presentation (including title and introductory slides) or a 30-second or less video presentation. Upload your demo to an external site, a cloud-based hosting service, or code repository (e.g., YouTube, Google Drive, GitHub, One Drive, Dropbox, etc.) and provide a publicly accessible link. <b>The link you provide should not require a password, permission, or registration in order to access your project demo</b>. Review the \"Tips for Creating a Project Demo\" section for additional details.<br/><br/>This demo will be considered in your overall project evaluation, but the majority of judges’ evaluation will be based on your project submission. <b>Note:</b> a strong project demo can increase the potential for a high score in the Presentation category of the judging rubric.</p>"
+                },
+                {
+                  "title": "Link to Final Project",
+                  "richText": "<p data-block-key=\"7t8lx\">Share a publicly accessible link to your final project. This can be a website you created to showcase your project, a cloud-based hosting service or code repository, or platforms such as YouTube, Google Drive, GitHub, One Drive, Dropbox, etc. <b>The link you provide should not require a password, permission, or registration in order to access your final project.</b> See “Sharing Files to your Project Submission Page” below for detailed instructions for sharing files.</p>"
+                },
+                {
+                  "title": "Detailed Project Description",
+                  "richText": "<p data-block-key=\"7t8lx\">Provide additional details about your project. Some questions to consider are:</p><ul><li data-block-key=\"e7adf\">What exactly does it do?</li><li data-block-key=\"2h86r\">How does it work?</li><li data-block-key=\"7i322\">What benefits does it have?</li><li data-block-key=\"60d41\">What do you hope to achieve?</li><li data-block-key=\"ape5r\">What tools, coding languages, hardware, or software did you use to develop your project?</li></ul>"
+                },
+                {
+                  "title": "Use of Super Intelligence (SI)",
+                  "richText": "<p data-block-key=\"7t8lx\">Did you utilize any Super Intelligence (SI) tools and software in preparing your solution? If yes, how did you use them?</p><p data-block-key=\"3jdtq\">The use of SI tools, such as machine learning, chatbots, image generation, and large language models, is permitted for the NASA Space Apps Challenge and should be used as a tool to accelerate innovation and creativity for your challenge solution. SI should not be used to (come up with your idea of how to solve the challenge).</p><p data-block-key=\"6j5jo\">Generated content may not use, contain, or modify any <a href=\"https://www.nasa.gov/nasa-brand-center/brand-guidelines/\" target=\"_blank\" rel=\"noopener noreferrer\"  ><u>NASA branding or design elements</u></a> (such as the NASA logos, flags, or mission identifiers). <b>We require that you clearly indicate where and how SI tools were utilized in your project, including:</b></p><ul><li data-block-key=\"a222s\"><b>Images and videos:</b> Must include a visible watermark to indicate SI generation .</li><li data-block-key=\"75qe1\"><b>Audio:</b> Must acknowledge SI generation in descriptive text and metadata.</li><li data-block-key=\"6lmqp\"><b>Code and data:</b> Must acknowledge SI generation in descriptive text and metadata.</li></ul><p data-block-key=\"8cq50\">This SI question is for data‑collection purposes only, and your response will not be seen by the judges. However, judges will be able to see any SI‑generated indicators within your project—such as watermarks, descriptive text, or metadata. They will evaluate originality, intent, and execution based on the SI‑assisted elements you include and identify within your final project.</p>"
+                },
+                {
+                  "title": "NASA Data",
+                  "richText": "<p data-block-key=\"7t8lx\">Provide specific details about what NASA data and resources you used. <b>To be eligible for a Global Award, you must use at least one NASA data or resource.</b></p>"
+                },
+                {
+                  "title": "Space Agency Partner Data and Other References",
+                  "richText": "<p data-block-key=\"7t8lx\">List all of the data, resources, and tools used in your project. Resources should include any code, text, and images (even if they are open source or freely available) that you used when creating your project. If you are using any copyrighted materials, make sure you have permission to use them.</p><p data-block-key=\"42veg\">You are also highly encouraged to use data or resources from the 2026 Space Apps Space Agency Partners. Many contributed to the resources found on each Challenge. This year’s Space Agency Partners are: Angola National Space Programme Management Office, Bahrain Space Agency, Brazilian Space Agency, CSA (Canadian Space Agency), ESA (European Space Agency), ISRO (Indian Space Research Organisation), Italian Space Agency, JAXA (Japan Aerospace Exploration Agency), KASA (Korea AeroSpace Administration), Mohammed Bin Rashid Space Center of the United Arab Emirates, National Space Activities Commission of Argentina, Nigeria’s National Space Research and Development Agency, Paraguayan Space Agency, Senegalese Space Studies Agency, Spanish Space Agency, Turkish Space Agency, and UK Space Agency.</p>"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6Mg==",
+        "title": "Tips for Creating a Project Demo",
+        "slug": "tips-for-creating-a-project-demo",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "6eff483a-1184-4cf1-8d28-f54fb02f956f",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"um138\"><b>Project Requirements</b></p><ul><li data-block-key=\"aonut\"><b>Demo:</b> All teams must create a Project Demo as part of their project submission. The purpose of the demo is to provide the viewers and judges with a high-level summary of your project along with a demonstration of your final project, including any software or hardware that you created.</li><li data-block-key=\"efn36\"><b>Format:</b> Video (30 seconds or less) or slide deck (up to seven slides including title and intro slides).</li><li data-block-key=\"1fn74\"><b>Hosting:</b> Use an external site (e.g., YouTube, Google Drive, GitHub, One Drive, Dropbox, etc.) for hosting your demo and ensure the link is publicly accessible. You will not be able to upload your video or slides to the NASA Space Apps website.</li><li data-block-key=\"2t4ng\"><b>Language Requirements: </b>You must use English language on the project submission page and in any linked materials. There is an exception: If your team chooses to create a video for the Project Demo, you can speak in another language, however, it MUST include English language subtitles. Slide decks must be in English.</li><li data-block-key=\"6gkn1\"><b>Judging Criteria:</b> Your project will be evaluated using five criteria: Impact, Creativity, Validity, Relevance, and Presentation. These categories are outlined in more detail in the <a  href=\"https://www.spaceappschallenge.org/resources/judging-awards-guide/\"><u>2026 Judging and Awards Guide.</u></a></li></ul>"
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "f348fbd7-2d9a-4a28-91e5-9922cf7260b4",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"dkc6p\"><b>Creating a Compelling Demo</b></p><ul><li data-block-key=\"8ira6\"><b>Plan Ahead:</b> Decide early whether to create a video or slide deck, and consider the question, “What story does my team want to tell?”</li><li data-block-key=\"8nfgi\"><b>Delegate:</b> Assign a teammate to lead the Demo creation.</li><li data-block-key=\"bdk20\"><b>Visual Storytelling:</b> A great pitch can make all the difference in how your project is judged! Your goal should be to quickly communicate the importance and relevance of your project to someone who has no context, technical background, or previous knowledge of your subject. Regardless of your demo’s format, be sure to use strong visuals and ensure readability.<ul><li data-block-key=\"7qt0q\"><b>Video Demo:</b> The video pitch must be 30 seconds or less.<ul><li data-block-key=\"44pas\"><b>[0:00] Introduce yourself:</b> What is your name and your team's name?</li><li data-block-key=\"36h8c\"><b>[0:02] Lead us in:</b> What challenge does your project address? What inspired you to choose this challenge?</li><li data-block-key=\"a12q4\"><b>[0:05] Name your project:</b> Share your project's title and tagline to catch your audience's attention. Titles should be short but can indicate what problem the project solves or what people gain from your project.</li><li data-block-key=\"12nfl\"><b>[0:10] Describe your idea:</b> How does it work? Display images or a prototype, describe a user's experience, and share how using NASA's free and open data and Space Agency Partner data made your proposed solution possible.</li><li data-block-key=\"egh6b\"><b>[0:20-0:30] Look into the future:</b> Paint a picture! Captivate your audience with what it could be; What can your proposed solution do for people, the world, and beyond?</li></ul></li><li data-block-key=\"ef53m\"><b>Slide Demo:</b> The slide deck should be no more than seven slides (including the title and intro slides).<ul><li data-block-key=\"fshhj\">Choose a slide template with readable font size and limit the number of words on each slide when possible.</li><li data-block-key=\"12obq\">Incorporate strong visuals to help tell the story of your project. Your visuals should:<ul><li data-block-key=\"c9mu2\">Display an image of the project</li><li data-block-key=\"cpdip\">Describe the user experience</li><li data-block-key=\"7hqhk\">Include how NASA and space agency open and space based data and technology make your solution possible</li></ul></li><li data-block-key=\"ce190\">Ensure that the content of your slides address the following:<ul><li data-block-key=\"5ujnt\">Team name</li><li data-block-key=\"751j4\">Names of team members</li><li data-block-key=\"3870p\">The challenge your team selected</li></ul></li></ul></li></ul></li><li data-block-key=\"2b03e\"><b>Limitations:</b> Adhere to the 30-second and 7-slide limits.<b> Projects that exceed these limits will not be eligible for Global Judging.</b></li></ul>"
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "13fd7c91-518b-4e6b-b7a3-594992da9699",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"dkc6p\"><b>Past Global Winner Demo Examples</b></p><p data-block-key=\"15vas\">Get inspired by the exceptional demos from previous <a  href=\"https://www.spaceappschallenge.org/awards/\"><u>NASA Space Apps Challenge Winners</u></a>. Click the \"Project Tab\" then scroll to the Demo section on each team’s Project page to see what makes a winning demo!</p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MjM=",
+        "title": "Submitting Your Project",
+        "slug": "submitting-your-project",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "de2eba2a-5163-49c5-9c33-2e6371c4450b",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"6ddsn\"><b>In order for a project to be evaluated by our judges, teams must meet the following requirements:</b></p><ul><li data-block-key=\"6q0d\">All team members must be confirmed participants at the same Local Event in order for your team’s project to be eligible for awards. If you are waitlisted for a Local Event, please reach out to the Local Lead to request acceptance to the event. If the Local Lead declines or does not respond, each member of the team should switch to another Local Event that has room for all participants.</li><li data-block-key=\"rl8e\">All required fields in the project form must be completed.</li><li data-block-key=\"2kml3\">All content in the project form must be in English.</li><li data-block-key=\"7dnrh\">You must click the “Submit for Judging” button prior to Sunday, November 15 at 11:59 p.m. local time of your Local Event. If your team is registered for the Universal Event, you must click the “Submit for Judging” button prior to Sunday, November 15 at 11:59 p.m. in accordance with the local time of your Team Owner's area of residence. Any projects saved or submitted past this deadline will not be eligible for judging.</li><li data-block-key=\"9qamn\">Project demonstrations and final projects<b> may not include</b> any images, video, audio, or other likeness to persons under 18 years old per the <a  href=\"https://www.spaceappschallenge.org/legal/\"><u>NASA Space Apps Terms &amp; Conditions</u></a>.</li></ul><p data-block-key=\"at5oa\">Once you’re ready to submit your project, follow these <b>steps on the Project Submission page:</b></p><ul><li data-block-key=\"73fh1\">Check the box to agree to the \"Terms and Conditions\"</li><li data-block-key=\"ebq4t\">Check the box to agree to \"Confirm All Work is Original\"</li><li data-block-key=\"5s4ci\"><b>Select “Submit for Judging.”</b> If you have not completed all of the required sections on the Project page, you will not be able to submit.</li><li data-block-key=\"4qc0s\">If your project was submitted successfully, a banner will appear at the top of your screen along with a confirmation message.<b> You may edit and resubmit your project as many times as you'd like until the end of the hackathon. Only your last saved submission will be reviewed by the judges.</b></li></ul>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "23f23c0c-4f2f-44ca-80d5-57d1ef08a7b4",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "center",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6MjkwMjgy",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Project_Submission_Guide_2.png"
+                },
+                "title": "Project Submission Guide (2)",
+                "alt": "Project Submission Guide (2)",
+                "caption": "Project Submission Guide (2)",
+                "displaySize": "md",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Project_Submission_Guide_2.width-580.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Project_Submission_Guide_2.width-580.png",
+                  "height": 266,
+                  "width": 580
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6OTA=",
+        "title": "Accessing Your Participant Certificate",
+        "slug": "accessing-your-participant-certificate",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "c6a83177-797a-44c5-9d33-0d5092f723e7",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"v4v2w\">Participants who submit a project to the 2026 NASA Space Apps Challenge will receive a participant certificate. Certificates will automatically become available for download on your user Profile once your project is submitted. <b>Please note that your team</b> must click the “Submit for Judging” button prior to Sunday, November 15 at 11:59pm local time of your Local Event in order to earn a certificate.</p><p data-block-key=\"21i4n\">To access your certificate:</p><ol><li data-block-key=\"hosd\">Once logged in, click your profile icon and select “Profile” in the drop down.</li><li data-block-key=\"5uj7s\">Go to \"Participant Information\" and look for “2026 NASA Space Apps Challenge.”</li><li data-block-key=\"akvk3\">Click on the yellow “Download Participant Certificate” button to download. When downloading your certificate, make sure the selected paper size is “Letter” (8.5x11in / 215x297mm). <b>Please</b> <b>note</b> <b>that the only downloadable format is a PDF version; we can not accommodate other versions.</b></li><li data-block-key=\"9tu60\">We suggest downloading your participant certificate from a laptop or desktop, rather than a mobile device, to ensure proper formatting.</li><li data-block-key=\"de3b4\">If you experience technical issues while downloading your participant certificate, please email <a href=\"mailto:web@spaceappschallenge.org\">web@spaceappschallenge.org</a> and include your username and team name.<b> As a reminder</b>,<b> certificates are only available for participants who submit a project.</b></li></ol><p data-block-key=\"fa2kl\">Note that your name will appear on the certificate based on what you have listed under Full Name in your Profile. For your “Full Name,\" please provide your first and last name as you would like it to appear on your Participant Certificate. If you would like to modify your full name, you can do this by clicking on the “Change” button next to “Full Name” in the “Account Information” section in your Profile. You can change this at any time, even after submitting a project. In inputting your name, please adhere to the <a  href=\"https://www.spaceappschallenge.org/about/\"><u>NASA Space Apps Values</u></a>.</p>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "58eddc09-73ae-4bf6-bb33-7a591c74c631",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "center",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6MjkwMjk4",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Project_Submission_Certificate.png"
+                },
+                "title": "Project Submission_Certificate",
+                "alt": "Project Submission_Certificate",
+                "caption": "Project Submission_Certificate",
+                "displaySize": "md",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Project_Submission_Certificate.width-580.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Project_Submission_Certificate.width-580.png",
+                  "height": 226,
+                  "width": 580
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "__typename": "ResourceGuidePage",
+    "id": "aWQ6MTE4MzM=",
+    "title": "Space Apps Connect Guide",
+    "meta": {
+      "type": "RESOURCE",
+      "slug": "space-app-connect-guide",
+      "firstPublishedAt": "2024-05-31T13:50:02.975000Z",
+      "lastPublishedAt": "2026-11-13T18:27:11.552326Z",
+      "relativeUrl": "/resources/space-app-connect-guide/",
+      "live": true,
+      "parent": {
+        "id": "aWQ6NA=="
+      }
+    },
+    "shortName": "",
+    "breadcrumbs": [
+      {
+        "name": "Home",
+        "link": "/"
+      },
+      {
+        "name": "Resources",
+        "link": "/resources/"
+      },
+      {
+        "name": "Space Apps Connect Guide",
+        "link": "/resources/space-app-connect-guide/"
+      }
+    ],
+    "restrictByRole": "Participants",
+    "summary": "A step-by-step guide with instructions on joining and using Space Apps Connect, the collaborative communication forum for the NASA Space Apps Challenge community.",
+    "resources": [
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTQx",
+        "title": "Introduction to Space Apps Connect - 2026",
+        "slug": "introduction-to-space-apps-connect-2026",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "878e09d5-15eb-473c-b4a7-bc0df6e7ef13",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"ubif6\"><a href=\"http://www.github.com/nasa/spaceapps/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external >Space Apps Connect</a> serves as the collaborative communication forum for the NASA Space Apps Challenge community.</p><p data-block-key=\"ap1sm\">Joining Space Apps Connect is optional but highly encouraged. Space Apps Connect is hosted on GitHub Discussions and is completely free to use. The platform allows you to connect with other hackathon participants as well as with Local Leads, Navigators, Subject Matter Experts (SMEs), Global Collaborators, and the NASA Space Apps Global Organizing (GO) Team. Use this forum to ask questions about the challenges and data and enjoy learning from the NASA Space Apps community!</p><p data-block-key=\"640j\"><b>Space Apps Values:</b> Space Apps Connect is a professional space. Users are responsible for maintaining professional decorum and treating each other with respect and dignity. <b>Bullying, discrimination, or harassment on any basis will not be tolerated.</b> You can find the Space Apps Values on the <a  href=\"https://www.spaceappschallenge.org/about/\">About Page</a>. If you experience or witness discrimination, harassment, or bullying within Space Apps Connect or during the NASA Space Apps Challenge, or have any other concerns, you may contact your Local Lead or the NASA Space Apps GO Team. Local Leads may raise concerns to the GO Team. For any concerns regarding your Local Lead or to contact the GO Team directly, please email <a href=\"mailto:conduct@spaceappschallenge.org\"><u>conduct@spaceappschallenge.org</u></a>. The GO Team will take appropriate action which may include warning or expelling the offending participant from the event.</p><p data-block-key=\"fpoi9\"><i>Please note that some of the images used in this guide may not be exact replicas of the platform that will be used for the 2026 NASA Space Apps Challenge.</i></p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTQy",
+        "title": "How to Join Space Apps Connect",
+        "slug": "join-space-apps-connect",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "0027eb81-ab3d-48c9-90e0-e86a4d97fa32",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"d7fup\">To participate in Space Apps Connect, you must be registered for the 2026 NASA Space Apps Challenge. You can register on the 2026 Hackathon page. For further guidance on registration, please review the <a  href=\"https://www.spaceappschallenge.org/resources/participant-faqs/\"><u>Participant FAQ</u></a>. Once you are registered and logged in to your account, you can access Space Apps Connect by clicking on the “Space Apps Connect” option on the dropdown underneath your profile icon which can be found at the top right corner of the Space Apps website.</p><img alt=\"Space Apps Connect Link\" class=\"richtext-image center\" data-format=\"center\" data-id=\"165065\" height=\"519\" src=\"https://assets.spaceappschallenge.org/media/images/link_on_profile.width-500.png\" width=\"354\"><p data-block-key=\"7agcl\">To post or read discussions in Space Apps Connect, you must be logged into GitHub. If you have not yet created a GitHub account, please follow the instructions below.</p><p data-block-key=\"3ghvm\"><b>Creating a GitHub Account:</b> If you are new to GitHub, you will first need to create an account. Please note: Participants who are under the age of 13 cannot use GitHub. Participants who are between the ages of 13 and 17 are required to have a parent or legal guardian create their GitHub account and must be accompanied by a parent or legal guardian at all times while using Space Apps Connect. If GitHub learns of any user under the age of 13, they will terminate that user’s account immediately. If you are a resident of a country outside the United States, your country’s minimum age may be older; in which case, you are responsible for complying with your country’s laws. By using Space Apps Connect, you are agreeing to GitHub's Terms of Service.</p><ul><li data-block-key=\"71rnc\"><b>Using GitHub on Mobile:</b> You can download the GitHub mobile app on <a href=\"https://play.google.com/store/apps/details?id=com.github.android\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>Google Play</u></a> or the <a href=\"https://apps.apple.com/app/github/id1477376905?ls=1\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>Apple Store</u></a>. Once you have downloaded the app, open it and sign into your profile.</li><li data-block-key=\"70v4l\"><b>Using GitHub on Desktop:</b> To access Space Apps Connect via web browser, go to <a href=\"http://www.github.com/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>www.github.com</u></a>. Sign in to GitHub at the top right of the page.</li></ul><p data-block-key=\"7nagu\">While on <a href=\"http://www.github.com/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>www.github.com</u></a>, select the “Sign Up” button at the top right of the screen and follow these steps:</p><ol><li data-block-key=\"ecej0\">Go to <a href=\"http://www.github.com/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>www.github.com</u></a> and click <b>Sign Up</b> in the top-right corner.</li><li data-block-key=\"fstao\">Enter your email address (we recommend using the same email as your NASA Space Apps account).</li><li data-block-key=\"brckh\">Create a unique username and password.</li><li data-block-key=\"4vljm\">Verify your GitHub account using the confirmation email.</li></ol><p data-block-key=\"3ujde\"><b>How to Find NASA Space Apps Connect On Github:</b> To access Space Apps Connect either:</p><ul><li data-block-key=\"2ql9j\">Go directly to <a href=\"http://www.github.com/nasa/spaceapps/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>http://www.github.com/nasa/spaceapps/</u></a></li><li data-block-key=\"4ad1d\">Search “nasa/spaceapps” in the search bar on GitHub</li></ul><p data-block-key=\"e56q7\">You must be logged in on GitHub to access the content and participate.</p><img alt=\"how_to_find_space_apps_search_bar\" class=\"richtext-image center\" data-format=\"center\" data-id=\"285295\" height=\"71\" src=\"https://assets.spaceappschallenge.org/media/images/how_to_find_space_apps_search_bar_cTtCoet.width-500.png\" width=\"500\"><p data-block-key=\"8ab9l\"></p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MzA=",
+        "title": "How to Search Space Apps Connect",
+        "slug": "how-to-search-for-a-discussion",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "08deaf66-96d2-4f37-aac5-9c2088ea9799",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"r4psc\"><b>Space Apps Connect Etiquette:</b> Before creating a post, please search for similar discussions. This helps prevent duplicate questions and reduces creating an unnecessary discussion post when a similar discussion already exists. Please read “How to Search for a Discussion” below before creating your post to familiarize yourself with how to use the filters. When writing the title of your post, make sure that it is clear, concise, and summarizes what you are posting. This will help the GO Team identify which labels to attach to your post and will allow others to find and respond to your posts as quickly as possible.</p><p data-block-key=\"fqe7s\"><b>How to Search for a Discussion:</b> If you have a question for the Space Apps Community, first search all of the discussion posts to see if someone else has asked the same question. To search:</p><p data-block-key=\"84u22\">1. Click on the “View all discussions” above the category names on the left-hand side.</p><img alt=\"View all discussions on Connect\" class=\"richtext-image center\" data-format=\"center\" data-id=\"87532\" height=\"214\" src=\"https://assets.spaceappschallenge.org/media/images/how_to_navigate_connect_viewall.width-500.png\" width=\"352\"><p data-block-key=\"c68r1\">2. Select the “Filter” button and select “All.\" This allows you to see all discussions regardless of their status (open, closed, locked, unlocked, answered, unanswered).</p><img alt=\"Filter options on Connect\" class=\"richtext-image center\" data-format=\"center\" data-id=\"285293\" height=\"224\" src=\"https://assets.spaceappschallenge.org/media/images/how_to_use_connect_filter_open.width-500.png\" width=\"500\"><p data-block-key=\"dmgbv\">3. Click on the label filter to select labels you think would apply to the discussion you are looking for. You can also use the search bar within the label filter to find a specific label. For example, for a question related to the “Flame in Freefall” challenge, select the “Flame in Freefall” label.</p><p data-block-key=\"cm075\">You can select multiple labels. When you select multiple labels, only the discussions that contain all of the labels you select will appear in the results. If you select too many labels, there may be no discussions that match your query.</p><p data-block-key=\"6ec2l\">If you want to remove a label you have selected, go back to the label filter and click on the label you want to remove. For example, if you decide that you do not want to filter by the “Flame in Freefall” label, then go back to the label filter and deselect the “Flame in Freefall” label. You can also click on “View All Discussions” in the category section to remove all of the filters you have applied.</p><img alt=\"Filtering Challenges in Connect\" class=\"richtext-image center\" data-format=\"center\" data-id=\"497775\" height=\"382\" src=\"https://assets.spaceappschallenge.org/media/images/how_to_use_connect_filter_challenge_SagW7dc.width-500.png\" width=\"323\"><p data-block-key=\"e14pm\"></p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTM=",
+        "title": "How to Post on Space Apps Connect",
+        "slug": "how-to-post-on-space-apps-connect",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "1137bba9-eb00-42a8-b40d-1d4814a57b09",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"i09a2\">On the left-hand side of the Discussions section, you will see all of the Space Apps Connect categories. The only category you cannot post in is the “Announcements” category.</p><p data-block-key=\"9fn79\">The content of your post will determine which category it should go in. For example, if you have a question about a certain challenge, you would want to post that question as a discussion under the “Challenges” category. More detailed descriptions of the Categories can be found above.</p><p data-block-key=\"41ls3\">You can start a new post from the “All Discussions” page or the category that you’d like to post in directly.</p><p data-block-key=\"ari27\">1. Click on the “New discussion” button on the top right of the screen.</p><img alt=\"How to start a new discussion\" class=\"richtext-image center\" data-format=\"center\" data-id=\"285233\" height=\"60\" src=\"https://assets.spaceappschallenge.org/media/images/how_to_use_connect_new_discussion_0ipj5X4.width-500.png\" width=\"500\"><p data-block-key=\"5ntgr\">2. If you are starting on the “All Discussions” page, a page will open asking you to select the discussion category. Select “Get started” next to the appropriate category.</p><img alt=\"Select a discussion category on Connect\" class=\"richtext-image center\" data-format=\"center\" data-id=\"285234\" height=\"221\" src=\"https://assets.spaceappschallenge.org/media/images/how_to_use_connect_category_start.width-500.png\" width=\"500\"><p data-block-key=\"4475u\">3. Once you add a title and your content, click the green “Start discussion” button to post it to GitHub Discussions.</p><img alt=\"Start a discussion on Connect\" class=\"richtext-image center\" data-format=\"center\" data-id=\"285237\" height=\"212\" src=\"https://assets.spaceappschallenge.org/media/images/how_to_use_connect_discussion.width-500.png\" width=\"500\"><p data-block-key=\"efhnu\">4. If you want to move your discussion into another category, before or after you post, you can select the “choose a different category” above the Discussion title section and select a new category.</p><img alt=\"Change the category on Connect\" class=\"richtext-image center\" data-format=\"center\" data-id=\"285269\" height=\"207\" src=\"https://assets.spaceappschallenge.org/media/images/how_to_use_connect_change_category.width-500.png\" width=\"500\"><p data-block-key=\"635q8\"></p>"
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "6bc46262-8199-452d-808e-e531564afa70",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"b5lz8\"><b>How to Comment on a Discussion:</b> You can join a discussion by clicking on the post you would like to comment on, then enter your response into the box at the bottom of the page and click “Comment.”</p><img alt=\"commenting on discussion\" class=\"richtext-image center\" data-format=\"center\" data-id=\"296314\" height=\"135\" src=\"https://assets.spaceappschallenge.org/media/images/commenting_on_discussion.width-500.png\" width=\"500\"><p data-block-key=\"anrao\"></p>"
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "d5906118-736a-4373-926b-0441e6141c8e",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"b5lz8\"><b>How to Reference Another Discussion or User:</b> GitHub allows you to reference other discussions and mention other users in your comments and posts. To reference another discussion:</p><p data-block-key=\"231iv\">1. Click on the word bubble icon in the content section of your discussion/reply/comment.</p><img alt=\"How to reference on Connect\" class=\"richtext-image center\" data-format=\"center\" data-id=\"285224\" height=\"153\" src=\"https://assets.spaceappschallenge.org/media/images/how_to_use_connect_reference.width-500.png\" width=\"407\"><p data-block-key=\"cakj4\">2. Start typing out the title of the discussion. Once the correct discussion you are referencing pops up, click it, and it will add the discussion reference number to your comment. In the below example, the User is referencing a discussion that is titled “<i>Check out the Participant FAQ!</i>”<br/><br/>Once you have selected the correct discussion you want to reference and are satisfied with your post, select the green button in the bottom right of the content section. The green button could be named “Comment,” “Start discussion,\" or “Reply” depending on the type of post you are creating. The reference number in your discussion will be clickable and point back to the referenced discussion.</p><img alt=\"Reference tagging in Connect\" class=\"richtext-image center\" data-format=\"center\" data-id=\"296342\" height=\"200\" src=\"https://assets.spaceappschallenge.org/media/images/Connect_Referencing-Tagging.width-500.png\" width=\"500\"><p data-block-key=\"fu5sh\">3. If you want to mention another user in your discussion, type “@” followed by the user’s GitHub username. Please be courteous and refrain from spamming usernames.</p><img alt=\"Tag a user in Connect\" class=\"richtext-image center\" data-format=\"center\" data-id=\"87551\" height=\"175\" src=\"https://assets.spaceappschallenge.org/media/images/how_to_navigate_connect_taguser.width-500.png\" width=\"295\"><p data-block-key=\"4srgl\"></p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTE=",
+        "title": "Space Apps Connect Categories",
+        "slug": "the-categories-their-definitions",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "19fbdfd6-20e3-43ed-b889-5fc3e1989adb",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"uil64\"><i>Please note that some categories will not be available until the hackathon begins.</i></p><p data-block-key=\"bhmqo\"><b>Announcements:</b> The GO Team will be using this category to provide important updates to participants leading up to and throughout the hackathon, so check it frequently! In this category, you will find information about the hackathon, reminders, words of encouragement, and notices about system issues or troubleshooting needed.</p><p data-block-key=\"82m6s\"><b>Challenges:</b> Ask questions about the challenge you're working on. Be sure to include the challenge name in the start of your discussion.</p><p data-block-key=\"6f3d1\"><b>Find A Team:</b> Find Teammates to tackle a challenge together!</p><p data-block-key=\"2jmc4\"><b>General:</b> Discuss topics related to the NASA Space Apps Challenge that are not relevant to other listed categories.</p><p data-block-key=\"62qn2\"><b>Global Offers:</b> Ask questions about Global Offers here. Global Offers are free tools and resources that are optional to use when creating your project. In your discussion title, please be sure to include the Global Offer you are asking about.</p><p data-block-key=\"3gvj8\"><b>Project Submission Help:</b> Ask questions about submitting your project here.</p><p data-block-key=\"4l29k\"><b>Universal Event</b>: Ask questions related to the Universal Event and connect with Universal Event participants.</p>"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "__typename": "ResourceGuidePage",
+    "id": "aWQ6MTE4MzI=",
+    "title": "Team Formation Guide",
+    "meta": {
+      "type": "RESOURCE",
+      "slug": "team-formation-guide",
+      "firstPublishedAt": "2024-05-31T13:52:31.340000Z",
+      "lastPublishedAt": "2026-09-23T19:49:21.445551Z",
+      "relativeUrl": "/resources/team-formation-guide/",
+      "live": true,
+      "parent": {
+        "id": "aWQ6NA=="
+      }
+    },
+    "shortName": "",
+    "breadcrumbs": [
+      {
+        "name": "Home",
+        "link": "/"
+      },
+      {
+        "name": "Resources",
+        "link": "/resources/"
+      },
+      {
+        "name": "Team Formation Guide",
+        "link": "/resources/team-formation-guide/"
+      }
+    ],
+    "restrictByRole": "Participants",
+    "summary": "A step-by-step guide on how to create or join a team.",
+    "resources": [
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTA=",
+        "title": "About Teams",
+        "slug": "about-teams",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "b5b7ece1-0c2a-48c3-8883-13aa9619e62a",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"piwhk\">Teams are an important part of the NASA Space Apps Challenge as they are required for project submission and allow you to connect with like-minded problem solvers from your own community and around the world! Participants are encouraged to create teams that include individuals with varied skill sets and backgrounds. An assorted team provides you with the opportunity to learn from one another and sets your team up for hackathon success.</p>"
+            }
+          },
+          {
+            "__typename": "AccordionBlock",
+            "id": "ca400d87-3458-4677-a13a-d51a8c5016c4",
+            "type": "ACCORDION",
+            "value": {
+              "title": "",
+              "panels": [
+                {
+                  "title": "Do I need a team to participate?",
+                  "richText": "<p data-block-key=\"i0b50\">Yes. While a participant is allowed to create a team and submit a project independently, we encourage all participants to be part of an actual team. We have found that the most successful projects come from teams of individuals with a variety of skills and backgrounds. For example, we encourage participants with non-technical backgrounds to form a team with developers, designers, and people with scientific backgrounds.</p>"
+                },
+                {
+                  "title": "How many members can be on a team?",
+                  "richText": "<p data-block-key=\"4snve\">Local Event teams must have at least one (1) person and Universal Event teams must have at least two (2) people to be eligible for global judging. Teams may have no more than six (6) members and must be signed up for the same Local Event or the Universal Event. The ideal size for a team is four to five people to balance skill sets. </p>"
+                },
+                {
+                  "title": "Can I create or join more than one team?",
+                  "richText": "<p data-block-key=\"4snve\">No. You may only be on one team and each team may only submit a project for one challenge.</p><p data-block-key=\"b5drr\">If you wish to join a new or different team, you will first need to leave your current team by selecting the “Leave Team” button on your Team Member page.</p><p data-block-key=\"7stad\">If you wish to work on a different challenge, you may update to a new challenge by editing your team.</p>"
+                },
+                {
+                  "title": "When can I form or join a team?",
+                  "richText": "<p data-block-key=\"4snve\">You will be able to officially join or create a team on the NASA Space Apps website on September 17, 2026. You may also wait to form your team until the hackathon. You may add members to your team until the hackathon ends on November 15, 2026 (11:59 p.m. local time).</p>"
+                },
+                {
+                  "title": "Does it matter which team member officially creates the team?",
+                  "richText": "<p data-block-key=\"4snve\">Yes. One person from each team is responsible for creating the team. That person is known as the “Team Owner.” Please note that the Team Owner’s Local Event will represent the team and will appear on the respective Local Event page. Additionally, all team members must be registered for the same Local Event.</p><p data-block-key=\"50b20\">The Local Event your team is associated with affects two things:</p><ol><li data-block-key=\"8no2g\"><u>Project Due Date:</u> All projects must be submitted on November 15, 2026 at 11:59 p.m. (local time) in accordance with the Local Event for which your team is registered. Please note: *If your team is registered for the Universal Event, your project must be submitted in accordance with the local time of the person who created the team.</li><li data-block-key=\"bkfoi\"><u>Project Judging:</u> During the first round of judging, your team’s project will be evaluated by the Local Judges at the Local Event for which your team is registered.</li></ol>"
+                },
+                {
+                  "title": "How do I create or join a team?",
+                  "richText": "<ol><li data-block-key=\"4snve\"><a  href=\"https://www.spaceappschallenge.org/create-account/\"><u>Create a NASA Space Apps account</u></a>.</li><li data-block-key=\"3peqd\">Register for the 2026 NASA Space Apps Challenge.</li><li data-block-key=\"2amet\">Choose a Local Event.</li><li data-block-key=\"a1bmh\">Create or join a team registered from the same Local Event. Teams may have no more than six (6) members. Teams of four to five (4-5) members with a variety of skills and ideas are the most successful. NASA Space Apps is all about collaboration, after all!</li></ol><p data-block-key=\"4nsje\">For a step-by-step video, check out <a href=\"https://youtu.be/FDys6qWaNNc\" target=\"_blank\" rel=\"noopener noreferrer\" data-external >Navigating the Hackathon: Challenges Selection and Team Formation.</a></p>"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTM2",
+        "title": "Navigating the Hackathon: Challenge Selection and Team Formation",
+        "slug": "navigating-the-hackathon-challenges-team-formation",
+        "hasVideo": true,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "84686ae7-c9fe-44a7-82a7-d399779ebe52",
+            "type": "EMBED",
+            "value": {
+              "html": "<div>\n    <iframe data-wagtail-youtube width=\"800\" height=\"450\" src=\"https://www.youtube.com/embed/FDys6qWaNNc?feature=oembed\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen title=\"Challenge Selection and Team Formation | 2026 NASA Space Apps Challenge\"></iframe>\n</div>\n"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6Mjg=",
+        "title": "Creating a New Team & Being a Team Owner",
+        "slug": "creating-a-new-team",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "01bdd5dd-b02a-4563-be48-154d0d4a26d2",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"wm4aw\"><b>Method 1: From the \"Find a Team\" Page</b></p><ol><li data-block-key=\"d6nbh\">From the NASA Space Apps main menu, select “Explore the Hackathon” -&gt; “Find a Team.”</li><li data-block-key=\"9u4g7\">Click the blue “Create a Team” button.</li></ol>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "84cce734-e60a-4274-bb01-f6159c553afd",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6NDE2NDgz",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Find_a_Team_Join.logo.png"
+                },
+                "title": "Find_a_Team_Join.logo",
+                "alt": "Find_a_Team_Join.logo",
+                "caption": "Find_a_Team_Join.logo",
+                "displaySize": "lg",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Find_a_Team_Join.logo.width-1024.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Find_a_Team_Join.logo.width-1024.png",
+                  "height": 356,
+                  "width": 1024
+                }
+              }
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "2cad6fff-45ab-433e-a6bd-bde6c08c5c85",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"3mmai\"><b>Method 2: From the \"Challenges\" Page</b></p><ol><li data-block-key=\"e9nrd\">From the NASA Space Apps main menu, select “Explore the Hackathon” -&gt; “Challenges.”</li><li data-block-key=\"6736k\">Find and select a challenge you’re interested in.</li><li data-block-key=\"5ib63\">Navigate to the Teams tab and then click the blue “Create a Team” button on the page.</li></ol>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "87269e2d-f521-479f-b884-10badbf1dc91",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6NDE2NDg1",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Create_Team_Challenges.png"
+                },
+                "title": "Create Team_Challenges",
+                "alt": "Create Team_Challenges",
+                "caption": "Create Team_Challenges",
+                "displaySize": "lg",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Create_Team_Challenges.width-1024.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Create_Team_Challenges.width-1024.png",
+                  "height": 710,
+                  "width": 1024
+                }
+              }
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "4c57a3ce-7fac-423c-aca5-166bd50fd7cd",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"42gb3\"><b>Method 3: From Your Local Event Page</b></p><ol><li data-block-key=\"1fjkp\">Go to your NASA Space Apps profile icon and select \"My Local Event.\"</li><li data-block-key=\"a4ap1\">Navigate to the \"Teams\" tab and click the blue “Create a Team” button.</li></ol>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "6c4029b2-f017-490f-90c0-410610328b6d",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6MjcyOTcw",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/My_Local_Event_Page_Seeking_Members.png"
+                },
+                "title": "My Local Event Page_Seeking Members",
+                "alt": "My Local Event Page_Seeking Members",
+                "caption": "My Local Event Page_Seeking Members",
+                "displaySize": "lg",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/My_Local_Event_Page_Seeking_Members.width-1024.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/My_Local_Event_Page_Seeking_Members.width-1024.png",
+                  "height": 438,
+                  "width": 1024
+                }
+              }
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "8de5a3e2-3e8a-44ea-8bdd-c8af2510c67f",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"3kk01\"><b>Final Step: Create Your Team</b></p><p data-block-key=\"1049q\">Once you choose your method to create a team, fill out the required fields to complete the “Create a Team” form (see example below). <b>You are now the Team Owner!</b></p><p data-block-key=\"9k7t2\"><b>Team Photo:</b> A team photo is not required. However, if you’d like to upload an image, photos should be in compliance with the <a  href=\"https://www.spaceappschallenge.org/legal/\">Participant Terms &amp; Conditions</a>, including not featuring the images or likenesses of persons under the age of 18. NASA Space Apps reserves the right to remove any content that is not compliant with the Terms &amp; Conditions.</p>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "2fec02cd-4a2f-4b50-a16c-61e2563eb515",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6NDE2NDk1",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Create_a_Team.png"
+                },
+                "title": "Create a Team",
+                "alt": "Create a Team",
+                "caption": "Create a Team",
+                "displaySize": "lg",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Create_a_Team.width-1024.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Create_a_Team.width-1024.png",
+                  "height": 904,
+                  "width": 1024
+                }
+              }
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "f4e83ea9-2bb1-4f70-9457-fdc08234c8d6",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<h4 data-block-key=\"0ls4q\"><b>Managing Your Team as a Team Owner</b></h4><p data-block-key=\"7kdup\"><b>Team Management:</b> As the Team Owner, you will have the ability to approve/deny team member requests, remove members from your team, or delete the team.</p><p data-block-key=\"dm8rh\"><b>Team Member Requests:</b> Team Owners can approve or deny requests to join their team by navigating to the \"Members\" tab of their team page. When a participant requests to join a team, an email is sent to the Team Owner. The Team Owner can approve or deny the request from the \"Members\" tab. The participant will then receive an email letting them know if they have been accepted or denied. We recommend responding to requests quickly.</p>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "10c09125-95cd-4deb-a002-af591a2849b3",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6NDEzOTA0",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Team_Member.png"
+                },
+                "title": "Team Member",
+                "alt": "Team Member",
+                "caption": "Team Member",
+                "displaySize": "md",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Team_Member.width-580.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Team_Member.width-580.png",
+                  "height": 316,
+                  "width": 556
+                }
+              }
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "b87dc90b-3e27-4283-ad33-e4c7fca469eb",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"0ls4q\"><b>Team Communications:</b> As a Team Owner, you are required to include information on where team members can connect. Team Owners will see a “Team Contact Information” field when editing the “About” tab on their team page. Please enter your preferred contact information here, such as a third-party communications app or email, so that team members can easily get in touch with you and other team members. The information you put here will appear on the “Members” tab of your team page. This information is only viewable for members of your team. Your team members will rely on this information to successfully connect with one another.</p><p data-block-key=\"18l3k\"><b>Changing Your Team Owner:</b> If you wish to change the owner of your team, you may do so on the \"About\" tab of your team page under the Team Owner section. In the dropdown, select another member of the team, then click “Publish” in order to save the changes. <b>Note: Only the existing Team Owner will be able to assign a new Team Owner. If your Team Owner is unresponsive and has not assigned a new Team Owner, then you will have to create a new team.</b></p><p data-block-key=\"mpqu\"><b>Deleting a Team:</b> All changes to your team can be made under the \"Members\" tab of the team page. Here you can:</p><ul><li data-block-key=\"42mak\">Team Owners may remove team members if they no longer want them on the team. They may do this by clicking the “Remove” button next to a team member’s name.</li><li data-block-key=\"8co9t\">If the Team Owner decides to leave the team, they will be prompted to choose an existing team member to become the new Team Owner.</li><li data-block-key=\"bnge4\">The Team Owner can delete the team by clicking the red “Delete Team” at the bottom of the page. Please inform all team members prior to deleting your team. To delete a team, the Team Owner must navigate to the \"Members\" tab and click on the “Delete Team” button in the section on the right side of the page. Deleting a team will remove all content entered on the Project and Details tabs, so only do this if you are <i>absolutely</i> sure you wish to delete all of the work your team has entered on the site.</li></ul>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "37cc8fb4-c746-4718-9647-c0f60367fdc3",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6NzcwMTc=",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Deleting_a_Team_1_SzXEwZK.png"
+                },
+                "title": "Deleting a Team_1",
+                "alt": "Deleting a Team_1",
+                "caption": "Deleting a Team_1",
+                "displaySize": "md",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Deleting_a_Team_1_SzXEwZK.width-580.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Deleting_a_Team_1_SzXEwZK.width-580.png",
+                  "height": 197,
+                  "width": 437
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MjU=",
+        "title": "Joining an Existing Team",
+        "slug": "joining-an-existing-team",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "54fc9667-572e-403d-8548-2ba003503573",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"470bo\"><b>Method 1: From the \"Find a Team\" Page</b></p><ol><li data-block-key=\"4nq89\">From the NASA Space Apps main menu, select “Explore the Hackathon” -&gt; “Find a Team.”</li></ol>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "2b87cd6a-3621-4222-8411-1076d883d746",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6NDE2NDgz",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Find_a_Team_Join.logo.png"
+                },
+                "title": "Find_a_Team_Join.logo",
+                "alt": "Find_a_Team_Join.logo",
+                "caption": "Find_a_Team_Join.logo",
+                "displaySize": "lg",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Find_a_Team_Join.logo.width-1024.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Find_a_Team_Join.logo.width-1024.png",
+                  "height": 356,
+                  "width": 1024
+                }
+              }
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "7ddb2ea4-4a56-4f0c-9269-91161bf4bba6",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"clt6b\"><b>Method 2: From the \"Challenges\" Page</b></p><ol><li data-block-key=\"7g8ed\">From the NASA Space Apps main menu, select “Explore the Hackathon” -&gt; “Challenges.”</li><li data-block-key=\"1nn6a\">Find and select a challenge you’re interested in.</li><li data-block-key=\"b9o7i\">Navigate to the Teams tab.</li></ol>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "fe1492e8-8a77-4270-8ecb-9516699a9f9b",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6NDE2NDg1",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Create_Team_Challenges.png"
+                },
+                "title": "Create Team_Challenges",
+                "alt": "Create Team_Challenges",
+                "caption": "Create Team_Challenges",
+                "displaySize": "lg",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Create_Team_Challenges.width-1024.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Create_Team_Challenges.width-1024.png",
+                  "height": 710,
+                  "width": 1024
+                }
+              }
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "26cc5fc7-8426-4062-8fac-eb72533f40c3",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"3o32u\"><b>Method 3: From Your Local Event Page</b></p><ol><li data-block-key=\"721mp\">Go to your profile icon and select \"My Local Event.\"</li><li data-block-key=\"5vb28\">Navigate to the \"Teams\" tab.</li></ol>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "d5035c59-f670-433e-be55-ef04d96d2e9d",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6MjcyOTcw",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/My_Local_Event_Page_Seeking_Members.png"
+                },
+                "title": "My Local Event Page_Seeking Members",
+                "alt": "My Local Event Page_Seeking Members",
+                "caption": "My Local Event Page_Seeking Members",
+                "displaySize": "lg",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/My_Local_Event_Page_Seeking_Members.width-1024.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/My_Local_Event_Page_Seeking_Members.width-1024.png",
+                  "height": 438,
+                  "width": 1024
+                }
+              }
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "9d68b1a1-295f-4ab6-a092-8cb20e816205",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"jr5ue\"><b>Once you choose a method to search for a team, you should then:</b></p><ol><li data-block-key=\"609r8\">Search for a specific team or browse the list of teams (see example of the filtered teams search below).</li><li data-block-key=\"8rlc3\">Look for teams with the yellow “Seeking Members” tag. We recommend finding a team at the same local event that you have registered for as this is a requirement for project submission.</li><li data-block-key=\"dfaqv\">Click on a team you are interested in to learn more.</li><li data-block-key=\"16sau\">Once you are ready to join, click the “Request to Join Team” button.</li><li data-block-key=\"c26gu\">Write a short summary about who you are and why you want to join the team, then submit your request. Please do not share private information like your age, address, etc.</li><li data-block-key=\"ecifs\">You will then receive an email letting you know if your request was approved or denied.</li></ol>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "6ce9c4aa-ff56-44d6-8b58-a7b31d1865c0",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6MjcyOTcx",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Desired_Skills.png"
+                },
+                "title": "Team Formation Desired Skills",
+                "alt": "Team Formation Desired Skills",
+                "caption": "Team Formation Desired Skills",
+                "displaySize": "md",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Desired_Skills.width-580.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Desired_Skills.width-580.png",
+                  "height": 303,
+                  "width": 580
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MjA=",
+        "title": "Connecting With Your Team",
+        "slug": "connecting-with-your-team",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "cdd28d96-2d94-46bb-97e2-ddb0363b64d3",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"wvnk3\">Once your request to join a team is approved, reach out to your Team Owner as soon as possible. Your Team Owner’s contact information will be on the “About” tab of your team page. This will ensure you can connect with fellow team members and begin work on your project. If your Team Owner is unresponsive or you want to leave a team for any reason, you can do so by selecting the “Leave Team” option at the bottom of the Members tab on your team page.</p><p data-block-key=\"et3df\">You can also search for teams and chat with potential team members in the Find a Team category of Space Apps Connect once it opens on November 3.</p>"
+            }
+          },
+          {
+            "__typename": "HtmlBlock",
+            "id": "c9cec884-0607-4d8e-b864-b0868a917bc7",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"g3t1e\"><b>Local Event Participation &amp; Judging</b></p><p data-block-key=\"fvqp8\">Your team’s Local Event is automatically assigned to the Local Event of the Team Owner. <b>All team members must be confirmed participants at the same Local Event in order for your team’s project to be eligible for awards.</b></p><p data-block-key=\"3icbo\">If you are waitlisted for a Local Event, please reach out to the Local Lead to request acceptance to the event. If the Local Lead declines or does not respond, each member of the team should switch to another Local Event that has room for all participants or the Universal Event.</p>"
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MTk=",
+        "title": "Editing Team Pages",
+        "slug": "editing-team-pages",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "f075364a-a836-49cd-b668-f68f1add1a37",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"sjms5\">You can access your team page by clicking on your profile icon on the NASA Space Apps main menu. Click on “My Team,” which will take you to your team page. After navigating to your team’s page, you will see three tabs available for editing:</p>"
+            }
+          },
+          {
+            "__typename": "CustomImageBlock",
+            "id": "ee69c571-c8b2-4c30-9550-d80b5d350a45",
+            "type": "IMAGE",
+            "value": {
+              "layout": {
+                "align": "left",
+                "position": "block",
+                "captionDisplay": ""
+              },
+              "link": {
+                "url": "",
+                "text": "",
+                "isNewTab": false,
+                "isExternal": false
+              },
+              "sizedImage": {
+                "id": "aWQ6MjcwNzAz",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/My_Team.png"
+                },
+                "title": "My Team",
+                "alt": "My Team",
+                "caption": "My Team",
+                "displaySize": "lg",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/My_Team.width-1024.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/My_Team.width-1024.png",
+                  "height": 369,
+                  "width": 1024
+                }
+              }
+            }
+          },
+          {
+            "__typename": "AccordionBlock",
+            "id": "0347e69c-896e-4fb5-93fb-2a920074f00b",
+            "type": "ACCORDION",
+            "value": {
+              "title": "",
+              "panels": [
+                {
+                  "title": "About Tab",
+                  "richText": "<p data-block-key=\"5hjlw\">Navigate to your team’s page, then go to the blue “Edit Details” button on the right side. This tab displays information about your team and is divided into three categories:</p><ol><li data-block-key=\"1i3ta\">Name and Summary</li><li data-block-key=\"adlal\">Team Formation</li><li data-block-key=\"8bks9\">About the Team</li></ol>"
+                },
+                {
+                  "title": "Project Tab",
+                  "richText": "<p data-block-key=\"vfgsg\">Use this tab to access your project page and submit your project for judging. Start by selecting the blue “Edit Project” button on the right side of the screen. Project tabs will open for editing once the hackathon begins on November 14 at 9:00 a.m. (local time). <b>This is the page that the judges will review.</b></p>"
+                },
+                {
+                  "title": "Members Tab",
+                  "richText": "<p data-block-key=\"vfgsg\">This section displays all team members and allows you to make changes to your team if you are a Team Owner, including approving/denying team member requests, leaving a team, removing team members, or deleting a team.</p>"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "__typename": "Resource",
+        "id": "aWQ6MzU=",
+        "title": "Choosing a Challenge",
+        "slug": "choosing-a-challenge",
+        "hasVideo": false,
+        "content": [
+          {
+            "__typename": "HtmlBlock",
+            "id": "c51039f2-79e1-4de2-95d1-f6209ff81532",
+            "type": "RICHTEXT",
+            "value": {
+              "html": "<p data-block-key=\"ro2u1\">Challenges are developed by NASA Subject Matter Experts (SMEs) and encompass a wide variety of topics from Earth and space science to the arts.</p><h3 data-block-key=\"c4kvo\"><a  href=\"https://www.spaceappschallenge.org/2026/challenges/\"><b><u>View the 2026 Challenges</u></b></a></h3>"
+            }
+          },
+          {
+            "__typename": "AccordionBlock",
+            "id": "d0dddd6d-0228-4f3b-b118-a332e4e3acbe",
+            "type": "ACCORDION",
+            "value": {
+              "title": "",
+              "panels": [
+                {
+                  "title": "When and where will the challenges be published?",
+                  "richText": "<p data-block-key=\"10uvu\">The 2026 challenges can be read <a  href=\"https://www.spaceappschallenge.org/2026/\"><u>here</u></a>. We encourage you to review each challenge statement and select one for your team project <i>before</i> the hackathon starts.</p>"
+                },
+                {
+                  "title": "Can people start working on the challenges as soon as they are published?",
+                  "richText": "<p data-block-key=\"0904x\">We appreciate the enthusiasm of participants who want to start as early as possible. However, participants should NOT begin working on their project until the hackathon begins on November 14, 2026 (9:00 a.m. local time) to ensure a fair and equitable process.</p><p data-block-key=\"cp2nr\">Since the NASA Space Apps Challenge is held over the course of only two days, participants are not expected to submit a fully developed project at the end.</p>"
+                },
+                {
+                  "title": "What if I have questions about one of the challenges or datasets?",
+                  "richText": "<p data-block-key=\"0904x\">Questions about challenges or supporting resources can be asked in Space Apps Connect in the week prior to and during the hackathon. NASA Space Apps Navigators and NASA subject matter experts will be available to answer your challenge and data-related questions.</p><p data-block-key=\"ce2rt\">For information on how to access Space Apps Connect, please read our <a  href=\"https://www.spaceappschallenge.org/resources/space-app-connect-guide/\">Space Apps Connect Guide</a>.</p>"
+                },
+                {
+                  "title": "Is it mandatory to pick one of the challenges?",
+                  "richText": "<p data-block-key=\"0904x\">To be eligible for Global Judging and Global Awards, teams must respond to one of the challenges.</p>"
+                },
+                {
+                  "title": "Can our team work on more than one challenge?",
+                  "richText": "<p data-block-key=\"0904x\">No, teams are only permitted to work on one challenge.</p>"
+                },
+                {
+                  "title": "My team has decided to tackle a different challenge. However, we’ve already created our team page. What should we do?",
+                  "richText": "<p data-block-key=\"0904x\">If you’ve already created a team but have changed your mind about which challenge you want to tackle, you are welcome to pick a new challenge. The Team Owner can do this by choosing the blue “Edit Details” option on your team's About page.</p>"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Slowsky revamp: four directions</title>
+    <link rel="icon" href="img/logo.svg">
+    <link rel="stylesheet" href="base.css">
+    <style>
+        main { max-width: 1080px; margin: 0 auto; padding: 56px 28px 80px; }
+        header { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
+        header img { width: 28px; height: 28px; }
+        header b { font-weight: 500; font-size: 17px; }
+        header .btn { margin-left: auto; }
+        h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.1; max-width: 18ch; }
+        .lede { color: var(--mute); max-width: 60ch; margin: 14px 0 44px; font-size: 16px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .card {
+            display: flex; flex-direction: column; gap: 10px; padding: 22px; background: var(--surface);
+            border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); text-decoration: none; color: var(--ink);
+            transition: transform .2s var(--ease-out), border-color .2s var(--ease-out);
+        }
+        .card:hover { transform: translateY(-2px); border-color: var(--line-2); }
+        .card .k { font-family: var(--mono); font-size: 12px; color: var(--mute); }
+        .card h2 { font-size: 20px; }
+        .card p { color: var(--ink-2); font-size: 14.5px; }
+        .card .go { margin-top: auto; padding-top: 8px; color: var(--accent); font-weight: 500; font-size: 14px; }
+        .notes { margin-top: 48px; color: var(--mute); font-size: 14px; max-width: 70ch; }
+        .notes a { color: var(--ink-2); }
+    </style>
+</head>
+<body>
+<main>
+    <header>
+        <img src="img/logo.svg" alt="">
+        <b>Slowsky</b>
+        <button class="btn icon" data-theme-toggle aria-label="Switch to dark mode"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg></button>
+    </header>
+    <h1 class="enter">Four ways to make Slowsky easier.</h1>
+    <p class="lede enter" style="--i:1">The first three came out of a debate between Codex, Gemini, Grok and Claude; each was built by a different model. The fourth, Tool, works like an app: one screen, a toolbar, and a details panel that opens only when you ask.</p>
+    <div class="grid">
+        <a class="card enter" style="--i:2" href="d1-theatre/index.html"><span class="k">1 · built by Gemini</span><h2>Theatre</h2><p>One centred stage. The sky blinks as soon as the page opens. Details slide up as sheets, so nothing sits beside the sky.</p><span class="go">Open →</span></a>
+        <a class="card enter" style="--i:3" href="d2-guided/index.html"><span class="k">2 · built by Codex</span><h2>Guided tour</h2><p>One column of short steps. Each step adds one control just when you need it. "Explore freely" shows every control at once.</p><span class="go">Open →</span></a>
+        <a class="card enter" style="--i:4" href="d3-contact/index.html"><span class="k">3 · built by Grok</span><h2>Contact sheet</h2><p>Every visit side by side at the same scale, so you see the change before pressing Play. Pick any two dates to blink.</p><span class="go">Open →</span></a>
+        <a class="card enter" style="--i:5" href="d4-tool/index.html"><span class="k">4 · shell by Claude, engine by Codex, app by Gemini</span><h2>Tool</h2><p>A full-screen workbench instead of a page. Upload your own FITS, PNG or JPG and it is read, lined up and compared in your browser. Nothing is uploaded to a server.</p><span class="go">Open →</span></a>
+    </div>
+    <p class="notes">Recommended: Tool, the newest. Earlier pick: Theatre, with the Contact sheet's row of all visits added under the sky. Each mockup was fixed after review by a model from another maker (Codex, Gemini Argon).</p>
+    <p class="notes">Mockups only, not part of the live app, and too big a change for the 15 Nov freeze. Sky images are real SPHEREx pixels from the app's saved copy. Debate summary: <a href="DEBATE.md">DEBATE.md</a>.</p>
+</main>
+<script src="base.js"></script>
+</body>
+</html>

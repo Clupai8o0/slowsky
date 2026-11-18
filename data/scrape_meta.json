@@ -1,0 +1,11 @@
+{
+  "scrapedAt": "2026-11-14T00:35:03+00:00",
+  "source": "https://www.spaceappschallenge.org/2026/local-events/melbourne/?tab=teams",
+  "api": "https://api.spaceappschallenge.org/graphql",
+  "counts": {
+    "teams": 32,
+    "challenges": 14,
+    "guides": 5,
+    "pastWinners": 10
+  }
+}

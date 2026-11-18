@@ -1,0 +1,233 @@
+{
+ "barnard": {
+  "name": "Barnard's Star",
+  "visits": [
+   {
+    "file": "barnard-0.png",
+    "date": "29 Aug 2025",
+    "obsId": "2025W35_2A_0233_2D1",
+    "frames": 8
+   },
+   {
+    "file": "barnard-1.png",
+    "date": "30 Sep 2025",
+    "obsId": "2025W40_1A_0441_1D1",
+    "frames": 5
+   },
+   {
+    "file": "barnard-2.png",
+    "date": "11 Mar 2026",
+    "obsId": "2026W11_1A_0556_1D1",
+    "frames": 6
+   },
+   {
+    "file": "barnard-3.png",
+    "date": "25 Aug 2026",
+    "obsId": "2026W35_1A_0375_1D1",
+    "frames": 5
+   }
+  ],
+  "lam": [
+   0.7455,
+   1.1167
+  ],
+  "detector": 1,
+  "visits_n": 4,
+  "ra": 269.4521,
+  "dec": 4.6934,
+  "pmRa": -801.551,
+  "pmDec": 10362.394
+ },
+ "rwaur": {
+  "name": "RW Aur",
+  "visits": [
+   {
+    "file": "rwaur-0.png",
+    "date": "03 Sep 2025",
+    "obsId": "2025W36_1A_0606_1D1",
+    "frames": 11
+   },
+   {
+    "file": "rwaur-1.png",
+    "date": "08 Mar 2026",
+    "obsId": "2026W10_2B_0626_1D1",
+    "frames": 6
+   },
+   {
+    "file": "rwaur-2.png",
+    "date": "08 Sep 2026",
+    "obsId": "2026W37_1A_0234_2D1",
+    "frames": 7
+   }
+  ],
+  "lam": [
+   0.7455,
+   1.1167
+  ],
+  "detector": 1,
+  "visits_n": 3,
+  "ra": 76.9565,
+  "dec": 30.4014,
+  "pmRa": 7.23,
+  "pmDec": -20.33
+ },
+ "epsindb": {
+  "name": "eps Indi B",
+  "visits": [
+   {
+    "file": "epsindb-0.png",
+    "date": "30 Apr 2025",
+    "obsId": "2025W18_1B_0363_1D3",
+    "frames": 8
+   },
+   {
+    "file": "epsindb-1.png",
+    "date": "10 Jun 2025",
+    "obsId": "2025W24_1A_0245_3D3",
+    "frames": 2
+   },
+   {
+    "file": "epsindb-2.png",
+    "date": "01 Oct 2025",
+    "obsId": "2025W40_1A_0473_1D3",
+    "frames": 3
+   },
+   {
+    "file": "epsindb-3.png",
+    "date": "04 Nov 2025",
+    "obsId": "2025W45_1A_0251_1D3",
+    "frames": 2
+   },
+   {
+    "file": "epsindb-4.png",
+    "date": "29 Apr 2026",
+    "obsId": "2026W18_1A_0502_1D3",
+    "frames": 5
+   },
+   {
+    "file": "epsindb-5.png",
+    "date": "27 Sep 2026",
+    "obsId": "2026W39_2A_0659_1D3",
+    "frames": 4
+   }
+  ],
+  "lam": [
+   1.6301,
+   2.4346
+  ],
+  "detector": 3,
+  "visits_n": 6,
+  "ra": 331.0441,
+  "dec": -56.7828,
+  "pmRa": 3981.977,
+  "pmDec": -2466.832
+ },
+ "wise0855": {
+  "name": "WISE J085510.83-071442.5",
+  "visits": [
+   {
+    "file": "wise0855-0.png",
+    "date": "05 May 2025",
+    "obsId": "2025W19_1B_0138_1D6",
+    "frames": 2
+   },
+   {
+    "file": "wise0855-1.png",
+    "date": "10 Nov 2025",
+    "obsId": "2025W46_1A_0238_1D6",
+    "frames": 8
+   },
+   {
+    "file": "wise0855-2.png",
+    "date": "12 Dec 2025",
+    "obsId": "2025W50_2A_0254_1D6",
+    "frames": 3
+   },
+   {
+    "file": "wise0855-3.png",
+    "date": "30 Apr 2026",
+    "obsId": "2026W18_2A_0065_1D6",
+    "frames": 11
+   }
+  ],
+  "lam": [
+   4.4115,
+   5.009600000000001
+  ],
+  "detector": 6,
+  "visits_n": 4,
+  "ra": 133.8189,
+  "dec": -7.247,
+  "pmRa": -8123.7,
+  "pmDec": 673.2
+ },
+ "rdra": {
+  "name": "R Dra",
+  "visits": [
+   {
+    "file": "rdra-0.png",
+    "date": "06 Jun 2025",
+    "obsId": "2025W23_2B_0206_2D1",
+    "frames": 2
+   },
+   {
+    "file": "rdra-1.png",
+    "date": "18 Jul 2025",
+    "obsId": "2025W29_2A_0351_1D1",
+    "frames": 1
+   },
+   {
+    "file": "rdra-2.png",
+    "date": "10 Sep 2025",
+    "obsId": "2025W37_1A_0586_2D1",
+    "frames": 6
+   },
+   {
+    "file": "rdra-3.png",
+    "date": "08 Oct 2025",
+    "obsId": "2025W41_1A_0552_2D1",
+    "frames": 2
+   },
+   {
+    "file": "rdra-4.png",
+    "date": "18 Oct 2025",
+    "obsId": "2025W42_2A_0513_1D1",
+    "frames": 1
+   },
+   {
+    "file": "rdra-5.png",
+    "date": "01 Nov 2025",
+    "obsId": "2025W44_2B_0523_1D1",
+    "frames": 1
+   },
+   {
+    "file": "rdra-6.png",
+    "date": "09 Jul 2026",
+    "obsId": "2026W28_2A_0106_1D1",
+    "frames": 1
+   },
+   {
+    "file": "rdra-7.png",
+    "date": "30 Jul 2026",
+    "obsId": "2026W31_2A_0014_1D1",
+    "frames": 1
+   },
+   {
+    "file": "rdra-8.png",
+    "date": "25 Aug 2026",
+    "obsId": "2026W35_1A_0373_1D1",
+    "frames": 9
+   }
+  ],
+  "lam": [
+   0.7455,
+   1.1167
+  ],
+  "detector": 1,
+  "visits_n": 9,
+  "ra": 248.1676,
+  "dec": 66.755,
+  "pmRa": -20.643,
+  "pmDec": 6.149
+ }
+}

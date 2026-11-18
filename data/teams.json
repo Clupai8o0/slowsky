@@ -1,0 +1,2637 @@
+{
+  "scrapedAt": "2026-11-14T00:35:03+00:00",
+  "localEvent": "aWQ6NTQ2OTI=",
+  "teams": [
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6Njg4OTY=",
+      "title": "Amaze Amaze Amaze",
+      "meta": {
+        "type": "TEAM",
+        "slug": "amaze-amaze-amaze",
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "relativeUrl": "/2026/find-a-team/amaze-amaze-amaze/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6ZWNjYTAwMmYtZmM2OC00MWM1LThmM2UtZjQ5NWZjOTRlMjE5",
+      "ownerDetails": null,
+      "excerpt": "Im a paramedic student interested in health as well as psychological and sociological effects of extended isolation, forced proximity, and shared experiences on human relationships",
+      "project": "aWQ6NjUyOTg=",
+      "projectDetails": {
+        "id": "aWQ6NjUyOTg=",
+        "name": "Project Amaze Amaze Amaze",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMzA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMzA=",
+        "title": "Create Health Monitoring Software for Astronauts on Space Missions",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "health-monitoring-software",
+          "firstPublishedAt": "2026-09-17T14:21:16.942000Z",
+          "lastPublishedAt": "2026-11-13T03:46:22.373143Z",
+          "relativeUrl": "/2026/challenges/health-monitoring-software/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Long-duration missions expose astronauts to space radiation, isolation and confinement, altered gravity, and a hostile closed environment, which can bring immune changes, bone loss, cardiovascular events, and behavioral health problems. On long missions, astronauts carry much of the responsibility for spotting these changes in themselves. Your challenge is to build a health monitoring software that gathers health indicators and enables astronauts to evaluate and act on the status of their health."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": false,
+      "canAcceptMembers": false,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NTc1MDY=",
+      "title": "Astro-Koala",
+      "meta": {
+        "type": "TEAM",
+        "slug": "astro-koala",
+        "firstPublishedAt": "2026-09-22T11:33:24.825000Z",
+        "lastPublishedAt": "2026-10-16T05:00:32.271313Z",
+        "relativeUrl": "/2026/find-a-team/astro-koala/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6Mzg5ODI5NWItZmQwMS00YjQyLWIyMDAtYmI1Njg4NWJiNjdi",
+      "ownerDetails": null,
+      "excerpt": "Avid mechanical engineer",
+      "project": "aWQ6NTM5MDk=",
+      "projectDetails": {
+        "id": "aWQ6NTM5MDk=",
+        "name": "Project Astro-Koala",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NDI5MDUz",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/images_gT2BHyg.jpeg"
+        },
+        "title": "team_image.16:48:50.406462",
+        "alt": "team_image.16:48:50.406462",
+        "caption": "team_image.16:48:50.406462",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/images_gT2BHyg.2e16d0ba.fill-300x250.jpg",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/images_gT2BHyg.2e16d0ba.fill-300x250.jpg",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMTk=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMTk=",
+        "title": "Dancing with the SARs",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "dancing-with-the-sars",
+          "firstPublishedAt": "2026-09-17T14:22:34.738000Z",
+          "lastPublishedAt": "2026-11-13T03:46:20.609386Z",
+          "relativeUrl": "/2026/challenges/dancing-with-the-sars/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Earth's surface is an endless dance of natural processes and human activities, but these changes are often difficult to visualize, understand, and communicate. From wetland loss to forest wildfires, earthquakes, farming activities, glacier movement, and more, Earth is in a constant waltz of surface changes. Your challenge is to build an interactive application that uses radar remote sensing data from the NASA-ISRO Synthetic Aperture Radar (NISAR) mission to track and visualize one or more types of surface change at locations around the world."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NzA0OTU=",
+      "title": "Caffeinated Innovators Australia",
+      "meta": {
+        "type": "TEAM",
+        "slug": "caffeinated-innovators-australia",
+        "firstPublishedAt": "2026-10-24T12:43:35.357000Z",
+        "lastPublishedAt": "2026-11-07T08:14:03.958028Z",
+        "relativeUrl": "/2026/find-a-team/caffeinated-innovators-australia/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6ZGNmNDkxMDMtNzJkYS00ODkwLTkxZGQtMDZjZjMzZWZiMGE0",
+      "ownerDetails": null,
+      "excerpt": "Dr Amandeep Hansra: Chief Clinical Adviser, Australian Digital Health Agency; medical repatriation and aviation medicine experience. Mark Hallam: aerospace engineer, ATC project manager; leads our build. A/Prof Eugene Wong: retrieval doctor; Deput...",
+      "project": "aWQ6NjY4OTc=",
+      "projectDetails": {
+        "id": "aWQ6NjY4OTc=",
+        "name": "Project Caffeinated Innovators Australia",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NDkxMTQ1",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/44985_g4RE9ri.jpg"
+        },
+        "title": "team_image.12:06:46.518204",
+        "alt": "team_image.12:06:46.518204",
+        "caption": "team_image.12:06:46.518204",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/44985_g4RE9ri.2e16d0ba.fill-300x250.jpg",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/44985_g4RE9ri.2e16d0ba.fill-300x250.jpg",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMzA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMzA=",
+        "title": "Create Health Monitoring Software for Astronauts on Space Missions",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "health-monitoring-software",
+          "firstPublishedAt": "2026-09-17T14:21:16.942000Z",
+          "lastPublishedAt": "2026-11-13T03:46:22.373143Z",
+          "relativeUrl": "/2026/challenges/health-monitoring-software/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Long-duration missions expose astronauts to space radiation, isolation and confinement, altered gravity, and a hostile closed environment, which can bring immune changes, bone loss, cardiovascular events, and behavioral health problems. On long missions, astronauts carry much of the responsibility for spotting these changes in themselves. Your challenge is to build a health monitoring software that gathers health indicators and enables astronauts to evaluate and act on the status of their health."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6ODQ2Mzk=",
+      "title": "clupai",
+      "meta": {
+        "type": "TEAM",
+        "slug": "clupai",
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "relativeUrl": "/2026/find-a-team/clupai/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6ZDYwMWIyZTYtOGU1ZS00NDhkLWI2MmItOTVmZjI3OTk0NjE1",
+      "ownerDetails": null,
+      "excerpt": "Clupai is a one-person team. I'm Sam, and I love building web tools that make big, messy data easy to explore. I'll be on a flight for part of the competition, so I'm going solo this time and not recruiting, but I'm always happy to swap ideas or h...",
+      "project": "aWQ6ODEwMzY=",
+      "projectDetails": {
+        "id": "aWQ6ODEwMzY=",
+        "name": "Project clupai",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NTQ2OTM5",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/clupai-logo-dark.png"
+        },
+        "title": "team_image.11:05:17.715233",
+        "alt": "team_image.11:05:17.715233",
+        "caption": "team_image.11:05:17.715233",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/clupai-logo-dark.2e16d0ba.fill-300x250.png",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/clupai-logo-dark.2e16d0ba.fill-300x250.png",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjA=",
+        "title": "Planet X and SPHEREx",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "planet-x-and-spherex",
+          "firstPublishedAt": "2026-09-17T14:21:23.156000Z",
+          "lastPublishedAt": "2026-11-13T03:46:20.805823Z",
+          "relativeUrl": "/2026/challenges/planet-x-and-spherex/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Since 2025, NASA’s SPHEREx mission has been mapping the entire sky every six months in 102 bands of near-infrared light, returning images of more than a billion objects. Comets, asteroids, stars, brown dwarfs, and even new planets reveal themselves by shifting position between images, but no one person can sift through all that data alone. Your challenge is to create a public-facing web tool to display images of the sky from SPHEREx mission, making it easy for anyone to quickly see how they change over time."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": false,
+      "canAcceptMembers": false,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6Njc3NzY=",
+      "title": "EmberEye",
+      "meta": {
+        "type": "TEAM",
+        "slug": "embereye",
+        "firstPublishedAt": "2026-10-17T10:21:48.348000Z",
+        "lastPublishedAt": "2026-11-12T12:33:08.818960Z",
+        "relativeUrl": "/2026/find-a-team/embereye/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6YWM1ZWFiZTktYjA2Zi00NWI1LWE2YTAtYWYzMzY1ZjM3MGM4",
+      "ownerDetails": null,
+      "excerpt": "Fire safety is our priority",
+      "project": "aWQ6NjQxNzg=",
+      "projectDetails": {
+        "id": "aWQ6NjQxNzg=",
+        "name": "Project EmberEye",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMzI=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMzI=",
+        "title": "Harmonization of MODIS and VIIRS Hot Spots",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "modis-and-viirs-hot-spots",
+          "firstPublishedAt": "2026-09-17T14:22:01.787000Z",
+          "lastPublishedAt": "2026-11-13T03:46:22.754924Z",
+          "relativeUrl": "/2026/challenges/modis-and-viirs-hot-spots/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Understanding how burning activity is distributed across our planet over time, including wildfires and agricultural burns intense enough to be detected by satellite sensors, enables us to anticipate critical periods, guide monitoring efforts, and improve fire response.  Satellites have tracked active fire hotspots for more than two decades, but the record is split across sensors whose data cannot be compared directly, leaving fire managers without a consistent picture of when and where burning has occurred. Your challenge is to build a web application that harmonizes these records into a burning activity calendar based on active fire hotspots,  enabling early warning and emergency responders, scientists, and land managers to examine historical fire patterns, unusual conditions, and critical periods within a selected area of interest."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": false,
+      "canAcceptMembers": false,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NzI2NDU=",
+      "title": "Enom",
+      "meta": {
+        "type": "TEAM",
+        "slug": "enom",
+        "firstPublishedAt": "2026-10-29T02:34:13.283000Z",
+        "lastPublishedAt": "2026-10-29T02:44:53.826574Z",
+        "relativeUrl": "/2026/find-a-team/enom/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6YWE5OThiZDgtYTE5OC00MDIwLTgxZDQtZDcwZDU3ZDUwYTJj",
+      "ownerDetails": null,
+      "excerpt": "Team full sorry.",
+      "project": "aWQ6NjkwNDc=",
+      "projectDetails": {
+        "id": "aWQ6NjkwNDc=",
+        "name": "Project Enom",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjk=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjk=",
+        "title": "Identify Earth Locations that Analog the Permanent Moon Base Locations and Mars",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "permanent-moon-base-locations-and-mars",
+          "firstPublishedAt": "2026-09-17T14:21:29.086000Z",
+          "lastPublishedAt": "2026-11-13T03:52:04.820266Z",
+          "relativeUrl": "/2026/challenges/permanent-moon-base-locations-and-mars/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Selecting future landing sites and lunar base locations depends on many factors, including topography, geology, environment, and available resources, to name a few. Places on Earth that have analogous characteristics to the Moon or Mars – the Atacama Desert, Haughton Crater, Death Valley – allow mission teams to test equipment and methods before they fly; however, such terrestrial analog sites are not entirely well characterized. Your challenge is to use open Earth, Moon, and Mars data from NASA and other space agencies to identify and characterize new terrestrial analogs for future bases or landing sites, drawing on deserts, polar regions, volcanic and arid terrains, caves, and other environments that share conditions with the lunar or Martian surface, then present your findings as a map, visualization, or other tool."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NTkwNzM=",
+      "title": "Finkers",
+      "meta": {
+        "type": "TEAM",
+        "slug": "finkers",
+        "firstPublishedAt": "2026-09-24T13:49:33.174000Z",
+        "lastPublishedAt": "2026-11-13T23:58:19.891651Z",
+        "relativeUrl": "/2026/find-a-team/finkers/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6NTBlNGU5OGEtMDk1Yi00NDliLWI3ODYtYzNiOWMxNjMzMGE1",
+      "ownerDetails": null,
+      "excerpt": "University of Melbourne",
+      "project": "aWQ6NTU0NzY=",
+      "projectDetails": {
+        "id": "aWQ6NTU0NzY=",
+        "name": "Project Finkers",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NDM2NDQ3",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/ChatGPT_Image_Sep_24_2026_06_44_43_AM.png"
+        },
+        "title": "team_image.20:46:18.663963",
+        "alt": "team_image.20:46:18.663963",
+        "caption": "team_image.20:46:18.663963",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/ChatGPT_Image_Sep_24_2026_06_44_43.2e16d0ba.fill-300x250.png",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/ChatGPT_Image_Sep_24_2026_06_44_43.2e16d0ba.fill-300x250.png",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjE=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjE=",
+        "title": "Flame in Freefall: SI-Powered Fire Safety Insights from Microgravity Combustion Data",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "flame-in-freefall",
+          "firstPublishedAt": "2026-09-17T14:20:54.577000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.001119Z",
+          "relativeUrl": "/2026/challenges/flame-in-freefall/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "For decades, NASA has studied how flames and fire behave in microgravity, gathering a trove of experimental data along the way. That knowledge matters more than ever as humans gear up to return to the Moon and press on to Mars, yet the volume of results makes them hard to find, compare, and understand. Your challenge is to create an interactive, super intelligence (SI) powered dashboard that summarizes, ranks, and interprets those findings to deliver fire safety insights for human space exploration."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6ODY3NjM=",
+      "title": "Flames",
+      "meta": {
+        "type": "TEAM",
+        "slug": "flames8",
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "relativeUrl": "/2026/find-a-team/flames8/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6MzQ0OTlmYmQtNTlmMS00Nzc2LTkwN2YtNzlkZGY3MTBhOTg4",
+      "ownerDetails": null,
+      "excerpt": "I'm Pratt, a final-year Computer Science (AI) student at Swinburne, Melbourne. My skills include Python, machine learning, cloud systems and full-stack development. For Flame in Freefall, I want to turn NASA fire research into a trustworthy AI too...",
+      "project": "aWQ6ODMxNjA=",
+      "projectDetails": {
+        "id": "aWQ6ODMxNjA=",
+        "name": "Project Flames",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjE=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjE=",
+        "title": "Flame in Freefall: SI-Powered Fire Safety Insights from Microgravity Combustion Data",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "flame-in-freefall",
+          "firstPublishedAt": "2026-09-17T14:20:54.577000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.001119Z",
+          "relativeUrl": "/2026/challenges/flame-in-freefall/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "For decades, NASA has studied how flames and fire behave in microgravity, gathering a trove of experimental data along the way. That knowledge matters more than ever as humans gear up to return to the Moon and press on to Mars, yet the volume of results makes them hard to find, compare, and understand. Your challenge is to create an interactive, super intelligence (SI) powered dashboard that summarizes, ranks, and interprets those findings to deliver fire safety insights for human space exploration."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6ODc4MDk=",
+      "title": "GeoVibe",
+      "meta": {
+        "type": "TEAM",
+        "slug": "geovibe",
+        "firstPublishedAt": "2026-11-13T17:59:24.198000Z",
+        "lastPublishedAt": "2026-11-13T18:01:02.972781Z",
+        "relativeUrl": "/2026/find-a-team/geovibe/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6ZjBlNjAwYjItODhlYS00NzliLWJhYjYtZjA3NGE0OWVmZTFk",
+      "ownerDetails": null,
+      "excerpt": "GeoVibe is a Melbourne-based team passionate about Earth observation, geospatial science, and environmental analytics. For NASA Space Apps 2026, we aim to develop an interactive tool to detect and visualise statistically significant Earth system t...",
+      "project": "aWQ6ODQyMDY=",
+      "projectDetails": {
+        "id": "aWQ6ODQyMDY=",
+        "name": "Project GeoVibe",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NTU3MTU4",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/GeoVibe_Orbital_Globe_Logo_F4yM5Ur.png"
+        },
+        "title": "team_image.18:01:02.070643",
+        "alt": "team_image.18:01:02.070643",
+        "caption": "team_image.18:01:02.070643",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/GeoVibe_Orbital_Globe_Logo_F4yM5Ur.2e16d0ba.fill-300x250.png",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/GeoVibe_Orbital_Globe_Logo_F4yM5Ur.2e16d0ba.fill-300x250.png",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjg=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjg=",
+        "title": "Be An Earth System Trend Detective!",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "earth-system-trend-detective",
+          "firstPublishedAt": "2026-09-17T14:21:35.374000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.982990Z",
+          "relativeUrl": "/2026/challenges/earth-system-trend-detective/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Change is always occurring in the Earth’s interconnected environmental system, and when it runs in a consistent direction – rising or falling, increasing or decreasing, thickening or thinning – measured variables reflect it. But a measured Earth science data variable can trend one way in one region and the opposite way in another, even when the same process drives both. The multitude of Earth science data variables makes it difficult to select variables that could indicate change, and to then perform an analysis on the selected variables.  Your challenge is to create a tool that can select variables measured by Earth science missions or produced by Earth science models, visualize how they change over time, and determine what is changing, where it is changing, how much it is changing, and if these changes are what scientists call “significant.”"
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NjIyNDM=",
+      "title": "in progress",
+      "meta": {
+        "type": "TEAM",
+        "slug": "in-progress",
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "relativeUrl": "/2026/find-a-team/in-progress/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6MDNjZDNlOGUtODU3Ny00NDMxLWI0NjgtZTZhOTY4MDI4ZTZh",
+      "ownerDetails": null,
+      "excerpt": "in progress",
+      "project": "aWQ6NTg2NDQ=",
+      "projectDetails": {
+        "id": "aWQ6NTg2NDQ=",
+        "name": "Project in progress",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjQ=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjQ=",
+        "title": "Build a Junior Astronaut Mission Trainer",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "junior-astronaut-mission-trainer",
+          "firstPublishedAt": "2026-09-17T14:22:28.522000Z",
+          "lastPublishedAt": "2026-11-13T03:48:49.413870Z",
+          "relativeUrl": "/2026/challenges/junior-astronaut-mission-trainer/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Space-themed STEM content often oversimplifies the engineering trade-offs that define a real mission or presents them at a level too complex to hold a young learner's attention. Few tools make those trade-offs both tangible and fun. Your challenge is to design and build an interactive game or app that lets students run a lunar or Martian outpost, balancing competing demands like life support, radiation shielding, power, and food production, so they experience firsthand the decisions that determine whether a mission fails or succeeds."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": false,
+      "canAcceptMembers": false,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6ODYzNjY=",
+      "title": "Mach73",
+      "meta": {
+        "type": "TEAM",
+        "slug": "mach73",
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "relativeUrl": "/2026/find-a-team/mach73/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6Nzk2YzgyYzAtMWJmOC00MDFiLTk0ZTMtMzA5NmJkYWRmMzRm",
+      "ownerDetails": null,
+      "excerpt": "Hi guys, if you're interested, Join.",
+      "project": "aWQ6ODI3NjM=",
+      "projectDetails": {
+        "id": "aWQ6ODI3NjM=",
+        "name": "Project Mach73",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjA=",
+        "title": "Planet X and SPHEREx",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "planet-x-and-spherex",
+          "firstPublishedAt": "2026-09-17T14:21:23.156000Z",
+          "lastPublishedAt": "2026-11-13T03:46:20.805823Z",
+          "relativeUrl": "/2026/challenges/planet-x-and-spherex/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Since 2025, NASA’s SPHEREx mission has been mapping the entire sky every six months in 102 bands of near-infrared light, returning images of more than a billion objects. Comets, asteroids, stars, brown dwarfs, and even new planets reveal themselves by shifting position between images, but no one person can sift through all that data alone. Your challenge is to create a public-facing web tool to display images of the sky from SPHEREx mission, making it easy for anyone to quickly see how they change over time."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NjE0NzE=",
+      "title": "MauMon.Entropy",
+      "meta": {
+        "type": "TEAM",
+        "slug": "maumonentropy",
+        "firstPublishedAt": "2026-10-15T14:33:05.524000Z",
+        "lastPublishedAt": "2026-11-13T11:54:51.503027Z",
+        "relativeUrl": "/2026/find-a-team/maumonentropy/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6M2M0YzEyYTEtOWM3My00NTgyLThiM2YtMTk0Yzk3NDFhZTIy",
+      "ownerDetails": null,
+      "excerpt": "Hii... Aomm here... Won't be giving long boring Intro... But on a short note I have done research on space debris crisis providing its solution and accepted at various organization.. And pretty much interseted in space... For My team I am not targ...",
+      "project": "aWQ6NTc4NzQ=",
+      "projectDetails": {
+        "id": "aWQ6NTc4NzQ=",
+        "name": "Project MauMon.Entropy",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NDQ4MDU3",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/D7k5qy7VfpRevoyxbVFBVn.jpg"
+        },
+        "title": "team_image.06:03:07.274280",
+        "alt": "team_image.06:03:07.274280",
+        "caption": "team_image.06:03:07.274280",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/D7k5qy7VfpRevoyxbVFBVn.2e16d0ba.fill-300x250.jpg",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/D7k5qy7VfpRevoyxbVFBVn.2e16d0ba.fill-300x250.jpg",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjA=",
+        "title": "Planet X and SPHEREx",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "planet-x-and-spherex",
+          "firstPublishedAt": "2026-09-17T14:21:23.156000Z",
+          "lastPublishedAt": "2026-11-13T03:46:20.805823Z",
+          "relativeUrl": "/2026/challenges/planet-x-and-spherex/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Since 2025, NASA’s SPHEREx mission has been mapping the entire sky every six months in 102 bands of near-infrared light, returning images of more than a billion objects. Comets, asteroids, stars, brown dwarfs, and even new planets reveal themselves by shifting position between images, but no one person can sift through all that data alone. Your challenge is to create a public-facing web tool to display images of the sky from SPHEREx mission, making it easy for anyone to quickly see how they change over time."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NzI2MTM=",
+      "title": "Melbourne_Vit_Team_4",
+      "meta": {
+        "type": "TEAM",
+        "slug": "melbourne_vit_team_4",
+        "firstPublishedAt": "2026-10-28T23:51:51.487000Z",
+        "lastPublishedAt": "2026-10-29T00:19:34.063149Z",
+        "relativeUrl": "/2026/find-a-team/melbourne_vit_team_4/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6MGE3YTdjYTUtNDIyMS00MGFlLTk0MTktMjYwNzY2N2ViYTA1",
+      "ownerDetails": null,
+      "excerpt": "Hi, My name is Sanish. I'm specialize in front-end development, networking and low-level stuff. Looking for team members who can help me out in this.",
+      "project": "aWQ6NjkwMTU=",
+      "projectDetails": {
+        "id": "aWQ6NjkwMTU=",
+        "name": "Project Melbourne_Vit_Team_4",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjU=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjU=",
+        "title": "Abandoned but not Forgotten: Storytelling about NASA's Discarded Equipment on the Moon and Mars",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "nasas-discarded-equipment-storytelling",
+          "firstPublishedAt": "2026-09-17T14:22:22.961000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.392788Z",
+          "relativeUrl": "/2026/challenges/nasas-discarded-equipment-storytelling/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Since the 1960s, NASA has left hardware across the solar system–on the Moon, on Mars, and in deep space. From rovers and instruments that completed their science missions to probes still traveling away from Earth this hardware varies widely in both its purpose and current level of functionality. Your challenge is to tell the story of some or all of this equipment that introduces school-age space enthusiasts to the hardware and the science it made possible."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6Njg4MDQ=",
+      "title": "MicroVibe",
+      "meta": {
+        "type": "TEAM",
+        "slug": "microvibe",
+        "firstPublishedAt": "2026-10-20T05:56:11.726000Z",
+        "lastPublishedAt": "2026-10-20T06:03:36.567582Z",
+        "relativeUrl": "/2026/find-a-team/microvibe/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6YjY2YTQ0NzItNDMzOC00ZWZjLWE5NGEtZjE3NDRiODNkMWM1",
+      "ownerDetails": null,
+      "excerpt": "Hey everyone, we’re MicroVibe, a team of three tackling Flame in Freefall. We’re building an AI-powered dashboard that makes decades of NASA microgravity fire data searchable and useful for Moon and Mars safety.",
+      "project": "aWQ6NjUyMDY=",
+      "projectDetails": {
+        "id": "aWQ6NjUyMDY=",
+        "name": "Project MicroVibe",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjE=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjE=",
+        "title": "Flame in Freefall: SI-Powered Fire Safety Insights from Microgravity Combustion Data",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "flame-in-freefall",
+          "firstPublishedAt": "2026-09-17T14:20:54.577000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.001119Z",
+          "relativeUrl": "/2026/challenges/flame-in-freefall/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "For decades, NASA has studied how flames and fire behave in microgravity, gathering a trove of experimental data along the way. That knowledge matters more than ever as humans gear up to return to the Moon and press on to Mars, yet the volume of results makes them hard to find, compare, and understand. Your challenge is to create an interactive, super intelligence (SI) powered dashboard that summarizes, ranks, and interprets those findings to deliver fire safety insights for human space exploration."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6ODQwNjk=",
+      "title": "Mission Left Behind",
+      "meta": {
+        "type": "TEAM",
+        "slug": "mission-left-behind",
+        "firstPublishedAt": "2026-11-12T09:42:25.839000Z",
+        "lastPublishedAt": "2026-11-13T10:43:55.234665Z",
+        "relativeUrl": "/2026/find-a-team/mission-left-behind/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6MzAzYjc4MDItZjJlNS00YWFlLThlY2QtY2QyNGMwMjdmMTQw",
+      "ownerDetails": null,
+      "excerpt": "Team currently full.",
+      "project": "aWQ6ODA0NjY=",
+      "projectDetails": {
+        "id": "aWQ6ODA0NjY=",
+        "name": "Project Mission Left Behind",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjU=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjU=",
+        "title": "Abandoned but not Forgotten: Storytelling about NASA's Discarded Equipment on the Moon and Mars",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "nasas-discarded-equipment-storytelling",
+          "firstPublishedAt": "2026-09-17T14:22:22.961000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.392788Z",
+          "relativeUrl": "/2026/challenges/nasas-discarded-equipment-storytelling/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Since the 1960s, NASA has left hardware across the solar system–on the Moon, on Mars, and in deep space. From rovers and instruments that completed their science missions to probes still traveling away from Earth this hardware varies widely in both its purpose and current level of functionality. Your challenge is to tell the story of some or all of this equipment that introduces school-age space enthusiasts to the hardware and the science it made possible."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6ODg1MTc=",
+      "title": "Mission M²RS",
+      "meta": {
+        "type": "TEAM",
+        "slug": "mission-m2rs",
+        "firstPublishedAt": "2026-11-13T22:35:41.496000Z",
+        "lastPublishedAt": "2026-11-13T22:42:46.598929Z",
+        "relativeUrl": "/2026/find-a-team/mission-m2rs/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6NTIwY2Y1M2MtY2VhZC00NDc0LWI5OTItZWQyNzAyMWVhNGQy",
+      "ownerDetails": null,
+      "excerpt": "Wantirna Y12s 2026",
+      "project": "aWQ6ODQ5MTQ=",
+      "projectDetails": {
+        "id": "aWQ6ODQ5MTQ=",
+        "name": "Project Mission M²RS",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjc=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjc=",
+        "title": "Lunar Landing Site Navigator",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "lunar-landing-site-navigator",
+          "firstPublishedAt": "2026-09-17T14:21:09.928000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.789089Z",
+          "relativeUrl": "/2026/challenges/lunar-landing-site-navigator/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Missions to the Moon’s south pole face extreme lighting and communication constraints, and planning  them takes careful coordination between science and engineering teams. Tools for determining Sun and Earth positions at candidate landing sites exist, but their complicated interfaces make it difficult to evaluate critical information with efficiency. Your challenge is to create an intuitive tool or application that lets mission planners, educators, and the public compare landing sites and dates quickly, visualizing Sun and Earth positions relative to the horizon to assess power generation potential and direct-to-Earth communication windows."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": false,
+      "canAcceptMembers": false,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NjgwNDM=",
+      "title": "Novara Labs",
+      "meta": {
+        "type": "TEAM",
+        "slug": "terrapulse-labs",
+        "firstPublishedAt": "2026-10-18T02:36:23.954000Z",
+        "lastPublishedAt": "2026-10-21T04:26:26.886703Z",
+        "relativeUrl": "/2026/find-a-team/terrapulse-labs/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6ZTJiYzYzNjQtNjJkZS00NzFiLThmMzYtZWVmMmFlY2ZiM2U1",
+      "ownerDetails": null,
+      "excerpt": "We are a Melbourne-based team participating in the 2026 NASA Space Apps Challenge. Our team has skills in software engineering, UI/UX design, and business analytics. We are building NISAR Change Explorer, a web app that uses NASA satellite data to...",
+      "project": "aWQ6NjQ0NDU=",
+      "projectDetails": {
+        "id": "aWQ6NjQ0NDU=",
+        "name": "Project TerraPulse Labs",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMTk=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMTk=",
+        "title": "Dancing with the SARs",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "dancing-with-the-sars",
+          "firstPublishedAt": "2026-09-17T14:22:34.738000Z",
+          "lastPublishedAt": "2026-11-13T03:46:20.609386Z",
+          "relativeUrl": "/2026/challenges/dancing-with-the-sars/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Earth's surface is an endless dance of natural processes and human activities, but these changes are often difficult to visualize, understand, and communicate. From wetland loss to forest wildfires, earthquakes, farming activities, glacier movement, and more, Earth is in a constant waltz of surface changes. Your challenge is to build an interactive application that uses radar remote sensing data from the NASA-ISRO Synthetic Aperture Radar (NISAR) mission to track and visualize one or more types of surface change at locations around the world."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NzE3OTA=",
+      "title": "NSAC26",
+      "meta": {
+        "type": "TEAM",
+        "slug": "ltna",
+        "firstPublishedAt": "2026-10-30T10:12:10.924260Z",
+        "lastPublishedAt": "2026-10-30T10:12:10.924260Z",
+        "relativeUrl": "/2026/find-a-team/ltna/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6YjY3MDE1MTgtYTE4Ni00MzY1LThhYTQtN2YwZTBiYjM5Y2Zi",
+      "ownerDetails": null,
+      "excerpt": "Our team aims to develop innovative, practical solutions to real-world challenges through technology. For NASA Space Apps 2026, we’re focusing on an astronaut health monitoring system combining real-time data processing, intelligent alerts, and an...",
+      "project": "aWQ6NjgxOTI=",
+      "projectDetails": {
+        "id": "aWQ6NjgxOTI=",
+        "name": "Project LTNA",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMzA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMzA=",
+        "title": "Create Health Monitoring Software for Astronauts on Space Missions",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "health-monitoring-software",
+          "firstPublishedAt": "2026-09-17T14:21:16.942000Z",
+          "lastPublishedAt": "2026-11-13T03:46:22.373143Z",
+          "relativeUrl": "/2026/challenges/health-monitoring-software/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Long-duration missions expose astronauts to space radiation, isolation and confinement, altered gravity, and a hostile closed environment, which can bring immune changes, bone loss, cardiovascular events, and behavioral health problems. On long missions, astronauts carry much of the responsibility for spotting these changes in themselves. Your challenge is to build a health monitoring software that gathers health indicators and enables astronauts to evaluate and act on the status of their health."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NjIyMDg=",
+      "title": "RoosMission",
+      "meta": {
+        "type": "TEAM",
+        "slug": "roosmission",
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "relativeUrl": "/2026/find-a-team/roosmission/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6MTQyZjVhYTAtMjY1Mi00ZTZjLWE5NTMtNmMxZTE2NmViZTYw",
+      "ownerDetails": null,
+      "excerpt": "Always loved space and later in life got in to DS and AI, so this would be a fun little side quest that intertwines both worlds.",
+      "project": "aWQ6NTg2MDk=",
+      "projectDetails": {
+        "id": "aWQ6NTg2MDk=",
+        "name": "Project RoosMission",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjE=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjE=",
+        "title": "Flame in Freefall: SI-Powered Fire Safety Insights from Microgravity Combustion Data",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "flame-in-freefall",
+          "firstPublishedAt": "2026-09-17T14:20:54.577000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.001119Z",
+          "relativeUrl": "/2026/challenges/flame-in-freefall/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "For decades, NASA has studied how flames and fire behave in microgravity, gathering a trove of experimental data along the way. That knowledge matters more than ever as humans gear up to return to the Moon and press on to Mars, yet the volume of results makes them hard to find, compare, and understand. Your challenge is to create an interactive, super intelligence (SI) powered dashboard that summarizes, ranks, and interprets those findings to deliver fire safety insights for human space exploration."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": false,
+      "canAcceptMembers": false,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6ODU4MDg=",
+      "title": "root",
+      "meta": {
+        "type": "TEAM",
+        "slug": "root23",
+        "firstPublishedAt": "2026-11-13T00:31:58.630000Z",
+        "lastPublishedAt": "2026-11-14T00:04:31.407080Z",
+        "relativeUrl": "/2026/find-a-team/root23/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6NzczZjg2Y2MtNmFjOS00ODQ0LTk2OTEtMTg3NjVhYzY2NDYx",
+      "ownerDetails": null,
+      "excerpt": "be Curious",
+      "project": "aWQ6ODIyMDU=",
+      "projectDetails": {
+        "id": "aWQ6ODIyMDU=",
+        "name": "Project root",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjA=",
+        "title": "Planet X and SPHEREx",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "planet-x-and-spherex",
+          "firstPublishedAt": "2026-09-17T14:21:23.156000Z",
+          "lastPublishedAt": "2026-11-13T03:46:20.805823Z",
+          "relativeUrl": "/2026/challenges/planet-x-and-spherex/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Since 2025, NASA’s SPHEREx mission has been mapping the entire sky every six months in 102 bands of near-infrared light, returning images of more than a billion objects. Comets, asteroids, stars, brown dwarfs, and even new planets reveal themselves by shifting position between images, but no one person can sift through all that data alone. Your challenge is to create a public-facing web tool to display images of the sky from SPHEREx mission, making it easy for anyone to quickly see how they change over time."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6ODYyOTM=",
+      "title": "Sate",
+      "meta": {
+        "type": "TEAM",
+        "slug": "sate",
+        "firstPublishedAt": "2026-11-14T00:23:19.741000Z",
+        "lastPublishedAt": "2026-11-14T00:23:23.350668Z",
+        "relativeUrl": "/2026/find-a-team/sate/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6ZWViMzQyYzktMWM0ZS00NTBhLTg1NDgtZDI2YTQwMWI1OTcx",
+      "ownerDetails": null,
+      "excerpt": "Hi we're high school students interested in participating in this challenge. We love space and have taken physics subjects in high school and are interested in learning more about the field.",
+      "project": "aWQ6ODI2OTA=",
+      "projectDetails": {
+        "id": "aWQ6ODI2OTA=",
+        "name": "Project Sate",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjA=",
+        "title": "Planet X and SPHEREx",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "planet-x-and-spherex",
+          "firstPublishedAt": "2026-09-17T14:21:23.156000Z",
+          "lastPublishedAt": "2026-11-13T03:46:20.805823Z",
+          "relativeUrl": "/2026/challenges/planet-x-and-spherex/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Since 2025, NASA’s SPHEREx mission has been mapping the entire sky every six months in 102 bands of near-infrared light, returning images of more than a billion objects. Comets, asteroids, stars, brown dwarfs, and even new planets reveal themselves by shifting position between images, but no one person can sift through all that data alone. Your challenge is to create a public-facing web tool to display images of the sky from SPHEREx mission, making it easy for anyone to quickly see how they change over time."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6ODg3MjQ=",
+      "title": "SATEv2",
+      "meta": {
+        "type": "TEAM",
+        "slug": "satev2",
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "relativeUrl": "/2026/find-a-team/satev2/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6MmJjNTExNGYtZGViNy00MjE5LThmYmYtZTNhNTBlODU0M2E2",
+      "ownerDetails": null,
+      "excerpt": "space",
+      "project": "aWQ6ODUxMjE=",
+      "projectDetails": {
+        "id": "aWQ6ODUxMjE=",
+        "name": "Project SATEv2",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": "2026-11-14T00:31:58.550049Z",
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjA=",
+        "title": "Planet X and SPHEREx",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "planet-x-and-spherex",
+          "firstPublishedAt": "2026-09-17T14:21:23.156000Z",
+          "lastPublishedAt": "2026-11-13T03:46:20.805823Z",
+          "relativeUrl": "/2026/challenges/planet-x-and-spherex/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Since 2025, NASA’s SPHEREx mission has been mapping the entire sky every six months in 102 bands of near-infrared light, returning images of more than a billion objects. Comets, asteroids, stars, brown dwarfs, and even new planets reveal themselves by shifting position between images, but no one person can sift through all that data alone. Your challenge is to create a public-facing web tool to display images of the sky from SPHEREx mission, making it easy for anyone to quickly see how they change over time."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": false,
+      "canAcceptMembers": false,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NzI4NDg=",
+      "title": "S.M.S to Space",
+      "meta": {
+        "type": "TEAM",
+        "slug": "sms-to-space",
+        "firstPublishedAt": "2026-10-29T11:36:39.368000Z",
+        "lastPublishedAt": "2026-10-31T15:03:22.391612Z",
+        "relativeUrl": "/2026/find-a-team/sms-to-space/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6M2IxODllOTQtYmEwMC00Y2ViLTk1NzAtMDljMzEzZTVkMWFj",
+      "ownerDetails": null,
+      "excerpt": "We are data science students",
+      "project": "aWQ6NjkyNTA=",
+      "projectDetails": {
+        "id": "aWQ6NjkyNTA=",
+        "name": "Project S.M.S to Space",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NTAyMTAx",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/8712_z4tNRfZ.png"
+        },
+        "title": "team_image.11:27:16.077959",
+        "alt": "team_image.11:27:16.077959",
+        "caption": "team_image.11:27:16.077959",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/8712_z4tNRfZ.2e16d0ba.fill-300x250.png",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/8712_z4tNRfZ.2e16d0ba.fill-300x250.png",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjA=",
+        "title": "Planet X and SPHEREx",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "planet-x-and-spherex",
+          "firstPublishedAt": "2026-09-17T14:21:23.156000Z",
+          "lastPublishedAt": "2026-11-13T03:46:20.805823Z",
+          "relativeUrl": "/2026/challenges/planet-x-and-spherex/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Since 2025, NASA’s SPHEREx mission has been mapping the entire sky every six months in 102 bands of near-infrared light, returning images of more than a billion objects. Comets, asteroids, stars, brown dwarfs, and even new planets reveal themselves by shifting position between images, but no one person can sift through all that data alone. Your challenge is to create a public-facing web tool to display images of the sky from SPHEREx mission, making it easy for anyone to quickly see how they change over time."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NTk1OTE=",
+      "title": "Stella Nova",
+      "meta": {
+        "type": "TEAM",
+        "slug": "stella-nova1",
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "relativeUrl": "/2026/find-a-team/stella-nova1/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6ZDE3YTBkYzYtMjg0ZS00NWY2LThkYzQtZDc5NGM2ODY2YjNk",
+      "ownerDetails": null,
+      "excerpt": "Stella Nova is a solo project exploring space medicine and software development. I’m designing a health monitoring dashboard to track astronaut vitals and manage medical triage during long-term space missions. Competing individually allows me to i...",
+      "project": "aWQ6NTU5OTQ=",
+      "projectDetails": {
+        "id": "aWQ6NTU5OTQ=",
+        "name": "Project Stella Nova",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NDM4ODI1",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Stella_Nova_Team_Image.png"
+        },
+        "title": "team_image.10:17:25.435709",
+        "alt": "team_image.10:17:25.435709",
+        "caption": "team_image.10:17:25.435709",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/Stella_Nova_Team_Image.2e16d0ba.fill-300x250.png",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/Stella_Nova_Team_Image.2e16d0ba.fill-300x250.png",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMzA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMzA=",
+        "title": "Create Health Monitoring Software for Astronauts on Space Missions",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "health-monitoring-software",
+          "firstPublishedAt": "2026-09-17T14:21:16.942000Z",
+          "lastPublishedAt": "2026-11-13T03:46:22.373143Z",
+          "relativeUrl": "/2026/challenges/health-monitoring-software/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Long-duration missions expose astronauts to space radiation, isolation and confinement, altered gravity, and a hostile closed environment, which can bring immune changes, bone loss, cardiovascular events, and behavioral health problems. On long missions, astronauts carry much of the responsibility for spotting these changes in themselves. Your challenge is to build a health monitoring software that gathers health indicators and enables astronauts to evaluate and act on the status of their health."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": false,
+      "canAcceptMembers": false,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NzY4MjQ=",
+      "title": "StellarForge",
+      "meta": {
+        "type": "TEAM",
+        "slug": "stellarforge2",
+        "firstPublishedAt": "2026-11-05T01:27:06.532000Z",
+        "lastPublishedAt": "2026-11-08T03:47:04.983101Z",
+        "relativeUrl": "/2026/find-a-team/stellarforge2/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6OGFhOWM1NjItNDExMi00ZWY2LTliYTctNzI3NTAzNTAxMDRl",
+      "ownerDetails": null,
+      "excerpt": "We're a team passionate about AI, technology, and space exploration. Looking for developers, AI/ML enthusiasts, data analysts, designers, and space lovers. No experience required—just creativity, curiosity, and teamwork. Join StellarForge and let'...",
+      "project": "aWQ6NzMyMjI=",
+      "projectDetails": {
+        "id": "aWQ6NzMyMjI=",
+        "name": "Project StellarForge",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMzA=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMzA=",
+        "title": "Create Health Monitoring Software for Astronauts on Space Missions",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "health-monitoring-software",
+          "firstPublishedAt": "2026-09-17T14:21:16.942000Z",
+          "lastPublishedAt": "2026-11-13T03:46:22.373143Z",
+          "relativeUrl": "/2026/challenges/health-monitoring-software/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Long-duration missions expose astronauts to space radiation, isolation and confinement, altered gravity, and a hostile closed environment, which can bring immune changes, bone loss, cardiovascular events, and behavioral health problems. On long missions, astronauts carry much of the responsibility for spotting these changes in themselves. Your challenge is to build a health monitoring software that gathers health indicators and enables astronauts to evaluate and act on the status of their health."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NjAwODc=",
+      "title": "Tandborste",
+      "meta": {
+        "type": "TEAM",
+        "slug": "tandborste",
+        "firstPublishedAt": "2026-09-26T15:49:20.905000Z",
+        "lastPublishedAt": "2026-09-26T15:51:35.391959Z",
+        "relativeUrl": "/2026/find-a-team/tandborste/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6ZmZiYjcyMzMtOTNjMS00OGMwLTg0ODktNTE5MGUxMDE4Nzgy",
+      "ownerDetails": null,
+      "excerpt": "We are Indonesian students studying across Indonesia, Malaysia, Singapore, and Australia. Our paths were never meant to cross, yet by chance or destiny, we found each other. We share one belief: what we learn should make the world a better place. ...",
+      "project": "aWQ6NTY0OTA=",
+      "projectDetails": {
+        "id": "aWQ6NTY0OTA=",
+        "name": "Project Tandborste",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NDQxMzUy",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/gpt-image-2.5-flare-kn70x47rftw3s9p70sq0903y2s8f4bp3.png"
+        },
+        "title": "team_image.15:48:40.307146",
+        "alt": "team_image.15:48:40.307146",
+        "caption": "team_image.15:48:40.307146",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/gpt-image-2.5-flare-kn70x47rftw3s9.2e16d0ba.fill-300x250.png",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/gpt-image-2.5-flare-kn70x47rftw3s9.2e16d0ba.fill-300x250.png",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMzE=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMzE=",
+        "title": "Space Mission Design Game",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "space-mission-design-game",
+          "firstPublishedAt": "2026-09-17T14:22:08.317000Z",
+          "lastPublishedAt": "2026-11-13T03:54:41.438242Z",
+          "relativeUrl": "/2026/challenges/space-mission-design-game/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Designing a space mission requires careful consideration of competing demands, including mission objectives, spacecraft design, scientific instruments, launch vehicles, budgets, power, mass, communications, and orbital constraints. For students who  rarely get to experiment with an entire mission from concept to operation, these trade-offs often remain abstract. Your challenge is to create an interactive game that allows participants to design, manage, and simulate a complete space mission while making engineering decisions, managing limited resources, and evaluating how each choice shapes the success of their mission."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6Nzk5Mzc=",
+      "title": "Team Cosmos Ben",
+      "meta": {
+        "type": "TEAM",
+        "slug": "team-cosmos-ben",
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "relativeUrl": "/2026/find-a-team/team-cosmos-ben/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6NjczYjg5YTUtYjg0OS00Njc2LWEwZjEtMzY0NzRhYmRjODVm",
+      "ownerDetails": null,
+      "excerpt": "A grade 4 working on scratch",
+      "project": "aWQ6NzYzMzU=",
+      "projectDetails": {
+        "id": "aWQ6NzYzMzU=",
+        "name": "Project Team Cosmos Ben",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjU=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjU=",
+        "title": "Abandoned but not Forgotten: Storytelling about NASA's Discarded Equipment on the Moon and Mars",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "nasas-discarded-equipment-storytelling",
+          "firstPublishedAt": "2026-09-17T14:22:22.961000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.392788Z",
+          "relativeUrl": "/2026/challenges/nasas-discarded-equipment-storytelling/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Since the 1960s, NASA has left hardware across the solar system–on the Moon, on Mars, and in deep space. From rovers and instruments that completed their science missions to probes still traveling away from Earth this hardware varies widely in both its purpose and current level of functionality. Your challenge is to tell the story of some or all of this equipment that introduces school-age space enthusiasts to the hardware and the science it made possible."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NzExMjc=",
+      "title": "Tech Arena",
+      "meta": {
+        "type": "TEAM",
+        "slug": "tech-arena",
+        "firstPublishedAt": "2026-10-26T02:17:51.768000Z",
+        "lastPublishedAt": "2026-10-26T02:19:33.416308Z",
+        "relativeUrl": "/2026/find-a-team/tech-arena/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6Y2YxYTQ4YWQtZjBkNS00NDE0LWFjYTYtMjI4NWI0NDE5MDZl",
+      "ownerDetails": null,
+      "excerpt": "Hi, I’m Shehrose, founder of Tech Arena, a Melbourne-based managed IT and AI integrations business. I’ve spent the last decade working across networking, systems and AI tooling for businesses around Melbourne’s north.",
+      "project": "aWQ6Njc1Mjk=",
+      "projectDetails": {
+        "id": "aWQ6Njc1Mjk=",
+        "name": "Project Tech Arena",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NDkzODk5",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/tech-arena-lunar-300x250.png"
+        },
+        "title": "team_image.02:17:50.914253",
+        "alt": "team_image.02:17:50.914253",
+        "caption": "team_image.02:17:50.914253",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/tech-arena-lunar-300x250.2e16d0ba.fill-300x250.png",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/tech-arena-lunar-300x250.2e16d0ba.fill-300x250.png",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjc=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjc=",
+        "title": "Lunar Landing Site Navigator",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "lunar-landing-site-navigator",
+          "firstPublishedAt": "2026-09-17T14:21:09.928000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.789089Z",
+          "relativeUrl": "/2026/challenges/lunar-landing-site-navigator/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Missions to the Moon’s south pole face extreme lighting and communication constraints, and planning  them takes careful coordination between science and engineering teams. Tools for determining Sun and Earth positions at candidate landing sites exist, but their complicated interfaces make it difficult to evaluate critical information with efficiency. Your challenge is to create an intuitive tool or application that lets mission planners, educators, and the public compare landing sites and dates quickly, visualizing Sun and Earth positions relative to the horizon to assess power generation potential and direct-to-Earth communication windows."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": false,
+      "canAcceptMembers": false,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NTk1MzY=",
+      "title": "Tharsis",
+      "meta": {
+        "type": "TEAM",
+        "slug": "tharsis",
+        "firstPublishedAt": "2026-09-25T06:38:43.884000Z",
+        "lastPublishedAt": "2026-09-26T05:39:03.193498Z",
+        "relativeUrl": "/2026/find-a-team/tharsis/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6YTgxOWRjYjUtOGVhYy00Nzc1LWIzYmUtOTJlYTQxNjFhZDU1",
+      "ownerDetails": null,
+      "excerpt": "We are Team Tharsis, six students brought together by our interest in space and technology. Most of us met through space events and competitions. With skills in coding, engineering, design, research and problem-solving, we combine our different pe...",
+      "project": "aWQ6NTU5Mzk=",
+      "projectDetails": {
+        "id": "aWQ6NTU5Mzk=",
+        "name": "Project Tharsis",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NDM4NTg1",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/logo_XsLHUPV.jpeg"
+        },
+        "title": "team_image.06:37:39.543403",
+        "alt": "team_image.06:37:39.543403",
+        "caption": "team_image.06:37:39.543403",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/logo_XsLHUPV.2e16d0ba.fill-300x250.jpg",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/logo_XsLHUPV.2e16d0ba.fill-300x250.jpg",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMTg=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMTg=",
+        "title": "Interplanetary Survival Guide: Martian Map",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "interplanetary-survival-guide-martian-map",
+          "firstPublishedAt": "2026-09-17T14:21:03.079000Z",
+          "lastPublishedAt": "2026-11-13T03:46:20.420900Z",
+          "relativeUrl": "/2026/challenges/interplanetary-survival-guide-martian-map/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "NASA has explored Mars robotically for decades, studying its extreme environment, mapping its surface, and collecting many types of data. Far from home, the first astronauts to set foot on Mars will want the best map possible, with information on the details of their routes and destinations, updates on current conditions, and the data needed to complete their mission quickly and safely. Your challenge is to create a layered, integrated view of a location or route on the Martian surface that pulls together data from multiple NASA science missions and could help a human explorer plan and carry out a successful Marswalk while conducting new and exciting science along the way."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": false,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6ODgxODQ=",
+      "title": "The Missioneers",
+      "meta": {
+        "type": "TEAM",
+        "slug": "the-missioneers",
+        "firstPublishedAt": "2026-11-13T20:24:00.601296Z",
+        "lastPublishedAt": "2026-11-13T20:24:00.601296Z",
+        "relativeUrl": "/2026/find-a-team/the-missioneers/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6MGM0MWNmZjYtYmU2Yy00NmNkLTliZWUtNmNmMWZhZjIwZjdk",
+      "ownerDetails": null,
+      "excerpt": "Mission Possible&nbsp;is a team dedicated to making space exploration engaging and accessible through our&nbsp;Space Mission Design Game, where players plan missions, solve challenges, manage resources, and experience the excitement of space explo...",
+      "project": "aWQ6ODQ1ODE=",
+      "projectDetails": {
+        "id": "aWQ6ODQ1ODE=",
+        "name": "Project The Missioneers",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NTU4MjQz",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Screenshot_2026-11-13_at_3_W3GRm7E.18.41PM.png"
+        },
+        "title": "team_image.20:23:59.653478",
+        "alt": "team_image.20:23:59.653478",
+        "caption": "team_image.20:23:59.653478",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/Screenshot_2026-11-13_at_3_W3GRm7E.2e16d0ba.fill-300x250.png",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/Screenshot_2026-11-13_at_3_W3GRm7E.2e16d0ba.fill-300x250.png",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMzE=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMzE=",
+        "title": "Space Mission Design Game",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "space-mission-design-game",
+          "firstPublishedAt": "2026-09-17T14:22:08.317000Z",
+          "lastPublishedAt": "2026-11-13T03:54:41.438242Z",
+          "relativeUrl": "/2026/challenges/space-mission-design-game/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Designing a space mission requires careful consideration of competing demands, including mission objectives, spacecraft design, scientific instruments, launch vehicles, budgets, power, mass, communications, and orbital constraints. For students who  rarely get to experiment with an entire mission from concept to operation, these trade-offs often remain abstract. Your challenge is to create an interactive game that allows participants to design, manage, and simulate a complete space mission while making engineering decisions, managing limited resources, and evaluating how each choice shapes the success of their mission."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NzIwOTQ=",
+      "title": "Veena",
+      "meta": {
+        "type": "TEAM",
+        "slug": "veena",
+        "firstPublishedAt": "2026-10-29T09:00:22.189000Z",
+        "lastPublishedAt": "2026-10-29T09:00:26.370247Z",
+        "relativeUrl": "/2026/find-a-team/veena/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6OGE3ZDNmNjktNWQzOS00MzdhLWFjODctOTM1YTcxZjc1MjJk",
+      "ownerDetails": null,
+      "excerpt": "Hi, I am Veena and currently enrolled in MBA in Project Management. My research interests include smart grids and AI.",
+      "project": "aWQ6Njg0OTY=",
+      "projectDetails": {
+        "id": "aWQ6Njg0OTY=",
+        "name": "Project Veena",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": null,
+      "description": null,
+      "desiredSkills": null,
+      "languages": null,
+      "challenge": "aWQ6NTUxMjg=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjg=",
+        "title": "Be An Earth System Trend Detective!",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "earth-system-trend-detective",
+          "firstPublishedAt": "2026-09-17T14:21:35.374000Z",
+          "lastPublishedAt": "2026-11-13T03:46:21.982990Z",
+          "relativeUrl": "/2026/challenges/earth-system-trend-detective/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Change is always occurring in the Earth’s interconnected environmental system, and when it runs in a consistent direction – rising or falling, increasing or decreasing, thickening or thinning – measured variables reflect it. But a measured Earth science data variable can trend one way in one region and the opposite way in another, even when the same process drives both. The multitude of Earth science data variables makes it difficult to select variables that could indicate change, and to then perform an analysis on the selected variables.  Your challenge is to create a tool that can select variables measured by Earth science missions or produced by Earth science models, visualize how they change over time, and determine what is changing, where it is changing, how much it is changing, and if these changes are what scientists call “significant.”"
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    },
+    {
+      "__typename": "TeamPage",
+      "id": "aWQ6NzAyMTg=",
+      "title": "Zero-G Cadets",
+      "meta": {
+        "type": "TEAM",
+        "slug": "astro-cadets",
+        "firstPublishedAt": "2026-10-23T17:59:58.939000Z",
+        "lastPublishedAt": "2026-11-10T04:30:26.659673Z",
+        "relativeUrl": "/2026/find-a-team/astro-cadets/",
+        "live": true,
+        "parent": null
+      },
+      "owner": "aWQ6M2FkYjJhZjYtMmJkOC00NTI5LThmNTMtYjUyMmQ5N2QzZTA2",
+      "ownerDetails": null,
+      "excerpt": "🚀 Join&nbsp;Zero-G Cadets!We're building the Junior Astronaut Mission Trainer—a game where players survive on the Moon/Mars by managing life support, power, and food.As an Environmental Engineer, I'm the \"Chief Scientist\" making the survival rules...",
+      "project": "aWQ6NjY2MjA=",
+      "projectDetails": {
+        "id": "aWQ6NjY2MjA=",
+        "name": "Project Astro Cadets",
+        "summary": "",
+        "demoLink": "",
+        "projectLink": "",
+        "details": "",
+        "solution": "",
+        "aiReferences": "",
+        "dataReferences": "",
+        "projectReferences": "",
+        "isSubmitted": false,
+        "savedAt": null,
+        "submittedAt": null
+      },
+      "projectSubmitted": false,
+      "featuredImage": {
+        "id": "aWQ6NDkwMDkx",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/51cf047a-f3db-48ac-a8f5-c5e85ef49c81-goapi_rSArMvd.png"
+        },
+        "title": "team_image.17:59:57.585425",
+        "alt": "team_image.17:59:57.585425",
+        "caption": "team_image.17:59:57.585425",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/51cf047a-f3db-48ac-a8f5-c5e85ef49c_bpvAoqA.2e16d0ba.fill-300x250.png",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/51cf047a-f3db-48ac-a8f5-c5e85ef49c_bpvAoqA.2e16d0ba.fill-300x250.png",
+          "height": 250,
+          "width": 300
+        }
+      },
+      "description": null,
+      "desiredSkills": [
+        "Games",
+        "Pollution",
+        "Waste & Resources",
+        "Animation",
+        "Weather",
+        "Artificial Intelligence & Machine Learning",
+        "Astrophysics",
+        "Space Weather",
+        "Moon",
+        "Human Exploration",
+        "Planets & Moons",
+        "Space Exploration",
+        "Coding",
+        "Graphic Design",
+        "Writing & Communications",
+        "Earth Science",
+        "Earth Orbit",
+        "Data Management"
+      ],
+      "languages": [
+        "Other",
+        "English",
+        "Hindi"
+      ],
+      "challenge": "aWQ6NTUxMjQ=",
+      "challengeDetails": {
+        "id": "aWQ6NTUxMjQ=",
+        "title": "Build a Junior Astronaut Mission Trainer",
+        "meta": {
+          "type": "CHALLENGE",
+          "slug": "junior-astronaut-mission-trainer",
+          "firstPublishedAt": "2026-09-17T14:22:28.522000Z",
+          "lastPublishedAt": "2026-11-13T03:48:49.413870Z",
+          "relativeUrl": "/2026/challenges/junior-astronaut-mission-trainer/",
+          "live": true,
+          "parent": null
+        },
+        "excerpt": "Space-themed STEM content often oversimplifies the engineering trade-offs that define a real mission or presents them at a level too complex to hold a young learner's attention. Few tools make those trade-offs both tangible and fun. Your challenge is to design and build an interactive game or app that lets students run a lunar or Martian outpost, balancing competing demands like life support, radiation shielding, power, and food production, so they experience firsthand the decisions that determine whether a mission fails or succeeds."
+      },
+      "location": "aWQ6NTQ2OTI=",
+      "locationDetails": {
+        "id": "aWQ6NTQ2OTI=",
+        "title": "Melbourne",
+        "displayName": "",
+        "meta": {
+          "type": "LOCATION",
+          "slug": "melbourne",
+          "firstPublishedAt": "2026-08-26T15:53:50.619000Z",
+          "lastPublishedAt": "2026-11-13T21:21:13.078020Z",
+          "relativeUrl": "/2026/local-events/melbourne/",
+          "live": true,
+          "parent": null
+        },
+        "country": "Australia"
+      },
+      "event": "aWQ6NA==",
+      "joinEnabled": true,
+      "canAcceptMembers": true,
+      "memberships": null,
+      "nominationBadges": null,
+      "awardBadges": null
+    }
+  ]
+}

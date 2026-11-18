@@ -1,0 +1,696 @@
+{
+ "madeAt": "2026-11-15T04:58:48.561Z",
+ "commit": "3ffb94c",
+ "script": "/tmp/panels-build/build.ts",
+ "barnard": {
+  "haloHtml": ""
+ },
+ "rwaur": {
+  "haloHtml": ""
+ },
+ "epsindb": {
+  "haloHtml": ""
+ },
+ "wise0855": {
+  "haloHtml": ""
+ },
+ "rdra": {
+  "haloHtml": "<p class=\"sk-body mute\">Near 0.93 µm, the light in a ring 31″ to 49″ from R Draconis’s centre, outside the part the frames leave blank, could be measured in 3 of 3 looks, taken on 3 visits. A curve is drawn only from looks on at least 3 visits, all within 0.005 µm of colour; these looks do not meet that, so each reading is listed instead.</p><table class=\"sk-halo-t\"><caption class=\"sk-sr\">Light in the ring, each look</caption><thead><tr><th scope=\"col\">Look</th><th scope=\"col\">Colour</th><th scope=\"col\">Ring light vs the median of these looks</th></tr></thead><tbody><tr><td><button type=\"button\" class=\"sk-halo-k\" data-k=\"0\" aria-label=\"Show the look of 18 Jul 2025\">18 Jul 2025</button></td><td>0.941 µm</td><td>−43% ± 3.0%</td></tr><tr><td><button type=\"button\" class=\"sk-halo-k\" data-k=\"1\" aria-label=\"Show the look of 9 Jul 2026\">9 Jul 2026</button></td><td>0.940 µm</td><td>+11% ± 8.6%</td></tr><tr><td><button type=\"button\" class=\"sk-halo-k\" data-k=\"2\" aria-label=\"Show the look of 16 Sep 2026\">16 Sep 2026</button></td><td>0.917 µm</td><td>+0.0% ± 8.9%</td></tr></tbody></table><p class=\"sk-body mute\">Measured against 2 nearby comparison stars from Gaia. The ± is each reading’s noise: the sky around the ring and around the comparison stars, and how far off the star’s catalogue position could be. These looks were taken from 0.917 to 0.941 µm; looks at slightly different colours can read differently for that reason alone. 3 catalogued Gaia stars (brightest G 16.2) sit in or at the edge of the ring, so some of their light is in every reading.</p><ul class=\"sk-notes\"><li>18 Jul 2025, 16 Sep 2026: Ring brightness is sensitive to the catalogue position; the error bar includes the stated position uncertainty.</li></ul>"
+ },
+ "upTonight": [
+  {
+   "id": "barnard",
+   "ra": 269.4462585606824,
+   "dec": 4.768324457848531,
+   "now": "2026-11-15T09:00:00Z",
+   "r": {
+    "darkStart": 1794737691796,
+    "darkEnd": 1794765256906,
+    "from": 1794737691796,
+    "inside": false,
+    "bestNow": false,
+    "best": 1794737691796,
+    "bestAltDeg": 2.251312244503281,
+    "bestAzDeg": 277.80441663929145,
+    "maxAltDeg": 47.41868816655024
+   },
+   "text": {
+    "line": "Tonight from Melbourne: highest in the dark at 21:15, very low, about 2° above the horizon, facing west.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 21:15 to 04:54. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "barnard",
+   "ra": 269.4462585606824,
+   "dec": 4.768324457848531,
+   "now": "2026-11-15T14:30:00Z",
+   "r": {
+    "darkStart": 1794737691796,
+    "darkEnd": 1794765257109,
+    "from": 1794753000000,
+    "inside": true,
+    "bestNow": true,
+    "best": 1794753000000,
+    "bestAltDeg": -45.563282051062316,
+    "bestAzDeg": 230.11706197977176,
+    "maxAltDeg": 47.418688177008555
+   },
+   "text": {
+    "line": "From Melbourne, until the dark ends: below the horizon.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 21:15 to 04:54. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "barnard",
+   "ra": 269.4462585606824,
+   "dec": 4.768324457848531,
+   "now": "2026-06-01T03:00:00Z",
+   "r": {
+    "darkStart": 1780301457421,
+    "darkEnd": 1780345519718,
+    "from": 1780301457421,
+    "inside": false,
+    "bestNow": false,
+    "best": 1780328321376,
+    "bestAltDeg": 47.4186781881593,
+    "bestAzDeg": 0.0013800585776948537,
+    "maxAltDeg": 47.41867819707452
+   },
+   "text": {
+    "line": "Tonight from Melbourne: highest in the dark at 01:39, about 47° above the horizon, facing north.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 18:11 to 06:25. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "rwaur",
+   "ra": 76.9565865751149,
+   "dec": 30.40129134700019,
+   "now": "2026-11-15T09:00:00Z",
+   "r": {
+    "darkStart": 1794737691796,
+    "darkEnd": 1794765256906,
+    "from": 1794737691796,
+    "inside": false,
+    "bestNow": false,
+    "best": 1794757842095,
+    "bestAltDeg": 21.75149159951976,
+    "bestAzDeg": 0.0006532785953936582,
+    "maxAltDeg": 21.7514916026892
+   },
+   "text": {
+    "line": "Tonight from Melbourne: highest in the dark at 02:51, about 22° above the horizon, facing north.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 21:15 to 04:54. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "rwaur",
+   "ra": 76.9565865751149,
+   "dec": 30.40129134700019,
+   "now": "2026-11-15T14:30:00Z",
+   "r": {
+    "darkStart": 1794737691796,
+    "darkEnd": 1794765257109,
+    "from": 1794753000000,
+    "inside": true,
+    "bestNow": false,
+    "best": 1794757842483,
+    "bestAltDeg": 21.751491597288094,
+    "bestAzDeg": 359.99914837924564,
+    "maxAltDeg": 21.75149160267425
+   },
+   "text": {
+    "line": "From Melbourne, until the dark ends: highest at 02:51, about 22° above the horizon, facing north.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 21:15 to 04:54. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "rwaur",
+   "ra": 76.9565865751149,
+   "dec": 30.40129134700019,
+   "now": "2026-06-01T03:00:00Z",
+   "r": {
+    "darkStart": 1780301457421,
+    "darkEnd": 1780345519718,
+    "from": 1780301457421,
+    "inside": false,
+    "bestNow": false,
+    "best": 1780301457421,
+    "bestAltDeg": -11.190383760287533,
+    "bestAzDeg": 300.00579562659675,
+    "maxAltDeg": 21.752048648117096
+   },
+   "text": {
+    "line": "Tonight from Melbourne: below the horizon while it is dark.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 18:11 to 06:25. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "epsindb",
+   "ra": 331.0966687786697,
+   "dec": -56.80064917366798,
+   "now": "2026-11-15T09:00:00Z",
+   "r": {
+    "darkStart": 1794737691796,
+    "darkEnd": 1794765256906,
+    "from": 1794737691796,
+    "inside": false,
+    "bestNow": false,
+    "best": 1794737691796,
+    "bestAltDeg": 66.30903876298662,
+    "bestAzDeg": 210.29374555029307,
+    "maxAltDeg": 71.14460217859464
+   },
+   "text": {
+    "line": "Tonight from Melbourne: highest in the dark at 21:15, about 66° above the horizon, facing south-west.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 21:15 to 04:54. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "epsindb",
+   "ra": 331.0966687786697,
+   "dec": -56.80064917366798,
+   "now": "2026-11-15T14:30:00Z",
+   "r": {
+    "darkStart": 1794737691796,
+    "darkEnd": 1794765257109,
+    "from": 1794753000000,
+    "inside": true,
+    "bestNow": true,
+    "best": 1794753000000,
+    "bestAltDeg": 33.06020529698625,
+    "bestAzDeg": 220.82013405205737,
+    "maxAltDeg": 71.14460455291317
+   },
+   "text": {
+    "line": "From Melbourne, until the dark ends: highest now, about 33° above the horizon, facing south-west.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 21:15 to 04:54. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "epsindb",
+   "ra": 331.0966687786697,
+   "dec": -56.80064917366798,
+   "now": "2026-06-01T03:00:00Z",
+   "r": {
+    "darkStart": 1780301457421,
+    "darkEnd": 1780345519718,
+    "from": 1780301457421,
+    "inside": false,
+    "bestNow": false,
+    "best": 1780343105967,
+    "bestAltDeg": 71.1423696421747,
+    "bestAzDeg": 179.99985227056266,
+    "maxAltDeg": 71.14236964226322
+   },
+   "text": {
+    "line": "Tonight from Melbourne: highest in the dark at 05:45, about 71° above the horizon, facing south.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 18:11 to 06:25. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "wise0855",
+   "ra": 133.75976527065234,
+   "dec": -7.242182182634441,
+   "now": "2026-11-15T09:00:00Z",
+   "r": {
+    "darkStart": 1794737691796,
+    "darkEnd": 1794765256906,
+    "from": 1794737691796,
+    "inside": false,
+    "bestNow": false,
+    "best": 1794765256906,
+    "bestAltDeg": 51.651986118380734,
+    "bestAzDeg": 43.93525007482532,
+    "maxAltDeg": 59.5319661344982
+   },
+   "text": {
+    "line": "Tonight from Melbourne: highest in the dark at 04:54, about 52° above the horizon, facing north-east.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 21:15 to 04:54. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "wise0855",
+   "ra": 133.75976527065234,
+   "dec": -7.242182182634441,
+   "now": "2026-11-15T14:30:00Z",
+   "r": {
+    "darkStart": 1794737691796,
+    "darkEnd": 1794765257109,
+    "from": 1794753000000,
+    "inside": true,
+    "bestNow": false,
+    "best": 1794765257109,
+    "bestAltDeg": 51.65245105678409,
+    "bestAzDeg": 43.93412005521452,
+    "maxAltDeg": 59.53196613452312
+   },
+   "text": {
+    "line": "From Melbourne, until the dark ends: highest at 04:54, about 52° above the horizon, facing north-east.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 21:15 to 04:54. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "wise0855",
+   "ra": 133.75976527065234,
+   "dec": -7.242182182634441,
+   "now": "2026-06-01T03:00:00Z",
+   "r": {
+    "darkStart": 1780301457421,
+    "darkEnd": 1780345519718,
+    "from": 1780301457421,
+    "inside": false,
+    "bestNow": false,
+    "best": 1780301457421,
+    "bestAltDeg": 52.86339473185115,
+    "bestAzDeg": 319.1800848789444,
+    "maxAltDeg": 59.53019092893648
+   },
+   "text": {
+    "line": "Tonight from Melbourne: highest in the dark at 18:11, about 53° above the horizon, facing north-west.",
+    "note": "Times are Melbourne time. Dark means the Sun is more than 12° below the horizon, here from 18:11 to 06:25. This says where the spot is in the sky, not whether anything can be seen there."
+   }
+  },
+  {
+   "id": "rdra",
+   "ra": 248.16723307045095,
+   "dec": 66.75502382640903,
+   "now": "2026-11-15T09:00:00Z",
+   "r": {
+    "darkStart": 1794737691796,
+    "darkEnd": 1794765256906,
+    "from": 1794737691796,
+    "inside": false,
+    "bestNow": false,
+    "best": 1794737691796,
+    "bestAltDeg": -40.09196762925562,
+    "bestAzDeg": 330.0383033318786,
+    "maxAltDeg": -14.513413159987039
+   },
+   "text": {
+    "line": "This spot never rises above the horizon from Melbourne.",
+    "note": ""
+   }
+  },
+  {
+   "id": "rdra",
+   "ra": 248.16723307045095,
+   "dec": 66.75502382640903,
+   "now": "2026-11-15T14:30:00Z",
+   "r": {
+    "darkStart": 1794737691796,
+    "darkEnd": 1794765257109,
+    "from": 1794753000000,
+    "inside": true,
+    "bestNow": false,
+    "best": 1794765257109,
+    "bestAltDeg": -53.30757122998922,
+    "bestAzDeg": 25.28321665040653,
+    "maxAltDeg": -14.513411353265809
+   },
+   "text": {
+    "line": "This spot never rises above the horizon from Melbourne.",
+    "note": ""
+   }
+  },
+  {
+   "id": "rdra",
+   "ra": 248.16723307045095,
+   "dec": 66.75502382640903,
+   "now": "2026-06-01T03:00:00Z",
+   "r": {
+    "darkStart": 1780301457421,
+    "darkEnd": 1780345519718,
+    "from": 1780301457421,
+    "inside": false,
+    "bestNow": false,
+    "best": 1780323155629,
+    "bestAltDeg": -14.514357945048243,
+    "bestAzDeg": 359.9998498375157,
+    "maxAltDeg": -14.514357944667779
+   },
+   "text": {
+    "line": "This spot never rises above the horizon from Melbourne.",
+    "note": ""
+   }
+  }
+ ],
+ "planetx": {
+  "rows": [
+   {
+    "id": "p9-predicted",
+    "label": "Planet Nine, predicted",
+    "band": "approximate R mag",
+    "marks": [
+     {
+      "kind": "range",
+      "from": 17,
+      "to": 25.5,
+      "text": "Fig. 9 extent, by eye",
+      "source": "Brown & Batygin 2021, arXiv:2108.09868v2, Figure 9, https://arxiv.org/abs/2108.09868; approximate plotted colored extent read by eye, not a hard bound",
+      "style": "light"
+     },
+     {
+      "kind": "range",
+      "from": 18,
+      "to": 23,
+      "text": "Percentile-curve extents",
+      "source": "Brown & Batygin 2021, arXiv:2108.09868v2, Figure 9, https://arxiv.org/abs/2108.09868; approximate outer extents of conditional 16th and 84th percentile curves read by eye across right ascension, not global percentiles",
+      "style": "solid"
+     }
+    ]
+   },
+   {
+    "id": "p9-remaining",
+    "label": "Not yet ruled out",
+    "band": "V mag",
+    "marks": [
+     {
+      "kind": "point",
+      "from": 22,
+      "to": 22,
+      "text": "Remaining estimate",
+      "source": "Brown, Holman & Batygin 2024, section 6, https://arxiv.org/abs/2401.17977; remaining reference population",
+      "style": "solid",
+      "low": 20.6,
+      "high": 23.1
+     }
+    ]
+   },
+   {
+    "id": "model",
+    "label": "This repo's model, one example",
+    "band": "V band",
+    "marks": [
+     {
+      "kind": "point",
+      "from": 20.115464735952834,
+      "to": 20.115464735952834,
+      "text": "model, at 380 AU",
+      "source": "model, V band, if it were at 380 AU (its fitted semi-major axis, not its likely current distance), with albedo 0.475, the middle of the published range; computed in this repo from the published mass, albedo range and semi-major axis",
+      "style": "outline"
+     }
+    ]
+   },
+   {
+    "id": "searches",
+    "label": "Optical searches already done",
+    "band": "Multiple optical bands",
+    "marks": [
+     {
+      "kind": "tick",
+      "from": 22,
+      "to": 22,
+      "text": "Pan-STARRS1 g",
+      "source": "Brown, Holman & Batygin 2024, section II, https://arxiv.org/abs/2401.17977",
+      "style": "solid"
+     },
+     {
+      "kind": "tick",
+      "from": 21.8,
+      "to": 21.8,
+      "text": "Pan-STARRS1 r",
+      "source": "Brown, Holman & Batygin 2024, section II, https://arxiv.org/abs/2401.17977",
+      "style": "solid"
+     },
+     {
+      "kind": "tick",
+      "from": 21.5,
+      "to": 21.5,
+      "text": "Pan-STARRS1 i",
+      "source": "Brown, Holman & Batygin 2024, section II, https://arxiv.org/abs/2401.17977",
+      "style": "solid"
+     },
+     {
+      "kind": "tick",
+      "from": 20.9,
+      "to": 20.9,
+      "text": "Pan-STARRS1 z",
+      "source": "Brown, Holman & Batygin 2024, section II, https://arxiv.org/abs/2401.17977",
+      "style": "solid"
+     },
+     {
+      "kind": "tick",
+      "from": 19.7,
+      "to": 19.7,
+      "text": "Pan-STARRS1 y",
+      "source": "Brown, Holman & Batygin 2024, section II, https://arxiv.org/abs/2401.17977",
+      "style": "solid"
+     },
+     {
+      "kind": "tick",
+      "from": 20.5,
+      "to": 20.5,
+      "text": "ZTF V",
+      "source": "Brown & Batygin 2022, abstract, https://arxiv.org/abs/2110.13117",
+      "style": "solid"
+     },
+     {
+      "kind": "tick",
+      "from": 23.8,
+      "to": 23.8,
+      "text": "DES r",
+      "source": "Belyakov et al. 2022, section I, https://arxiv.org/abs/2203.07642",
+      "style": "solid"
+     },
+     {
+      "kind": "tick",
+      "from": 21.5,
+      "to": 21.5,
+      "text": "PS1 search half complete, V mag",
+      "source": "Brown, Holman & Batygin 2024, abstract, https://arxiv.org/abs/2401.17977",
+      "style": "solid"
+     }
+    ]
+   },
+   {
+    "id": "spherex-4",
+    "label": "SPHEREx depth, 4 observations per channel",
+    "band": "AB, per channel",
+    "marks": [
+     {
+      "kind": "range",
+      "from": 19.5,
+      "to": 19.9,
+      "text": "0.75–3.8 µm",
+      "source": "Bock et al. 2025, abstract and Figure 19 caption, https://arxiv.org/abs/2511.02985; 5 sigma point source, per spectral channel, 4 observations per channel at the median sky, Galactic plane excluded",
+      "style": "solid"
+     },
+     {
+      "kind": "range",
+      "from": 17.8,
+      "to": 18.8,
+      "text": "3.8–5 µm",
+      "source": "Bock et al. 2025, abstract and Figure 19 caption, https://arxiv.org/abs/2511.02985; 5 sigma point source, per spectral channel, 4 observations per channel at the median sky, Galactic plane excluded",
+      "style": "solid"
+     }
+    ]
+   },
+   {
+    "id": "spherex-1",
+    "label": "SPHEREx depth, one observation (derived)",
+    "band": "AB, per channel",
+    "marks": [
+     {
+      "kind": "range",
+      "from": 18.75,
+      "to": 19.15,
+      "text": "0.75–3.8 µm",
+      "source": "Bock et al. 2025, abstract and Figure 19 caption, https://arxiv.org/abs/2511.02985; 5 sigma point source, per spectral channel, 4 observations per channel at the median sky, Galactic plane excluded; estimate: 4-observation depth - 2.5 log10(sqrt(4)), approximated by 0.75 mag",
+      "style": "outline"
+     },
+     {
+      "kind": "range",
+      "from": 17.05,
+      "to": 18.05,
+      "text": "3.8–5 µm",
+      "source": "Bock et al. 2025, abstract and Figure 19 caption, https://arxiv.org/abs/2511.02985; 5 sigma point source, per spectral channel, 4 observations per channel at the median sky, Galactic plane excluded; estimate: 4-observation depth - 2.5 log10(sqrt(4)), approximated by 0.75 mag",
+      "style": "outline"
+     }
+    ]
+   },
+   {
+    "id": "wise0855",
+    "label": "WISE 0855 at 4.6 µm, a real cold neighbour",
+    "band": "W2, AB",
+    "marks": [
+     {
+      "kind": "point",
+      "from": 17.229,
+      "to": 17.229,
+      "text": "WISE 0855",
+      "source": "Luhman 2014, Table 1, https://doi.org/10.1088/2041-8205/786/2/L18; WISE Explanatory Supplement Table 3, https://irsa.ipac.caltech.edu/data/WISE/docs/release/All-Sky/expsup/sec4_4h.html; W2 Vega plus AB offset",
+      "style": "solid"
+     }
+    ]
+   }
+  ],
+  "text": {
+   "title": "How faint would Planet Nine be, and how deep do the searches go?",
+   "caption": "The rows are in different bands, so their numbers are not interchangeable. The Planet Nine rows are optical brightness: the chart does not estimate how bright it would be at SPHEREx's wavelengths. This is an estimate from published numbers, not a search result.",
+   "notes": [
+    "Rows are in different bands (optical R and V, survey g, r, i, z and y, SPHEREx AB per channel, WISE W2) on one axis with no colour correction, so compare them only roughly. Only the model row is this repo's own estimate (reflected sunlight, V band); the others come from the papers listed, with the one-observation SPHEREx depth and the WISE 0855 AB value worked out here from published numbers, and the Planet Nine ranges read by eye from Figure 9 of Brown & Batygin 2021.",
+    "An estimate only: the one-observation depth assumes four equal independent observations. The model assumes the object is seen at opposition, fully lit.",
+    "W2 is a broadband average and WISE 0855's spectrum changes steeply across 3.8 to 5 µm, so its brightness in one SPHEREx channel can differ from W2.",
+    "Stacking frames goes deeper for a source that stays put; the gain is not measured here, and shift-and-stack for a moving source is not tested.",
+    "Model, V band, if it were at 380 AU (its fitted semi-major axis, not its likely current distance), with albedo 0.475, the middle of the published range.",
+    "Together, the ZTF, DES and Pan-STARRS1 searches have ruled out about 78% of the synthetic reference population."
+   ],
+   "references": [
+    {
+     "key": "orbit",
+     "text": "Brown & Batygin 2021, The Orbit of Planet Nine",
+     "url": "https://arxiv.org/abs/2108.09868"
+    },
+    {
+     "key": "mission",
+     "text": "Bock et al. 2025, The SPHEREx Satellite Mission",
+     "url": "https://arxiv.org/abs/2511.02985"
+    },
+    {
+     "key": "ps1",
+     "text": "Brown, Holman & Batygin 2024, Pan-STARRS1 search",
+     "url": "https://arxiv.org/abs/2401.17977"
+    },
+    {
+     "key": "ztf",
+     "text": "Brown & Batygin 2022, ZTF search, AJ 163, 102, doi:10.3847/1538-3881/ac32dd",
+     "url": "https://arxiv.org/abs/2110.13117"
+    },
+    {
+     "key": "des",
+     "text": "Belyakov et al. 2022, DES limits",
+     "url": "https://arxiv.org/abs/2203.07642"
+    },
+    {
+     "key": "luhman",
+     "text": "Luhman 2014, WISE 0855 photometry",
+     "url": "https://doi.org/10.1088/2041-8205/786/2/L18"
+    },
+    {
+     "key": "wise",
+     "text": "WISE All-Sky Explanatory Supplement, photometric calibration",
+     "url": "https://irsa.ipac.caltech.edu/data/WISE/docs/release/All-Sky/expsup/sec4_4h.html"
+    },
+    {
+     "key": "earth",
+     "text": "NASA Earth Fact Sheet",
+     "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html"
+    },
+    {
+     "key": "diameter",
+     "text": "Masiero et al. 2011, asteroid albedo and diameter relation",
+     "url": "https://doi.org/10.1088/0004-637X/741/2/68"
+    }
+   ]
+  },
+  "model": {
+   "vMag": 20.115464735952834,
+   "label": "model, V band, if it were at 380 AU (its fitted semi-major axis, not its likely current distance), with albedo 0.475, the middle of the published range"
+  },
+  "margin": {
+   "fourObservations": [
+    -1.57,
+    -0.57
+   ],
+   "oneObservation": [
+    -0.82,
+    0.18
+   ]
+  },
+  "mag6at380": 20.115464735952834,
+  "x22": 233.6
+ },
+ "comet": {
+  "caption": [
+   "12 SPHEREx frames from 14 December 2025, taken over about 3.3 hours at wavelengths from 3.96 to 4.36 µm. Each frame sees a different wavelength, so the row mixes colour and time.",
+   "The 4 frames from 4.25 to 4.36 µm started within 7 minutes of each other. Among them the core reads 39.2 MJy/sr at 4.25 µm and 1.03 at 4.36 µm. They are close in time, but this card still cannot fully separate colour from time, and the box may sit a little differently on the comet in each frame.",
+   "All the pictures share one linear brightness scale, so they can be compared; its top is the brightest pixel in any of the 3×3 boxes. The faint frames look almost black. Anything brighter than the top shows white, such as a star, a hot pixel or a cosmic-ray hit. Pixels with no value in the archive are drawn dark red. The pictures keep the detector’s orientation; they are not turned north up.",
+   "The numbers are the mean of the 3×3 pixels at the comet’s predicted position (from IRSA’s Moving Object Search Tool), minus the median of each picture’s border. The box sits on the predicted position, not on the brightest pixel, so it can miss part of the peak. The border is not empty sky: the coma the SPHEREx team reports (about 3 arcminutes in radius) is wider than these pictures (about 4 arcminutes across). They are raw pixel values, not a calibrated measurement.",
+   "Here the core is brightest at 4.25 µm (39.2 MJy/sr above its border). The SPHEREx team reports carbon dioxide gas glowing at 4.25 to 4.27 µm in this comet (Lisse et al. 2026). This card does not separate gas light from dust light.",
+   "The SPHEREx team reported this comet’s wide carbon dioxide coma (Lisse et al. 2025 and 2026). This card redraws public frames with rough numbers of its own and adds nothing new to that work."
+  ],
+  "points": [
+   {
+    "wavelength": 3.9639,
+    "core": 0.8764,
+    "border": 0.2567,
+    "value": 0.6196999999999999
+   },
+   {
+    "wavelength": 3.9987,
+    "core": 0.8593,
+    "border": 0.266,
+    "value": 0.5932999999999999
+   },
+   {
+    "wavelength": 4.0337,
+    "core": 0.8506,
+    "border": 0.2776,
+    "value": 0.573
+   },
+   {
+    "wavelength": 4.0691,
+    "core": 0.9385,
+    "border": 0.2973,
+    "value": 0.6412
+   },
+   {
+    "wavelength": 4.1037,
+    "core": 0.8655,
+    "border": 0.3024,
+    "value": 0.5631
+   },
+   {
+    "wavelength": 4.1396,
+    "core": 0.9431,
+    "border": 0.3116,
+    "value": 0.6315000000000001
+   },
+   {
+    "wavelength": 4.1755,
+    "core": 1.097,
+    "border": 0.3857,
+    "value": 0.7113
+   },
+   {
+    "wavelength": 4.2116,
+    "core": 4.747,
+    "border": 0.9234,
+    "value": 3.8236
+   },
+   {
+    "wavelength": 4.2473,
+    "core": 39.92,
+    "border": 0.7605,
+    "value": 39.1595
+   },
+   {
+    "wavelength": 4.2839,
+    "core": 28.65,
+    "border": 0.8423,
+    "value": 27.807699999999997
+   },
+   {
+    "wavelength": 4.3207,
+    "core": 3.748,
+    "border": 0.7727,
+    "value": 2.9753000000000003
+   },
+   {
+    "wavelength": 4.3576,
+    "core": 1.572,
+    "border": 0.5405,
+    "value": 1.0315
+   }
+  ],
+  "scale": {
+   "lo": 0.2567,
+   "hi": 79.98
+  },
+  "groups": [
+   4,
+   4,
+   4
+  ]
+ }
+}

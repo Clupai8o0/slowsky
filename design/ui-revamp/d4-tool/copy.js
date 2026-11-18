@@ -1,0 +1,76 @@
+// Copied from slowsky src/ui/copy.ts (v0.3) for the mockups. Use these words; do not invent new facts.
+// Words on screen for the five official targets. Plain language for teachers and citizen scientists.
+// No measured numbers here: every number on a card comes from code or bakes in this repo.
+
+
+
+window.ORDER = ['barnard', 'rwaur', 'epsindb', 'wise0855', 'rdra'];
+
+window.COPY = {
+    barnard: {
+        display: 'Barnard’s Star',
+        short: 'Moves fastest across our sky',
+        kind: 'mover',
+        headline: 'Barnard’s Star, walking north',
+        show: 'The fastest-moving star in our sky: about 10 arcseconds a year, under two SPHEREx pixels. Gold rings mark where its catalogue motion predicts it on each date. Watch it step from ring to ring.',
+        not: 'Its centre may be too bright for the camera, so treat its position with care.',
+    },
+    rwaur: {
+        display: 'RW Aurigae',
+        short: 'Changes its brightness',
+        kind: 'variable',
+        headline: 'RW Aurigae, changing its light',
+        show: 'A young star. Compare it with its neighbours: the curve measures it against them, look by look.',
+        not: 'Frames are matched closely in colour to keep colour shifts small. When a curve is drawn, the band shows how much the comparison stars wobble, so a change inside it may be noise.',
+    },
+    epsindb: {
+        display: 'Epsilon Indi B',
+        short: 'Dim at some colours',
+        kind: 'spectrum',
+        headline: 'Epsilon Indi B, missing colours',
+        show: 'Two brown dwarfs: heavier than planets, too light to shine like stars. They are too close together for SPHEREx to split, so they show as one spot. Change the colour: they are dim where methane and water soak up light. The saved copy holds frames from detector 3 only (1.63 to 2.41 µm); colours outside that band load from NASA’s archive, which takes about 30 s.',
+        not: 'No brightness curve is drawn for it here. Blinking shows how it moves; it does not test whether its brightness changes.',
+    },
+    wise0855: {
+        display: 'WISE 0855−0714',
+        short: 'The coldest brown dwarf known',
+        kind: 'cold',
+        headline: 'WISE 0855, the coldest neighbour',
+        show: 'The coldest brown dwarf known. It gives almost no light at short colours: earlier telescopes found it far brighter at 4.5 µm than at 3.6 µm, so slide the colour toward 4.5 µm.',
+        not: 'The notes on its colours come from earlier telescopes. Any brightness curve shown is measured from these frames.',
+    },
+    rdra: {
+        display: 'R Draconis',
+        short: 'Centre too bright to measure',
+        kind: 'saturated',
+        headline: 'R Draconis, too bright at the centre',
+        show: 'A giant star that swells and shrinks. Look at the glow around it, not the centre.',
+        not: 'Its centre is too bright for the camera in every saved frame, so the centre cannot be measured.',
+    },
+};
+
+window.CUSTOM_COPY = {
+    headline: 'A patch of sky you chose',
+    show: 'SPHEREx looks at this spot, matched closely in colour, in date order. Blinking shows movement or changes big enough to stand out from the noise.',
+    not: 'Nothing is known about this spot here. A change can be noise, a satellite trail or a camera artefact.',
+};
+
+window.MODE_HINT = {
+    blink: 'Blink flips between dates. Things that move or change are easier to spot.',
+    stack: 'Stack averages every frame. Faint things appear; moving things smear.',
+    diff: 'Subtract: the later of two looks minus the earlier. Blue marks more light earlier, orange more light later.',
+};
+
+window.FALSE_COLOUR_HINT = 'False colour shows two wavelengths as one picture, for looking, not measuring. It is not the Stack average: the note under the picture says how the frames were combined.';
+
+window.STAGE_TEXT = {
+    search: 'Asking NASA’s archive for its looks at this spot',
+    headers: 'Reading the files',
+    pixels: 'Fetching the pixels',
+    regrid: 'Lining the frames up',
+};
+
+// Nominal wavelength coverage of SPHEREx's six detectors, µm (instrument description).
+window.DETECTORS = [
+    [0.75, 1.09], [1.10, 1.62], [1.63, 2.41], [2.42, 3.82], [3.83, 4.41], [4.42, 5.00],
+];

@@ -1,0 +1,1061 @@
+/* Slowsky upload engine. Plain script; all image values stay on this device. */
+(function (root)
+{
+    'use strict';
+
+    // Local bindings also avoid repeated host-global lookups when loaded in a VM.
+    const Math = root.Math;
+    const Number = root.Number;
+    const STAGES = Object.freeze(['read', 'header', 'decode', 'size', 'align', 'stretch', 'ready']);
+    const ZODI_NOTE = "Zodiacal light model removed (from the file's ZODI plane)";
+    const DISPLAY_NOTE = 'Display image: brightness is already stretched, so changes are rough';
+    const MAD_SCALE = 1.482602218505602;
+    const BRIGHTER = [243, 152, 58];
+    const FAINTER = [92, 150, 240];
+
+    function checkAbort(signal)
+    {
+        if (signal && signal.aborted) {
+            const error = new Error('Processing aborted');
+            error.name = 'AbortError';
+            throw error;
+        }
+    }
+
+    function stage(opts, name, info)
+    {
+        checkAbort(opts.signal);
+        if (opts.onStage) {
+            opts.onStage(name, info);
+        }
+        checkAbort(opts.signal);
+    }
+
+    async function pause(opts)
+    {
+        checkAbort(opts.signal);
+        // A task boundary lets real UI cancellation events update signal.aborted.
+        if (root.scheduler && typeof root.scheduler.yield === 'function') {
+            await root.scheduler.yield();
+        } else if (typeof root.setTimeout === 'function') {
+            await new Promise(resolve => root.setTimeout(resolve, 0));
+        }
+        checkAbort(opts.signal);
+    }
+
+    // In-place quickselect: exact statistics without sorting millions of pixels.
+    function select(values, k)
+    {
+        let left = 0;
+        let right = values.length - 1;
+        while (left < right) {
+            const pivot = values[(left + right) >>> 1];
+            let i = left;
+            let j = right;
+            while (i <= j) {
+                while (values[i] < pivot) {
+                    i++;
+                }
+                while (values[j] > pivot) {
+                    j--;
+                }
+                if (i <= j) {
+                    const value = values[i];
+                    values[i++] = values[j];
+                    values[j--] = value;
+                }
+            }
+            if (k <= j) {
+                right = j;
+            } else if (k >= i) {
+                left = i;
+            } else {
+                break;
+            }
+        }
+        return values[k];
+    }
+
+    function finiteValues(data)
+    {
+        const values = new Float32Array(data.length);
+        let count = 0;
+        for (let i = 0; i < data.length; i++) {
+            if (Number.isFinite(data[i])) {
+                values[count++] = data[i];
+            }
+        }
+        return values.subarray(0, count);
+    }
+
+    function percentile(values, p)
+    {
+        if (!values.length) {
+            return NaN;
+        }
+        const position = (values.length - 1) * p;
+        const low = Math.floor(position);
+        const high = Math.ceil(position);
+        const a = select(values, low);
+        return low === high ? a : a + (select(values, high) - a) * (position - low);
+    }
+
+    function noiseStats(data)
+    {
+        const values = finiteValues(data);
+        const center = percentile(values, 0.5);
+        for (let i = 0; i < values.length; i++) {
+            values[i] = Math.abs(values[i] - center);
+        }
+        let sigma = MAD_SCALE * percentile(values, 0.5);
+        if (sigma === 0 && values.length) {
+            // More than half the pixels equal the median (clipped or quantised pictures): use the RMS instead,
+            // so one-count steps do not light up Subtract at full colour.
+            let sumSq = 0;
+            for (let i = 0; i < values.length; i++) {
+                sumSq += values[i] * values[i];
+            }
+            sigma = Math.sqrt(sumSq / values.length);
+        }
+        return {center, sigma};
+    }
+
+    function headerValue(text)
+    {
+        const value = text.trimStart();
+        if (value[0] === "'") {
+            let result = '';
+            for (let i = 1; i < value.length; i++) {
+                if (value[i] === "'") {
+                    if (value[i + 1] === "'") {
+                        result += "'";
+                        i++;
+                    } else {
+                        return result.trim();
+                    }
+                } else {
+                    result += value[i];
+                }
+            }
+            throw new Error('Unterminated FITS header string');
+        }
+        const raw = value.split('/')[0].trim();
+        if (raw === 'T' || raw === 'F') {
+            return raw === 'T';
+        }
+        return raw ? Number(raw.replace(/[dD]/g, 'E')) : null;
+    }
+
+    function fitsHdus(bytes, warnings)
+    {
+        const hdus = [];
+        let offset = 0;
+        while (offset < bytes.length) {
+            const start = offset;
+            const header = Object.create(null);
+            let ended = false;
+            while (offset + 80 <= bytes.length) {
+                let card = '';
+                for (let i = 0; i < 80; i++) {
+                    card += String.fromCharCode(bytes[offset + i]);
+                }
+                offset += 80;
+                const key = card.slice(0, 8).trim();
+                if (key === 'END') {
+                    ended = true;
+                    break;
+                }
+                if (card.slice(8, 10) === '= ') {
+                    header[key] = headerValue(card.slice(10));
+                }
+            }
+            if (!ended) {
+                throw new Error('Truncated FITS header (missing END)');
+            }
+            offset = start + Math.ceil((offset - start) / 2880) * 2880;
+            const axes = header.NAXIS;
+            const bitpix = header.BITPIX;
+            if (!Number.isInteger(axes) || axes < 0 || axes > 999 ||
+                ![8, 16, 32, 64, -32, -64].includes(bitpix)) {
+                throw new Error('Invalid FITS NAXIS or BITPIX');
+            }
+            let count = axes === 0 ? 0 : 1;
+            for (let i = 1; i <= axes; i++) {
+                const size = header['NAXIS' + i];
+                if (!Number.isSafeInteger(size) || size < 0) {
+                    throw new Error('Invalid FITS image dimensions');
+                }
+                count *= size;
+            }
+            const pcount = header.PCOUNT === undefined ? 0 : header.PCOUNT;
+            const gcount = header.GCOUNT === undefined ? 1 : header.GCOUNT;
+            const length = (count + pcount) * gcount * Math.abs(bitpix) / 8;
+            if (!Number.isSafeInteger(pcount) || pcount < 0 || !Number.isSafeInteger(gcount) || gcount < 1 ||
+                !Number.isSafeInteger(length) || length < 0 || offset + length > bytes.length) {
+                throw new Error('Truncated or invalid FITS data');
+            }
+            const extension = String(header.XTENSION || '').trim().toUpperCase();
+            const name = String(header.EXTNAME || '').trim().toUpperCase();
+            const compressed = extension === 'BINTABLE' && header.ZIMAGE === true;
+            if (compressed) {
+                warnings.push(`HDU ${hdus.length}: ZIMAGE tile-compressed image is not supported; skipped`);
+            }
+            hdus.push({header, offset, length, name, index: hdus.length,
+                image: !compressed && (!extension || extension === 'IMAGE') && (axes === 2 || (axes === 3 && header.NAXIS3 === 1)) && count > 0 && bitpix !== 64});
+            offset += Math.ceil(length / 2880) * 2880;
+        }
+        return hdus;
+    }
+
+    function decodeFitsImage(bytes, hdu)
+    {
+        const h = hdu.header;
+        const result = new Float32Array(h.NAXIS1 * h.NAXIS2);
+        const view = new DataView(bytes.buffer, bytes.byteOffset + hdu.offset, hdu.length);
+        const stride = Math.abs(h.BITPIX) / 8;
+        const scale = h.BSCALE === undefined ? 1 : h.BSCALE;
+        const zero = h.BZERO === undefined ? 0 : h.BZERO;
+        const width = h.NAXIS1;
+        const height = h.NAXIS2;
+        for (let i = 0, offset = 0; i < result.length; i++, offset += stride) {
+            let value;
+            switch (h.BITPIX) {
+            case 8: value = view.getUint8(offset); break;
+            case 16: value = view.getInt16(offset, false); break;
+            case 32: value = view.getInt32(offset, false); break;
+            case -32: value = view.getFloat32(offset, false); break;
+            case -64: value = view.getFloat64(offset, false); break;
+            }
+            const scaled = h.BITPIX > 0 && value === h.BLANK ? NaN : value * scale + zero;
+            // FITS row 1 is the bottom of the picture; canvas row 0 is the top, so write rows bottom-up.
+            const out = (height - 1 - Math.floor(i / width)) * width + (i % width);
+            result[out] = Number.isFinite(scaled) && Math.abs(scaled) <= 3.4028234663852886e38 ? scaled : NaN;
+        }
+        return result;
+    }
+
+    function observationDate(header, file)
+    {
+        const dateOnly = typeof header['DATE-OBS'] === 'string' && !/T/i.test(header['DATE-OBS']);
+        const mjdFirst = dateOnly && (Number.isFinite(header['MJD-OBS']) || Number.isFinite(header['MJD-AVG']));
+        if (typeof header['DATE-OBS'] === 'string' && !mjdFirst) {
+            let iso = header['DATE-OBS'].trim();
+            if (/^\d{4}-\d\d-\d\d(?:T\d\d:\d\d(?::\d\d(?:\.\d+)?)?)?$/i.test(iso)) {
+                iso += iso.includes('T') ? 'Z' : 'T00:00:00Z';
+            }
+            const date = new Date(iso);
+            if (Number.isFinite(date.getTime())) {
+                return {date, dateSource: 'DATE-OBS'};
+            }
+        }
+        for (const key of ['MJD-OBS', 'MJD-AVG']) {
+            if (Number.isFinite(header[key])) {
+                const date = new Date((header[key] - 40587) * 86400000);
+                if (Number.isFinite(date.getTime())) {
+                    return {date, dateSource: 'MJD-OBS'};
+                }
+            }
+        }
+        if (Number.isFinite(file.lastModified)) {
+            const date = new Date(file.lastModified);
+            if (Number.isFinite(date.getTime())) {
+                return {date, dateSource: 'file'};
+            }
+        }
+        return {date: null, dateSource: 'none'};
+    }
+
+    function hasWcs(header)
+    {
+        return ['CRVAL1', 'CRVAL2', 'CRPIX1', 'CRPIX2'].every(key => Number.isFinite(header[key])) &&
+            (['CD1_1', 'CD1_2', 'CD2_1', 'CD2_2'].every(key => Number.isFinite(header[key])) ||
+            ['CDELT1', 'CDELT2'].every(key => Number.isFinite(header[key])));
+    }
+
+    // Replace SlowskyEngine.decodeImage (or pass opts.decodeImage) in non-browser hosts.
+    // Returns {width, height, data: RGBA bytes}; only this function touches a canvas.
+    async function decodeImage(file)
+    {
+        if (typeof root.createImageBitmap !== 'function') {
+            throw new Error('Image decoding needs createImageBitmap in this browser');
+        }
+        const bitmap = await root.createImageBitmap(file);
+        try {
+            const canvas = typeof root.OffscreenCanvas === 'function' ?
+                new root.OffscreenCanvas(bitmap.width, bitmap.height) : root.document.createElement('canvas');
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            const context = canvas.getContext('2d', {willReadFrequently: true});
+            if (!context) {
+                throw new Error('A 2D canvas is required to decode display images');
+            }
+            context.drawImage(bitmap, 0, 0);
+            return context.getImageData(0, 0, bitmap.width, bitmap.height);
+        } finally {
+            bitmap.close();
+        }
+    }
+
+    async function readFile(file, opts = {})
+    {
+        const name = file.name || 'Untitled';
+        stage(opts, 'read', {name});
+        await pause(opts);
+        let bytes = new Uint8Array(await file.arrayBuffer());
+        checkAbort(opts.signal);
+        const gzipped = /\.gz$/i.test(name) || (bytes[0] === 0x1f && bytes[1] === 0x8b);
+        if (gzipped) {
+            if (typeof root.DecompressionStream !== 'function') {
+                throw new Error('This browser cannot decompress gzip FITS files');
+            }
+            const stream = new Blob([bytes]).stream().pipeThrough(new root.DecompressionStream('gzip'));
+            bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+            checkAbort(opts.signal);
+        }
+        stage(opts, 'header', {name});
+        await pause(opts);
+        const warnings = [];
+        const signature = String.fromCharCode(...bytes.subarray(0, 8));
+        const fits = signature === 'SIMPLE  ' || signature === 'XTENSION' || /\.(fits?|fts)(\.gz)?$/i.test(name) || gzipped;
+        if (fits) {
+            const hdus = fitsHdus(bytes, warnings);
+            const images = hdus.filter(hdu => hdu.image);
+            const NOT_SKY = ['ZODI', 'FLAGS', 'MASK', 'DQ', 'VARIANCE', 'VAR', 'ERR', 'ERROR', 'WEIGHT', 'WHT', 'PSF'];
+            const selected = images.find(hdu => hdu.name === 'IMAGE' || hdu.name === 'SCI') ||
+                images.find(hdu => !NOT_SKY.includes(hdu.name));
+            if (!selected) {
+                const error = new Error('No supported 2D FITS image HDU. ' + warnings.join('; '));
+                error.warnings = warnings;
+                throw error;
+            }
+            stage(opts, 'decode', {name, hdu: selected.index});
+            await pause(opts);
+            const data = decodeFitsImage(bytes, selected);
+            const h = selected.header;
+            const zodi = images.find(hdu => hdu !== selected && hdu.name === 'ZODI' &&
+                hdu.header.NAXIS1 === h.NAXIS1 && hdu.header.NAXIS2 === h.NAXIS2);
+            if (zodi && selected.name !== 'ZODI') {
+                const model = decodeFitsImage(bytes, zodi);
+                let used = 0;
+                for (let i = 0; i < data.length; i++) {
+                    if (!Number.isFinite(model[i])) {
+                        continue;
+                    }
+                    const value = data[i] - model[i];
+                    data[i] = Number.isFinite(value) && Math.abs(value) <= 3.4028234663852886e38 ? value : NaN;
+                    used++;
+                }
+                if (used === data.length) {
+                    warnings.push(ZODI_NOTE);
+                } else if (used > 0) {
+                    warnings.push(ZODI_NOTE + `, except ${data.length - used} pixels where the model has no value`);
+                } else {
+                    warnings.push("The file's ZODI plane is empty, so no zodiacal light model was removed");
+                }
+            }
+            const header = Object.assign(Object.create(null), hdus[0].header, h);
+            checkAbort(opts.signal);
+            return {name, kind: 'fits', width: h.NAXIS1, height: h.NAXIS2, data, scale: 1,
+                ...observationDate(header, file), unit: header.BUNIT || null,
+                meta: {detector: header.DETECTOR ?? header.DET_ID, instrument: header.INSTRUME,
+                    bunit: header.BUNIT || null, hasWcs: hasWcs(header), hdu: selected.index}, warnings};
+        }
+        const png = /\.png$/i.test(name) || file.type === 'image/png' ||
+            (bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71);
+        const jpg = /\.jpe?g$/i.test(name) || file.type === 'image/jpeg' || (bytes[0] === 255 && bytes[1] === 216);
+        if (!png && !jpg) {
+            throw new Error('Unsupported file: choose FITS, PNG or JPG');
+        }
+        stage(opts, 'decode', {name});
+        await pause(opts);
+        const image = await (opts.decodeImage || api.decodeImage)(file);
+        checkAbort(opts.signal);
+        if (!Number.isSafeInteger(image.width) || !Number.isSafeInteger(image.height) || image.width < 1 ||
+            image.height < 1 || image.data.length !== image.width * image.height * 4) {
+            throw new Error('Invalid decoded display image');
+        }
+        const data = new Float32Array(image.width * image.height);
+        for (let i = 0, rgba = 0; i < data.length; i++, rgba += 4) {
+            data[i] = image.data[rgba + 3] === 0 ? NaN :
+                0.2126 * image.data[rgba] + 0.7152 * image.data[rgba + 1] + 0.0722 * image.data[rgba + 2];
+        }
+        return {name, kind: png ? 'png' : 'jpg', width: image.width, height: image.height, data, scale: 1,
+            ...observationDate({}, file), unit: null,
+            meta: {hasWcs: false, hdu: null, bunit: null}, warnings: [DISPLAY_NOTE]};
+    }
+
+    function crop(frame, width, height)
+    {
+        if (frame.width !== width || frame.height !== height) {
+            const data = new Float32Array(width * height);
+            const left = Math.floor((frame.width - width) / 2);
+            const top = Math.floor((frame.height - height) / 2);
+            for (let y = 0; y < height; y++) {
+                const start = (top + y) * frame.width + left;
+                data.set(frame.data.subarray(start, start + width), y * width);
+            }
+            frame.data = data;
+            frame.width = width;
+            frame.height = height;
+        }
+    }
+
+    function findStars(frame)
+    {
+        const {data, width, height} = frame;
+        const stats = noiseStats(data);
+        const threshold = stats.center + 6 * stats.sigma;
+        const peaks = [];
+        if (!Number.isFinite(threshold)) {
+            return peaks;
+        }
+        for (let y = 3; y < height - 3; y++) {
+            for (let x = 3; x < width - 3; x++) {
+                const index = y * width + x;
+                const value = data[index];
+                if (!(value > threshold)) {
+                    continue;
+                }
+                let maximum = true;
+                for (let yy = -1; yy <= 1 && maximum; yy++) {
+                    for (let xx = -1; xx <= 1; xx++) {
+                        if (xx === 0 && yy === 0) {
+                            continue;
+                        }
+                        const neighbor = data[index + yy * width + xx];
+                        // Resolve equal-height peaks by raster order (quantized PNG/JPG stars).
+                        if (!Number.isFinite(neighbor) || neighbor > value ||
+                            (neighbor === value && (yy < 0 || (yy === 0 && xx < 0)))) {
+                            maximum = false;
+                            break;
+                        }
+                    }
+                }
+                if (maximum) {
+                    // A star spreads light into its neighbours; a lone hot pixel or cosmic ray does not.
+                    // Lone spikes sit at fixed detector places and would vote for a false (0, 0) line-up.
+                    const lit = stats.center + 2 * stats.sigma;
+                    let litNeighbours = 0;
+                    for (let yy = -1; yy <= 1; yy++) {
+                        for (let xx = -1; xx <= 1; xx++) {
+                            if ((xx || yy) && data[index + yy * width + xx] > lit) {
+                                litNeighbours++;
+                            }
+                        }
+                    }
+                    if (litNeighbours < 1) {
+                        continue;
+                    }
+                    // Keep only the brightest 160 before centroid work / spatial suppression.
+                    peaks.push({x, y, value});
+                    if (peaks.length >= 320) {
+                        peaks.sort((a, b) => b.value - a.value);
+                        peaks.length = 160;
+                    }
+                }
+            }
+        }
+        peaks.sort((a, b) => b.value - a.value);
+        const stars = [];
+        for (const peak of peaks) {
+            if (stars.some(star => (star.x - peak.x) ** 2 + (star.y - peak.y) ** 2 < 25)) {
+                continue;
+            }
+            let sum = 0;
+            let sx = 0;
+            let sy = 0;
+            let valid = true;
+            // A tight 5x5 window pulls a half-pixel star toward the nearest pixel centre.
+            // Include its wings so that bias does not become a bright subtraction dipole.
+            for (let y = Math.max(0, peak.y - 5); y <= Math.min(height - 1, peak.y + 5); y++) {
+                for (let x = Math.max(0, peak.x - 5); x <= Math.min(width - 1, peak.x + 5); x++) {
+                    const value = data[y * width + x];
+                    if (!Number.isFinite(value)) {
+                        valid = false;
+                        continue;
+                    }
+                    const weight = Math.max(0, value - stats.center);
+                    sum += weight;
+                    sx += weight * x;
+                    sy += weight * y;
+                }
+            }
+            if (valid && sum > 0) {
+                stars.push({x: sx / sum, y: sy / sum});
+                if (stars.length === 40) {
+                    break;
+                }
+            }
+        }
+        return stars;
+    }
+
+    function matchStars(reference, stars, dx, dy)
+    {
+        const used = new Uint8Array(reference.length);
+        const matches = [];
+        let count = 0;
+        let sumX = 0;
+        let sumY = 0;
+        let residual = 0;
+        for (const star of stars) {
+            let best = -1;
+            let distance = 1.5 * 1.5;
+            for (let i = 0; i < reference.length; i++) {
+                const d = (reference[i].x - star.x - dx) ** 2 + (reference[i].y - star.y - dy) ** 2;
+                if (!used[i] && d <= distance) {
+                    best = i;
+                    distance = d;
+                }
+            }
+            if (best >= 0) {
+                used[best] = 1;
+                matches.push({reference: reference[best], star});
+                count++;
+                sumX += reference[best].x - star.x;
+                sumY += reference[best].y - star.y;
+                residual += distance;
+            }
+        }
+        return {count, dx: count ? sumX / count : 0, dy: count ? sumY / count : 0, residual, matches};
+    }
+
+    function fluxRatio(reference, frame, referenceStars)
+    {
+        const {width, height} = reference;
+        const matches = matchStars(referenceStars, findStars(frame), 0, 0).matches;
+        const ratios = [];
+        for (const match of matches) {
+            const cx = Math.round(match.reference.x);
+            const cy = Math.round(match.reference.y);
+            if (cx < 4 || cy < 4 || cx >= width - 4 || cy >= height - 4) {
+                continue;
+            }
+            let refFlux = 0;
+            let flux = 0;
+            let valid = true;
+            // The same aperture in aligned, background-subtracted frames includes the star's wings.
+            // A masked aperture cannot supply a trustworthy gain estimate.
+            for (let y = cy - 4; y <= cy + 4; y++) {
+                for (let x = cx - 4; x <= cx + 4; x++) {
+                    const i = y * width + x;
+                    valid = valid && Number.isFinite(reference.data[i]) && Number.isFinite(frame.data[i]) &&
+                        !(reference.edgeMask && reference.edgeMask[i]) && !(frame.edgeMask && frame.edgeMask[i]);
+                    refFlux += reference.data[i];
+                    flux += frame.data[i];
+                }
+            }
+            const ratio = flux / refFlux;
+            if (valid && refFlux > 0 && flux > 0 && Number.isFinite(ratio)) {
+                ratios.push(ratio);
+            }
+        }
+        return ratios.length >= 5 ? percentile(ratios, 0.5) : 1;
+    }
+
+    function alignStars(reference, stars)
+    {
+        const failed = {dx: 0, dy: 0, ok: false, method: 'stars'};
+        if (reference.length < 3 || stars.length < 3) {
+            return failed;
+        }
+        const histogram = new Map();
+        for (const a of reference) {
+            for (const b of stars) {
+                const dx = Math.round(a.x - b.x);
+                const dy = Math.round(a.y - b.y);
+                const key = dx + ',' + dy;
+                const bin = histogram.get(key);
+                if (bin) {
+                    bin.votes++;
+                } else {
+                    histogram.set(key, {dx, dy, votes: 1});
+                }
+            }
+        }
+        const bins = Array.from(histogram.values()).sort((a, b) => b.votes - a.votes).slice(0, 20);
+        let best = {count: 0, residual: Infinity};
+        for (const bin of bins) {
+            let match = matchStars(reference, stars, bin.dx, bin.dy);
+            for (let i = 0; i < 2 && match.count >= 3; i++) {
+                match = matchStars(reference, stars, match.dx, match.dy);
+            }
+            if (match.count > best.count || (match.count === best.count && match.residual < best.residual)) {
+                best = match;
+            }
+        }
+        if (best.count < 3) {
+            return failed;
+        }
+        return {dx: Math.abs(best.dx) < 1e-6 ? 0 : best.dx,
+            dy: Math.abs(best.dy) < 1e-6 ? 0 : best.dy, ok: true, method: 'stars'};
+    }
+
+    // dx/dy are the applied displacement: a source at (x,y) moves to (x+dx,y+dy).
+    function translate(data, width, height, dx, dy)
+    {
+        if (dx === 0 && dy === 0) {
+            return data;
+        }
+        const result = new Float32Array(data.length).fill(NaN);
+        const ox = Math.floor(-dx);
+        const oy = Math.floor(-dy);
+        const fx = -dx - ox;
+        const fy = -dy - oy;
+        const stepX = fx > 0 ? 1 : 0;
+        const stepY = fy > 0 ? width : 0;
+        for (let y = 0; y < height; y++) {
+            const sy = y + oy;
+            if (sy < 0 || sy + (fy > 0 ? 1 : 0) >= height) {
+                continue;
+            }
+            for (let x = 0; x < width; x++) {
+                const sx = x + ox;
+                if (sx < 0 || sx + stepX >= width) {
+                    continue;
+                }
+                const i = sy * width + sx;
+                const samples = [data[i], data[i + stepX], data[i + stepY], data[i + stepY + stepX]];
+                const weights = [(1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy];
+                let sum = 0;
+                let weight = 0;
+                for (let k = 0; k < 4; k++) {
+                    if (weights[k] > 0 && Number.isFinite(samples[k])) {
+                        sum += samples[k] * weights[k];
+                        weight += weights[k];
+                    }
+                }
+                // Missing samples get no say; if most of the weight is missing, the pixel stays missing.
+                result[y * width + x] = weight >= 0.5 ? sum / weight : NaN;
+            }
+        }
+        return result;
+    }
+
+    function smoothTranslate(data, width, height, dx, dy)
+    {
+        // Sample directly with a one-pixel Gaussian at the desired sky position. Blurring AFTER
+        // bilinear translation would leave its extra, phase-dependent blur on just the moved frame.
+        let edgeMask;
+        for (const [shift, horizontal] of [[dx, true], [dy, false]]) {
+            const offset = Math.floor(-shift);
+            const fraction = -shift - offset;
+            const kernel = [];
+            let total = 0;
+            for (let tap = -4; tap <= 4 + (fraction > 0 ? 1 : 0); tap++) {
+                const weight = Math.exp(-0.5 * (tap - fraction) ** 2);
+                kernel.push({tap, weight});
+                total += weight;
+            }
+            const result = new Float32Array(data.length).fill(NaN);
+            const resultMask = new Uint8Array(data.length);
+            const size = horizontal ? width : height;
+            const stride = horizontal ? 1 : width;
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const position = (horizontal ? x : y) + offset;
+                    if (position < 0 || position + (fraction > 0 ? 1 : 0) >= size) {
+                        continue;
+                    }
+                    const index = y * width + x + offset * stride;
+                    let sum = 0;
+                    let weight = 0;
+                    let edge = false;
+                    for (const sample of kernel) {
+                        if (position + sample.tap >= 0 && position + sample.tap < size) {
+                            const source = index + sample.tap * stride;
+                            const value = data[source];
+                            if (Number.isFinite(value)) {
+                                sum += value * sample.weight;
+                                weight += sample.weight;
+                            } else {
+                                edge = true;
+                            }
+                            if (edgeMask && edgeMask[source]) {
+                                edge = true;
+                            }
+                        } else {
+                            edge = true;
+                        }
+                    }
+                    // Retain exact-grid masks, and carry incomplete support through both passes.
+                    // Fractional sampling may recover a value, but it cannot recover missing evidence.
+                    if (weight >= 0.5 * total && (fraction !== 0 || Number.isFinite(data[index]))) {
+                        result[y * width + x] = sum / weight;
+                    }
+                    resultMask[y * width + x] = edge ? 1 : 0;
+                }
+            }
+            data = result;
+            edgeMask = resultMask;
+        }
+        return {data, edgeMask};
+    }
+
+    async function process(files, opts = {})
+    {
+        checkAbort(opts.signal);
+        if (!files || !files.length) {
+            throw new Error('Choose at least one file to process');
+        }
+        const jobs = [];
+        function notify(job, name, info = {})
+        {
+            checkAbort(opts.signal);
+            if (opts.onJob) {
+                opts.onJob(job.index, name, {name: job.frame ? job.frame.name : job.file.name || 'Untitled', ...info});
+            }
+            checkAbort(opts.signal);
+        }
+        // One unreadable file must not sink the batch: report it as an 'error' job and carry on with the rest.
+        const failed = [];
+        for (let i = 0; i < files.length; i++) {
+            const job = {index: i, file: files[i]};
+            try {
+                job.frame = await readFile(job.file, {signal: opts.signal, decodeImage: opts.decodeImage,
+                    onStage: (name, info) => notify(job, name, info)});
+            } catch (error) {
+                if (error && error.name === 'AbortError') {
+                    throw error;
+                }
+                const message = error && error.message ? error.message : String(error);
+                failed.push({index: i, name: job.file && job.file.name || 'Untitled', error: message});
+                if (opts.onJob) {
+                    opts.onJob(i, 'error', {name: job.file && job.file.name || 'Untitled', error: message});
+                }
+                continue;
+            }
+            jobs.push(job);
+        }
+        if (!jobs.length) {
+            const error = new Error(failed.length === 1 ? failed[0].error : 'None of the files could be read');
+            error.failed = failed;
+            throw error;
+        }
+        jobs.sort((a, b) => (a.frame.date ? a.frame.date.getTime() : Infinity) -
+            (b.frame.date ? b.frame.date.getTime() : Infinity) || a.index - b.index);
+        // Stack and Subtract do arithmetic across frames, so every frame must hold the same kind of number:
+        // all FITS in one unit, or all display pictures. Mixed sets would show changes that are only unit changes.
+        const family = frame => frame.kind === 'fits' ? 'fits:' + String(frame.unit || '').replace(/\s+/g, '') : 'picture';
+        const describe = frame => frame.kind === 'fits' ? 'FITS in ' + (frame.unit || 'no stated unit') : 'a display picture';
+        const first = jobs[0].frame;
+        for (let j = jobs.length - 1; j > 0; j--) {
+            const frame = jobs[j].frame;
+            if (family(frame) !== family(first)) {
+                const message = `Not combined: it is ${describe(frame)}, but ${first.name} is ${describe(first)}`;
+                failed.push({index: jobs[j].index, name: frame.name, error: message});
+                if (opts.onJob) {
+                    opts.onJob(jobs[j].index, 'error', {name: frame.name, error: message});
+                }
+                jobs.splice(j, 1);
+            }
+        }
+        let width = jobs[0].frame.width;
+        let height = jobs[0].frame.height;
+        for (const job of jobs) {
+            width = Math.min(width, job.frame.width);
+            height = Math.min(height, job.frame.height);
+        }
+        const notes = [];
+        for (const job of jobs) {
+            checkAbort(opts.signal);
+            const frame = job.frame;
+            if (frame.width !== width || frame.height !== height) {
+                notes.push(`Centre-cropped ${frame.name} from ${frame.width}x${frame.height} to ${width}x${height}`);
+            }
+            crop(frame, width, height);
+            const background = percentile(finiteValues(frame.data), 0.5);
+            for (let i = 0; i < frame.data.length; i++) {
+                frame.data[i] -= background;
+            }
+            if (!Number.isFinite(background)) {
+                frame.warnings.push('No finite image pixels');
+            }
+            notify(job, 'size', {width, height, background});
+            await pause(opts);
+        }
+        const frames = jobs.map(job => job.frame);
+        const referenceStars = frames.length > 1 && opts.align !== false ? findStars(frames[0]) : [];
+        const shifts = [{dx: 0, dy: 0, ok: true, method: 'reference'}];
+        notify(jobs[0], 'align', shifts[0]);
+        await pause(opts);
+        for (let i = 1; i < frames.length; i++) {
+            checkAbort(opts.signal);
+            // align:false is for sets already on one sky grid (the saved library PNGs): never move their pixels.
+            const shift = opts.align === false ? {dx: 0, dy: 0, ok: true, method: 'none'}
+                : alignStars(referenceStars, findStars(frames[i]));
+            shifts.push(shift);
+            if (!shift.ok) {
+                notes.push(`Couldn't line up ${frames[i].name}; shown as is`);
+            }
+            notify(jobs[i], 'align', shift);
+            await pause(opts);
+        }
+        const smooth = shifts.some(shift => shift.ok &&
+            (shift.dx !== Math.round(shift.dx) || shift.dy !== Math.round(shift.dy)));
+        if (smooth) {
+            notes.push('All frames share one-pixel Gaussian smoothing for fractional alignment; nearby pixels are correlated');
+        }
+        for (let i = 0; i < frames.length; i++) {
+            const shift = shifts[i];
+            const dx = shift.ok ? shift.dx : 0;
+            const dy = shift.ok ? shift.dy : 0;
+            if (smooth) {
+                Object.assign(frames[i], smoothTranslate(frames[i].data, width, height, dx, dy));
+            } else {
+                frames[i].data = translate(frames[i].data, width, height, dx, dy);
+            }
+            await pause(opts);
+        }
+        const fluxStars = frames.length > 1 ? findStars(frames[0]) : [];
+        for (let i = 1; i < frames.length; i++) {
+            const frame = frames[i];
+            const ratio = shifts[i].ok ? fluxRatio(frames[0], frame, fluxStars) : 1;
+            if ((frame.kind === 'png' || frame.kind === 'jpg') && Math.abs(ratio - 1) > 1e-6) {
+                frame.scale = ratio;
+                for (let p = 0; p < frame.data.length; p++) {
+                    frame.data[p] /= ratio;
+                }
+                notes.push(`Divided ${frame.name} by ${ratio.toFixed(3)} to match stars in ${frames[0].name}`);
+            } else if (frame.kind === 'fits' && Math.abs(ratio - 1) > 0.1) {
+                notes.push(`${frame.name} is ${Math.round(Math.abs(ratio - 1) * 100)}% ` +
+                    `${ratio > 1 ? 'brighter' : 'fainter'} overall than ${frames[0].name}; Subtract may mark every star`);
+            }
+            await pause(opts);
+        }
+        checkAbort(opts.signal);
+        const values = finiteValues(frames[0].data);
+        const lo = percentile(values, 0.01);
+        const hi = percentile(values, 0.997);
+        const stretch = {lo: Number.isFinite(lo) ? lo : 0, hi: Number.isFinite(hi) ? hi : 0};
+        for (const job of jobs) {
+            notify(job, 'stretch', stretch);
+            await pause(opts);
+            notify(job, 'ready', {width, height});
+            await pause(opts);
+        }
+        return {frames, ref: 0, width, height, shifts, stretch, notes, failed};
+    }
+
+    function frameAt(session, index)
+    {
+        if (!Number.isInteger(index) || index < 0 || index >= session.frames.length) {
+            throw new RangeError('Frame index is outside the session');
+        }
+        return session.frames[index];
+    }
+
+    function difference(session, a, b)
+    {
+        const left = frameAt(session, a).data;
+        const right = frameAt(session, b).data;
+        const data = new Float32Array(left.length);
+        for (let i = 0; i < data.length; i++) {
+            const value = right[i] - left[i];
+            data[i] = Number.isFinite(value) && Math.abs(value) <= 3.4028234663852886e38 ? value : NaN;
+        }
+        // Measure change from the difference image's own median, so a small overall offset is not read as change.
+        const center = percentile(finiteValues(data), 0.5);
+        if (Number.isFinite(center) && center !== 0) {
+            for (let i = 0; i < data.length; i++) {
+                data[i] -= center;
+            }
+        }
+        return data;
+    }
+
+    function render(session, index = 0, opts = {})
+    {
+        const mode = opts.mode || 'blink';
+        let data = frameAt(session, index).data;
+        let sigma = 0;
+        if (mode === 'stack') {
+            data = new Float32Array(session.width * session.height);
+            // A frame that could not be lined up would double every star, so it stays out of the mean.
+            const used = session.frames.filter((frame, f) => !session.shifts || !session.shifts[f] || session.shifts[f].ok);
+            for (let i = 0; i < data.length; i++) {
+                let sum = 0;
+                let count = 0;
+                for (let f = 0; f < used.length; f++) {
+                    const value = used[f].data[i];
+                    if (Number.isFinite(value)) {
+                        sum += value;
+                        count++;
+                    }
+                }
+                data[i] = count ? sum / count : NaN;
+            }
+        } else if (mode === 'subtract') {
+            data = difference(session, opts.a ?? 0, opts.b ?? session.frames.length - 1);
+            sigma = noiseStats(data).sigma;
+        } else if (mode !== 'blink') {
+            throw new Error('Unknown render mode: ' + mode);
+        }
+        const pixels = new Uint8ClampedArray(data.length * 4);
+        const range = session.stretch.hi - session.stretch.lo;
+        const normalizer = Math.asinh(10);
+        for (let i = 0, p = 0; i < data.length; i++, p += 4) {
+            const value = data[i];
+            if (!Number.isFinite(value)) {
+                continue;
+            }
+            if (mode === 'subtract') {
+                const amount = sigma > 0 ? Math.min(1, Math.abs(value) / (5 * sigma)) : value === 0 ? 0 : 1;
+                const color = value >= 0 ? BRIGHTER : FAINTER;
+                pixels[p] = Math.round(8 + (color[0] - 8) * amount);
+                pixels[p + 1] = Math.round(10 + (color[1] - 10) * amount);
+                pixels[p + 2] = Math.round(14 + (color[2] - 14) * amount);
+            } else {
+                const t = range > 0 ? Math.max(0, Math.min(1, (value - session.stretch.lo) / range)) : 0;
+                const gray = Math.round(255 * Math.asinh(10 * t) / normalizer);
+                pixels[p] = gray;
+                pixels[p + 1] = gray;
+                pixels[p + 2] = gray;
+            }
+            pixels[p + 3] = 255;
+        }
+        return typeof root.ImageData === 'function' ? new root.ImageData(pixels, session.width, session.height) :
+            {data: pixels, width: session.width, height: session.height};
+    }
+
+    function candidates(session, a, b, {k = 5} = {})
+    {
+        if (!Number.isFinite(k) || k <= 0) {
+            throw new RangeError('Candidate k must be positive');
+        }
+        const data = difference(session, a, b);
+        const sigma = noiseStats(data).sigma;
+        if (!(sigma > 0) || !Number.isFinite(sigma)) {
+            return [];
+        }
+        const {width, height} = session;
+        const aMask = frameAt(session, a).edgeMask;
+        const bMask = frameAt(session, b).edgeMask;
+        const threshold = k * sigma;
+        const visited = new Uint8Array(data.length);
+        const queue = new Int32Array(data.length);
+        const result = [];
+        for (let start = 0; start < data.length; start++) {
+            if (visited[start] || !Number.isFinite(data[start]) || Math.abs(data[start]) <= threshold) {
+                continue;
+            }
+            const positive = data[start] > 0;
+            let head = 0;
+            let tail = 1;
+            const maxima = [];
+            queue[0] = start;
+            visited[start] = 1;
+            while (head < tail) {
+                const i = queue[head++];
+                const x = i % width;
+                const y = Math.floor(i / width);
+                const weight = Math.abs(data[i]);
+                let maximum = true;
+                if ((aMask && aMask[i]) || (bMask && bMask[i])) {
+                    visited[i] = 2;
+                }
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+                            visited[i] = 2;
+                            continue;
+                        }
+                        const neighbor = ny * width + nx;
+                        const value = data[neighbor];
+                        if (!Number.isFinite(value)) {
+                            visited[i] = 2;
+                        } else if (positive ? value > threshold : value < -threshold) {
+                            // Equal-height plateaus have one deterministic, raster-first peak.
+                            if (Math.abs(value) > weight || (Math.abs(value) === weight && neighbor < i)) {
+                                maximum = false;
+                            }
+                            if (!visited[neighbor]) {
+                                visited[neighbor] = 1;
+                                queue[tail++] = neighbor;
+                            }
+                        }
+                    }
+                }
+                if (maximum) {
+                    maxima.push({x, y, index: i, weight});
+                }
+            }
+            // Flood equal-valued plateaus before suppression: a U-shaped plateau is one
+            // maximum, and a flat bridge touching a higher peak is not another maximum.
+            const plateauMaxima = [];
+            for (const maximum of maxima) {
+                if (visited[maximum.index] & 4) {
+                    continue;
+                }
+                const plateau = [maximum.index];
+                visited[maximum.index] |= 4;
+                let higher = false;
+                let first = maximum.index;
+                for (let p = 0; p < plateau.length; p++) {
+                    const i = plateau[p];
+                    const x = i % width;
+                    const y = Math.floor(i / width);
+                    first = Math.min(first, i);
+                    for (let yy = Math.max(0, y - 1); yy <= Math.min(height - 1, y + 1); yy++) {
+                        for (let xx = Math.max(0, x - 1); xx <= Math.min(width - 1, x + 1); xx++) {
+                            const n = yy * width + xx;
+                            if (positive ? data[n] > maximum.weight : data[n] < -maximum.weight) {
+                                higher = true;
+                            } else if (data[n] === data[i] && !(visited[n] & 4)) {
+                                visited[n] |= 4;
+                                plateau.push(n);
+                            }
+                        }
+                    }
+                }
+                if (!higher) {
+                    plateauMaxima.push({x: first % width, y: Math.floor(first / width), index: first, weight: maximum.weight});
+                }
+            }
+            plateauMaxima.sort((a, b) => b.weight - a.weight || a.index - b.index);
+            const seeds = [];
+            for (const maximum of plateauMaxima) {
+                if (!seeds.some(seed => (seed.x - maximum.x) ** 2 + (seed.y - maximum.y) ** 2 < 9)) {
+                    seeds.push(maximum);
+                }
+            }
+            const groups = seeds.map(seed => ({sum: 0, sx: 0, sy: 0, peak: data[seed.index], pixels: 0, edge: false}));
+            for (let p = 0; p < tail; p++) {
+                const i = queue[p];
+                const x = i % width;
+                const y = Math.floor(i / width);
+                let nearest = 0;
+                let distance = Infinity;
+                for (let s = 0; s < seeds.length; s++) {
+                    const d = (x - seeds[s].x) ** 2 + (y - seeds[s].y) ** 2;
+                    if (d < distance) {
+                        nearest = s;
+                        distance = d;
+                    }
+                }
+                const group = groups[nearest];
+                const weight = Math.abs(data[i]);
+                group.sum += weight;
+                group.sx += x * weight;
+                group.sy += y * weight;
+                group.pixels++;
+                if (weight > Math.abs(group.peak)) {
+                    group.peak = data[i];
+                }
+                group.edge = group.edge || (visited[i] & 2) !== 0;
+            }
+            for (const group of groups) {
+                result.push({x: group.sx / group.sum, y: group.sy / group.sum, peak: group.peak, sigma,
+                    sign: positive ? 'brighter' : 'fainter', pixels: group.pixels, edge: group.edge});
+            }
+        }
+        const score = candidate => Math.abs(candidate.peak / candidate.sigma) * Math.sqrt(Math.min(candidate.pixels, 9));
+        result.sort((a, b) => Number(a.edge) - Number(b.edge) || score(b) - score(a));
+        return result.slice(0, 20);
+    }
+
+    const api = {STAGES, readFile, process, render, candidates, decodeImage, difference};
+    root.SlowskyEngine = api;
+})(globalThis);

@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Slowsky — Watch the infrared sky change</title>
+    <link rel="stylesheet" href="base.css">
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+    <a class="skip-link" href="#stage-main">Skip to sky stage</a>
+
+    <div id="sr-announce" class="sr" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Top bar -->
+    <header class="topbar">
+        <div class="topbar-inner">
+            <a href="#barnard" class="brand" id="brand-home" aria-label="Slowsky — Barnard’s Star">
+                <img src="img/logo.svg" alt="" width="24" height="24" class="brand-logo">
+                <span class="brand-name">Slowsky</span>
+            </a>
+
+            <button type="button" class="search-trigger" id="search-open" aria-haspopup="dialog" aria-expanded="false" aria-controls="cmd-backdrop">
+                <span class="search-trigger-icon" id="icon-search" aria-hidden="true"></span>
+                <span class="search-trigger-placeholder" id="search-trigger-text">Any star, or RA, Dec</span>
+                <kbd class="search-trigger-kbd" aria-hidden="true">⌘K</kbd>
+            </button>
+
+            <div class="topbar-actions">
+                <button type="button" class="btn copy-link-btn" id="copy-link-btn" title="Copy link to this view">
+                    <span class="btn-icon" id="icon-share" aria-hidden="true"></span>
+                    <span id="copy-link-label">Copy link</span>
+                </button>
+                <button type="button" class="btn icon theme-btn" data-theme-toggle aria-label="Switch to dark mode" title="Switch theme (T)">
+                    <span class="theme-icon-light" id="icon-moon" aria-hidden="true"></span>
+                    <span class="theme-icon-dark" id="icon-sun" aria-hidden="true"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Target ribbon: 5 square-cornered cards -->
+    <nav class="ribbon-wrap" aria-label="Official targets">
+        <div class="target-ribbon" id="target-ribbon" role="tablist" aria-label="Choose a star">
+            <!-- Populated immediately by app.js with skeleton-safe fallback -->
+            <div class="target-card skel" aria-hidden="true"></div>
+            <div class="target-card skel" aria-hidden="true"></div>
+            <div class="target-card skel" aria-hidden="true"></div>
+            <div class="target-card skel" aria-hidden="true"></div>
+            <div class="target-card skel" aria-hidden="true"></div>
+        </div>
+    </nav>
+
+    <!-- Single centred theatre stage -->
+    <main class="theatre" id="stage-main">
+        <div class="stage-column">
+
+            <!-- Stage header: headline + clickable coordinates -->
+            <div class="stage-head">
+                <h1 class="stage-headline swap skel" id="stage-headline">Barnard’s Star, walking north</h1>
+                <div class="stage-meta">
+                    <button type="button" class="coord-btn num" id="stage-coords" title="Click to copy J2000 coordinates">
+                        <span id="stage-coords-text">269.4521°, +4.6934°</span>
+                        <span class="inline-copied" id="stage-coords-copied" hidden>Copied</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sky plate: reserved 1:1 square box, never shifts -->
+            <div class="plate-shell" id="plate-shell">
+                <div class="sky is-booting" id="sky-stage" tabindex="0" role="region" aria-label="SPHEREx infrared sky plate. Press and hold to compare with first visit.">
+                    <!-- Inner transform viewport for smooth field zoom & settle -->
+                    <div class="sky-viewport" id="sky-viewport">
+                        <div class="sky-pixels" id="sky-pixels"></div>
+
+                        <!-- Astronomical SVG overlay: target proper-motion ring + trail + star rings + flagged pixels -->
+                        <svg class="sky-svg" id="sky-svg" viewBox="0 0 100 100" aria-hidden="true">
+                            <g id="ov-older" class="ov-layer" hidden></g>
+                            <g id="ov-gaia" class="ov-layer" hidden></g>
+                            <g id="ov-flags" class="ov-layer" hidden></g>
+                            <g id="ov-trail" class="ov-layer"></g>
+                            <g id="ov-target" class="ov-layer">
+                                <circle id="target-ring-shadow" cx="50" cy="50" r="4.5" fill="none" stroke="rgba(0,0,0,0.55)" stroke-width="0.9"></circle>
+                                <circle id="target-ring" class="target-ring" cx="50" cy="50" r="4.5" fill="none" stroke="#ffc861" stroke-width="0.55" pathLength="100"></circle>
+                            </g>
+                        </svg>
+                    </div>
+
+                    <!-- Stage loading & archive status bar (top inside sky, never covers centre) -->
+                    <div class="sky-status-bar" id="sky-status-bar" hidden>
+                        <span class="sky-status-dot" aria-hidden="true"></span>
+                        <span class="sky-status-text" id="sky-status-text">Asking NASA’s archive for its looks at this spot</span>
+                    </div>
+
+                    <!-- Graceful error banner (keeps last good frame visible) -->
+                    <div class="sky-error-bar" id="sky-error-bar" role="alert" hidden>
+                        <span id="sky-error-text">Couldn’t load archive frame — showing last saved look.</span>
+                        <button type="button" class="sky-retry-btn" id="sky-retry-btn">Retry</button>
+                        <button type="button" class="sky-dismiss-btn" id="sky-error-dismiss" aria-label="Dismiss">×</button>
+                    </div>
+
+                    <!-- False colour mockup note badge when enabled -->
+                    <div class="sky-badge-top" id="sky-false-badge" hidden>
+                        Two-colour view (simulated in mockup)
+                    </div>
+
+                    <!-- Custom coordinates banner when looking at a user-entered spot -->
+                    <div class="sky-custom-bar" id="sky-custom-bar" hidden>
+                        <span class="num" id="sky-custom-label">RA 269.45°, Dec +4.69°</span>
+                        <button type="button" class="sky-custom-reset" id="sky-custom-reset">Back to saved target</button>
+                    </div>
+
+                    <!-- Bottom-left date & visit readout -->
+                    <div class="tag num" id="sky-tag">25 Aug 2026 · Visit 4 of 4</div>
+
+                    <!-- Bottom-right scale & orientation indicator + hold hint -->
+                    <div class="sky-corner-right" aria-hidden="true">
+                        <span class="sky-compass num">N↑ E←</span>
+                        <span class="sky-scale">
+                            <span class="sky-scale-bar" id="sky-scale-bar"></span>
+                            <span class="num" id="sky-scale-label">1′</span>
+                        </span>
+                    </div>
+
+                    <!-- 2x Hover Loupe (square, 4px corners, real pixels) -->
+                    <div class="sky-loupe" id="sky-loupe" aria-hidden="true" hidden>
+                        <div class="loupe-inner" id="loupe-inner">
+                            <img class="loupe-img" id="loupe-img" alt="">
+                            <canvas class="loupe-canvas" id="loupe-canvas" hidden></canvas>
+                        </div>
+                        <div class="loupe-reticle"></div>
+                        <span class="loupe-label num">2×</span>
+                    </div>
+                </div>
+
+                <!-- Micro interaction hint right on plate edge -->
+                <div class="plate-micro-row">
+                    <span class="plate-micro-hint" id="plate-hold-hint">Hold sky to compare first visit · Hover to inspect pixels</span>
+                    <span class="plate-wavelength-chip num" id="plate-wl-summary">Detector 1 · 0.75–1.12 µm</span>
+                </div>
+            </div>
+
+            <!-- Sentence + Caveat right under the sky plate -->
+            <div class="stage-caption swap" id="stage-caption">
+                <p class="stage-show skel" id="stage-show">The fastest-moving star in our sky. Gold rings mark where its measured motion puts it on each date. Watch it step from ring to ring.</p>
+                <p class="stage-caveat skel" id="stage-caveat">Its centre may be too bright for the camera, so treat its position with care.</p>
+            </div>
+
+            <!-- Unified Dock: Playback + Date Scrubber + Mode + Wavelength Bar -->
+            <section class="dock" id="theatre-dock" aria-label="Sky controls">
+                <!-- Row 1: Transport, Scrubber with visit ticks & hover-peek, Mode segmented control -->
+                <div class="dock-row dock-row-top">
+                    <div class="transport-group" role="group" aria-label="Frame playback">
+                        <button type="button" class="btn icon" id="btn-prev" aria-label="Previous visit (Left arrow)" title="Previous visit (←)">
+                            <span id="icon-prev" aria-hidden="true"></span>
+                        </button>
+                        <button type="button" class="btn icon play-btn" id="btn-play" aria-label="Pause blinking (Space)" aria-pressed="true" title="Play or pause blinking (Space)">
+                            <span id="icon-play-state" aria-hidden="true"></span>
+                        </button>
+                        <button type="button" class="btn icon" id="btn-next" aria-label="Next visit (Right arrow)" title="Next visit (→)">
+                            <span id="icon-next" aria-hidden="true"></span>
+                        </button>
+                    </div>
+
+                    <!-- Date scrubber with visit ticks & hover-peek thumbnail -->
+                    <div class="scrubber-wrap" id="scrubber-wrap">
+                        <div class="scrubber-labels">
+                            <span class="scrubber-date-active num" id="scrubber-current-date">25 Aug 2026</span>
+                            <span class="scrubber-visit-count num" id="scrubber-visit-count">Visit 4 / 4</span>
+                        </div>
+                        <div class="scrubber-track-area" id="scrubber-track-area" role="slider" tabindex="0" aria-label="Visit timeline" aria-valuemin="1" aria-valuemax="4" aria-valuenow="4" aria-valuetext="Visit 4 of 4, 25 Aug 2026">
+                            <div class="scrubber-rail">
+                                <div class="scrubber-fill" id="scrubber-fill"></div>
+                            </div>
+                            <div class="scrubber-ticks" id="scrubber-ticks"></div>
+                            <div class="scrubber-thumb" id="scrubber-thumb" aria-hidden="true"></div>
+                        </div>
+
+                        <!-- Hover-peek floating square card -->
+                        <div class="scrubber-peek" id="scrubber-peek" aria-hidden="true" hidden>
+                            <div class="peek-thumb-box">
+                                <img id="peek-img" src="" alt="">
+                            </div>
+                            <div class="peek-meta">
+                                <span class="peek-date num" id="peek-date">29 Aug 2025</span>
+                                <span class="peek-sub num" id="peek-sub">Visit 1 of 4</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Blink | Stack | Subtract -->
+                    <div class="seg mode-seg" role="group" aria-label="Comparison mode">
+                        <button type="button" data-mode="blink" aria-pressed="true" title="Blink between visits (B)">Blink</button>
+                        <button type="button" data-mode="stack" aria-pressed="false" title="Average all visits (S)">Stack</button>
+                        <button type="button" data-mode="diff" aria-pressed="false" title="Latest minus earliest visit (D)">Subtract</button>
+                    </div>
+                </div>
+
+                <!-- Morphing mode hint line -->
+                <p class="dock-mode-hint swap" id="dock-mode-hint">Blink flips between dates. Things that move or change are easier to spot.</p>
+
+                <!-- Row 2: Wavelength bar (detector bands + "your eyes" visible-light edge) -->
+                <div class="dock-row dock-row-wl">
+                    <div class="wl-header">
+                        <div class="wl-title-group">
+                            <span class="wl-label">Infrared colour</span>
+                            <span class="wl-value num" id="wl-readout">0.93 µm</span>
+                            <span class="wl-det-meta num" id="wl-det-readout">Detector 1 (0.75–1.09 µm)</span>
+                        </div>
+                        <div class="wl-status-group">
+                            <span class="wl-source-note" id="wl-source-note">Saved frame</span>
+                            <button type="button" class="wl-reset-btn" id="wl-reset-btn" hidden>Return to saved band</button>
+                        </div>
+                    </div>
+
+                    <div class="wl-bar-container" id="wl-bar-container">
+                        <!-- Visible edge ("your eyes" <= 0.70 um) -->
+                        <div class="wl-eyes-zone" title="Human eyes stop around 0.70 µm">
+                            <div class="wl-eyes-spectrum" aria-hidden="true"></div>
+                            <span class="wl-eyes-label num">your eyes ≤0.70</span>
+                        </div>
+
+                        <!-- Interactive 0.75 - 5.00 um SPHEREx detector bar -->
+                        <div class="wl-interactive" id="wl-interactive" role="slider" tabindex="0" aria-label="Infrared wavelength in micrometres" aria-valuemin="0.75" aria-valuemax="5.00" aria-valuenow="0.93" aria-valuetext="0.93 micrometres, Detector 1">
+                            <div class="wl-bands" id="wl-bands">
+                                <!-- 6 detector segments built from window.DETECTORS -->
+                            </div>
+                            <div class="wl-Saved-marker" id="wl-saved-marker" title="Saved band for this target" aria-hidden="true"></div>
+                            <div class="wl-thumb" id="wl-thumb" aria-hidden="true"></div>
+                        </div>
+
+                        <!-- Hover detector range tooltip -->
+                        <div class="wl-hover-tip num" id="wl-hover-tip" hidden>Detector 1 · 0.75–1.09 µm</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Underlined sheet triggers under the dock -->
+            <nav class="sheet-bar" aria-label="Explore details and overlays">
+                <button type="button" class="sheet-link" data-sheet-open="guide" aria-expanded="false" aria-controls="bottom-sheet">
+                    <span class="sheet-link-text">What to look for</span>
+                    <span class="sheet-link-meta num" id="trigger-meta-guide">Sky map &amp; motion</span>
+                </button>
+                <button type="button" class="sheet-link" data-sheet-open="overlays" aria-expanded="false" aria-controls="bottom-sheet">
+                    <span class="sheet-link-text">Overlays &amp; field</span>
+                    <span class="sheet-link-meta num" id="trigger-meta-overlays">1 on · 6′</span>
+                </button>
+                <button type="button" class="sheet-link" data-sheet-open="frame" aria-expanded="false" aria-controls="bottom-sheet">
+                    <span class="sheet-link-text">This frame</span>
+                    <span class="sheet-link-meta num" id="trigger-meta-frame">D1 · FITS</span>
+                </button>
+            </nav>
+
+            <!-- Footer: keyboard shortcuts & mockup note -->
+            <footer class="theatre-footer">
+                <div class="shortcut-row" aria-label="Keyboard shortcuts">
+                    <span><kbd>Space</kbd> Play</span>
+                    <span><kbd>←</kbd><kbd>→</kbd> Step</span>
+                    <span><kbd>B</kbd><kbd>S</kbd><kbd>D</kbd> Mode</span>
+                    <span><kbd>⌘K</kbd> Search</span>
+                    <span><kbd>T</kbd> Theme</span>
+                </div>
+                <p class="mock-note">Slowsky UI mockup · Real saved SPHEREx pixels; archive searches, FITS downloads and non-saved wavelengths are simulated.</p>
+            </footer>
+
+        </div>
+    </main>
+
+    <!-- Bottom Sheet Backdrop (subtle, keeps sky plate visible above ~60% sheet) -->
+    <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
+
+    <!-- Sliding Bottom Sheet (~60% max height, plate stays visible above) -->
+    <section class="bottom-sheet" id="bottom-sheet" role="dialog" aria-modal="false" aria-labelledby="sheet-title" hidden>
+        <div class="sheet-header">
+            <div class="sheet-tabs" role="tablist" aria-label="Detail sections">
+                <button type="button" class="sheet-tab" role="tab" id="tab-guide" data-sheet-tab="guide" aria-selected="true" aria-controls="panel-guide">What to look for</button>
+                <button type="button" class="sheet-tab" role="tab" id="tab-overlays" data-sheet-tab="overlays" aria-selected="false" aria-controls="panel-overlays">Overlays &amp; field</button>
+                <button type="button" class="sheet-tab" role="tab" id="tab-frame" data-sheet-tab="frame" aria-selected="false" aria-controls="panel-frame">This frame</button>
+            </div>
+            <button type="button" class="btn icon sheet-close" id="sheet-close" aria-label="Close sheet (Esc)" title="Close (Esc)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+            </button>
+        </div>
+
+        <h2 class="sr" id="sheet-title">What to look for</h2>
+
+        <div class="sheet-body" id="sheet-body">
+            <!-- Panel 1: What to look for (Interactive Sky Map + Animated Motion Diagram + Notes) -->
+            <div class="sheet-panel" id="panel-guide" role="tabpanel" aria-labelledby="tab-guide">
+                <div class="guide-prose">
+                    <div class="guide-prose-head">
+                        <h3 id="guide-headline">Barnard’s Star, walking north</h3>
+                        <button type="button" class="coord-btn num" id="guide-coords-btn" title="Click to copy J2000 coordinates">
+                            <span id="guide-coords-text">RA 269.4521°, Dec +4.6934°</span>
+                            <span class="inline-copied" id="guide-coords-copied" hidden>Copied</span>
+                        </button>
+                    </div>
+                    <p class="guide-lead" id="guide-show"></p>
+                    <div class="guide-caveat-block">
+                        <h4 class="subhead">What this can’t tell you</h4>
+                        <p id="guide-not"></p>
+                    </div>
+                </div>
+
+                <div class="guide-diagrams">
+                    <!-- Interactive Sky Map ("Where in the sky") -->
+                    <div class="diagram-box">
+                        <div class="diagram-head">
+                            <h4 class="subhead">Where in the sky</h4>
+                            <span class="diagram-sub num" id="skymap-readout">Click any star to switch</span>
+                        </div>
+                        <div class="skymap-wrap" id="skymap-wrap">
+                            <svg class="skymap-svg" id="skymap-svg" viewBox="0 0 360 180" role="group" aria-label="All-sky map of the five Slowsky targets">
+                                <!-- Grid lines: equator & RA meridians -->
+                                <line x1="0" y1="90" x2="360" y2="90" class="skymap-eq"></line>
+                                <line x1="90" y1="0" x2="90" y2="180" class="skymap-grid"></line>
+                                <line x1="180" y1="0" x2="180" y2="180" class="skymap-grid"></line>
+                                <line x1="270" y1="0" x2="270" y2="180" class="skymap-grid"></line>
+                                <path d="M0,118 Q90,34 180,90 T360,64" class="skymap-plane" fill="none"></path>
+                                <text x="8" y="14" class="skymap-axis">+90° N</text>
+                                <text x="8" y="86" class="skymap-axis">0° Eq</text>
+                                <text x="8" y="173" class="skymap-axis">−90° S</text>
+                                <text x="352" y="173" text-anchor="end" class="skymap-axis">RA 0°–360°</text>
+                                <g id="skymap-points"></g>
+                            </svg>
+                            <div class="skymap-hover-card" id="skymap-hover-card" hidden>
+                                <strong id="skymap-hover-name">Barnard’s Star</strong>
+                                <span id="skymap-hover-hook">Moves fastest across our sky</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Animated Proper Motion Diagram -->
+                    <div class="diagram-box">
+                        <div class="diagram-head">
+                            <h4 class="subhead">Measured motion across visits</h4>
+                            <span class="diagram-sub num" id="motion-rate-label">10.39″ / yr</span>
+                        </div>
+                        <div class="motion-wrap">
+                            <svg class="motion-svg" id="motion-svg" viewBox="0 0 220 180" aria-label="Animated star motion vector synchronized with frames">
+                                <defs>
+                                    <marker id="pm-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                        <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="currentColor"></path>
+                                    </marker>
+                                </defs>
+                                <line x1="110" y1="14" x2="110" y2="166" class="motion-axis"></line>
+                                <line x1="24" y1="90" x2="196" y2="90" class="motion-axis"></line>
+                                <text x="110" y="11" text-anchor="middle" class="skymap-axis">N</text>
+                                <text x="18" y="93" text-anchor="end" class="skymap-axis">E</text>
+                                <text x="202" y="93" text-anchor="start" class="skymap-axis">W</text>
+                                <circle cx="110" cy="90" r="56" class="motion-ring-guide" fill="none"></circle>
+
+                                <!-- Full path dashed -->
+                                <line id="motion-path-full" x1="110" y1="130" x2="110" y2="50" class="motion-line-full"></line>
+                                <!-- Active animated vector growing with visit index -->
+                                <line id="motion-path-active" x1="110" y1="130" x2="110" y2="50" class="motion-line-active" marker-end="url(#pm-arrow)"></line>
+                                <!-- Visit dots -->
+                                <g id="motion-visit-dots"></g>
+                            </svg>
+                            <div class="motion-caption">
+                                <span class="num" id="motion-step-readout">Visit 4 of 4 · 25 Aug 2026</span>
+                                <span class="motion-components num" id="motion-components">pmRA −801.6, pmDec +10362.4 mas/yr</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 2: Overlays & field -->
+            <div class="sheet-panel" id="panel-overlays" role="tabpanel" aria-labelledby="tab-overlays" hidden>
+                <div class="overlays-grid">
+                    <div class="overlays-col">
+                        <h3 class="panel-heading">Sky overlays</h3>
+                        <div class="checks-list">
+                            <label class="check">
+                                <input type="checkbox" id="chk-target-pos" checked>
+                                <span>Where the star should be on this date</span>
+                            </label>
+                            <label class="check">
+                                <input type="checkbox" id="chk-gaia">
+                                <span>Brightest Gaia stars</span>
+                            </label>
+                            <label class="check">
+                                <input type="checkbox" id="chk-flags">
+                                <span>Flagged pixels</span>
+                            </label>
+                            <label class="check">
+                                <input type="checkbox" id="chk-older">
+                                <span>Older picture (earliest saved visit reference)</span>
+                            </label>
+                            <label class="check">
+                                <input type="checkbox" id="chk-false-colour">
+                                <span>False colour</span>
+                            </label>
+                        </div>
+                        <div class="reveal" id="false-colour-reveal">
+                            <div>
+                                <p class="false-colour-note" id="false-colour-text"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overlays-col">
+                        <div class="field-group">
+                            <h3 class="panel-heading">Field size</h3>
+                            <p class="field-desc">Zoom smoothly into the 6′ SPHEREx cutout while keeping pixels crisp.</p>
+                            <div class="seg" id="field-size-seg" role="group" aria-label="Field size">
+                                <button type="button" data-fov="6" aria-pressed="true">6′ full field</button>
+                                <button type="button" data-fov="4" aria-pressed="false">4′ medium</button>
+                                <button type="button" data-fov="3" aria-pressed="false">3′ close-up</button>
+                            </div>
+                        </div>
+
+                        <div class="field-group">
+                            <h3 class="panel-heading">Data source</h3>
+                            <p class="field-desc">Saved copies load at once. Live mode simulates querying NASA’s archive.</p>
+                            <div class="source-row">
+                                <div class="seg" id="archive-mode-seg" role="group" aria-label="Archive mode">
+                                    <button type="button" data-source="saved" aria-pressed="true">Saved copy</button>
+                                    <button type="button" data-source="live" aria-pressed="false">Go live (mockup)</button>
+                                </div>
+                                <button type="button" class="btn ghost test-err-btn" id="btn-sim-error">Simulate load failure</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 3: This frame -->
+            <div class="sheet-panel" id="panel-frame" role="tabpanel" aria-labelledby="tab-frame" hidden>
+                <div class="frame-spec-head">
+                    <div>
+                        <h3 class="panel-heading" id="spec-target-title">Barnard’s Star — Visit 4 of 4</h3>
+                        <p class="field-desc" id="spec-subtitle">Real SPHEREx cutout · R7 pipeline saved frame</p>
+                    </div>
+                    <div class="frame-actions">
+                        <button type="button" class="btn" id="btn-fits-download">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5v8M4.8 7.5 8 10.8l3.2-3.3M3 13.2h10"/></svg>
+                            <span>FITS cutout (mockup)</span>
+                        </button>
+                    </div>
+                </div>
+                <p class="fits-feedback" id="fits-feedback" hidden></p>
+
+                <dl class="spec-grid">
+                    <div class="spec-item">
+                        <dt>Date taken</dt>
+                        <dd class="num" id="spec-date">25 Aug 2026</dd>
+                    </div>
+                    <div class="spec-item">
+                        <dt>Visit</dt>
+                        <dd class="num" id="spec-visit">4 of 4</dd>
+                    </div>
+                    <div class="spec-item">
+                        <dt>Observation ID</dt>
+                        <dd class="num">
+                            <button type="button" class="inline-copy-trigger num" id="spec-obsid-btn" title="Click to copy obsId">
+                                <span id="spec-obsid">2026W35_1A_0375_1D1</span>
+                                <span class="inline-copied" id="spec-obsid-copied" hidden>Copied</span>
+                            </button>
+                        </dd>
+                    </div>
+                    <div class="spec-item">
+                        <dt>Frames in visit</dt>
+                        <dd class="num" id="spec-frames">5</dd>
+                    </div>
+                    <div class="spec-item">
+                        <dt>Detector</dt>
+                        <dd class="num" id="spec-detector">Detector 1 of 6</dd>
+                    </div>
+                    <div class="spec-item">
+                        <dt>Wavelength range</dt>
+                        <dd class="num" id="spec-lam">0.75–1.12 µm</dd>
+                    </div>
+                    <div class="spec-item">
+                        <dt>Coordinates (J2000)</dt>
+                        <dd class="num">
+                            <button type="button" class="inline-copy-trigger num" id="spec-coords-btn" title="Click to copy RA, Dec">
+                                <span id="spec-coords">269.4521°, +4.6934°</span>
+                                <span class="inline-copied" id="spec-coords-copied" hidden>Copied</span>
+                            </button>
+                        </dd>
+                    </div>
+                    <div class="spec-item">
+                        <dt>Proper motion</dt>
+                        <dd class="num" id="spec-pm">10.39″/yr (−801.6, +10362.4 mas/yr)</dd>
+                    </div>
+                    <div class="spec-item">
+                        <dt>Field &amp; orientation</dt>
+                        <dd class="num" id="spec-field">6′ × 6′ · North up, East left</dd>
+                    </div>
+                    <div class="spec-item">
+                        <dt>Saved cutout file</dt>
+                        <dd class="num" id="spec-file">barnard-3.png</dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+    </section>
+
+    <!-- Centred Command Palette (⌘K / Search) -->
+    <div class="cmd-backdrop" id="cmd-backdrop" hidden>
+        <div class="cmd-dialog" role="dialog" aria-modal="true" aria-label="Jump to target or coordinates">
+            <div class="cmd-input-row">
+                <span class="cmd-search-icon" id="cmd-search-icon" aria-hidden="true"></span>
+                <input type="text" class="cmd-input" id="cmd-input" placeholder="Any star, or RA, Dec (e.g. 269.45, +4.69)" autocomplete="off" spellcheck="false">
+                <button type="button" class="cmd-esc-btn" id="cmd-close" aria-label="Close search">
+                    <kbd>Esc</kbd>
+                </button>
+            </div>
+            <div class="cmd-list" id="cmd-list" role="listbox" aria-label="Matching targets"></div>
+            <div class="cmd-footer">
+                <span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
+                <span><kbd>↵</kbd> Open spot</span>
+                <span>5 saved SPHEREx targets · RA, Dec simulated</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="frames.js"></script>
+    <script src="copy.js"></script>
+    <script src="base.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

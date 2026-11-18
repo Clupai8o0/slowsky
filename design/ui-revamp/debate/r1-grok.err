@@ -1,0 +1,2 @@
+{"policy": "personal", "allowed_routes": ["agy", "codex", "cursor", "dsh", "grok", "kimi", "muse", "opencode"], "ladder": ["grok:grok-4.7"]}
+{"provider": "grok", "model": "grok-4.7", "ok": true, "secs": 84, "usage": {"input": 34020, "output": 4361, "cache_read": 44160, "turns": 2, "cost": 0.116286}, "quota": false, "error": ""}

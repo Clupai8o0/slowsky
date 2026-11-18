@@ -1,0 +1,15 @@
+{
+  "name": "slowsky-roadmap",
+  "private": true,
+  "type": "module",
+  "description": "Private build roadmap and progress log for Slowsky (NASA Space Apps 2026, team Clupai). Not the submitted product.",
+  "scripts": {
+    "seed": "node --env-file=.env.local scripts/seed.mjs"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "1.2.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

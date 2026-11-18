@@ -1,0 +1,73 @@
+{
+  "__typename": "LocationsIndexPage",
+  "id": "aWQ6NTM3MzY=",
+  "title": "2026 Local Events",
+  "meta": {
+    "type": "LOCATIONINDEX",
+    "slug": "local-events",
+    "firstPublishedAt": "2025-06-06T13:56:53.662000Z",
+    "lastPublishedAt": "2026-09-17T14:28:16.889798Z",
+    "relativeUrl": "/2026/local-events/",
+    "live": true,
+    "parent": {
+      "id": "aWQ6NTM3MzU="
+    }
+  },
+  "breadcrumbs": [
+    {
+      "name": "Home",
+      "link": "/"
+    },
+    {
+      "name": "2026 NASA Space Apps Challenge",
+      "link": "/2026/"
+    },
+    {
+      "name": "2026 Local Events",
+      "link": "/2026/local-events/"
+    }
+  ],
+  "mapboxStyleUrl": "mapbox://styles/bolster/cljq27ax300n301qv7ms66pgy",
+  "showMap": true,
+  "pageFooter": null,
+  "scheduleCardTitle": "Important Dates",
+  "scheduleCardText": "",
+  "eventStartLabel": "“Welcome to Space Apps 2026” kickoff video",
+  "localEventStartLabel": "Local Event Start",
+  "localEventSubmissionLabel": "Project Submission Deadline",
+  "leadsCardTitle": "Local Lead",
+  "leadsCardText": "",
+  "socialCardTitle": "Important Links",
+  "socialCardText": "",
+  "chatCardTitle": "Join the Discussion",
+  "chatCardText": "Chat about this Local Event and with the broader Space Apps event community via Space Apps Connect",
+  "chatCardLink": "",
+  "chatCardLinkLabel": "",
+  "showChatCard": false,
+  "localEventRegisterCta": "Choose This Local Event",
+  "registrationContent": "",
+  "existingRegistrationContent": "",
+  "unregistrationContent": "",
+  "registrationSuccess": "You are now registered for this Local Event!",
+  "waitlistSuccess": "You have been added to the waitlist for this Local Event!",
+  "unregistrationSuccess": "You have canceled your registration for this Local Event.",
+  "detailsTabLabel": "Details",
+  "detailsTabForm": "aWQ6Mw==",
+  "scheduleTabLabel": "Local Event Schedule",
+  "scheduleTabForm": "aWQ6NA==",
+  "teamsTabLabel": "Teams",
+  "teamsTabContent": "",
+  "showTeamsTab": true,
+  "judgingTabLabel": "Judging",
+  "judgingTabContent": "<p data-block-key=\"t0d50\">Please refer to the <a href=\"https://spaceapps-v2-staging.s3.amazonaws.com/media/documents/Final_Space_Apps_2025_Judging_Guidelines_for_web.pdf\">judging instructions</a> for guidance on judging criteria.</p><p data-block-key=\"48br1\"><b>Judging Deadline:</b> October 12</p>",
+  "showJudgingTab": false,
+  "participantTabLabel": "Participants",
+  "showParticipantTab": true,
+  "noResultsContent": "",
+  "alertContent": "",
+  "event": "aWQ6NA==",
+  "localEventsFilter": "aWQ6Mg==",
+  "teamsFilter": "aWQ6Nw==",
+  "registrationsFilter": null,
+  "teamsJudgingFilter": "aWQ6Mw=="
+}

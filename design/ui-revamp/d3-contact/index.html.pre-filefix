@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slowsky</title>
+<link rel="icon" href="img/logo.svg">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="app.css">
+<script>
+try {
+    var savedTheme = localStorage.getItem('slowsky-mock-theme');
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+        document.documentElement.dataset.theme = savedTheme;
+    }
+} catch (err) {}
+</script>
+</head>
+<body>
+<a class="skip" href="#stage">Skip to the sky</a>
+
+<header class="top">
+    <div class="wrap top-row">
+        <a class="brand" href="#sheet">
+            <img src="img/logo.svg" alt="" width="28" height="28">
+            <span>Slowsky</span>
+        </a>
+        <nav class="tabs" id="tabs" role="tablist" aria-label="Targets"></nav>
+        <div class="tools">
+            <form class="search" id="searchForm" role="search" autocomplete="off">
+                <label class="sr" for="q">Any star, or RA, Dec</label>
+                <span class="search-icon" aria-hidden="true"></span>
+                <input id="q" name="q" type="search" placeholder="Any star, or RA, Dec" enterkeyhint="search">
+                <div class="suggest" id="suggest" role="listbox" hidden></div>
+            </form>
+            <button class="btn icon theme" type="button" data-theme-toggle aria-label="Switch to dark mode"></button>
+        </div>
+    </div>
+</header>
+
+<div class="wrap">
+    <p class="short swap" id="short"></p>
+</div>
+
+<main class="wrap">
+    <section class="intro">
+        <h1 class="swap" id="headline"></h1>
+        <h2 class="help-title" id="helpTitle"></h2>
+        <p class="help-intro" id="helpIntro"></p>
+        <button class="btn help-more" type="button" id="helpMore" hidden>More</button>
+        <p class="cue" id="cue"></p>
+    </section>
+
+    <section class="sheet-sec" id="sheetSec" aria-labelledby="headline">
+        <div class="sheet" id="sheet" role="list"></div>
+    </section>
+
+    <section class="stage-sec" id="stage">
+        <div class="readout">
+            <button class="date-btn on" type="button" id="btnA">
+                <span class="abtag">A</span>
+                <span class="dtext" id="dateA"></span>
+            </button>
+            <button class="date-btn" type="button" id="btnB">
+                <span class="abtag">B</span>
+                <span class="dtext" id="dateB"></span>
+            </button>
+        </div>
+        <p class="meta num" id="meta"></p>
+
+        <div class="plate">
+            <div class="sky" id="sky">
+                <span class="hold-tag" id="holdTag">Hold for A</span>
+                <span class="north" aria-hidden="true">N</span>
+            </div>
+            <canvas class="loupe" id="loupe" width="148" height="148" hidden aria-hidden="true"></canvas>
+            <p class="stage-text" id="stageText"></p>
+            <div class="older" id="older" hidden>
+                <img alt="" id="olderImg">
+                <span class="older-date num" id="olderDate"></span>
+            </div>
+        </div>
+
+        <p class="not swap" id="not"></p>
+        <aside class="ai-note">
+            <p class="ai-kicker">AI note</p>
+            <p class="help-line" id="aiNoteHelp"></p>
+            <p class="ai-body">Written by AI (model name goes here). Mockup placeholder: the live app writes this from numbers it measured.</p>
+        </aside>
+
+        <div class="controls">
+            <div class="transport" role="group" aria-label="Playback">
+                <button class="btn icon" type="button" id="prev" aria-label="Previous visit"></button>
+                <button class="btn icon play" type="button" id="play" aria-label="Pause" aria-pressed="true"></button>
+                <button class="btn icon" type="button" id="next" aria-label="Next visit"></button>
+            </div>
+            <div class="ctrl">
+                <div class="seg" role="group" aria-label="Mode" id="modes">
+                    <button type="button" data-mode="blink" aria-pressed="true">Blink</button>
+                    <button type="button" data-mode="stack" aria-pressed="false">Stack</button>
+                    <button type="button" data-mode="diff" aria-pressed="false">Subtract</button>
+                </div>
+                <p class="hint help-line swap" id="hint"></p>
+            </div>
+            <div class="ctrl">
+                <div class="seg" role="group" aria-label="Field size" id="fields">
+                    <button type="button" data-field="6" aria-pressed="true">6′</button>
+                    <button type="button" data-field="3" aria-pressed="false">3′</button>
+                </div>
+                <p class="help-line" id="fieldHelp"></p>
+            </div>
+        </div>
+
+        <div class="scrub" id="scrub" role="slider" tabindex="0" aria-label="Date" aria-valuemin="0" aria-valuenow="0" aria-valuemax="0">
+            <div class="track" id="track">
+                <div class="marker" id="marker"></div>
+            </div>
+            <div class="scrub-ends">
+                <span id="scrub0"></span>
+                <span id="scrub1"></span>
+            </div>
+        </div>
+
+        <p class="fail" id="fail" hidden>
+            <span id="failText"></span>
+            <button class="btn" type="button" id="retry">Retry</button>
+        </p>
+    </section>
+
+    <section class="cards">
+        <article class="card" id="cardLook">
+            <h2>What to look for</h2>
+            <p class="show swap" id="show"></p>
+            <div class="diagram-wrap">
+                <svg id="diagram" viewBox="0 0 100 100" role="img" aria-label="Motion since the first visit">
+                    <line class="axis" x1="50" y1="14" x2="50" y2="90"></line>
+                    <line class="axis" x1="12" y1="50" x2="88" y2="50"></line>
+                    <text class="nlab" x="50" y="10" text-anchor="middle">N</text>
+                    <line id="arrow" x1="50" y1="50" x2="50" y2="50"></line>
+                    <circle id="arrowTip" cx="50" cy="50" r="1.7"></circle>
+                    <circle class="origin" cx="50" cy="50" r="1.15"></circle>
+                </svg>
+                <p class="pm num" id="pmLine"></p>
+            </div>
+        </article>
+
+        <article class="card">
+            <h2>Where in the sky</h2>
+            <div class="map" id="map" role="list"></div>
+            <button class="coord" type="button" id="coord"></button>
+        </article>
+
+        <article class="card" id="cardColour">
+            <h2>Colour</h2>
+            <p class="wave-read">
+                <span class="wave-num num" id="waveNum">0.00</span>
+                <span class="um">µm</span>
+            </p>
+            <p class="det" id="detLine"></p>
+            <p class="eye-label">your eyes</p>
+            <div class="wave" id="wave" role="slider" tabindex="0" aria-valuemin="0.4" aria-valuemax="5" aria-valuenow="0.9" aria-label="Wavelength in micrometres">
+                <div class="bands" id="bands"></div>
+                <div class="saved-band" id="savedBand"></div>
+                <div class="eye" id="eye" title="0.70 µm, your eyes"></div>
+                <div class="thumb" id="thumb"></div>
+                <p class="band-tip" id="bandTip" hidden></p>
+            </div>
+            <div class="wave-scale num"><span>0.40</span><span>5.00</span></div>
+            <p class="help-line" id="colourHelp"></p>
+            <p class="saved-line" id="savedLine"></p>
+            <p class="mock-note" id="waveNote" hidden>Outside the saved band. The picture stays as it was. Mockup.</p>
+        </article>
+    </section>
+
+    <div class="more">
+        <button class="btn ghost" type="button" id="frameToggle" aria-expanded="false" aria-controls="framePanel">This frame</button>
+        <button class="btn ghost" type="button" id="overlayToggle" aria-expanded="false" aria-controls="overlayPanel">Overlays</button>
+        <span class="saved-flag">Saved copy</span>
+        <button class="btn" type="button" id="goLive">Go live</button>
+        <button class="btn" type="button" id="copyLink">Copy link</button>
+        <span class="copied" id="linkCopied" hidden>Copied</span>
+    </div>
+
+    <div class="reveal" id="framePanel">
+        <div tabindex="-1">
+            <dl class="facts" id="facts"></dl>
+        </div>
+    </div>
+
+    <div class="reveal" id="overlayPanel">
+        <div class="overlay-body">
+            <label class="check"><input type="checkbox" id="ovRing" checked> Where the star should be</label>
+            <label class="check"><input type="checkbox" id="ovTrail" checked> Earlier positions</label>
+            <label class="check"><input type="checkbox" id="ovOlder"><span class="check-text">Older picture<span class="help-line" id="helpEpoch"></span></span></label>
+            <label class="check"><input type="checkbox" id="ovFalse"><span class="check-text">False colour<span class="help-line" id="helpFalse"></span></span></label>
+            <label class="check"><input type="checkbox" id="ovFlag"><span class="check-text">Flagged pixels<span class="help-line" id="helpFlags"></span></span></label>
+            <label class="check"><input type="checkbox" id="ovGaia"><span class="check-text">Brightest Gaia stars<span class="help-line" id="helpGaia"></span></span></label>
+            <p class="false-hint" id="falseHint" hidden></p>
+            <p class="mock-note" id="overlayNote" hidden></p>
+        </div>
+    </div>
+
+    <div class="reveal custom-panel" id="customPanel">
+        <div>
+            <h2 class="swap" id="customHead"></h2>
+            <p id="customShow"></p>
+            <p class="not" id="customNot"></p>
+            <p class="mock-note">This mockup only has the five saved targets.</p>
+            <button class="btn" type="button" id="customClose">Close</button>
+        </div>
+    </div>
+</main>
+
+<footer class="wrap foot">
+    <p class="mock-note">Wavelengths outside a target’s saved band are simulated. Mockup.</p>
+    <p class="ai-foot" id="aiLine"></p>
+    <p class="ai-foot"><a id="aiLink" href="">Which AI tools</a></p>
+    <p class="keys"><kbd>Space</kbd> play <kbd>←</kbd> <kbd>→</kbd> step <kbd>B</kbd> <kbd>S</kbd> <kbd>D</kbd> mode <kbd>T</kbd> theme</p>
+</footer>
+
+<div class="gloss" id="gloss" role="dialog" aria-label="Word" hidden></div>
+<div class="sr" id="live" aria-live="polite"></div>
+
+<script src="frames.js"></script>
+<script src="copy.js"></script>
+<script src="help.js"></script>
+<script src="base.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

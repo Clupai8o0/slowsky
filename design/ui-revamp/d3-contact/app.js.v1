@@ -1,0 +1,1958 @@
+// Contact sheet. Images stay on a shared sky: each visit is shifted by its
+// proper motion since the first visit (mas/yr over a 6′ frame), so one gold
+// ring sits on the same sky point and the star walks off it. Blink hard-cuts.
+
+(function ()
+{
+    const FIELD_MAS = 6 * 60 * 1000;
+    const OVERSCAN = 1.12;
+    const WAVE_MIN = 0.4;
+    const WAVE_MAX = 5;
+    const EYE = 0.7;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const $ = (id) => document.getElementById(id);
+
+    const ui = {
+        tabs: $('tabs'),
+        short: $('short'),
+        headline: $('headline'),
+        cue: $('cue'),
+        sheet: $('sheet'),
+        sky: $('sky'),
+        btnA: $('btnA'),
+        btnB: $('btnB'),
+        dateA: $('dateA'),
+        dateB: $('dateB'),
+        meta: $('meta'),
+        not: $('not'),
+        hint: $('hint'),
+        play: $('play'),
+        prev: $('prev'),
+        next: $('next'),
+        modes: $('modes'),
+        fields: $('fields'),
+        scrub: $('scrub'),
+        track: $('track'),
+        marker: $('marker'),
+        scrub0: $('scrub0'),
+        scrub1: $('scrub1'),
+        fail: $('fail'),
+        failText: $('failText'),
+        retry: $('retry'),
+        stageText: $('stageText'),
+        loupe: $('loupe'),
+        show: $('show'),
+        diagram: $('diagram'),
+        arrow: $('arrow'),
+        arrowTip: $('arrowTip'),
+        pmLine: $('pmLine'),
+        map: $('map'),
+        coord: $('coord'),
+        wave: $('wave'),
+        waveNum: $('waveNum'),
+        thumb: $('thumb'),
+        bands: $('bands'),
+        savedBand: $('savedBand'),
+        eye: $('eye'),
+        bandTip: $('bandTip'),
+        detLine: $('detLine'),
+        savedLine: $('savedLine'),
+        waveNote: $('waveNote'),
+        facts: $('facts'),
+        framePanel: $('framePanel'),
+        frameToggle: $('frameToggle'),
+        overlayPanel: $('overlayPanel'),
+        overlayToggle: $('overlayToggle'),
+        overlayNote: $('overlayNote'),
+        falseHint: $('falseHint'),
+        older: $('older'),
+        olderImg: $('olderImg'),
+        olderDate: $('olderDate'),
+        customPanel: $('customPanel'),
+        customHead: $('customHead'),
+        customShow: $('customShow'),
+        customNot: $('customNot'),
+        customClose: $('customClose'),
+        suggest: $('suggest'),
+        searchForm: $('searchForm'),
+        q: $('q'),
+        goLive: $('goLive'),
+        copyLink: $('copyLink'),
+        linkCopied: $('linkCopied'),
+        live: $('live'),
+        holdTag: $('holdTag'),
+    };
+
+    const state = {
+        id: 'barnard',
+        pair: { a: 0, b: 3 },
+        arm: 0,
+        playing: false,
+        mode: 'blink',
+        field: 1.5,
+        fieldTouched: false,
+        wave: 0.93,
+        peek: false,
+        peekReturn: 0,
+        hold: false,
+        heldIndex: 0,
+        userPaused: false,
+        drawRing: true,
+        single: null,
+        gen: 0,
+        waveSeq: 0,
+        job: 0,
+        ready: false,
+        fit: null,
+        ov: null,
+        ring: null,
+        trail: null,
+        settle: null,
+        blinkTimer: null,
+        holdTimer: null,
+        suggestI: -1,
+        lastTrigger: null,
+    };
+
+    let player;
+
+    function live(msg)
+    {
+        ui.live.textContent = '';
+        ui.live.textContent = msg;
+    }
+
+    function target()
+    {
+        return window.FRAMES[state.id];
+    }
+
+    function copy()
+    {
+        return window.COPY[state.id];
+    }
+
+    function nVisits()
+    {
+        return target().visits.length;
+    }
+
+    function visitTime(v)
+    {
+        return Date.parse(v.date);
+    }
+
+    function offsetOf(id, index)
+    {
+        const t = window.FRAMES[id];
+        const t0 = visitTime(t.visits[0]);
+        const t1 = visitTime(t.visits[index]);
+        if (!Number.isFinite(t0) || !Number.isFinite(t1)) {
+            return { x: 0, y: 0 };
+        }
+        const y = (t1 - t0) / (365.25 * 24 * 3600 * 1000);
+        return {
+            x: -t.pmRa * y / FIELD_MAS,
+            y: -t.pmDec * y / FIELD_MAS,
+        };
+    }
+
+    function viewScale(field)
+    {
+        return Math.max(OVERSCAN, 6 / field);
+    }
+
+    function suggestedField(id)
+    {
+        const t = window.FRAMES[id];
+        const o = offsetOf(id, t.visits.length - 1);
+        const span = Math.hypot(o.x, o.y);
+        if (span >= 0.02) {
+            return 1.5;
+        }
+        if (span >= 0.008) {
+            return 3;
+        }
+        return 6;
+    }
+
+    function shownIndex()
+    {
+        if (state.single !== null) {
+            return state.single;
+        }
+        return player ? player.i : state.pair.a;
+    }
+
+    function fileOf(id, index)
+    {
+        return 'img/' + window.FRAMES[id].visits[index].file;
+    }
+
+    function fmtUm(n)
+    {
+        return n.toFixed(2);
+    }
+
+    function fmtCoord(ra, dec)
+    {
+        const sign = dec >= 0 ? '+' : '';
+        return ra.toFixed(4) + '°, ' + sign + dec.toFixed(4) + '°';
+    }
+
+    function pmText(t)
+    {
+        const arc = Math.hypot(t.pmRa, t.pmDec) / 1000;
+        const num = arc >= 1 ? arc.toFixed(1) : arc.toFixed(2);
+        return num + '″ a year';
+    }
+
+    function detectorAt(um)
+    {
+        const bands = window.DETECTORS;
+        for (let i = 0; i < bands.length; i++) {
+            if (um >= bands[i][0] && um <= bands[i][1] + 0.005) {
+                return i + 1;
+            }
+        }
+        return null;
+    }
+
+    function insideSaved(um)
+    {
+        const lam = target().lam;
+        return um >= lam[0] - 0.002 && um <= lam[1] + 0.002;
+    }
+
+    function wavePos(um)
+    {
+        return (um - WAVE_MIN) / (WAVE_MAX - WAVE_MIN) * 100;
+    }
+
+    function copyText(text)
+    {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise((resolve, reject) => {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.append(ta);
+            ta.select();
+            try {
+                const ok = document.execCommand('copy');
+                ta.remove();
+                if (ok) {
+                    resolve();
+                } else {
+                    reject();
+                }
+            } catch (err) {
+                ta.remove();
+                reject(err);
+            }
+        });
+    }
+
+    function hashString()
+    {
+        const b = state.pair.b === null ? '' : state.pair.b;
+        return '#' + state.id
+            + '?a=' + state.pair.a
+            + '&b=' + b
+            + '&mode=' + state.mode
+            + '&field=' + state.field
+            + '&w=' + state.wave.toFixed(3);
+    }
+
+    function readHash()
+    {
+        const raw = location.hash.replace(/^#/, '');
+        if (!raw) {
+            return;
+        }
+        const [id, rest] = raw.split('?');
+        if (!window.FRAMES[id]) {
+            return;
+        }
+        state.id = id;
+        const q = new URLSearchParams(rest || '');
+        const last = window.FRAMES[id].visits.length - 1;
+        const a = Number(q.get('a'));
+        state.pair.a = (Number.isInteger(a) && a >= 0 && a <= last) ? a : 0;
+        const bRaw = q.get('b');
+        const b = Number(bRaw);
+        if (bRaw !== null && bRaw !== '' && Number.isInteger(b) && b >= 0 && b <= last && b !== state.pair.a) {
+            state.pair.b = b;
+        } else {
+            state.pair.b = last === state.pair.a ? 0 : last;
+        }
+        const mode = q.get('mode');
+        if (mode === 'blink' || mode === 'stack' || mode === 'diff') {
+            state.mode = mode;
+        }
+        const field = Number(q.get('field'));
+        if (field === 6 || field === 3 || field === 1.5) {
+            state.field = field;
+            state.fieldTouched = true;
+        }
+        const w = Number(q.get('w'));
+        if (w >= WAVE_MIN && w <= WAVE_MAX) {
+            state.wave = w;
+        }
+    }
+
+    function writeHash()
+    {
+        try {
+            history.replaceState(null, '', hashString());
+        } catch (err) {}
+    }
+
+    function sayCue()
+    {
+        if (state.mode !== 'blink') {
+            ui.cue.textContent = window.MODE_HINT[state.mode];
+            return;
+        }
+        if (state.pair.b === null) {
+            ui.cue.textContent = 'Choose a second visit for B. The stage will blink A against it.';
+            return;
+        }
+        if (!state.playing) {
+            ui.cue.textContent = 'Paused. Play blinks A against B. Click a visit to start a new pair.';
+            return;
+        }
+        ui.cue.textContent = 'Blinking A against B. Click a visit to start a new pair, or hold the picture for A.';
+    }
+
+    function paintTheme()
+    {
+        const dark = document.documentElement.dataset.theme === 'dark';
+        document.querySelectorAll('[data-theme-toggle]').forEach((b) => {
+            b.innerHTML = icon(dark ? 'sun' : 'moon');
+            b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+        });
+    }
+
+    function buildTabs()
+    {
+        ui.tabs.replaceChildren();
+        window.ORDER.forEach((id) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.role = 'tab';
+            b.dataset.id = id;
+            b.textContent = window.COPY[id].display;
+            b.setAttribute('aria-selected', id === state.id ? 'true' : 'false');
+            b.addEventListener('click', () => {
+                if (id !== state.id) {
+                    switchTarget(id);
+                    live(window.COPY[id].display + '. ' + window.COPY[id].short);
+                }
+            });
+            ui.tabs.append(b);
+        });
+    }
+
+    function paintCopy()
+    {
+        const c = copy();
+        ui.short.textContent = c.short;
+        ui.headline.textContent = c.headline;
+        ui.show.textContent = c.show;
+        ui.not.textContent = c.not;
+        ui.hint.textContent = window.MODE_HINT[state.mode];
+        ui.sky.setAttribute('aria-label', 'Infrared frames of ' + c.display);
+        sayCue();
+        paintCoord();
+        paintWaveLabels();
+        paintPm();
+    }
+
+    function swapCopy()
+    {
+        const nodes = [ui.short, ui.headline, ui.show, ui.not];
+        nodes.forEach((el) => el.classList.add('out'));
+        window.setTimeout(() => {
+            paintCopy();
+            nodes.forEach((el) => el.classList.remove('out'));
+        }, reduced ? 0 : 160);
+    }
+
+    function paintCoord()
+    {
+        const t = target();
+        const text = fmtCoord(t.ra, t.dec);
+        ui.coord.replaceChildren();
+        const span = document.createElement('span');
+        span.textContent = text;
+        ui.coord.append(span);
+        ui.coord.setAttribute('aria-label', 'Copy coordinates ' + text);
+    }
+
+    function paintPm()
+    {
+        const t = target();
+        const ra = (t.pmRa > 0 ? '+' : '') + t.pmRa.toFixed(1);
+        const dec = (t.pmDec > 0 ? '+' : '') + t.pmDec.toFixed(1);
+        ui.pmLine.textContent = pmText(t) + ' · ' + ra + ', ' + dec + ' mas/yr';
+    }
+
+    function buildMap()
+    {
+        ui.map.replaceChildren();
+        window.ORDER.forEach((id) => {
+            const t = window.FRAMES[id];
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'dot';
+            b.role = 'listitem';
+            const x = 10 + (1 - t.ra / 360) * 80;
+            const y = 12 + (90 - t.dec) / 180 * 76;
+            b.style.left = x + '%';
+            b.style.top = y + '%';
+            if (x < 28) {
+                b.classList.add('side-left');
+            } else if (x > 72) {
+                b.classList.add('side-right');
+            }
+            b.setAttribute('aria-current', id === state.id ? 'true' : 'false');
+            b.setAttribute('aria-label', window.COPY[id].display + '. ' + window.COPY[id].short);
+            const mark = document.createElement('i');
+            const tip = document.createElement('span');
+            tip.className = 'tip';
+            const name = document.createElement('b');
+            name.textContent = window.COPY[id].display;
+            const hook = document.createElement('span');
+            hook.textContent = window.COPY[id].short;
+            tip.append(name, hook);
+            b.append(mark, tip);
+            b.addEventListener('click', () => {
+                if (id !== state.id) {
+                    switchTarget(id);
+                    live(window.COPY[id].display + '. ' + window.COPY[id].short);
+                }
+            });
+            ui.map.append(b);
+        });
+    }
+
+    function paintMap()
+    {
+        ui.map.querySelectorAll('.dot').forEach((dot, i) => {
+            const id = window.ORDER[i];
+            dot.setAttribute('aria-current', id === state.id ? 'true' : 'false');
+        });
+    }
+
+    function cellTransform(index)
+    {
+        const o = offsetOf(state.id, index);
+        const s = viewScale(state.field);
+        return 'scale(' + s + ') translate(' + (o.x * 100) + '%, ' + (o.y * 100) + '%)';
+    }
+
+    function buildSheet()
+    {
+        const t = target();
+        ui.sheet.replaceChildren();
+        ui.sheet.setAttribute('aria-label', t.visits.length + ' visits');
+        t.visits.forEach((v, i) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'cell';
+            b.role = 'listitem';
+            b.style.setProperty('--i', String(i));
+            b.dataset.i = String(i);
+            const frame = document.createElement('span');
+            frame.className = 'frame skel';
+            const img = document.createElement('img');
+            img.alt = '';
+            img.draggable = false;
+            img.src = 'img/' + v.file;
+            img.style.transform = cellTransform(i);
+            const ring = document.createElement('span');
+            ring.className = 'ring draw';
+            frame.append(img, ring);
+            const cap = document.createElement('span');
+            cap.className = 'cap';
+            const date = document.createElement('span');
+            date.className = 'cap-date';
+            date.textContent = v.date;
+            const n = document.createElement('span');
+            n.className = 'cap-n';
+            n.textContent = v.frames + (v.frames === 1 ? ' frame' : ' frames');
+            cap.append(date, n);
+            b.append(frame, cap);
+            img.decode().then(() => {
+                frame.classList.remove('skel');
+                b.classList.add('ready');
+            }).catch(() => {
+                frame.classList.remove('skel');
+                b.classList.add('ready');
+            });
+            b.addEventListener('click', () => onCell(i));
+            b.addEventListener('pointerenter', (e) => {
+                if (e.pointerType === 'touch') {
+                    return;
+                }
+                peek(i);
+            });
+            b.addEventListener('pointerleave', (e) => {
+                if (e.pointerType === 'touch') {
+                    return;
+                }
+                endPeek();
+            });
+            ui.sheet.append(b);
+        });
+        paintSheet();
+    }
+
+    function paintSheet()
+    {
+        const liveI = state.mode === 'blink' ? shownIndex() : -1;
+        ui.sheet.querySelectorAll('.cell').forEach((cell) => {
+            const i = Number(cell.dataset.i);
+            cell.classList.toggle('a', i === state.pair.a);
+            cell.classList.toggle('b', state.pair.b !== null && i === state.pair.b);
+            cell.classList.toggle('live', i === liveI);
+            cell.setAttribute('aria-pressed', (i === state.pair.a || i === state.pair.b) ? 'true' : 'false');
+            let label = target().visits[i].date;
+            if (i === state.pair.a) {
+                label = 'A, ' + label;
+            }
+            if (i === state.pair.b) {
+                label = 'B, ' + label;
+            }
+            cell.setAttribute('aria-label', label);
+            let badge = cell.querySelector('.badge');
+            const want = i === state.pair.a ? 'A' : (i === state.pair.b ? 'B' : '');
+            if (!want) {
+                if (badge) {
+                    badge.remove();
+                }
+                return;
+            }
+            if (!badge) {
+                badge = document.createElement('span');
+                cell.querySelector('.frame').append(badge);
+            }
+            badge.className = 'badge ' + (want === 'A' ? 'a' : 'b');
+            badge.textContent = want;
+        });
+    }
+
+    function retargetSheet()
+    {
+        ui.sheet.querySelectorAll('.cell img').forEach((img) => {
+            const i = Number(img.closest('.cell').dataset.i);
+            img.style.transform = cellTransform(i);
+        });
+    }
+
+    function mountFit()
+    {
+        const fit = document.createElement('div');
+        fit.className = 'fit';
+        player.layers.forEach((im) => {
+            im.draggable = false;
+            fit.append(im);
+        });
+        const trail = document.createElement('div');
+        trail.className = 'trail';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'stage-ring');
+        svg.setAttribute('viewBox', '0 0 48 48');
+        svg.setAttribute('aria-hidden', 'true');
+        const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        ring.setAttribute('class', 'ring');
+        ring.setAttribute('cx', '24');
+        ring.setAttribute('cy', '24');
+        ring.setAttribute('r', '18');
+        ring.setAttribute('fill', 'none');
+        svg.append(ring);
+        fit.append(trail, svg);
+        const settle = document.createElement('div');
+        settle.className = 'settle';
+        settle.append(fit);
+        ui.sky.append(settle);
+        state.fit = fit;
+        state.ov = svg;
+        state.ring = ring;
+        state.trail = trail;
+        state.settle = settle;
+        const obs = new MutationObserver(() => {
+            if (!state.ready) {
+                return;
+            }
+            onCut();
+        });
+        player.layers.forEach((im) => obs.observe(im, { attributes: true, attributeFilter: ['class'] }));
+        player.layers.forEach((im) => {
+            im.addEventListener('error', () => {
+                showFail('Couldn\u2019t load ' + (target().visits[player.i] ? target().visits[player.i].file : 'frame') + '.');
+            });
+        });
+    }
+
+    function applyFitScale()
+    {
+        state.fit.style.transform = 'scale(' + viewScale(state.field) + ')';
+    }
+
+    function placeOnSky(el, index)
+    {
+        const s = viewScale(state.field);
+        const o = state.mode === 'blink' ? offsetOf(state.id, index) : { x: 0, y: 0 };
+        el.style.left = (50 + o.x * 100) + '%';
+        el.style.top = (50 + o.y * 100) + '%';
+        el.style.transform = 'translate(-50%, -50%) scale(' + (1 / s) + ')';
+    }
+
+    function paintRing(index)
+    {
+        placeOnSky(state.ov, index);
+        state.ov.classList.toggle('off', !$('ovRing').checked);
+        state.trail.replaceChildren();
+        const showTrail = $('ovTrail').checked && state.mode === 'blink';
+        state.trail.hidden = !showTrail;
+        if (!showTrail) {
+            return;
+        }
+        for (let i = 0; i < index; i++) {
+            const dot = document.createElement('i');
+            placeOnSky(dot, i);
+            state.trail.append(dot);
+        }
+    }
+
+    function redrawRing()
+    {
+        const ring = state.ring;
+        ring.classList.remove('draw', 'pulse');
+        void ring.getBoundingClientRect();
+        ring.classList.add('draw');
+    }
+
+    function paintReadout(index)
+    {
+        const visits = target().visits;
+        const a = state.pair.a;
+        const b = state.pair.b;
+        ui.dateA.textContent = visits[a].date;
+        ui.dateB.textContent = b === null ? 'Choose B' : visits[b].date;
+        const showingA = state.mode === 'blink' && index === a;
+        const showingB = state.mode === 'blink' && b !== null && index === b;
+        ui.btnA.classList.toggle('on', showingA);
+        ui.btnB.classList.toggle('on', showingB);
+        if (state.mode !== 'blink') {
+            ui.dateA.textContent = visits[0].date;
+            ui.dateB.textContent = visits[nVisits() - 1].date;
+            ui.meta.textContent = (state.mode === 'stack' ? 'Stack' : 'Subtract') + ' · all ' + nVisits() + ' visits';
+            return;
+        }
+        if (!showingA && !showingB) {
+            ui.meta.textContent = 'Preview · ' + visits[index].date;
+            return;
+        }
+        const v = visits[index];
+        ui.meta.textContent = 'Visit ' + (index + 1) + ' of ' + nVisits() + ' · ' + v.date + ' · ' + v.frames + (v.frames === 1 ? ' frame' : ' frames');
+    }
+
+    function paintMarker(index)
+    {
+        const t = target();
+        const t0 = visitTime(t.visits[0]);
+        const t1 = visitTime(t.visits[nVisits() - 1]);
+        const span = Math.max(1, t1 - t0);
+        const x = state.mode === 'blink' ? ((visitTime(t.visits[index]) - t0) / span) * 100 : 100;
+        ui.marker.style.left = x + '%';
+        ui.scrub.setAttribute('aria-valuemax', String(nVisits() - 1));
+        ui.scrub.setAttribute('aria-valuenow', String(index));
+        ui.scrub.setAttribute('aria-valuetext', t.visits[Math.max(0, Math.min(nVisits() - 1, index))].date);
+        ui.track.querySelectorAll('.tick').forEach((tick, i) => {
+            tick.classList.toggle('on', i === index);
+        });
+    }
+
+    function paintDiagram(index)
+    {
+        // 15 arcsec maps to 34 units, so a fast star draws a long arrow.
+        const unit = 15 / (6 * 60);
+        const k = 34 / unit;
+        const o = offsetOf(state.id, state.mode === 'blink' ? index : nVisits() - 1);
+        let x = 50 + o.x * k;
+        let y = 50 + o.y * k;
+        const dx = x - 50;
+        const dy = y - 50;
+        const m = Math.hypot(dx, dy);
+        if (m > 40) {
+            x = 50 + dx / m * 40;
+            y = 50 + dy / m * 40;
+        }
+        ui.arrow.setAttribute('x2', String(x));
+        ui.arrow.setAttribute('y2', String(y));
+        ui.arrowTip.setAttribute('cx', String(x));
+        ui.arrowTip.setAttribute('cy', String(y));
+    }
+
+    function paintFacts(index)
+    {
+        const t = target();
+        const v = t.visits[index];
+        const shown = 6 / viewScale(state.field);
+        const rows = [
+            ['Taken', v.date],
+            ['Visit', (index + 1) + ' of ' + nVisits()],
+            ['Frames', String(v.frames)],
+            ['File', v.file],
+            ['Observation', v.obsId],
+            ['Colour', fmtUm(t.lam[0]) + '–' + fmtUm(t.lam[1]) + ' µm'],
+            ['Detector', t.detector + ' of 6'],
+            ['Field', shown.toFixed(1) + '′ of 6′'],
+            ['Motion', (t.pmRa > 0 ? '+' : '') + t.pmRa.toFixed(1) + ', ' + (t.pmDec > 0 ? '+' : '') + t.pmDec.toFixed(1) + ' mas/yr'],
+            ['Place', fmtCoord(t.ra, t.dec)],
+        ];
+        ui.facts.replaceChildren();
+        rows.forEach(([k, val]) => {
+            const dt = document.createElement('dt');
+            dt.textContent = k;
+            const dd = document.createElement('dd');
+            dd.textContent = val;
+            ui.facts.append(dt, dd);
+        });
+    }
+
+    function onCut()
+    {
+        const index = player.i;
+        const blink = player.mode === 'blink';
+        const front = player.layers.find((im) => im.classList.contains('on'));
+        if (front) {
+            if (blink) {
+                const o = offsetOf(state.id, index);
+                front.style.transform = 'translate(' + (o.x * 100) + '%, ' + (o.y * 100) + '%)';
+            } else {
+                front.style.transform = 'none';
+            }
+        }
+        if (ui.sky.classList.contains('arriving')) {
+            ui.sky.classList.remove('arriving', 'loading');
+            if (!reduced) {
+                state.settle.classList.remove('go');
+                void state.settle.offsetWidth;
+                state.settle.classList.add('go');
+            }
+        }
+        paintRing(index);
+        if (state.drawRing) {
+            state.drawRing = false;
+            redrawRing();
+        }
+        paintReadout(index);
+        paintMarker(index);
+        paintDiagram(index);
+        paintSheet();
+        paintFacts(index);
+        ui.fail.hidden = true;
+    }
+
+    function buildScrub()
+    {
+        ui.track.querySelectorAll('.tick').forEach((n) => n.remove());
+        const t = target();
+        const t0 = visitTime(t.visits[0]);
+        const t1 = visitTime(t.visits[nVisits() - 1]);
+        const span = Math.max(1, t1 - t0);
+        t.visits.forEach((v, i) => {
+            const tick = document.createElement('button');
+            tick.type = 'button';
+            tick.className = 'tick';
+            tick.style.left = ((visitTime(v) - t0) / span * 100) + '%';
+            tick.setAttribute('aria-label', v.date);
+            tick.addEventListener('pointerenter', (e) => {
+                if (e.pointerType === 'touch') {
+                    return;
+                }
+                peek(i);
+            });
+            tick.addEventListener('pointerleave', (e) => {
+                if (e.pointerType === 'touch') {
+                    return;
+                }
+                endPeek();
+            });
+            tick.addEventListener('click', (e) => {
+                e.stopPropagation();
+                endPeek();
+                jump(i);
+            });
+            ui.track.append(tick);
+        });
+        ui.scrub0.textContent = t.visits[0].date;
+        ui.scrub1.textContent = t.visits[nVisits() - 1].date;
+    }
+
+    function stopBlink()
+    {
+        if (state.blinkTimer) {
+            clearInterval(state.blinkTimer);
+            state.blinkTimer = null;
+        }
+        state.playing = false;
+        paintPlay();
+        if (state.ring && state.mode === 'blink' && !reduced) {
+            state.ring.classList.remove('draw');
+            state.ring.classList.add('pulse');
+        }
+    }
+
+    function startBlink()
+    {
+        if (reduced || state.mode !== 'blink' || state.pair.b === null) {
+            stopBlink();
+            sayCue();
+            return;
+        }
+        if (state.blinkTimer) {
+            clearInterval(state.blinkTimer);
+        }
+        state.playing = true;
+        state.userPaused = false;
+        state.single = null;
+        if (state.ring) {
+            state.ring.classList.remove('pulse');
+        }
+        paintPlay();
+        sayCue();
+        state.blinkTimer = setInterval(() => {
+            if (state.peek || state.hold) {
+                return;
+            }
+            const next = player.i === state.pair.a ? state.pair.b : state.pair.a;
+            player.fade = 0;
+            player.go(next);
+        }, 800);
+    }
+
+    function paintPlay()
+    {
+        const on = state.playing;
+        ui.play.innerHTML = icon(on ? 'pause' : 'play');
+        ui.play.setAttribute('aria-label', on ? 'Pause' : 'Play');
+        ui.play.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+
+    function paintModes()
+    {
+        ui.modes.querySelectorAll('button').forEach((b) => {
+            b.setAttribute('aria-pressed', b.dataset.mode === state.mode ? 'true' : 'false');
+        });
+        ui.fields.querySelectorAll('button').forEach((b) => {
+            b.setAttribute('aria-pressed', Number(b.dataset.field) === state.field ? 'true' : 'false');
+        });
+    }
+
+    function showFail(text)
+    {
+        ui.sky.classList.remove('loading');
+        ui.failText.textContent = text;
+        ui.fail.hidden = false;
+    }
+
+    function clearStageText()
+    {
+        ui.stageText.textContent = '';
+    }
+
+    function runStages(keys, seq, done)
+    {
+        let step = 0;
+        const tick = () => {
+            if (seq !== state.job) {
+                return;
+            }
+            if (step >= keys.length) {
+                done();
+                return;
+            }
+            ui.stageText.textContent = window.STAGE_TEXT[keys[step]];
+            step += 1;
+            window.setTimeout(tick, reduced ? 40 : 680);
+        };
+        tick();
+    }
+
+    function beginJob()
+    {
+        state.job += 1;
+        ui.sky.classList.add('loading');
+        return state.job;
+    }
+
+    function switchTarget(id)
+    {
+        if (!window.FRAMES[id]) {
+            return;
+        }
+        const g = ++state.gen;
+        state.job += 1;
+        state.id = id;
+        state.drawRing = true;
+        stopBlink();
+        state.peek = false;
+        state.hold = false;
+        state.single = null;
+        state.arm = 0;
+        const last = nVisits() - 1;
+        state.pair.a = 0;
+        state.pair.b = last === 0 ? null : last;
+        if (!state.fieldTouched) {
+            state.field = suggestedField(id);
+        }
+        state.wave = (target().lam[0] + target().lam[1]) / 2;
+        ui.waveNote.hidden = true;
+        ui.tabs.querySelectorAll('button').forEach((b) => {
+            b.setAttribute('aria-selected', b.dataset.id === id ? 'true' : 'false');
+        });
+        paintMap();
+        paintModes();
+        paintWaveLabels();
+        positionWave();
+        ui.sky.classList.add('loading', 'arriving');
+        swapCopy();
+        window.setTimeout(() => {
+            if (g !== state.gen) {
+                return;
+            }
+            player.fade = reduced ? 100 : 250;
+            player.mode = 'blink';
+            player.setTarget(id);
+            player.setMode('blink');
+            const first = reduced ? last : state.pair.a;
+            player.go(first);
+            buildSheet();
+            buildScrub();
+            applyFitScale();
+            paintOlder();
+            writeHash();
+            window.setTimeout(() => {
+                if (g !== state.gen) {
+                    return;
+                }
+                player.fade = 0;
+                if (!reduced) {
+                    startBlink();
+                } else {
+                    stopBlink();
+                    sayCue();
+                }
+            }, reduced ? 0 : 820);
+        }, reduced ? 0 : 160);
+    }
+
+    function setMode(mode)
+    {
+        if (state.mode === mode) {
+            return;
+        }
+        state.mode = mode;
+        stopBlink();
+        state.single = null;
+        paintModes();
+        const seq = beginJob();
+        ui.hint.classList.add('out');
+        window.setTimeout(() => {
+            ui.hint.textContent = window.MODE_HINT[mode];
+            ui.hint.classList.remove('out');
+        }, reduced ? 0 : 120);
+        player.fade = reduced ? 100 : 200;
+        if (mode === 'blink') {
+            player.setMode('blink');
+            player.fade = 0;
+            player.go(state.pair.a);
+            window.setTimeout(() => {
+                if (seq !== state.job) {
+                    return;
+                }
+                ui.sky.classList.remove('loading');
+                clearStageText();
+                startBlink();
+            }, reduced ? 40 : 280);
+        } else {
+            ui.stageText.textContent = window.STAGE_TEXT.regrid;
+            player.setMode(mode);
+            const wait = () => {
+                if (seq !== state.job) {
+                    return;
+                }
+                if (player.canvas && !player.canvas.hidden) {
+                    ui.sky.classList.remove('loading');
+                    clearStageText();
+                    onCut();
+                    return;
+                }
+                requestAnimationFrame(wait);
+            };
+            requestAnimationFrame(wait);
+        }
+        sayCue();
+        live(window.MODE_HINT[mode]);
+        writeHash();
+    }
+
+    function setField(field)
+    {
+        state.field = field;
+        state.fieldTouched = true;
+        paintModes();
+        const seq = beginJob();
+        ui.stageText.textContent = window.STAGE_TEXT.regrid;
+        ui.sheet.classList.add('zooming');
+        applyFitScale();
+        retargetSheet();
+        paintRing(shownIndex());
+        paintOlder();
+        paintFacts(shownIndex());
+        window.setTimeout(() => ui.sheet.classList.remove('zooming'), 320);
+        writeHash();
+        window.setTimeout(() => {
+            if (seq !== state.job) {
+                return;
+            }
+            ui.sky.classList.remove('loading');
+            clearStageText();
+        }, reduced ? 40 : 320);
+        live('Field ' + field + ' arcmin');
+    }
+
+    function jump(index)
+    {
+        stopBlink();
+        state.single = index;
+        player.fade = 0;
+        if (player.mode !== 'blink') {
+            player.setMode('blink');
+            state.mode = 'blink';
+            paintModes();
+        }
+        player.go(index);
+        sayCue();
+        paintPlay();
+        if (state.ring) {
+            state.ring.classList.add('pulse');
+        }
+    }
+
+    function step(d)
+    {
+        const i = (player.i + d + nVisits()) % nVisits();
+        jump(i);
+    }
+
+    function peek(index)
+    {
+        if (state.hold) {
+            return;
+        }
+        if (!matchMedia('(hover: hover)').matches) {
+            return;
+        }
+        if (!state.peek) {
+            state.peekReturn = state.single !== null ? state.single : player.i;
+        }
+        state.peek = true;
+        state.single = index;
+        player.fade = 0;
+        if (player.mode === 'blink' && player.i !== index) {
+            player.go(index);
+        }
+    }
+
+    function endPeek()
+    {
+        if (!state.peek) {
+            return;
+        }
+        state.peek = false;
+        const back = state.peekReturn;
+        state.single = state.playing ? null : back;
+        if (player.mode === 'blink' && back !== player.i) {
+            player.fade = 0;
+            player.go(back);
+        }
+        sayCue();
+    }
+
+    function onCell(index)
+    {
+        state.peek = false;
+        if (state.arm === 0) {
+            state.pair.a = index;
+            state.pair.b = null;
+            state.arm = 1;
+            stopBlink();
+            state.single = null;
+            state.mode = 'blink';
+            paintModes();
+            player.fade = 0;
+            player.setMode('blink');
+            player.go(index);
+            sayCue();
+            paintSheet();
+            live('A is ' + target().visits[index].date + '. Choose B.');
+            return;
+        }
+        if (index === state.pair.a) {
+            return;
+        }
+        state.pair.b = index;
+        state.arm = 0;
+        state.single = null;
+        player.fade = 0;
+        player.go(index);
+        paintSheet();
+        live('Blinking ' + target().visits[state.pair.a].date + ' and ' + target().visits[index].date);
+        writeHash();
+        startBlink();
+    }
+
+    function holdStart(e)
+    {
+        if (e.button !== undefined && e.button !== 0) {
+            return;
+        }
+        state.holdTimer = window.setTimeout(() => {
+            state.hold = true;
+            state.heldIndex = player.i;
+            state.peek = false;
+            ui.sky.classList.add('holding');
+            ui.loupe.hidden = true;
+            player.fade = 0;
+            if (player.mode !== 'blink') {
+                return;
+            }
+            if (player.i !== state.pair.a) {
+                player.go(state.pair.a);
+            }
+        }, reduced ? 0 : 260);
+    }
+
+    function holdEnd()
+    {
+        if (state.holdTimer) {
+            clearTimeout(state.holdTimer);
+            state.holdTimer = null;
+        }
+        if (!state.hold) {
+            return;
+        }
+        state.hold = false;
+        ui.sky.classList.remove('holding');
+        const back = state.heldIndex;
+        if (player.mode === 'blink' && back !== player.i) {
+            player.fade = 0;
+            player.go(back);
+        }
+    }
+
+    function loupeAt(e)
+    {
+        if (state.hold || reduced) {
+            ui.loupe.hidden = true;
+            return;
+        }
+        if (e.pointerType && e.pointerType !== 'mouse') {
+            ui.loupe.hidden = true;
+            return;
+        }
+        const rect = ui.sky.getBoundingClientRect();
+        const px = (e.clientX - rect.left) / rect.width;
+        const py = (e.clientY - rect.top) / rect.height;
+        if (px < 0 || py < 0 || px > 1 || py > 1) {
+            ui.loupe.hidden = true;
+            return;
+        }
+        const src = (player.canvas && !player.canvas.hidden) ? player.canvas : player.img;
+        if (!src || !(src.naturalWidth || src.width)) {
+            ui.loupe.hidden = true;
+            return;
+        }
+        const s = viewScale(state.field);
+        let ox = 0;
+        let oy = 0;
+        if (player.mode === 'blink') {
+            const o = offsetOf(state.id, player.i);
+            ox = o.x;
+            oy = o.y;
+        }
+        const ix = 0.5 + (px - 0.5) / s - ox;
+        const iy = 0.5 + (py - 0.5) / s - oy;
+        const nw = src.naturalWidth || src.width;
+        const nh = src.naturalHeight || src.height;
+        const size = 148;
+        const sample = (size / 2) / rect.width * nw / s;
+        const ctx = ui.loupe.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, size, size);
+        try {
+            ctx.drawImage(src, ix * nw - sample / 2, iy * nh - sample / 2, sample, sample, 0, 0, size, size);
+        } catch (err) {
+            ui.loupe.hidden = true;
+            return;
+        }
+        ui.loupe.hidden = false;
+        const sizeCss = 148;
+        let left = e.clientX - rect.left + 16;
+        let top = e.clientY - rect.top + 16;
+        if (left + sizeCss > rect.width) {
+            left = e.clientX - rect.left - sizeCss - 16;
+        }
+        if (top + sizeCss > rect.height) {
+            top = e.clientY - rect.top - sizeCss - 16;
+        }
+        ui.loupe.style.left = left + 'px';
+        ui.loupe.style.top = top + 'px';
+    }
+
+    function paintWaveLabels()
+    {
+        const t = target();
+        const det = detectorAt(state.wave);
+        ui.waveNum.textContent = fmtUm(state.wave);
+        ui.wave.setAttribute('aria-valuenow', state.wave.toFixed(2));
+        ui.wave.setAttribute('aria-valuetext', fmtUm(state.wave) + ' micrometres');
+        ui.detLine.textContent = det ? 'Detector ' + det + ' of 6' : 'Outside the six detectors';
+        ui.savedLine.textContent = 'Saved ' + fmtUm(t.lam[0]) + '–' + fmtUm(t.lam[1]) + ' µm · detector ' + t.detector;
+        const left = wavePos(t.lam[0]);
+        const right = wavePos(t.lam[1]);
+        ui.savedBand.style.left = left + '%';
+        ui.savedBand.style.width = Math.max(0.6, right - left) + '%';
+    }
+
+    function positionWave()
+    {
+        ui.thumb.style.left = wavePos(state.wave) + '%';
+        paintWaveLabels();
+    }
+
+    function buildBands()
+    {
+        ui.bands.replaceChildren();
+        window.DETECTORS.forEach((band, i) => {
+            const b = document.createElement('span');
+            b.className = 'band';
+            b.style.left = wavePos(band[0]) + '%';
+            b.style.width = (wavePos(band[1]) - wavePos(band[0])) + '%';
+            b.title = 'Detector ' + (i + 1) + ', ' + fmtUm(band[0]) + '–' + fmtUm(band[1]) + ' µm';
+            ui.bands.append(b);
+        });
+        ui.eye.style.left = wavePos(EYE) + '%';
+    }
+
+    function commitWave()
+    {
+        const seq = ++state.waveSeq;
+        const job = beginJob();
+        const resume = state.playing;
+        if (state.blinkTimer) {
+            clearInterval(state.blinkTimer);
+            state.blinkTimer = null;
+        }
+        const inside = insideSaved(state.wave);
+        const keys = inside ? ['pixels', 'regrid'] : ['search', 'headers', 'pixels', 'regrid'];
+        const was = player.fade;
+        runStages(keys, job, () => {
+            if (seq !== state.waveSeq) {
+                return;
+            }
+            player.fade = reduced ? 100 : 200;
+            if (player.mode === 'blink') {
+                player.go(player.i);
+            } else {
+                player.draw();
+            }
+            window.setTimeout(() => {
+                if (seq !== state.waveSeq) {
+                    return;
+                }
+                player.fade = state.mode === 'blink' ? 0 : was;
+                ui.sky.classList.remove('loading');
+                clearStageText();
+                ui.waveNote.hidden = inside;
+                if (resume && state.mode === 'blink' && !state.userPaused && seq === state.waveSeq) {
+                    startBlink();
+                }
+            }, reduced ? 40 : 220);
+        });
+        writeHash();
+        live((inside ? 'Colour ' : 'Mockup colour ') + fmtUm(state.wave) + ' micrometres');
+    }
+
+    function setWaveFromEvent(e)
+    {
+        const rect = ui.wave.getBoundingClientRect();
+        const p = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+        state.wave = WAVE_MIN + p * (WAVE_MAX - WAVE_MIN);
+        positionWave();
+    }
+
+    function paintOlder()
+    {
+        const v = target().visits[0];
+        ui.olderImg.src = 'img/' + v.file;
+        ui.olderImg.alt = 'First visit, ' + v.date;
+        ui.olderDate.textContent = v.date;
+        const o = offsetOf(state.id, 0);
+        const s = viewScale(state.field);
+        ui.olderImg.style.transform = 'scale(' + s + ') translate(' + (o.x * 100) + '%, ' + (o.y * 100) + '%)';
+    }
+
+    function openPanel(panel, trigger)
+    {
+        state.lastTrigger = trigger;
+        panel.classList.add('open');
+        trigger.setAttribute('aria-expanded', 'true');
+        const focusable = panel.querySelector('button, input, a, [tabindex]');
+        if (focusable) {
+            focusable.focus();
+        }
+    }
+
+    function closePanel(panel, trigger)
+    {
+        panel.classList.remove('open');
+        if (trigger) {
+            trigger.setAttribute('aria-expanded', 'false');
+            trigger.focus();
+        }
+    }
+
+    function findTarget(q)
+    {
+        const s = q.trim().toLowerCase();
+        if (!s) {
+            return null;
+        }
+        for (const id of window.ORDER) {
+            const c = window.COPY[id];
+            const name = window.FRAMES[id].name.toLowerCase();
+            const hay = (c.display + ' ' + c.short + ' ' + name + ' ' + id).toLowerCase();
+            if (hay.includes(s)) {
+                return id;
+            }
+        }
+        const nums = s.match(/[+-]?\d+(?:\.\d+)?/g);
+        if (nums && nums.length >= 2) {
+            const ra = Number(nums[0]);
+            const dec = Number(nums[1]);
+            if (Number.isFinite(ra) && Number.isFinite(dec) && Math.abs(dec) <= 90 && ra >= 0 && ra <= 360) {
+                let best = null;
+                let bestD = 1e9;
+                window.ORDER.forEach((id) => {
+                    const t = window.FRAMES[id];
+                    let dra = Math.abs(t.ra - ra);
+                    dra = Math.min(dra, 360 - dra);
+                    const d = Math.hypot(dra, t.dec - dec);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = id;
+                    }
+                });
+                if (best && bestD <= 1.5) {
+                    return best;
+                }
+                return { custom: true };
+            }
+        }
+        return { custom: true };
+    }
+
+    function showSuggest(filter)
+    {
+        const s = filter.trim().toLowerCase();
+        const ids = window.ORDER.filter((id) => {
+            if (!s) {
+                return true;
+            }
+            const c = window.COPY[id];
+            return (c.display + ' ' + c.short + ' ' + window.FRAMES[id].name).toLowerCase().includes(s);
+        });
+        ui.suggest.replaceChildren();
+        state.suggestI = -1;
+        if (!ids.length) {
+            ui.suggest.hidden = true;
+            return;
+        }
+        ids.forEach((id) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.role = 'option';
+            const name = document.createElement('span');
+            name.className = 's-name';
+            name.textContent = window.COPY[id].display;
+            const short = document.createElement('span');
+            short.className = 's-short';
+            short.textContent = window.COPY[id].short;
+            b.append(name, short);
+            b.addEventListener('mousedown', (e) => e.preventDefault());
+            b.addEventListener('click', () => {
+                ui.q.value = '';
+                ui.suggest.hidden = true;
+                switchTarget(id);
+                live(window.COPY[id].display);
+            });
+            ui.suggest.append(b);
+        });
+        ui.suggest.hidden = false;
+    }
+
+    function runSearch(q)
+    {
+        const found = findTarget(q);
+        ui.suggest.hidden = true;
+        if (!found) {
+            return;
+        }
+        if (typeof found === 'string') {
+            ui.q.value = '';
+            switchTarget(found);
+            live(window.COPY[found].display);
+            return;
+        }
+        const job = beginJob();
+        ui.sky.classList.add('arriving');
+        runStages(['search', 'headers', 'pixels', 'regrid'], job, () => {
+            ui.sky.classList.remove('loading', 'arriving');
+            clearStageText();
+            showFail('Couldn\u2019t load that spot.');
+            ui.customHead.textContent = window.CUSTOM_COPY.headline;
+            ui.customShow.textContent = window.CUSTOM_COPY.show;
+            ui.customNot.textContent = window.CUSTOM_COPY.not;
+            openPanel(ui.customPanel, ui.q);
+            live(window.CUSTOM_COPY.headline);
+        });
+    }
+
+    function goLive()
+    {
+        const job = beginJob();
+        ui.sky.classList.add('arriving');
+        runStages(['search', 'headers', 'pixels', 'regrid'], job, () => {
+            ui.sky.classList.remove('loading', 'arriving');
+            clearStageText();
+            showFail('Couldn\u2019t load a live look.');
+            live('Couldn\u2019t load a live look.');
+        });
+    }
+
+    function bandIndexAt(clientX)
+    {
+        const rect = ui.wave.getBoundingClientRect();
+        const um = WAVE_MIN + Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) * (WAVE_MAX - WAVE_MIN);
+        for (let i = 0; i < window.DETECTORS.length; i++) {
+            const band = window.DETECTORS[i];
+            if (um >= band[0] && um <= band[1]) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    function showBandTip(clientX)
+    {
+        const i = bandIndexAt(clientX);
+        if (i < 0) {
+            ui.bandTip.hidden = true;
+            return;
+        }
+        const band = window.DETECTORS[i];
+        ui.bandTip.hidden = false;
+        ui.bandTip.textContent = 'Detector ' + (i + 1) + ' · ' + fmtUm(band[0]) + '–' + fmtUm(band[1]) + ' µm';
+        ui.bandTip.style.left = ((wavePos(band[0]) + wavePos(band[1])) / 2) + '%';
+    }
+
+    function wireWave()
+    {
+        let drag = false;
+        let startX = 0;
+        let keyTimer = 0;
+        ui.wave.addEventListener('pointerdown', (e) => {
+            drag = true;
+            startX = e.clientX;
+            ui.wave.setPointerCapture(e.pointerId);
+            setWaveFromEvent(e);
+            showBandTip(e.clientX);
+        });
+        ui.wave.addEventListener('pointermove', (e) => {
+            showBandTip(e.clientX);
+            if (!drag) {
+                return;
+            }
+            setWaveFromEvent(e);
+        });
+        ui.wave.addEventListener('pointerleave', () => {
+            if (!drag) {
+                ui.bandTip.hidden = true;
+            }
+        });
+        ui.wave.addEventListener('pointerup', (e) => {
+            if (!drag) {
+                return;
+            }
+            drag = false;
+            ui.bandTip.hidden = true;
+            if (Math.abs(e.clientX - startX) < 5) {
+                const i = bandIndexAt(e.clientX);
+                if (i >= 0) {
+                    const band = window.DETECTORS[i];
+                    state.wave = (band[0] + band[1]) / 2;
+                    positionWave();
+                }
+            } else {
+                setWaveFromEvent(e);
+            }
+            commitWave();
+        });
+        ui.wave.addEventListener('keydown', (e) => {
+            let d = 0;
+            if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+                d = 0.02;
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+                d = -0.02;
+            } else if (e.key === 'Home') {
+                state.wave = WAVE_MIN;
+            } else if (e.key === 'End') {
+                state.wave = WAVE_MAX;
+            } else {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            if (d) {
+                state.wave = Math.min(WAVE_MAX, Math.max(WAVE_MIN, state.wave + d));
+            }
+            positionWave();
+            window.clearTimeout(keyTimer);
+            keyTimer = window.setTimeout(commitWave, reduced ? 0 : 220);
+        });
+    }
+
+    function wireScrub()
+    {
+        let drag = false;
+        const indexAt = (clientX) => {
+            const rect = ui.track.getBoundingClientRect();
+            const p = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+            const t = target();
+            const t0 = visitTime(t.visits[0]);
+            const t1 = visitTime(t.visits[nVisits() - 1]);
+            const when = t0 + p * (t1 - t0);
+            let best = 0;
+            let bestD = Infinity;
+            t.visits.forEach((v, i) => {
+                const d = Math.abs(visitTime(v) - when);
+                if (d < bestD) {
+                    bestD = d;
+                    best = i;
+                }
+            });
+            return best;
+        };
+        ui.track.addEventListener('pointerdown', (e) => {
+            if (e.target.classList.contains('tick')) {
+                return;
+            }
+            drag = true;
+            ui.scrub.classList.add('drag');
+            ui.track.setPointerCapture(e.pointerId);
+            endPeek();
+            jump(indexAt(e.clientX));
+        });
+        ui.track.addEventListener('pointermove', (e) => {
+            if (!drag) {
+                return;
+            }
+            const i = indexAt(e.clientX);
+            if (i !== player.i) {
+                jump(i);
+            }
+        });
+        const up = () => {
+            drag = false;
+            ui.scrub.classList.remove('drag');
+        };
+        ui.track.addEventListener('pointerup', up);
+        ui.track.addEventListener('pointercancel', up);
+    }
+
+    function wirePlate()
+    {
+        let sx = 0;
+        let sy = 0;
+        ui.sky.addEventListener('pointerdown', (e) => {
+            sx = e.clientX;
+            sy = e.clientY;
+            holdStart(e);
+        });
+        ui.sky.addEventListener('pointermove', (e) => {
+            if (state.holdTimer && Math.hypot(e.clientX - sx, e.clientY - sy) > 8) {
+                clearTimeout(state.holdTimer);
+                state.holdTimer = null;
+            }
+            loupeAt(e);
+        });
+        ui.sky.addEventListener('pointerup', holdEnd);
+        ui.sky.addEventListener('pointercancel', holdEnd);
+        ui.sky.addEventListener('pointerleave', (e) => {
+            holdEnd();
+            ui.loupe.hidden = true;
+        });
+    }
+
+    function wireKeys()
+    {
+        document.addEventListener('keydown', (e) => {
+            const tag = e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) {
+                return;
+            }
+            if (e.key === ' ' || e.code === 'Space') {
+                if (e.target.closest('button, a')) {
+                    return;
+                }
+                e.preventDefault();
+                if (state.playing) {
+                    state.userPaused = true;
+                    stopBlink();
+                    state.single = player.i;
+                    sayCue();
+                    live('Paused');
+                } else {
+                    state.single = null;
+                    if (state.pair.b === null) {
+                        state.pair.b = nVisits() - 1 === state.pair.a ? 0 : nVisits() - 1;
+                    }
+                    startBlink();
+                    live('Playing');
+                }
+                return;
+            }
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                step(-1);
+                return;
+            }
+            if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                step(1);
+                return;
+            }
+            const k = e.key.toLowerCase();
+            if (k === 'b') {
+                setMode('blink');
+            } else if (k === 's') {
+                setMode('stack');
+            } else if (k === 'd') {
+                setMode('diff');
+            } else if (k === 't' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                document.querySelector('[data-theme-toggle]').click();
+            } else if (k === 'escape') {
+                if (ui.customPanel.classList.contains('open')) {
+                    closePanel(ui.customPanel, ui.q);
+                }
+                if (ui.framePanel.classList.contains('open')) {
+                    closePanel(ui.framePanel, ui.frameToggle);
+                }
+                if (ui.overlayPanel.classList.contains('open')) {
+                    closePanel(ui.overlayPanel, ui.overlayToggle);
+                }
+                ui.suggest.hidden = true;
+            }
+        });
+    }
+
+    function wireOverlay()
+    {
+        $('ovRing').addEventListener('change', () => {
+            paintRing(shownIndex());
+        });
+        $('ovTrail').addEventListener('change', () => {
+            paintRing(shownIndex());
+        });
+        $('ovOlder').addEventListener('change', (e) => {
+            const on = e.target.checked;
+            if (on) {
+                const seq = beginJob();
+                ui.stageText.textContent = window.STAGE_TEXT.pixels;
+                paintOlder();
+                ui.older.hidden = false;
+                requestAnimationFrame(() => ui.older.classList.add('on'));
+                window.setTimeout(() => {
+                    if (seq !== state.job) {
+                        return;
+                    }
+                    ui.sky.classList.remove('loading');
+                    clearStageText();
+                }, reduced ? 40 : 240);
+            } else {
+                ui.older.classList.remove('on');
+                window.setTimeout(() => {
+                    if (!$('ovOlder').checked) {
+                        ui.older.hidden = true;
+                    }
+                }, reduced ? 0 : 150);
+            }
+        });
+        $('ovFalse').addEventListener('change', (e) => {
+            ui.falseHint.hidden = !e.target.checked;
+            ui.falseHint.textContent = window.FALSE_COLOUR_HINT;
+            if (e.target.checked) {
+                ui.overlayNote.hidden = false;
+                ui.overlayNote.textContent = 'False colour needs two wavelengths. This saved copy has one band. Mockup.';
+            } else if (!$('ovFlag').checked && !$('ovGaia').checked) {
+                ui.overlayNote.hidden = true;
+            }
+        });
+        const missing = (box, name) => {
+            box.addEventListener('change', () => {
+                if (!box.checked) {
+                    if (!$('ovFlag').checked && !$('ovGaia').checked && !$('ovFalse').checked) {
+                        ui.overlayNote.hidden = true;
+                    }
+                    return;
+                }
+                const seq = beginJob();
+                ui.stageText.textContent = window.STAGE_TEXT.headers;
+                window.setTimeout(() => {
+                    if (seq !== state.job) {
+                        return;
+                    }
+                    ui.sky.classList.remove('loading');
+                    clearStageText();
+                    ui.overlayNote.hidden = false;
+                    ui.overlayNote.textContent = name + ' is not in this saved copy.';
+                    box.checked = false;
+                }, reduced ? 40 : 700);
+            });
+        };
+        missing($('ovFlag'), 'Flagged pixels');
+        missing($('ovGaia'), 'Gaia stars');
+    }
+
+    function boot()
+    {
+        readHash();
+        if (!state.fieldTouched) {
+            state.field = suggestedField(state.id);
+        }
+        const t = target();
+        if (!location.hash) {
+            state.pair = { a: 0, b: t.visits.length - 1 };
+            state.wave = (t.lam[0] + t.lam[1]) / 2;
+        }
+        document.querySelector('.search-icon').innerHTML = icon('search');
+        ui.prev.innerHTML = icon('prev');
+        ui.next.innerHTML = icon('next');
+        paintTheme();
+        buildTabs();
+        buildMap();
+        buildBands();
+        paintCopy();
+        paintModes();
+        positionWave();
+        ui.falseHint.textContent = window.FALSE_COLOUR_HINT;
+
+        player = new SkyPlayer(ui.sky, state.id, {
+            fade: reduced ? 100 : 200,
+            onChange: () => {
+                // The next layer is still hidden. Shift it now so the hard cut
+                // does not flash the star at the previous visit's place.
+                if (player.mode === 'blink') {
+                    const back = player.layers[1 - player.front];
+                    const o = offsetOf(state.id, player.i);
+                    back.style.transform = 'translate(' + (o.x * 100) + '%, ' + (o.y * 100) + '%)';
+                } else {
+                    player.layers.forEach((im) => {
+                        im.style.transform = 'none';
+                    });
+                }
+                if (!state.ready) {
+                    return;
+                }
+                if (player.mode !== 'blink') {
+                    onCut();
+                }
+            },
+        });
+        mountFit();
+        applyFitScale();
+        buildSheet();
+        buildScrub();
+        const first = reduced ? nVisits() - 1 : state.pair.a;
+        if (state.mode !== 'blink') {
+            player.fade = reduced ? 100 : 200;
+            player.setMode(state.mode);
+        } else {
+            player.go(first);
+        }
+        state.ready = true;
+        ui.dateA.textContent = t.visits[state.pair.a].date;
+        ui.dateB.textContent = state.pair.b === null ? 'Choose B' : t.visits[state.pair.b].date;
+        requestAnimationFrame(() => {
+            if (state.fit) {
+                state.fit.classList.add('smooth');
+            }
+        });
+        const bootGen = state.gen;
+        if (!reduced && state.mode === 'blink') {
+            state.playing = true;
+            paintPlay();
+            ui.cue.textContent = 'Blinking A against B. Click a visit to start a new pair, or hold the picture for A.';
+            window.setTimeout(() => {
+                if (state.gen !== bootGen || state.userPaused || state.mode !== 'blink') {
+                    return;
+                }
+                player.fade = 0;
+                startBlink();
+            }, 700);
+        } else {
+            stopBlink();
+            sayCue();
+            if (state.mode !== 'blink') {
+                const wait = () => {
+                    if (player.canvas && !player.canvas.hidden) {
+                        onCut();
+                        return;
+                    }
+                    requestAnimationFrame(wait);
+                };
+                requestAnimationFrame(wait);
+            }
+        }
+
+        ui.btnA.addEventListener('click', () => jump(state.pair.a));
+        ui.btnB.addEventListener('click', () => {
+            if (state.pair.b === null) {
+                return;
+            }
+            jump(state.pair.b);
+        });
+        ui.prev.addEventListener('click', () => step(-1));
+        ui.next.addEventListener('click', () => step(1));
+        ui.play.addEventListener('click', () => {
+            if (state.playing) {
+                state.userPaused = true;
+                stopBlink();
+                state.single = player.i;
+                sayCue();
+                live('Paused');
+            } else {
+                if (state.mode !== 'blink') {
+                    setMode('blink');
+                    return;
+                }
+                state.single = null;
+                if (state.pair.b === null) {
+                    state.pair.b = nVisits() - 1;
+                }
+                startBlink();
+                live('Playing');
+            }
+        });
+        ui.modes.querySelectorAll('button').forEach((b) => {
+            b.addEventListener('click', () => setMode(b.dataset.mode));
+        });
+        ui.fields.querySelectorAll('button').forEach((b) => {
+            b.addEventListener('click', () => setField(Number(b.dataset.field)));
+        });
+        ui.retry.addEventListener('click', () => {
+            ui.fail.hidden = true;
+            const seq = beginJob();
+            ui.stageText.textContent = window.STAGE_TEXT.pixels;
+            player.fade = reduced ? 100 : 200;
+            player.go(player.i);
+            window.setTimeout(() => {
+                if (seq !== state.job) {
+                    return;
+                }
+                player.fade = state.mode === 'blink' ? 0 : 200;
+                ui.sky.classList.remove('loading');
+                clearStageText();
+            }, reduced ? 40 : 400);
+        });
+        ui.coord.addEventListener('click', () => {
+            const tNow = target();
+            const text = fmtCoord(tNow.ra, tNow.dec);
+            copyText(text).then(() => {
+                ui.coord.replaceChildren();
+                const ok = document.createElement('span');
+                ok.className = 'ok';
+                ok.textContent = 'Copied';
+                ui.coord.append(ok);
+                live('Copied coordinates');
+                window.setTimeout(paintCoord, 1400);
+            }).catch(() => {});
+        });
+        ui.frameToggle.addEventListener('click', () => {
+            if (ui.framePanel.classList.contains('open')) {
+                closePanel(ui.framePanel, ui.frameToggle);
+            } else {
+                paintFacts(shownIndex());
+                openPanel(ui.framePanel, ui.frameToggle);
+            }
+        });
+        ui.overlayToggle.addEventListener('click', () => {
+            if (ui.overlayPanel.classList.contains('open')) {
+                closePanel(ui.overlayPanel, ui.overlayToggle);
+            } else {
+                openPanel(ui.overlayPanel, ui.overlayToggle);
+            }
+        });
+        ui.customClose.addEventListener('click', () => closePanel(ui.customPanel, ui.q));
+        ui.goLive.addEventListener('click', goLive);
+        ui.copyLink.addEventListener('click', () => {
+            writeHash();
+            const link = location.href.split('#')[0] + hashString();
+            copyText(link).then(() => {
+                ui.linkCopied.hidden = false;
+                live('Copied link');
+                window.setTimeout(() => {
+                    ui.linkCopied.hidden = true;
+                }, 1400);
+            }).catch(() => {});
+        });
+        ui.searchForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            runSearch(ui.q.value);
+        });
+        ui.q.addEventListener('focus', () => showSuggest(ui.q.value));
+        ui.q.addEventListener('input', () => showSuggest(ui.q.value));
+        ui.q.addEventListener('blur', () => {
+            window.setTimeout(() => {
+                ui.suggest.hidden = true;
+            }, 120);
+        });
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('[data-theme-toggle]')) {
+                paintTheme();
+            }
+        });
+
+        wireWave();
+        wireScrub();
+        wirePlate();
+        wireKeys();
+        wireOverlay();
+        paintOlder();
+        writeHash();
+    }
+
+    boot();
+})();

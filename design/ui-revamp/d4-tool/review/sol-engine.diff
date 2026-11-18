@@ -1,0 +1,525 @@
+diff --git a/engine.js b/engine.js
+index 03e4b83..8fefa15 100644
+--- a/engine.js
++++ b/engine.js
+@@ -10,6 +10,7 @@
+     const ZODI_NOTE = "Zodiacal light model removed (from the file's ZODI plane)";
+     const DISPLAY_NOTE = 'Display image: brightness is already stretched, so changes are rough';
+     const MAD_SCALE = 1.482602218505602;
++    const SMOOTH_RADIUS = 4;
+     const BRIGHTER = [243, 152, 58];
+     const FAINTER = [92, 150, 240];
+ 
+@@ -531,28 +532,11 @@
+         return {count, dx: count ? sumX / count : 0, dy: count ? sumY / count : 0, residual, matches};
+     }
+ 
+-    function fluxRatio(reference, frame, referenceStars, referenceShift, frameShift)
++    function fluxRatio(reference, frame, referenceStars, referenceClipped, frameClipped)
+     {
+         const {width, height} = reference;
+         const matches = matchStars(referenceStars, findStars(frame), 0, 0).matches;
+-        // Clipped stars (a picture tops out at 255) read the same in both frames whatever the exposure, which would
+-        // pull the ratio toward 1: leave out any star whose box covers a clipped pixel of the file. Aligned pixel
+-        // (x, y) came from about (x - dx, y - dy) in the file.
+-        const clippedAt = (image, shift, x, y) => {
+-            if (!image.clipped) {
+-                return false;
+-            }
+-            const sx = x - shift.dx;
+-            const sy = y - shift.dy;
+-            for (const yy of [Math.floor(sy), Math.ceil(sy)]) {
+-                for (const xx of [Math.floor(sx), Math.ceil(sx)]) {
+-                    if (xx >= 0 && yy >= 0 && xx < width && yy < height && image.clipped[yy * width + xx]) {
+-                        return true;
+-                    }
+-                }
+-            }
+-            return false;
+-        };
++        // Reject the full aligned clipping footprint, including Gaussian taps outside the aperture itself.
+         const ratios = [];
+         for (const match of matches) {
+             const cx = Math.round(match.reference.x);
+@@ -570,7 +554,7 @@
+                     const i = y * width + x;
+                     valid = valid && Number.isFinite(reference.data[i]) && Number.isFinite(frame.data[i]) &&
+                         !(reference.edgeMask && reference.edgeMask[i]) && !(frame.edgeMask && frame.edgeMask[i]) &&
+-                        !clippedAt(reference, referenceShift, x, y) && !clippedAt(frame, frameShift, x, y);
++                        !(referenceClipped && referenceClipped[i] > 0) && !(frameClipped && frameClipped[i] > 0);
+                     refFlux += reference.data[i];
+                     flux += frame.data[i];
+                 }
+@@ -580,7 +564,7 @@
+                 ratios.push(ratio);
+             }
+         }
+-        return ratios.length >= 5 ? percentile(ratios, 0.5) : 1;
++        return ratios.length >= 5 ? percentile(ratios, 0.5) : NaN;
+     }
+ 
+     function alignStars(reference, stars)
+@@ -662,6 +646,41 @@
+         return result;
+     }
+ 
++    function clippedFootprint(frame, dx, dy, radius)
++    {
++        if (!frame.clipped || !frame.clipped.some(value => value)) {
++            return null;
++        }
++        const {width, height} = frame;
++        let mask = frame.clipped;
++        // Separable square dilation covers every tap of the Gaussian, including its faint tails.
++        for (const horizontal of [true, false]) {
++            const result = new Uint8Array(mask.length);
++            const size = horizontal ? width : height;
++            const lines = horizontal ? height : width;
++            const stride = horizontal ? 1 : width;
++            for (let line = 0; line < lines; line++) {
++                const start = horizontal ? line * width : line;
++                let count = 0;
++                for (let p = 0; p <= Math.min(radius, size - 1); p++) {
++                    count += mask[start + p * stride];
++                }
++                for (let p = 0; p < size; p++) {
++                    result[start + p * stride] = count > 0 ? 1 : 0;
++                    if (p >= radius) {
++                        count -= mask[start + (p - radius) * stride];
++                    }
++                    if (p + radius + 1 < size) {
++                        count += mask[start + (p + radius + 1) * stride];
++                    }
++                }
++            }
++            mask = result;
++        }
++        // Any nonzero inverse-shift weight means a source tap was clipped.
++        return translate(mask, width, height, dx, dy);
++    }
++
+     function smoothTranslate(data, width, height, dx, dy)
+     {
+         // Sample directly with a one-pixel Gaussian at the desired sky position. Blurring AFTER
+@@ -672,7 +691,7 @@
+             const fraction = -shift - offset;
+             const kernel = [];
+             let total = 0;
+-            for (let tap = -4; tap <= 4 + (fraction > 0 ? 1 : 0); tap++) {
++            for (let tap = -SMOOTH_RADIUS; tap <= SMOOTH_RADIUS + (fraction > 0 ? 1 : 0); tap++) {
+                 const weight = Math.exp(-0.5 * (tap - fraction) ** 2);
+                 kernel.push({tap, weight});
+                 total += weight;
+@@ -689,7 +708,6 @@
+                     }
+                     const index = y * width + x + offset * stride;
+                     let sum = 0;
+-                    let weight = 0;
+                     let missing = 0;
+                     for (const sample of kernel) {
+                         if (position + sample.tap >= 0 && position + sample.tap < size) {
+@@ -697,7 +715,6 @@
+                             const value = data[source];
+                             if (Number.isFinite(value)) {
+                                 sum += value * sample.weight;
+-                                weight += sample.weight;
+                                 if (edgeMask && edgeMask[source]) {
+                                     missing += sample.weight;
+                                 }
+@@ -711,10 +728,9 @@
+                     // Only taps that carry real weight (about 2 px) make a pixel "near an edge or a gap";
+                     // the far Gaussian tails (under 2% of the kernel) would otherwise flag a wide margin.
+                     const edge = missing > 0.02 * total;
+-                    // Retain exact-grid masks, and carry incomplete support through both passes.
+-                    // Fractional sampling may recover a value, but it cannot recover missing evidence.
+-                    if (weight >= 0.5 * total && (fraction !== 0 || Number.isFinite(data[index]))) {
+-                        result[y * width + x] = sum / weight;
++                    // Missing light contributes zero; never amplify a partial kernel or fill its own blank.
++                    if (!edge && Number.isFinite(data[index])) {
++                        result[y * width + x] = sum / total;
+                     }
+                     resultMask[y * width + x] = edge ? 1 : 0;
+                 }
+@@ -827,13 +843,15 @@
+         const smooth = shifts.some(shift => shift.ok &&
+             (shift.dx !== Math.round(shift.dx) || shift.dy !== Math.round(shift.dy)));
+         if (smooth) {
+-            notes.push('Every frame was softened by about one pixel so a part-pixel shift does not leave false orange and blue pairs; pixel values here are softened too');
++            notes.push('Aligned frames were softened by about one pixel so a part-pixel shift does not leave false orange and blue pairs; pixel values here are softened too');
+         }
++        const clippedMasks = [];
+         for (let i = 0; i < frames.length; i++) {
+             const shift = shifts[i];
+             const dx = shift.ok ? shift.dx : 0;
+             const dy = shift.ok ? shift.dy : 0;
+-            if (smooth) {
++            clippedMasks.push(clippedFootprint(frames[i], dx, dy, smooth && shift.ok ? SMOOTH_RADIUS : 0));
++            if (smooth && shift.ok) {
+                 Object.assign(frames[i], smoothTranslate(frames[i].data, width, height, dx, dy));
+             } else {
+                 frames[i].data = translate(frames[i].data, width, height, dx, dy);
+@@ -843,8 +861,13 @@
+         const fluxStars = frames.length > 1 ? findStars(frames[0]) : [];
+         for (let i = 1; i < frames.length; i++) {
+             const frame = frames[i];
+-            const ratio = shifts[i].ok ? fluxRatio(frames[0], frame, fluxStars, shifts[0], shifts[i]) : 1;
+-            if ((frame.kind === 'png' || frame.kind === 'jpg') && Math.abs(ratio - 1) > 1e-6) {
++            const ratio = shifts[i].ok ? fluxRatio(frames[0], frame, fluxStars, clippedMasks[0], clippedMasks[i]) : NaN;
++            if (!Number.isFinite(ratio)) {
++                const note = 'Too few stars to match brightness between dates, so Subtract may mark every star.';
++                if (!notes.includes(note)) {
++                    notes.push(note);
++                }
++            } else if ((frame.kind === 'png' || frame.kind === 'jpg') && Math.abs(ratio - 1) > 1e-6) {
+                 frame.scale = ratio;
+                 for (let p = 0; p < frame.data.length; p++) {
+                     frame.data[p] /= ratio;
+@@ -858,6 +881,21 @@
+             await pause(opts);
+         }
+         checkAbort(opts.signal);
++        let omittedClipped = false;
++        for (let i = 0; i < frames.length; i++) {
++            const mask = clippedMasks[i];
++            if (mask) {
++                for (let p = 0; p < mask.length; p++) {
++                    if (mask[p] > 0) {
++                        frames[i].data[p] = NaN;
++                        omittedClipped = true;
++                    }
++                }
++            }
++        }
++        if (omittedClipped) {
++            notes.push('Pixels too bright for the camera were left out of the comparison.');
++        }
+         const values = finiteValues(frames[0].data);
+         const lo = percentile(values, 0.01);
+         const hi = percentile(values, 0.997);
+@@ -1027,12 +1065,13 @@
+                 }
+                 return c;
+             };
+-            const peaks = [];
+             for (const i of members) {
+                 const level = Math.abs(data[i]);
+                 const x = i % width;
+                 const y = Math.floor(i / width);
+                 let mine = -1;
++                let basin = -1;
++                let steepest = -Infinity;
+                 for (let yy = Math.max(0, y - 1); yy <= Math.min(height - 1, y + 1); yy++) {
+                     for (let xx = Math.max(0, x - 1); xx <= Math.min(width - 1, x + 1); xx++) {
+                         const n = yy * width + xx;
+@@ -1040,18 +1079,21 @@
+                             continue;
+                         }
+                         const other = root(owner.get(n));
++                        if (Math.abs(data[n]) > steepest) {
++                            basin = other;
++                            steepest = Math.abs(data[n]);
++                        }
+                         if (mine < 0 || other === mine) {
+                             mine = other;
+                             continue;
+                         }
+-                        // Two peaks meet here: the lower one ends, and survives only if it stood out.
++                        // Merge only an insignificant peak; a prominent peak keeps its own basin.
+                         const [high, low] = tops[mine].weight > tops[other].weight ||
+                             (tops[mine].weight === tops[other].weight && tops[mine].index < tops[other].index)
+                             ? [mine, other] : [other, mine];
+-                        if (tops[low].weight - level >= threshold) {
+-                            peaks.push(tops[low]);
++                        if (tops[low].weight - level < threshold) {
++                            parent[low] = high;
+                         }
+-                        parent[low] = high;
+                         mine = high;
+                     }
+                 }
+@@ -1059,40 +1101,34 @@
+                     mine = tops.length;
+                     tops.push({x, y, index: i, weight: level});
+                     parent.push(mine);
++                    basin = mine;
+                 }
+-                owner.set(i, mine);
++                // Follow the highest adjoining sample, rather than the nearest seed across a shoulder.
++                owner.set(i, root(basin));
+             }
+-            peaks.push(tops[root(0)]);
++            const peaks = tops.map((peak, basin) => ({...peak, basin})).filter(peak => root(peak.basin) === peak.basin);
+             peaks.sort((a, b) => b.weight - a.weight || a.index - b.index);
+             const seeds = [];
++            const basinGroups = new Map();
+             for (const maximum of peaks) {
+-                if (!seeds.some(seed => (seed.x - maximum.x) ** 2 + (seed.y - maximum.y) ** 2 < 9)) {
++                let group = seeds.findIndex(seed => (seed.x - maximum.x) ** 2 + (seed.y - maximum.y) ** 2 < 9);
++                if (group < 0) {
++                    group = seeds.length;
+                     seeds.push(maximum);
+                 }
++                basinGroups.set(maximum.basin, group);
+             }
+             const groups = seeds.map(seed => ({sum: 0, sx: 0, sy: 0, peak: data[seed.index], pixels: 0, edge: false}));
+             for (let p = 0; p < tail; p++) {
+                 const i = queue[p];
+                 const x = i % width;
+                 const y = Math.floor(i / width);
+-                let nearest = 0;
+-                let distance = Infinity;
+-                for (let s = 0; s < seeds.length; s++) {
+-                    const d = (x - seeds[s].x) ** 2 + (y - seeds[s].y) ** 2;
+-                    if (d < distance) {
+-                        nearest = s;
+-                        distance = d;
+-                    }
+-                }
+-                const group = groups[nearest];
++                const group = groups[basinGroups.get(root(owner.get(i)))];
+                 const weight = Math.abs(data[i]);
+                 group.sum += weight;
+                 group.sx += x * weight;
+                 group.sy += y * weight;
+                 group.pixels++;
+-                if (weight > Math.abs(group.peak)) {
+-                    group.peak = data[i];
+-                }
+                 group.edge = group.edge || (visited[i] & 2) !== 0;
+             }
+             for (const group of groups) {
+diff --git a/engine.test.mjs b/engine.test.mjs
+index dbbcf76..33fcafb 100644
+--- a/engine.test.mjs
++++ b/engine.test.mjs
+@@ -126,6 +126,16 @@ function fitsField(data, name = 'field.fits', width = 128, height = 112, header
+     return file(imageHdu({width, height, values: data, header}), name);
+ }
+ 
++function pictureImage(values)
++{
++    const data = new Uint8ClampedArray(values.length * 4);
++    for (let i = 0; i < values.length; i++) {
++        data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = values[i];
++        data[i * 4 + 3] = 255;
++    }
++    return {width: 128, height: 112, data};
++}
++
+ function close(actual, expected, tolerance = 1e-5)
+ {
+     assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} should be within ${tolerance} of ${expected}`);
+@@ -233,7 +243,7 @@ test('translation voting and centroid refinement recover known subpixel shifts',
+     }
+ });
+ 
+-test('hot pixels at fixed places do not win the line-up; one NaN does not erase a shifted star', async function ()
++test('hot pixels and one NaN do not prevent alignment; missing kernel support stays blank', async function ()
+ {
+     const hot = [[20, 20], [90, 30], [60, 80], [100, 95], [30, 70], [75, 15]];
+     const withHot = data => {
+@@ -255,7 +265,7 @@ test('hot pixels at fixed places do not win the line-up; one NaN does not erase
+     data[peak + 1] = NaN;
+     const one = await engine.process([fitsField(ref, 'ref.fits'), fitsField(data, 'blank.fits')]);
+     assert.equal(one.shifts[1].ok, true);
+-    assert.ok(Number.isFinite(one.frames[1].data[peak]), 'one missing neighbour must not blank the star');
++    assert.ok(Number.isNaN(one.frames[1].data[peak]), 'a missing neighbour exceeding 2% of the kernel must stay blank');
+ });
+ 
+ test('starless frames fail honestly, including WCS-bearing frames', async function ()
+@@ -464,6 +474,53 @@ test('fractional alignment shares the blur without hiding a 20 sigma brightening
+     assert.ok(top.peak / top.sigma > 5);
+ });
+ 
++test('smoothing preserves blanks and never renormalizes missing light', async function ()
++{
++    const bright = stars.map(([x, y, amplitude]) => [x, y, amplitude * 10]);
++    const reference = field({sources: bright, noise: 0});
++    const moved = field({sources: bright, noise: 0, dx: 0.5, dy: 0.5});
++    for (const data of [reference, moved]) {
++        for (let y = 50; y <= 70; y++) {
++            for (let x = 50; x <= 70; x++) {
++                data[y * 128 + x] = 120;
++            }
++        }
++        data[60 * 128 + 61] = NaN;
++    }
++    const session = await engine.process([fitsField(reference, 'ref.fits'), fitsField(moved, 'moved.fits')]);
++    close(session.shifts[1].dx, -0.5, 0.05);
++    close(session.shifts[1].dy, -0.5, 0.05);
++    for (const frame of session.frames) {
++        assert.ok(Number.isNaN(frame.data[60 * 128 + 61]), 'a blank source sample stays blank even at a fractional shift');
++        assert.ok(Number.isNaN(frame.data[60 * 128 + 60]), 'over 2% missing weight must stay blank');
++    }
++    const total = Array.from({length: 9}, (_, i) => Math.exp(-0.5 * (i - 4) ** 2)).reduce((a, b) => a + b);
++    const expected = 20 * (1 - Math.exp(-4.5) / (total * total));
++    close(session.frames[0].data[60 * 128 + 58], expected, 2e-5);
++    assert.ok(session.frames[0].data[60 * 128 + 58] < 20, 'missing far taps contribute no light');
++    for (const frame of session.frames) {
++        for (let y = 57; y <= 63; y++) {
++            for (let x = 57; x <= 65; x++) {
++                assert.ok(!Number.isFinite(frame.data[y * 128 + x]) || frame.data[y * 128 + x] <= 20.00001,
++                    'no missing tap may brighten the constant patch around a blank');
++            }
++        }
++    }
++});
++
++test('failed alignment leaves its frame unsmoothed beside a fractional match', async function ()
++{
++    const failed = fitsField(field({sources: [], seed: 123}), 'unaligned.fits');
++    const alone = await engine.process([failed]);
++    const session = await engine.process([fitsField(field(), 'ref.fits'),
++        fitsField(field({dx: 0.5, dy: 0.5, seed: 19}), 'moved.fits'), failed]);
++    assert.ok(session.shifts[1].ok && session.shifts[1].dx !== Math.round(session.shifts[1].dx));
++    assert.equal(session.shifts[2].ok, false);
++    assert.ok(session.notes.includes("Couldn't line up unaligned.fits; shown as is"));
++    assert.ok(session.frames[2].data.every((value, i) => Object.is(value, alone.frames[0].data[i])),
++        'failed frames retain their original sky-subtracted samples');
++});
++
+ test('matched-star flux scales pictures, preserves FITS units and needs five matches', async function ()
+ {
+     const reference = field({sky: 10, sources: stars.map(([x, y, a]) => [x, y, a * 0.7])});
+@@ -507,6 +564,29 @@ test('matched-star flux scales pictures, preserves FITS units and needs five mat
+     assert.equal(insufficient.notes.some(note => /overall/.test(note)), false);
+ });
+ 
++test('too few brightness stars warn for PNG, JPG and FITS without scaling', async function ()
++{
++    const note = 'Too few stars to match brightness between dates, so Subtract may mark every star.';
++    for (const count of [4, 0]) {
++        const reference = field({sky: 10, sources: stars.slice(0, count).map(([x, y]) => [x, y, 45])});
++        const changed = Float32Array.from(reference, value => 2 * value);
++        for (const kind of ['png', 'jpg', 'fits']) {
++            const inputs = kind === 'fits' ? [fitsField(reference, 'ref.fits'), fitsField(changed, 'gain.fits')]
++                : [file([], 'ref.' + kind), file([], 'gain.' + kind)];
++            const session = await engine.process(inputs, {align: count === 0, decodeImage: async input =>
++                pictureImage(input.name.startsWith('ref') ? reference : changed)});
++            assert.equal(session.frames[1].scale, 1);
++            if (count > 0) {
++                close(session.frames[1].data[17 * 128 + 15] / session.frames[0].data[17 * 128 + 15], 2, 0.05);
++            } else {
++                assert.equal(session.shifts[1].ok, false, 'a failed alignment also leaves brightness unmeasured');
++            }
++            assert.ok(session.notes.includes(note), kind + ' must report an unmeasured brightness match');
++            assert.equal(session.notes.some(value => /so its stars match/.test(value)), false);
++        }
++    }
++});
++
+ test('picture brightness match skips clipped stars, not merely the brightest ones', async function ()
+ {
+     const picture = (values, name) => [file([], name), values];
+@@ -545,6 +625,65 @@ test('picture brightness match skips clipped stars, not merely the brightest one
+     close(redSession.frames[1].scale, 2, 0.05);
+ });
+ 
++test('clipped source footprints stay blank after alignment and brightness scaling', async function ()
++{
++    const sources = stars.map(([x, y], i) => [x, y, i === 0 ? 600 : 45]);
++    const images = [pictureImage(field({sky: 10, sources})),
++        pictureImage(field({sky: 10, sources: [...sources, [62.2, 62.4, 20]], dx: 0.5, dy: 0.5, seed: 19}).map(v => 2 * v))];
++    const session = await engine.process([file([], 'ref.png'), file([], 'gain.jpg')], {
++        decodeImage: async input => images[input.name === 'ref.png' ? 0 : 1]
++    });
++    close(session.frames[1].scale, 2, 0.08);
++    for (let f = 0; f < session.frames.length; f++) {
++        const frame = session.frames[f];
++        const shift = session.shifts[f];
++        assert.ok(frame.clipped.some(value => value), 'each picture has a clipped source');
++        for (let y = 10; y < 24; y++) {
++            for (let x = 9; x < 23; x++) {
++                const left = Math.floor(x - shift.dx);
++                const top = Math.floor(y - shift.dy);
++                let mixed = false;
++                for (let yy = top - 4; yy <= Math.ceil(y - shift.dy) + 4; yy++) {
++                    for (let xx = left - 4; xx <= Math.ceil(x - shift.dx) + 4; xx++) {
++                        mixed = mixed || !!frame.clipped[yy * 128 + xx];
++                    }
++                }
++                if (mixed) {
++                    assert.ok(Number.isNaN(frame.data[y * 128 + x]), 'every clipped Gaussian tap must blank its output');
++                }
++            }
++        }
++    }
++    assert.ok(session.notes.includes('Pixels too bright for the camera were left out of the comparison.'));
++    const found = engine.candidates(session, 0, 1);
++    assert.ok(found.length > 0);
++    close(found[0].x, 62.2, 1);
++    close(found[0].y, 62.4, 1);
++    assert.equal(found.some(c => Math.hypot(c.x - 15.3, c.y - 16.7) < 5 && !c.edge), false,
++        'blank clipping footprints cannot become confident candidates');
++});
++
++test('brightness apertures reject clipped Gaussian taps before taking the median', async function ()
++{
++    const sources = stars.map(([x, y]) => [Math.round(x), Math.round(y), 55]);
++    const reference = pictureImage(field({sky: 10, sources}));
++    const changed = pictureImage(field({sky: 10, seed: 19, dx: 0.5, dy: 0.5,
++        sources: sources.map(([x, y, a], i) => [x, y, a * (i < 7 ? 1.1 : 2)])}));
++    // These red-only clipped samples sit outside the 9x9 apertures but inside their Gaussian support.
++    for (const [x, y] of sources.slice(0, 7)) {
++        const i = ((y + 1) * 128 + x + 8) * 4;
++        changed.data[i] = 255;
++        changed.data[i + 1] = changed.data[i + 2] = 0;
++    }
++    const session = await engine.process([file([], 'ref.png'), file([], 'gain.jpg')], {
++        decodeImage: async input => input.name === 'ref.png' ? reference : changed
++    });
++    assert.equal(session.frames[1].clipped.reduce((sum, value) => sum + value, 0), 7);
++    assert.ok(session.shifts[1].ok && session.shifts[1].dx !== Math.round(session.shifts[1].dx));
++    close(session.frames[1].scale, 2, 0.08);
++    assert.equal(session.notes.some(note => /Too few stars/.test(note)), false, 'five clean apertures still supply a median');
++});
++
+ test('candidate rank rewards supported changes and caps the area bonus at nine pixels', function ()
+ {
+     const width = 48;
+@@ -590,8 +729,8 @@ test('a bridge splits into candidates at separate local maxima for either sign',
+     for (const [x, y, value] of [[10, 10, 100], [11, 11, 12], [12, 12, 90], [13, 12, 12], [14, 12, 80]]) {
+         data[y * width + x] = value;
+     }
+-    assert.deepEqual(Array.from(engine.candidates(session, 0, 1), c => c.peak), [90, 100],
+-        'a group peak includes all assigned pixels, including suppressed nearby maxima');
++    assert.deepEqual(Array.from(engine.candidates(session, 0, 1), c => c.peak), [100, 80],
++        'nearby suppressed basins stay with the brighter seed; surviving peaks keep their seed heights');
+     for (let i = 0; i < data.length; i++) {
+         data[i] = i % 3 - 1;
+     }
+@@ -606,6 +745,34 @@ test('a bridge splits into candidates at separate local maxima for either sign',
+     assert.equal(plateau[0].pixels, 31);
+ });
+ 
++test('prominent peaks keep their own basins, seed heights and edge flags', function ()
++{
++    const width = 32;
++    const shoulder = [[10, 10, 40], [11, 10, 38], [12, 11, 36], [13, 12, 34], [14, 12, 32], [15, 11, 10]];
++    for (const sign of [1, -1]) {
++        const data = Float32Array.from({length: width * width}, (_, i) => i % 3 - 1);
++        for (const [x, y, value] of [...shoulder, [16, 10, 20]]) {
++            data[y * width + x] = sign * value;
++        }
++        data[13 * width + 14] = NaN;
++        const session = {width, height: width, frames: [{data: new Float32Array(data.length)}, {data}]};
++        const found = engine.candidates(session, 0, 1);
++        assert.equal(found.length, 2);
++        const faint = found.find(c => c.peak === sign * 20);
++        assert.ok(faint, 'the second peak reports its seed value, never the brighter shoulder');
++        assert.equal(faint.x, 16);
++        assert.equal(faint.y, 10);
++        assert.equal(faint.pixels, 1);
++        assert.equal(faint.edge, false, 'a blank touching the primary shoulder belongs only to that basin');
++        const primary = found.find(c => c.peak === sign * 40);
++        const flux = shoulder.reduce((sum, [, , value]) => sum + value, 0);
++        close(primary.x, shoulder.reduce((sum, [x, , value]) => sum + x * value, 0) / flux);
++        close(primary.y, shoulder.reduce((sum, [, y, value]) => sum + y * value, 0) / flux);
++        assert.equal(primary.pixels, shoulder.length);
++        assert.equal(primary.edge, true);
++    }
++});
++
+ test('noise on the flat top of a saturated star does not split it into many candidates', function ()
+ {
+     const width = 96;

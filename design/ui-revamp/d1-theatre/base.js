@@ -1,0 +1,272 @@
+// Slowsky revamp: shared mockup behaviour. Needs frames.js (window.FRAMES) loaded first.
+// Theme: <button data-theme-toggle>. Player: new SkyPlayer(rootEl, targetId, {onChange}).
+
+(function ()
+{
+    const KEY = 'slowsky-mock-theme';
+    const saved = localStorage.getItem(KEY);
+    if (saved) {
+        document.documentElement.dataset.theme = saved;
+    }
+    document.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-theme-toggle]');
+        if (!b) {
+            return;
+        }
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem(KEY, next);
+        document.querySelectorAll('[data-theme-toggle]').forEach((x) => x.setAttribute('aria-label', next === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'));
+    });
+})();
+
+const ICONS = {
+    sun: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6 13 13M3 13l1.4-1.4M11.6 4.4 13 3"/></svg>',
+    moon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7Z"/></svg>',
+    play: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg>',
+    pause: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>',
+    prev: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 5 8l5 5"/></svg>',
+    next: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m6 3 5 5-5 5"/></svg>',
+    search: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5"/></svg>',
+    share: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6.5 9.5 9.5 6.5M7 4l1-1a3 3 0 0 1 4.2 4.2l-1 1M9 12l-1 1a3 3 0 0 1-4.2-4.2l1-1"/></svg>',
+    info: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2V11M8 5v.01"/></svg>',
+};
+
+// The saved PNGs as data URLs (imgdata.js), so Stack and Subtract can read pixels when the page is opened from file://.
+function imgSrc(file)
+{
+    return (window.IMG_DATA && window.IMG_DATA[file]) || 'img/' + file;
+}
+
+class SkyPlayer
+{
+    constructor(root, targetId, opts = {})
+    {
+        this.root = root;
+        this.opts = opts;
+        // Two stacked layers so a new frame is decoded before it shows (no pop-in, no flash).
+        root.querySelectorAll('img').forEach((x) => x.remove());
+        this.layers = [0, 1].map(() => {
+            const im = root.insertBefore(document.createElement('img'), root.firstChild);
+            im.className = 'layer';
+            im.decoding = 'async';
+            return im;
+        });
+        this.front = 0;
+        this.img = this.layers[0];
+        this.fade = opts.fade ?? 180;          // ms; 0 = hard cut (best for spotting motion when blinking)
+        this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.seq = 0;
+        this.canvas = null;
+        this.timer = null;
+        this.mode = 'blink';
+        this.setTarget(targetId);
+    }
+
+    setTarget(id)
+    {
+        const t = window.FRAMES[id];
+        const cache = t.visits.map((v) => {
+            const im = new Image();
+            im.src = imgSrc(v.file);
+            return im;
+        });
+        this.request = { id, t, i: t.visits.length - 1, cache };
+        if (!this.t) {
+            Object.assign(this, this.request);
+        }
+        return this.draw();
+    }
+
+    get visit() { return this.t.visits[this.i]; }
+
+    go(i)
+    {
+        const n = this.request.t.visits.length;
+        this.request = { ...this.request, i: ((i % n) + n) % n };
+        return this.draw();
+    }
+
+    step(d) { return this.go(this.request.i + d); }
+
+    play(on = !this.timer)
+    {
+        clearInterval(this.timer);
+        this.timer = null;
+        if (on) {
+            this.timer = setInterval(() => this.step(1), 700);
+        }
+        this.opts.onPlaybackChange?.(this);
+        return !!this.timer;
+    }
+
+    setMode(m)
+    {
+        this.mode = m;
+        if (m !== 'blink') {
+            this.play(false);
+        }
+        return this.draw();
+    }
+
+    draw()
+    {
+        const seq = ++this.seq;
+        clearTimeout(this.loadingTimer);
+        this.root.classList.remove('loading');
+        const frame = this.request;
+        if (this.mode === 'blink') {
+            const visit = frame.t.visits[frame.i];
+            return this.show('img/' + visit.file, `${frame.t.name}, real SPHEREx infrared frame from ${visit.date}`, seq, frame);
+        }
+        return this.compose(seq, frame);
+    }
+
+    cancelPending()
+    {
+        ++this.seq;
+        clearTimeout(this.loadingTimer);
+        this.root.classList.remove('loading');
+        this.request = { id: this.id, t: this.t, i: this.i, cache: this.cache };
+    }
+
+    retry()
+    {
+        const cache = this.request.cache.map((im, i) => {
+            if (im.complete && im.naturalWidth) {
+                return im;
+            }
+            const replacement = new Image();
+            replacement.src = imgSrc(this.request.t.visits[i].file);
+            return replacement;
+        });
+        this.request = { ...this.request, cache };
+        return this.draw();
+    }
+
+    commitFrame(frame, mode)
+    {
+        Object.assign(this, frame);
+        this.displayMode = mode;
+        this.opts.onChange?.(this);
+    }
+
+    fail(err, seq)
+    {
+        if (seq !== this.seq) {
+            return;
+        }
+        this.root.classList.remove('loading');
+        this.play(false);
+        this.opts.onError?.(err, this);
+    }
+
+    // Decode the next frame off-screen, then swap layers: fade (or cut while blinking fast). Old frame stays until the new one is ready.
+    show(src, alt, seq, frame)
+    {
+        const back = this.layers[1 - this.front];
+        const fade = this.fade;
+        const slow = this.loadingTimer = setTimeout(() => {
+            if (seq === this.seq) {
+                this.root.classList.add('loading');
+            }
+        }, 120);
+        back.src = src;
+        back.alt = alt;
+        return back.decode().then(() => {
+            clearTimeout(slow);
+            if (seq !== this.seq) {
+                return false;
+            }
+            this.root.classList.remove('loading');
+            const cut = fade === 0 || (this.timer && this.opts.cutWhilePlaying !== false);
+            this.root.style.setProperty('--sky-fade', (cut ? 0 : (this.reduced ? Math.min(100, fade) : fade)) + 'ms');
+            back.hidden = false;
+            back.classList.add('on');
+            this.layers[this.front].classList.remove('on');
+            this.layers[this.front].setAttribute('aria-hidden', 'true');
+            back.removeAttribute('aria-hidden');
+            this.front = 1 - this.front;
+            this.img = back;
+            if (this.canvas) {
+                this.canvas.hidden = true;
+            }
+            this.commitFrame(frame, 'blink');
+            return true;
+        }).catch((err) => {
+            clearTimeout(slow);
+            this.fail(err, seq);
+            return false;
+        });
+    }
+
+    // Stack = mean of every visit; Subtract = latest minus first (blue darker, orange brighter). Mockup maths on display PNGs.
+    async compose(seq, frame)
+    {
+        const mode = this.mode;
+        this.root.classList.add('loading');
+        try {
+            const ready = frame.cache.every((im) => im.complete && im.naturalWidth);
+            if (!ready) {
+                await Promise.all(frame.cache.map((im) => im.decode()));
+            }
+            if (seq !== this.seq || mode !== this.mode) {
+                return false;
+            }
+            if (!frame.cache.every((im) => im.complete && im.naturalWidth)) {
+                throw new Error('Frame could not be decoded');
+            }
+            const c = this.composeReady(frame.cache, mode);
+            this.root.classList.remove('loading');
+            if (!c) {
+                return false;
+            }
+            if (this.canvas) {
+                this.canvas.replaceWith(c);
+            } else {
+                this.img.after(c);
+            }
+            this.canvas = c;
+            c.hidden = false;
+            c.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: this.reduced ? 1 : 220, easing: 'ease-out' });
+            this.commitFrame(frame, mode);
+            return true;
+        } catch (err) {
+            this.fail(err, seq);
+            return false;
+        }
+    }
+
+    composeReady(cache, mode)
+    {
+        const W = cache[0].naturalWidth;
+        // Prepare off-screen so a failed readback never damages the last good view.
+        const c = document.createElement('canvas');
+        c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
+        c.width = c.height = W;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        const px = cache.map((im) => {
+            ctx.drawImage(im, 0, 0, W, W);
+            return ctx.getImageData(0, 0, W, W).data;
+        });
+        const out = ctx.createImageData(W, W);
+        for (let k = 0; k < out.data.length; k += 4) {
+            if (mode === 'stack') {
+                let s = 0;
+                px.forEach((p) => { s += p[k]; });
+                const v = s / px.length;
+                out.data[k] = out.data[k + 1] = out.data[k + 2] = v;
+            } else {
+                const d = (px[px.length - 1][k] - px[0][k]) / 255;
+                const a = Math.min(1, Math.abs(d) * 2.2);
+                const [r, g, b] = d > 0 ? [243, 152, 58] : [92, 150, 240];
+                out.data[k] = 5 + (r - 5) * a; out.data[k + 1] = 7 + (g - 7) * a; out.data[k + 2] = 13 + (b - 13) * a;
+            }
+            out.data[k + 3] = 255;
+        }
+        ctx.putImageData(out, 0, 0);
+        return c;
+    }
+}
+
+function icon(name) { return ICONS[name] || ''; }

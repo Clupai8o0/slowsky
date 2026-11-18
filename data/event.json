@@ -1,0 +1,771 @@
+{
+  "__typename": "GlobalEvent",
+  "id": "aWQ6NA==",
+  "name": "2026 NASA Space Apps Challenge",
+  "displayName": "2026 NASA Space Apps Challenge",
+  "slug": "2026",
+  "status": 2,
+  "startDate": "2026-11-14T07:00:00",
+  "endDate": "2026-11-15T23:59:00",
+  "certificate": "aWQ6NA==",
+  "createRegistrationForm": "aWQ6MQ==",
+  "editRegistrationForm": "aWQ6MQ==",
+  "createLocalEventRegistrationForm": "aWQ6Mg==",
+  "editLocalEventRegistrationForm": "aWQ6Mg==",
+  "participantEditLocalEventRegistrationForm": "aWQ6NQ==",
+  "createTeamForm": "aWQ6Ng==",
+  "timezone": "GMT",
+  "teamMemberLimit": 6,
+  "eventRegistrationStatus": 2,
+  "localEventRegistrationStatus": 6,
+  "teamRegistrationStatus": 6,
+  "isTeamPagesActive": true,
+  "isAwardsActive": false,
+  "localEventEditStatus": 5,
+  "teamEditStatus": 5,
+  "teamStreamEditStatus": 0,
+  "projectEditStatus": 4,
+  "localEventJudgingStatus": 0,
+  "nominationJudgingStatus": 0,
+  "isChallengePagesActive": true,
+  "cachedLocalEvents": 612,
+  "cachedChallenges": 14,
+  "cachedTeams": 28935,
+  "cachedProjects": 1,
+  "cachedEventRegistrations": 170911,
+  "cachedLocalEventRegistrations": null,
+  "eventPages": {
+    "eventPage": "aWQ6NTM3MzU=",
+    "registrationPage": null,
+    "localEventsPage": "aWQ6NTM3MzY=",
+    "challengesPage": "aWQ6NTUxMTY=",
+    "teamsPage": "aWQ6NTUxMjI=",
+    "createTeamPage": "aWQ6NTUxMjM=",
+    "judgingPage": "aWQ6NzMxNzM="
+  },
+  "logo": {
+    "id": "aWQ6NTU4NTcx",
+    "meta": {
+      "type": "images.CustomImage",
+      "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Space_Apps_Logo_Color_and_White.max-800x600.png"
+    },
+    "title": "Space_Apps_Logo_Color_and_White.max-800x600",
+    "alt": "Space_Apps_Logo_Color_and_White.max-800x600",
+    "caption": "Space_Apps_Logo_Color_and_White.max-800x600",
+    "displaySize": "or",
+    "rendition": {
+      "url": "https://assets.spaceappschallenge.org/media/images/Space_Apps_Logo_Color_and_White.max-800x600.width-240.png",
+      "fullUrl": "https://assets.spaceappschallenge.org/media/images/Space_Apps_Logo_Color_and_White.max-800x600.width-240.png",
+      "height": 94,
+      "width": 240
+    }
+  },
+  "projectFields": [
+    {
+      "title": "Summary",
+      "caption": "",
+      "fieldMapping": "summary",
+      "fieldType": "TEXT"
+    },
+    {
+      "title": "Project Demonstration",
+      "caption": "",
+      "fieldMapping": "demoLink",
+      "fieldType": "URL"
+    },
+    {
+      "title": "Project",
+      "caption": "",
+      "fieldMapping": "projectLink",
+      "fieldType": "URL"
+    },
+    {
+      "title": "Project Details",
+      "caption": "",
+      "fieldMapping": "details",
+      "fieldType": "RICHFULL"
+    },
+    {
+      "title": "NASA Data",
+      "caption": "",
+      "fieldMapping": "dataReferences",
+      "fieldType": "LINKS"
+    },
+    {
+      "title": "Space Agency Partner & Other Data",
+      "caption": "",
+      "fieldMapping": "projectReferences",
+      "fieldType": "LINKS"
+    }
+  ],
+  "certificateDetails": {
+    "__typename": "Certificate",
+    "id": "aWQ6NA==",
+    "background": {
+      "id": "aWQ6NTU4NjA4",
+      "meta": {
+        "type": "images.CustomImage",
+        "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/FinalImage.max-800x600.png"
+      },
+      "title": "FinalImage.max-800x600",
+      "alt": "FinalImage.max-800x600",
+      "caption": "FinalImage.max-800x600",
+      "displaySize": "or",
+      "rendition": {
+        "url": "https://assets.spaceappschallenge.org/media/images/FinalImage.max-800x600.width-1400.png",
+        "fullUrl": "https://assets.spaceappschallenge.org/media/images/FinalImage.max-800x600.width-1400.png",
+        "height": 539,
+        "width": 800
+      }
+    },
+    "backgroundType": "light",
+    "title": "Galactic Problem Solver",
+    "preText": "The 2026 NASA Space Apps Challenge proudly presents this certificate to",
+    "postText": "for outstanding participation and efforts to address challenges we face on Earth and in space.",
+    "presenterName": "Marc Kuchner",
+    "presenterTitle": "Program Scientist, NASA Space Apps Challenge",
+    "presenterSignature": {
+      "id": "aWQ6NTE0ODI5",
+      "meta": {
+        "type": "images.CustomImage",
+        "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/_signature_white_46pxTall.png"
+      },
+      "title": "Marc Kuchner_2026 Certificate Signature",
+      "alt": "Marc Kuchner_2026 Certificate Signature",
+      "caption": "Marc Kuchner_2026 Certificate Signature",
+      "displaySize": "or",
+      "rendition": {
+        "url": "https://assets.spaceappschallenge.org/media/images/_signature_white_46pxTall.width-120.png",
+        "fullUrl": "https://assets.spaceappschallenge.org/media/images/_signature_white_46pxTall.width-120.png",
+        "height": 19,
+        "width": 120
+      }
+    },
+    "footer": {
+      "title": "In partnership with",
+      "richTextContent": "",
+      "featuredImage": {
+        "id": "aWQ6Mjc=",
+        "meta": {
+          "type": "images.CustomImage",
+          "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/NASA_logo.png"
+        },
+        "title": "NASA Logo",
+        "alt": "NASA Logo",
+        "caption": "NASA Logo",
+        "displaySize": "or",
+        "rendition": {
+          "url": "https://assets.spaceappschallenge.org/media/images/NASA_logo.width-240.png",
+          "fullUrl": "https://assets.spaceappschallenge.org/media/images/NASA_logo.width-240.png",
+          "height": 199,
+          "width": 240
+        }
+      },
+      "autoPlay": false,
+      "showArrows": false,
+      "showBullets": false,
+      "showFraction": false,
+      "slidesPerView": 1,
+      "controlPosition": "BOTTOM",
+      "viewStyle": "PREVIEW",
+      "viewTheme": "GALLERY",
+      "slides": [
+        {
+          "__typename": "CustomImageBlock",
+          "id": "5fc9ae0f-32ba-4b0b-989d-ed9782acc4f4",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6MzkwMjU5",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Angola_GGPEN_logo_large.png"
+              },
+              "title": "Angola GGPEN logo large",
+              "alt": "The logo for the Angola National Space Programme Management Office are the letters GGPEN in blue with a satellite circling it.",
+              "caption": "Angola GGPEN logo large",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/Angola_GGPEN_logo_large.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/Angola_GGPEN_logo_large.width-1024.png",
+                "height": 1024,
+                "width": 1024
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "e5428a8a-d731-4cf6-8f33-a8c909f50e7c",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6NTE4MDk2",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Screenshot_2023-08-07_at_12.31.21_PM.original.png"
+              },
+              "title": "CONAE logo2.original",
+              "alt": "CONAE logo2.original",
+              "caption": "CONAE logo2.original",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/Screenshot_2023-08-07_at_12.31.21_PM.original.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/Screenshot_2023-08-07_at_12.31.21_PM.original.width-1024.png",
+                "height": 658,
+                "width": 1024
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "cbf9f21d-9117-42be-8d2c-77623a30091a",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6NTE4MTAw",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Bahrain_Space_Agency_Logo.original.png"
+              },
+              "title": "Bahrain_Space_Agency_Logo2.original",
+              "alt": "Bahrain_Space_Agency_Logo2.original",
+              "caption": "Bahrain_Space_Agency_Logo2.original",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/Bahrain_Space_Agency_Logo.original.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/Bahrain_Space_Agency_Logo.original.width-1024.png",
+                "height": 1024,
+                "width": 1024
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "59bcbfb0-e0f4-4472-aa53-7070b4297960",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6MzkwMTU5",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Brazilian_Space_Agency_logo.png"
+              },
+              "title": "Brazilian Space Agency logo",
+              "alt": "Brazilian Space Agency logo",
+              "caption": "Brazilian Space Agency logo",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/Brazilian_Space_Agency_logo.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/Brazilian_Space_Agency_logo.width-1024.png",
+                "height": 563,
+                "width": 800
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "a0b5d2e1-c463-49b6-be54-6aebcfb62a7a",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6NTE4MTAy",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Light_backgrounds_vertical_coloured_logo_r6v4RZG.png"
+              },
+              "title": "CSA vertical logo",
+              "alt": "CSA vertical logo",
+              "caption": "CSA vertical logo",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/Light_backgrounds_vertical_coloured_logo_r6v4.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/Light_backgrounds_vertical_coloured_logo_r6v4.width-1024.png",
+                "height": 596,
+                "width": 1024
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "7a300f21-cba6-4d89-b2a9-b5c957d00fd5",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6NTE4MTA2",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/esa_2026_logo_large.original.png"
+              },
+              "title": "esa_2026_logo_large.original",
+              "alt": "esa_2026_logo_large.original",
+              "caption": "esa_2026_logo_large.original",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/esa_2026_logo_large.original.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/esa_2026_logo_large.original.width-1024.png",
+                "height": 891,
+                "width": 891
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "a75b73cb-7661-4349-8d43-5ef305d8972c",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6MTg4",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/ISRO_India.png"
+              },
+              "title": "Indian Space Research Organization",
+              "alt": "Indian Space Research Organization",
+              "caption": "Indian Space Research Organization",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/ISRO_India.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/ISRO_India.width-1024.png",
+                "height": 990,
+                "width": 1024
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "89a927be-06e4-48db-8bbb-a5700f1f0415",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6Mzc4",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/ASI_Italy.png"
+              },
+              "title": "Italian Space Agency",
+              "alt": "Italian Space Agency",
+              "caption": "Italian Space Agency",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/ASI_Italy.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/ASI_Italy.width-1024.png",
+                "height": 274,
+                "width": 313
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "6f10e9d2-ccef-428a-99b3-3db4a3498a82",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6NTE4MTA4",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/JAXA_thumbnail.original.png"
+              },
+              "title": "JAXA_logo_square",
+              "alt": "JAXA_logo_square",
+              "caption": "JAXA_logo_square",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/JAXA_thumbnail.original.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/JAXA_thumbnail.original.width-1024.png",
+                "height": 395,
+                "width": 395
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "16d996b3-4f3e-4c87-b7b3-c31a00bdf817",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6NTE4MTA5",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/KASA_logo_large.original.png"
+              },
+              "title": "KASA logo",
+              "alt": "KASA logo",
+              "caption": "KASA logo",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/KASA_logo_large.original.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/KASA_logo_large.original.width-1024.png",
+                "height": 961,
+                "width": 961
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "df5fa1f7-5b44-4bfc-a71a-a01f14e85d8b",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6MzkwMjMw",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/NASRDA_Logo.png"
+              },
+              "title": "NASRDA logo_transparent",
+              "alt": "NASRDA logo_transparent",
+              "caption": "NASRDA logo_transparent",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/NASRDA_Logo.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/NASRDA_Logo.width-1024.png",
+                "height": 924,
+                "width": 928
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "9035056d-8af2-4a81-b66f-3108d48f7c95",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6NTE4MTUz",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Paraguay_Space_Agency_thumbnail.original.png"
+              },
+              "title": "Paraguay Space Agency square",
+              "alt": "Paraguay Space Agency square",
+              "caption": "Paraguay Space Agency square",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/Paraguay_Space_Agency_thumbnail.original.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/Paraguay_Space_Agency_thumbnail.original.width-1024.png",
+                "height": 368,
+                "width": 368
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "7fd7e2a6-53cb-4c2b-bef6-ad9aa45f5338",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6MzkwMjcx",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/ASES_Logo_large.png"
+              },
+              "title": "ASES Logo large",
+              "alt": "The logo for the Senegalese Space Studies Agency features a shooting star above a black‑and‑white Earth, with the star’s green, yellow, and red striped tail streaking across a blue sky.",
+              "caption": "ASES Logo large",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/ASES_Logo_large.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/ASES_Logo_large.width-1024.png",
+                "height": 1024,
+                "width": 1024
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "3f106041-5ffe-44a7-bc85-5cc410086423",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6NTE4MTY4",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Spain_Space_Agency_thumbnail_v2.original.png"
+              },
+              "title": "Spain Space Agency logo square",
+              "alt": "Spain Space Agency logo square",
+              "caption": "Spain Space Agency logo square",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/Spain_Space_Agency_thumbnail_v2.original.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/Spain_Space_Agency_thumbnail_v2.original.width-1024.png",
+                "height": 365,
+                "width": 365
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "852cda21-d2fa-448c-8bee-982e3f21d892",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6NTE4MTcx",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Turkish_Space_Agency_thumbnail.original.png"
+              },
+              "title": "Turkish Space Agency logo square",
+              "alt": "Turkish Space Agency logo square",
+              "caption": "Turkish Space Agency logo square",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/Turkish_Space_Agency_thumbnail.original.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/Turkish_Space_Agency_thumbnail.original.width-1024.png",
+                "height": 365,
+                "width": 365
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "d0defd9e-4dfc-4dc6-91f1-386f12cb6b78",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6MjU1NDQ0",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/MBRSC_LOGO.png"
+              },
+              "title": "MBRSC LOGO",
+              "alt": "MBRSC LOGO",
+              "caption": "MBRSC LOGO",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/MBRSC_LOGO.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/MBRSC_LOGO.width-1024.png",
+                "height": 473,
+                "width": 1024
+              }
+            }
+          }
+        },
+        {
+          "__typename": "CustomImageBlock",
+          "id": "6db1fc5e-977b-476c-b536-282066210ba5",
+          "type": "IMAGE",
+          "value": {
+            "layout": {
+              "align": "left",
+              "position": "full",
+              "captionDisplay": ""
+            },
+            "link": {
+              "url": "https://www.spaceappschallenge.org/2026/space-agency-partners/",
+              "text": "",
+              "isNewTab": true,
+              "isExternal": true
+            },
+            "sizedImage": {
+              "id": "aWQ6NTE4MTcz",
+              "meta": {
+                "type": "images.CustomImage",
+                "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/UKSA_full_transparent_logo.original.png"
+              },
+              "title": "UKSA logo square",
+              "alt": "UKSA logo square",
+              "caption": "UKSA logo square",
+              "displaySize": "lg",
+              "rendition": {
+                "url": "https://assets.spaceappschallenge.org/media/images/UKSA_full_transparent_logo.original.width-1024.png",
+                "fullUrl": "https://assets.spaceappschallenge.org/media/images/UKSA_full_transparent_logo.original.width-1024.png",
+                "height": 576,
+                "width": 1024
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

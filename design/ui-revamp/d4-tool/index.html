@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Slowsky</title>
+    <link rel="icon" href="img/logo.svg">
+    <link rel="stylesheet" href="base.css">
+    <link rel="stylesheet" href="app.css">
+    <link rel="stylesheet" href="guide.css">
+    <link rel="stylesheet" href="panels.css">
+</head>
+<body class="booting">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+        <symbol id="i-upload" viewBox="0 0 16 16"><path d="M8 10.5V2.5M4.8 5.6 8 2.5l3.2 3.1M2.5 10v3.5h11V10" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-loupe" viewBox="0 0 16 16"><rect x="2" y="2" width="9" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="m11 11 3 3M6.5 4.5v4M4.5 6.5h4" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1v2.5M8 12.5V15M1 8h2.5M12.5 8H15" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-trail" viewBox="0 0 16 16"><circle cx="3.5" cy="12.5" r="1" fill="currentColor"/><circle cx="6.5" cy="9.5" r="1" fill="currentColor"/><circle cx="9.5" cy="6.5" r="1" fill="currentColor"/><circle cx="12.5" cy="3.5" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-hold" viewBox="0 0 16 16"><rect x="2" y="3" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="7" y="6" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 1.6"/></symbol>
+        <symbol id="i-zoom" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="m10.5 10.5 3.5 3.5M5 7h4M7 5v4" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-fit" viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-inspect" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 2.5v11M11.8 5.5h0M11.8 8h0" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-find" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="9" y="9" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M9 4.5h5M2 11.5h5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="1.5 1.5"/></symbol>
+        <symbol id="i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.2 6.3a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.6v.01" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-share" viewBox="0 0 16 16"><path d="M6.5 9.5 9.5 6.5M7 4l1-1a3 3 0 0 1 4.2 4.2l-1 1M9 12l-1 1a3 3 0 0 1-4.2-4.2l1-1" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-theme" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.5a5.5 5.5 0 0 1 0 11z" fill="currentColor"/></symbol>
+        <symbol id="i-chev" viewBox="0 0 16 16"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4l8.5-5.2z" fill="currentColor"/></symbol>
+        <symbol id="i-pause" viewBox="0 0 16 16"><path d="M4 2.8h2.8v10.4H4zM9.2 2.8H12v10.4H9.2z" fill="currentColor"/></symbol>
+        <symbol id="i-prev" viewBox="0 0 16 16"><path d="M3.5 3v10M13 3 6 8l7 5z" fill="currentColor" stroke="currentColor" stroke-width="1.2"/></symbol>
+        <symbol id="i-next" viewBox="0 0 16 16"><path d="M12.5 3v10M3 3l7 5-7 5z" fill="currentColor" stroke="currentColor" stroke-width="1.2"/></symbol>
+        <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2 14.5 13.5h-13z" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 6.5v3.2M8 11.4v.01" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-close" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5h3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+        <symbol id="i-undo" viewBox="0 0 16 16"><path d="M5.5 3.5 2.5 6.5l3 3M2.8 6.5H10a3.5 3.5 0 0 1 0 7H7" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-redo" viewBox="0 0 16 16"><path d="m10.5 3.5 3 3-3 3M13.2 6.5H6a3.5 3.5 0 0 0 0 7h3" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-book" viewBox="0 0 16 16"><path d="M2.5 3h4A1.5 1.5 0 0 1 8 4.5v9A1.5 1.5 0 0 0 6.5 12h-4zM13.5 3h-4A1.5 1.5 0 0 0 8 4.5v9A1.5 1.5 0 0 1 9.5 12h4z" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+        <symbol id="i-save" viewBox="0 0 16 16"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M2.5 11v2.5h11V11" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="i-gaia" viewBox="0 0 16 16"><circle cx="5" cy="6" r="2.6" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="11.5" cy="10.5" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5" cy="6" r=".8" fill="currentColor"/><circle cx="11.5" cy="10.5" r=".7" fill="currentColor"/></symbol>
+        <symbol id="i-flags" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 5h2v2H5zM9 9h2v2H9zM9.5 4.5l1.5 1.5" fill="currentColor" stroke="currentColor" stroke-width="1"/></symbol>
+        <symbol id="i-falsecolour" viewBox="0 0 16 16"><circle cx="6" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="10" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+        <symbol id="i-epoch" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.6V8l2.4 1.6M2.2 5.2 1.4 2.6M2.2 5.2 4.8 4.6" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+        <symbol id="i-focus" viewBox="0 0 16 16"><path d="M2 5.5V2h3.5M10.5 2H14v3.5M14 10.5V14h-3.5M5.5 14H2v-3.5" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="5.5" y="5.5" width="5" height="5" rx=".5" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+        <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    </defs>
+</svg>
+
+<a class="skip-link" href="#stage" id="skip-link">Skip to the sky</a>
+
+<header class="bar" id="bar">
+    <a class="brand" href="#" aria-label="Slowsky home"><img src="img/logo.svg" alt=""><span>Slowsky</span></a>
+
+    <div class="seg ws" role="tablist" aria-label="Workspace">
+        <button id="ws-sky" role="tab" aria-selected="true" data-help="Five saved targets, real SPHEREx pixels.">Sky library</button>
+        <button id="ws-mine" role="tab" aria-selected="false" data-help="Your own frames, processed in this browser.">My frames <span class="count" id="ws-count"></span></button>
+    </div>
+
+    <button class="target-btn" id="target-btn" aria-haspopup="dialog" aria-controls="picker" data-help="Pick a target, or search a star or RA, Dec.">
+        <img id="target-thumb" src="img/barnard-3.png" alt="">
+        <span id="target-name">Barnard’s Star</span>
+        <svg class="ic"><use href="#i-chev"/></svg>
+        <kbd>⌘K</kbd>
+    </button>
+
+    <span class="bar-gap"></span>
+
+    <div class="hist" id="hist" role="group" aria-label="History">
+        <button class="btn icon" id="undo-btn" aria-label="Undo" aria-keyshortcuts="Meta+Z Control+Z" data-help="Undo: go back one step, such as a view, date or zoom change (⌘Z)." disabled><svg class="ic"><use href="#i-undo"/></svg></button>
+        <button class="btn icon" id="redo-btn" aria-label="Redo" aria-keyshortcuts="Meta+Shift+Z Control+Shift+Z Control+Y" data-help="Redo: go forward again (⇧⌘Z)." disabled><svg class="ic"><use href="#i-redo"/></svg></button>
+    </div>
+
+    <div class="seg mode" id="mode" role="radiogroup" aria-label="View">
+        <button role="radio" aria-checked="true" data-mode="blink" data-help-id="blink">Blink <kbd>B</kbd></button>
+        <button role="radio" aria-checked="false" data-mode="stack" data-help-id="stack">Stack <kbd>S</kbd></button>
+        <button role="radio" aria-checked="false" data-mode="subtract" data-help-id="subtract">Subtract <kbd>D</kbd></button>
+    </div>
+
+    <button class="btn primary upload" id="upload-btn" data-help="Add your own FITS, PNG or JPG frames. They stay in this browser."><svg class="ic"><use href="#i-upload"/></svg><span>Upload</span></button>
+    <input type="file" id="file-input" multiple accept=".fits,.fit,.fts,.gz,.png,.jpg,.jpeg" hidden>
+    <button class="btn icon" id="guide-btn" aria-label="Guide" aria-keyshortcuts="G" data-help="Guide: every control, key and word on this page explained (G)."><svg class="ic"><use href="#i-book"/></svg></button>
+    <div class="bar-acts" role="group" aria-label="Labels, link and picture">
+        <button class="btn icon" id="help-btn" aria-label="Tool labels" aria-pressed="true" data-help="Labels under every tool: on. Press to hide them once you know the tools."><svg class="ic"><use href="#i-help"/></svg></button>
+        <button class="btn icon" id="share-btn" aria-label="Copy link" data-help="Copy a link to this view."><svg class="ic"><use href="#i-share"/></svg></button>
+        <button class="btn icon" id="save-btn" aria-label="Save a picture of A, B and B − A" data-help="Save a picture of A, B and B − A, with the dates and target name."><svg class="ic"><use href="#i-save"/></svg></button>
+    </div>
+    <button class="btn icon" data-theme-toggle aria-label="Switch to dark mode" data-help="Light or dark (T)."><svg class="ic"><use href="#i-theme"/></svg></button>
+</header>
+
+<main class="work" id="work" aria-label="Workspace">
+    <div class="stage" id="stage" tabindex="-1">
+        <div class="sky" id="sky" aria-live="off">
+            <svg class="overlay" id="overlay" viewBox="0 0 480 480" preserveAspectRatio="none" aria-hidden="true">
+                <g id="trail"></g>
+                <g id="cands"></g>
+                <circle id="ring" cx="240" cy="240" r="14" pathLength="100"/>
+            </svg>
+            <div class="loupe" id="loupe" hidden></div>
+        </div>
+        <div class="stage-load" id="stage-load" role="status" aria-live="polite">
+            <div class="stage-load-box">
+                <svg class="orbit" viewBox="0 0 24 24" aria-hidden="true"><circle class="orbit-track" cx="12" cy="12" r="8.5"/><circle class="orbit-dot" cx="12" cy="3.5" r="2"/><circle class="orbit-star" cx="12" cy="12" r="2.2"/></svg>
+                <span id="stage-load-text">Loading the sky</span>
+            </div>
+        </div>
+        <div class="empty" id="empty" hidden>
+            <svg class="ic big"><use href="#i-upload"/></svg>
+            <p class="empty-title">Drop frames of the same patch of sky</p>
+            <p class="empty-sub">FITS (also .gz), PNG or JPG · 2 to 20 files · dates come from FITS headers, or the file date for pictures</p>
+            <div class="empty-actions">
+                <button class="btn primary" id="empty-choose">Choose files</button>
+                <button class="btn" id="empty-sample-fits" data-help="Three real SPHEREx FITS files of Groombridge 1830, a star that drifts quickly across the sky.">Try real FITS samples</button>
+                <button class="btn ghost" id="empty-sample" data-help="The four saved Barnard’s Star pictures, run through the same steps.">Try sample pictures</button>
+            </div>
+            <p class="empty-lock"><svg class="ic"><use href="#i-lock"/></svg>Your files stay in this browser. They are never uploaded.</p>
+        </div>
+    </div>
+
+    <section class="hud hud-id" id="hud-id" aria-label="Current frame">
+        <div class="hud-name" id="hud-name">Barnard’s Star</div>
+        <div class="hud-row"><span class="num" id="hud-date">25 Aug 2026</span><span class="num faint" id="hud-visit">4 / 4</span></div>
+        <div class="hud-src" id="hud-src">Real SPHEREx pixels · saved copy</div>
+    </section>
+
+    <section class="hud jobs" id="jobs" hidden aria-label="Processing">
+        <header><b>Processing</b><span class="faint num" id="jobs-count"></span><button class="btn ghost sm" id="jobs-cancel">Cancel</button></header>
+        <ol id="jobs-list"></ol>
+    </section>
+
+    <nav class="hud tools" id="tools" aria-label="Tools">
+        <button class="tool" data-tool="loupe" aria-pressed="false" aria-label="Loupe" data-key="L" data-help="Magnifies the real pixels under the pointer, 2x."><svg class="ic"><use href="#i-loupe"/></svg><span class="tl">Loupe</span></button>
+        <button class="tool" data-tool="hold" aria-label="Hold to compare" data-key="H" data-help="Hold to flip to the first date; let go to come back. In Subtract it shows the first date on its own."><svg class="ic"><use href="#i-hold"/></svg><span class="tl">Compare</span></button>
+        <span class="tool-gap"></span>
+        <button class="tool" data-tool="ring" aria-pressed="true" aria-label="Target ring" data-key="R" data-help="Gold ring: where the target’s catalogue motion predicts it on this date."><svg class="ic"><use href="#i-ring"/></svg><span class="tl">Ring</span></button>
+        <button class="tool" data-tool="trail" aria-pressed="true" aria-label="Trail" data-help="Dots: where the ring would be on the other dates."><svg class="ic"><use href="#i-trail"/></svg><span class="tl">Trail</span></button>
+        <button class="tool" data-tool="find" aria-label="Candidate changes" data-help-id="changes" disabled><svg class="ic"><use href="#i-find"/></svg><span class="tl">Candidates</span></button>
+        <span class="tool-gap"></span>
+        <button class="tool" data-tool="gaia" aria-pressed="false" aria-label="Brightest Gaia stars" data-help-id="gaia"><svg class="ic"><use href="#i-gaia"/></svg><span class="tl">Gaia</span></button>
+        <button class="tool" data-tool="flags" aria-pressed="false" aria-label="Flagged pixels" data-help-id="flags"><svg class="ic"><use href="#i-flags"/></svg><span class="tl">Flags</span></button>
+        <button class="tool" data-tool="falsecolour" aria-pressed="false" aria-label="False colour" data-help-id="falseColour"><svg class="ic"><use href="#i-falsecolour"/></svg><span class="tl">Colour</span></button>
+        <button class="tool" data-tool="epoch" aria-pressed="false" aria-label="Older picture" data-help-id="epoch"><svg class="ic"><use href="#i-epoch"/></svg><span class="tl">1997–2001</span></button>
+        <span class="tool-gap"></span>
+        <button class="tool" data-tool="zoom" aria-label="Zoom" data-help-id="field"><svg class="ic"><use href="#i-zoom"/></svg><span class="tl num" id="zoom-label">6′</span></button>
+        <button class="tool" data-tool="fit" aria-label="Fit" data-help="Fit the whole picture (double-click the sky)."><svg class="ic"><use href="#i-fit"/></svg><span class="tl">Fit</span></button>
+        <span class="tool-gap"></span>
+        <button class="tool" data-tool="inspect" aria-pressed="false" aria-label="Inspector" data-key="I" data-help="Details on this target and frame."><svg class="ic"><use href="#i-inspect"/></svg><span class="tl">Inspect</span></button>
+        <button class="tool" data-tool="focus" aria-pressed="false" aria-label="Focus" data-key="F" data-help="Focus: hide the side panels so the sky fills the screen (F)."><svg class="ic"><use href="#i-focus"/></svg><span class="tl">Focus</span></button>
+    </nav>
+    <div class="layer-note" id="layer-note" role="status" hidden></div>
+
+    <section class="hud hud-scale" id="hud-scale" aria-label="Scale">
+        <span class="compass" aria-label="North up, east left"><b>N</b>↑ <b>E</b>←</span>
+        <span class="scale"><i id="scale-bar"></i><span class="num" id="scale-label">1′</span></span>
+        <span class="num faint" id="hud-lam">0.75–1.12 µm</span>
+        <label class="field-pick" data-help-id="field">Field <select id="field-select" aria-label="Field of view"><option value="0.1" selected>0.1°</option><option value="0.25">0.25°</option><option value="0.5">0.5°</option><option value="1">1°</option></select></label>
+    </section>
+
+    <section class="hud caveat" id="caveat" aria-label="What this can't tell you">
+        <svg class="ic"><use href="#i-warn"/></svg>
+        <span id="caveat-text">Its centre may be too bright for the camera, so treat its position with care.</span>
+    </section>
+
+    <section class="hud minimap" id="minimap" aria-label="Where in the sky">
+        <span class="mm-label">Where in the sky</span>
+        <div class="mm-plot" id="mm-plot"></div>
+    </section>
+
+    <section class="hud coach" id="coach" hidden role="dialog" aria-labelledby="coach-title">
+        <p class="coach-k">New here?</p>
+        <h2 id="coach-title">What am I looking at?</h2>
+        <p id="coach-intro"></p>
+        <div class="coach-actions">
+            <button class="btn primary" id="coach-tour">Show me around</button>
+            <button class="btn ghost" id="coach-close">Got it</button>
+        </div>
+    </section>
+
+    <aside class="hud inspector" id="inspector" hidden aria-label="Inspector">
+        <header>
+            <div class="tabs" role="tablist">
+                <button role="tab" data-tab="info" aria-selected="true">Target</button>
+                <button role="tab" data-tab="frame" aria-selected="false">Frame</button>
+                <button role="tab" data-tab="cands" aria-selected="false">Candidates</button>
+                <button role="tab" data-tab="charts" aria-selected="false">Charts</button>
+                <button role="tab" data-tab="ai" aria-selected="false">AI note</button>
+                <button role="tab" data-tab="extras" aria-selected="false">Extras</button>
+            </div>
+            <button class="btn icon sm" id="inspector-close" aria-label="Close inspector"><svg class="ic"><use href="#i-close"/></svg></button>
+        </header>
+        <div class="tab-panel" id="tab-info" role="tabpanel"></div>
+        <div class="tab-panel" id="tab-frame" role="tabpanel" hidden></div>
+        <div class="tab-panel" id="tab-cands" role="tabpanel" hidden></div>
+        <div class="tab-panel" id="tab-charts" role="tabpanel" hidden></div>
+        <div class="tab-panel" id="tab-ai" role="tabpanel" hidden></div>
+        <div class="tab-panel" id="tab-extras" role="tabpanel" hidden></div>
+    </aside>
+
+    <div class="drop" id="drop" hidden><div><svg class="ic big"><use href="#i-upload"/></svg><b>Drop to process</b><span>FITS, PNG or JPG · stays in this browser</span></div></div>
+    <div class="toast" id="toast" role="status" hidden></div>
+    <p class="sr-only" id="announce" aria-live="polite"></p>
+</main>
+
+<section class="timeline" id="timeline" aria-label="Timeline">
+    <div class="transport">
+        <div class="tp-row">
+            <button class="btn icon" id="prev" aria-label="Previous date" data-key="←"><svg class="ic"><use href="#i-prev"/></svg></button>
+            <button class="btn icon play" id="play" aria-label="Pause" data-key="Space"><svg class="ic"><use href="#i-pause"/></svg></button>
+            <button class="btn icon" id="next" aria-label="Next date" data-key="→"><svg class="ic"><use href="#i-next"/></svg></button>
+        </div>
+        <div class="seg speed" id="speed" role="radiogroup" aria-label="Speed">
+            <button role="radio" aria-checked="false" data-speed="0.5">½×</button>
+            <button role="radio" aria-checked="true" data-speed="1">1×</button>
+            <button role="radio" aria-checked="false" data-speed="2">2×</button>
+        </div>
+        <div class="ab num" id="ab" hidden><span class="a">A</span><span id="ab-a">—</span><span class="b">B</span><span id="ab-b">—</span>
+            <div class="seg subop" id="subop" role="radiogroup" aria-label="Combine"><button role="radio" aria-checked="true" data-subop="diff" data-help="B − A takes date A away from date B, so what stayed the same cancels: orange marks more light on B (later), blue more light on A (earlier).">B − A</button><button role="radio" aria-checked="false" data-subop="sum" data-help="A + B shows dates A and B together (their average), so a moving star appears in both places. Stack does this for every date.">A + B</button></div>
+        </div>
+    </div>
+    <div class="tracks">
+        <div class="track" id="track-dates">
+            <span class="track-label">Dates</span>
+            <div class="lane dates" id="dates-lane">
+                <div class="thumbs" id="dates-thumbs"></div>
+                <div class="axis num" id="dates-axis"></div>
+                <div class="playhead" id="playhead" role="slider" tabindex="0" aria-label="Date" aria-valuemin="1" aria-valuemax="4" aria-valuenow="4"><i></i></div>
+                <div class="peek" id="peek" hidden><img alt=""><span class="num"></span></div>
+            </div>
+        </div>
+        <div class="track" id="track-colour">
+            <span class="track-label" data-help-id="colour">Colour</span>
+            <div class="lane colour" id="colour-lane">
+                <div class="eyes" id="colour-eyes" title="Your eyes see up to about 0.70 µm"><span>your eyes</span></div>
+                <div class="bands" id="colour-bands"></div>
+                <div class="cthumb" id="colour-thumb" role="slider" tabindex="0" aria-label="Infrared colour in micrometres" aria-valuemin="0.4" aria-valuemax="5" aria-valuenow="0.93"><i></i></div>
+            </div>
+            <span class="num readout" id="colour-readout">0.93 µm</span>
+        </div>
+    </div>
+</section>
+
+<footer class="status" id="status">
+    <span class="st-help" id="status-help"></span>
+    <span class="st-load" id="status-load" hidden><span id="status-stage"></span><i id="status-bar"></i></span>
+    <button class="st-coord num" id="status-coord" title="Copy">—</button>
+    <button class="st-ai" id="status-ai" aria-haspopup="dialog" aria-controls="about">AI used</button>
+    <span class="st-mock" id="status-mock">Mockup</span>
+    <div class="about" id="about" hidden role="dialog" aria-label="AI used"></div>
+</footer>
+
+<div class="picker" id="picker" hidden role="dialog" aria-label="Pick a target">
+    <div class="picker-box">
+        <label class="picker-search"><svg class="ic"><use href="#i-zoom"/></svg><input id="picker-input" role="combobox" aria-controls="picker-list" aria-expanded="false" aria-autocomplete="list" aria-label="Search targets" placeholder="Any star, or RA, Dec" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></label>
+        <ul id="picker-list" role="listbox"></ul>
+    </div>
+</div>
+
+<div class="tip" id="tip" role="tooltip" hidden></div>
+<div class="gloss" id="gloss" role="dialog" hidden></div>
+
+<script src="frames.js"></script>
+<script src="imgdata.js"></script>
+<script src="samplefits.js"></script>
+<script src="copy.js"></script>
+<script src="help.js"></script>
+<script src="base.js"></script>
+<script src="engine.js"></script>
+<script src="guide.js"></script>
+<script src="paneldata.js"></script>
+<script src="cometdata.js"></script>
+<script src="panels.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

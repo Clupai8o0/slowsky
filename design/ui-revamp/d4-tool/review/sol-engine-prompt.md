@@ -1,0 +1,12 @@
+You are fixing a small browser image engine (engine.js, plain JS, runs in the browser and under node via engine.test.mjs). Work only in this folder. Run `node engine.test.mjs` before and after; all existing tests must still pass (23 now). Keep the public API and the shape of returned objects the same. K&R braces (function definitions take the brace on its own line), 4-space indent, match the file.
+
+GROK-REVIEW.md lists six findings from a review. Fix these, each with a new focused test in engine.test.mjs that fails before your fix and passes after:
+
+1. Clipped stars (8-bit PNG/JPG, any channel >= 250, already stored per pixel as `clipped`) must not become top candidates after brightness scaling. After alignment, blank (NaN) every pixel that the ~1 px smoothing mixed with a clipped source pixel, in both frames of the comparison (dilate the clipped mask by the kernel radius), and add a plain note: "Pixels too bright for the camera were left out of the comparison." Note the existing `edge` / blank-pixel handling: such blanks must not turn into candidates themselves.
+2. smoothTranslate: stop renormalising a partial kernel (sum / weight). Accumulate sum / total (missing taps contribute nothing) and write NaN when the missing weight exceeds the existing 2% edge cut, and never fill a pixel whose own source sample was NaN. No bright rings around blanks.
+3. Fewer than 5 matched stars: today the ratio is forced to 1 silently. Keep PNG/JPG unscaled in that case, but in both PNG/JPG and FITS add the note: "Too few stars to match brightness between dates, so Subtract may mark every star." and do not claim the frames were matched.
+4. Prominence split: a kept second peak must not steal shoulder pixels of the brighter peak. Do not union a peak you keep; take each candidate's centroid and pixel count from its own basin; its peak value is its seed value.
+5. Clipping in the brightness match: reject a star's aperture if any pixel in it is within the kernel radius of a clipped pixel (use the dilated mask from 1), then take the median.
+6. Only this part of finding 6: a frame that could not be aligned ("Couldn't line up ... shown as is") must not be smoothed at all. Leave the rest of 6 alone (we keep the documented trade-off that compared frames share one softening).
+
+Do not change UI files (there are none here). When done, print a short list: each finding, what you changed (function names), and the test name that covers it, then the final `node engine.test.mjs` summary line.

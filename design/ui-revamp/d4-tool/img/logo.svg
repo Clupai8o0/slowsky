@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="100 100 312 312">
+  <defs><filter id="g" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="10"/></filter></defs>
+  <rect width="512" height="512" fill="#03050b"/>
+  <rect x="128" y="128.0" width="256" height="26.2" fill="#2846a0"/><rect x="128" y="153.6" width="256" height="26.2" fill="#395fb9"/><rect x="128" y="179.2" width="256" height="26.2" fill="#4979d3"/><rect x="128" y="204.8" width="256" height="26.2" fill="#5a92ec"/><rect x="128" y="230.4" width="256" height="26.2" fill="#8597bf"/><rect x="128" y="256.0" width="256" height="26.2" fill="#b59785"/><rect x="128" y="281.6" width="256" height="26.2" fill="#e5984b"/><rect x="128" y="307.2" width="256" height="26.2" fill="#dc8032"/><rect x="128" y="332.8" width="256" height="26.2" fill="#bb5d27"/><rect x="128" y="358.4" width="256" height="26.2" fill="#9a3a1c"/>
+  <g transform="translate(304 214)">
+    <circle r="26" fill="#fff" opacity=".6" filter="url(#g)"/>
+    <rect x="-3" y="-50" width="6" height="100" fill="#fff"/>
+    <rect x="-50" y="-3" width="100" height="6" fill="#fff"/>
+    <circle r="15" fill="#fff"/>
+  </g>
+</svg>

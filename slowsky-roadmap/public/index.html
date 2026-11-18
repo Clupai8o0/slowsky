@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#f2f1ed" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<title>Slowsky roadmap</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script src="app.js" type="module"></script>
+</head>
+<body>
+<header class="top">
+  <h1 class="brand"><img src="icon.svg" alt="" width="22" height="22"> Slowsky <span>build roadmap</span></h1>
+  <div class="tools">
+    <div class="seg" role="group" aria-label="Time zone">
+      <button type="button" data-tz="NPT" aria-pressed="true">NPT</button>
+      <button type="button" data-tz="AEDT" aria-pressed="false">AEDT</button>
+    </div>
+    <button type="button" class="primary" id="post-note" hidden>Post update</button>
+  </div>
+</header>
+
+<main>
+  <section id="key-gate" class="gate" hidden>
+    <h2>Enter the roadmap key</h2>
+    <p>Open the private link once, or paste the key here. It is kept on this device only.</p>
+    <form id="key-form">
+      <label class="sr" for="key-input">Key</label>
+      <input id="key-input" type="password" autocomplete="current-password" required minlength="16" placeholder="Key">
+      <button type="submit" class="primary">Open</button>
+    </form>
+    <p id="key-error" class="error" role="alert"></p>
+  </section>
+
+  <div id="app" hidden>
+    <section class="hero" aria-label="Summary">
+      <div class="tile tile-count">
+        <p class="label">Last Submit in</p>
+        <p class="big" id="count-last">…</p>
+        <p class="sub" id="count-sub"></p>
+      </div>
+      <div class="tile">
+        <p class="label">Next milestone</p>
+        <p class="mid" id="next-title">…</p>
+        <p class="sub" id="next-sub"></p>
+      </div>
+      <div class="tile">
+        <p class="label">Core features done</p>
+        <p class="mid"><span id="overall-pct">0%</span> <span class="sub" id="overall-sub"></span></p>
+        <div class="meter" id="overall-meter"><span></span></div>
+      </div>
+      <div class="tile">
+        <p class="label">On the plan now</p>
+        <ul class="now-list" id="now-list"></ul>
+      </div>
+      <p class="sync" id="sync" aria-live="polite"></p>
+    </section>
+
+    <section aria-labelledby="h-timeline">
+      <div class="section-head">
+        <h2 id="h-timeline">Timeline</h2>
+        <p class="hint">Tap a block to update it. Times in <span class="tz-name">NPT</span>.</p>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="gantt">
+        <svg id="gantt-labels" class="gantt-labels" aria-hidden="true"></svg>
+        <div class="gantt-scroll" id="gantt-scroll">
+          <svg id="gantt" role="group" aria-label="Timeline of the build. Every block is also in the list below."></svg>
+        </div>
+      </div>
+      <details class="as-list">
+        <summary>Timeline as a list</summary>
+        <table>
+          <thead><tr><th scope="col">When</th><th scope="col">Lane</th><th scope="col">What</th><th scope="col">Status</th></tr></thead>
+          <tbody id="timeline-table"></tbody>
+        </table>
+      </details>
+    </section>
+
+    <section aria-labelledby="h-versions">
+      <div class="section-head">
+        <h2 id="h-versions">Versions</h2>
+        <p class="hint">Each version ships only when its gates pass.</p>
+      </div>
+      <div class="versions" id="versions"></div>
+    </section>
+
+    <section aria-labelledby="h-steps">
+      <div class="section-head">
+        <h2 id="h-steps">Sam's steps</h2>
+        <p class="hint" id="steps-sub"></p>
+      </div>
+      <ol class="rows" id="steps"></ol>
+    </section>
+
+    <section aria-labelledby="h-ideas">
+      <div class="section-head">
+        <h2 id="h-ideas">Beyond v1</h2>
+        <p class="hint">The project page's "What's next". Not built this weekend.</p>
+      </div>
+      <div class="ideas" id="ideas"></div>
+    </section>
+
+    <section aria-labelledby="h-activity">
+      <div class="section-head">
+        <h2 id="h-activity">Progress updates</h2>
+        <p class="hint">From the web page, Sam and every session using <code>bin/roadmap.py</code>.</p>
+      </div>
+      <ol class="feed" id="feed"></ol>
+      <button type="button" class="quiet" id="feed-more" hidden>Show more</button>
+    </section>
+  </div>
+</main>
+
+<footer class="foot">
+  <p>Private build tracker for team Clupai, NASA Space Apps 2026. Not the product.</p>
+  <button type="button" class="link" id="forget-key" hidden>Forget key on this device</button>
+</footer>
+
+<dialog id="dlg" aria-labelledby="d-title">
+  <form id="dlg-form" novalidate>
+    <div class="dlg-head">
+      <div>
+        <p class="eyebrow" id="d-kind"></p>
+        <h2 id="d-title"></h2>
+      </div>
+      <button type="button" class="close" id="d-close" aria-label="Close">×</button>
+    </div>
+    <p class="meta" id="d-meta"></p>
+    <p class="detail" id="d-detail"></p>
+    <p class="gate-text" id="d-gate"></p>
+
+    <fieldset id="d-status-set">
+      <legend>Status</legend>
+      <div class="status-pick" id="d-status"></div>
+    </fieldset>
+
+    <div class="field" id="d-progress-field">
+      <label for="d-progress">Progress <output id="d-progress-out" for="d-progress">0%</output></label>
+      <input id="d-progress" type="range" min="0" max="100" step="1" value="0">
+    </div>
+
+    <div class="field">
+      <label for="d-note">Note</label>
+      <textarea id="d-note" rows="3" maxlength="2000" placeholder="What changed? Optional when you only move the status."></textarea>
+    </div>
+
+    <div class="field">
+      <label for="d-author">Your name</label>
+      <input id="d-author" maxlength="80" autocomplete="nickname" placeholder="Sam">
+    </div>
+
+    <p class="error" id="d-error" role="alert"></p>
+    <div class="dlg-actions">
+      <button type="button" class="quiet" id="d-cancel">Cancel</button>
+      <button type="submit" class="primary" id="d-save">Save update</button>
+    </div>
+
+    <div class="history" id="d-history-wrap">
+      <h3>History</h3>
+      <ol class="feed" id="d-history"></ol>
+    </div>
+  </form>
+</dialog>
+
+<div class="tip" id="tip" role="tooltip" hidden></div>
+</body>
+</html>

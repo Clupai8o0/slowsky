@@ -1,0 +1,42 @@
+{
+  "__typename": "ChallengesIndexPage",
+  "id": "aWQ6NTUxMTY=",
+  "title": "2026 Challenges",
+  "meta": {
+    "type": "CHALLENGEINDEX",
+    "slug": "challenges",
+    "firstPublishedAt": "2026-09-17T14:22:50.505000Z",
+    "lastPublishedAt": "2026-10-20T20:43:34.810038Z",
+    "relativeUrl": "/2026/challenges/",
+    "live": true,
+    "parent": {
+      "id": "aWQ6NTM3MzU="
+    }
+  },
+  "breadcrumbs": [
+    {
+      "name": "Home",
+      "link": "/"
+    },
+    {
+      "name": "2026 NASA Space Apps Challenge",
+      "link": "/2026/"
+    },
+    {
+      "name": "2026 Challenges",
+      "link": "/2026/challenges/"
+    }
+  ],
+  "featuredImage": null,
+  "heroContent": "<p data-block-key=\"d0yxa\">Choose from 14 challenges for you and your team to address at this year's hackathon! You can use the search and filter features to quickly find a challenge that best matches your interests and skills.</p>",
+  "joinTeamCta": "Join the Challenge",
+  "selectedChallengeCta": "You've selected this challenge!",
+  "event": "aWQ6NA==",
+  "detailsTabLabel": "Details",
+  "resourcesTabLabel": "Resources",
+  "showResourcesTab": true,
+  "teamsTabLabel": "Teams",
+  "showTeamsTab": true,
+  "challengesFilter": "aWQ6MQ==",
+  "teamsFilter": "aWQ6Ng=="
+}

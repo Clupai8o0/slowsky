@@ -1,0 +1,491 @@
+import assert from 'node:assert/strict';
+import {readFile, readdir} from 'node:fs/promises';
+import vm from 'node:vm';
+import {gzipSync} from 'node:zlib';
+import {performance} from 'node:perf_hooks';
+
+// No packages, generated fixtures or files written by these tests.
+const source = await readFile(new URL('./engine.js', import.meta.url), 'utf8').catch(() => '');
+assert.ok(source, 'engine.js must define the browser engine');
+class TestImageData {
+    constructor(data, width, height)
+    {
+        this.data = data;
+        this.width = width;
+        this.height = height;
+    }
+}
+const context = {Blob, Response, DecompressionStream, ImageData: TestImageData,
+    Float32Array, Uint8Array, Uint8ClampedArray, Int32Array, DataView, Date, DOMException, setTimeout};
+vm.runInNewContext(source, context, {filename: 'engine.js'});
+const engine = context.SlowskyEngine;
+assert.ok(engine, 'plain script exports on globalThis');
+
+function card(key, value)
+{
+    let text = key.padEnd(8);
+    if (value !== undefined) {
+        const formatted = typeof value === 'string' ? `'${value.replaceAll("'", "''")}'` :
+            typeof value === 'boolean' ? (value ? 'T' : 'F') : String(value);
+        text += '= ' + formatted;
+    }
+    return text.padEnd(80).slice(0, 80);
+}
+
+function imageHdu({width = 3, height = 2, bitpix = -32, values = [1, 2, 3, 4, 5, 6],
+    primary = true, header = {}} = {})
+{
+    const entries = [[primary ? 'SIMPLE' : 'XTENSION', primary ? true : 'IMAGE'],
+        ['BITPIX', bitpix], ['NAXIS', width ? 2 : 0]];
+    if (width) {
+        entries.push(['NAXIS1', width], ['NAXIS2', height]);
+    }
+    if (!primary) {
+        entries.push(['PCOUNT', 0], ['GCOUNT', 1]);
+    }
+    entries.push(...Object.entries(header));
+    const text = entries.map(([key, value]) => card(key, value)).join('') + card('END');
+    const head = Buffer.from(text.padEnd(Math.ceil(text.length / 2880) * 2880));
+    const length = width * height * Math.abs(bitpix) / 8;
+    const data = Buffer.alloc(Math.ceil(length / 2880) * 2880);
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    for (let i = 0; i < width * height; i++) {
+        const offset = i * Math.abs(bitpix) / 8;
+        if (bitpix === 8) {
+            view.setUint8(offset, values[i]);
+        } else if (bitpix === 16) {
+            view.setInt16(offset, values[i], false);
+        } else if (bitpix === 32) {
+            view.setInt32(offset, values[i], false);
+        } else if (bitpix === -32) {
+            view.setFloat32(offset, values[i], false);
+        } else if (bitpix === -64) {
+            view.setFloat64(offset, values[i], false);
+        }
+    }
+    return Buffer.concat([head, data]);
+}
+
+function compressedHdu()
+{
+    const entries = {XTENSION: 'BINTABLE', BITPIX: 8, NAXIS: 2, NAXIS1: 8,
+        NAXIS2: 1, PCOUNT: 16, GCOUNT: 1, ZIMAGE: true, EXTNAME: 'IMAGE'};
+    const text = Object.entries(entries).map(([k, v]) => card(k, v)).join('') + card('END');
+    return Buffer.concat([Buffer.from(text.padEnd(2880)), Buffer.alloc(2880)]);
+}
+
+function file(bytes, name = 'frame.fits', lastModified)
+{
+    const blob = new Blob([bytes]);
+    Object.defineProperty(blob, 'name', {value: name});
+    if (lastModified !== undefined) {
+        Object.defineProperty(blob, 'lastModified', {value: lastModified});
+    }
+    return blob;
+}
+
+function random(seed)
+{
+    return function ()
+    {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        return (seed + 0.5) / 4294967296;
+    };
+}
+
+const stars = [[15.3, 16.7, 90], [39.7, 19.2, 75], [68.2, 14.6, 65],
+    [99.1, 21.3, 85], [22.4, 45.6, 100], [48.2, 38.8, 70], [78.7, 44.1, 95],
+    [109.2, 54.5, 80], [13.6, 79.2, 60], [42.3, 87.4, 110], [75.8, 82.6, 90],
+    [103.1, 92.7, 75]];
+
+function field({width = 128, height = 112, dx = 0, dy = 0, sky = 100, seed = 7,
+    sources = stars, noise = 1} = {})
+{
+    const rand = random(seed);
+    const data = new Float32Array(width * height);
+    for (let i = 0; i < data.length; i++) {
+        data[i] = sky + noise * Math.sqrt(-2 * Math.log(rand())) * Math.cos(2 * Math.PI * rand());
+    }
+    for (const [sx, sy, amplitude] of sources) {
+        const cx = sx + dx;
+        const cy = sy + dy;
+        for (let y = Math.max(0, Math.floor(cy - 7)); y <= Math.min(height - 1, Math.ceil(cy + 7)); y++) {
+            for (let x = Math.max(0, Math.floor(cx - 7)); x <= Math.min(width - 1, Math.ceil(cx + 7)); x++) {
+                data[y * width + x] += amplitude * Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (2 * 1.4 ** 2));
+            }
+        }
+    }
+    return data;
+}
+
+function fitsField(data, name = 'field.fits', width = 128, height = 112, header = {})
+{
+    return file(imageHdu({width, height, values: data, header}), name);
+}
+
+function close(actual, expected, tolerance = 1e-5)
+{
+    assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} should be within ${tolerance} of ${expected}`);
+}
+
+const tests = [];
+function test(name, run)
+{
+    tests.push({name, run});
+}
+
+test('FITS big-endian types, scaling, blanks and dates', async function ()
+{
+    for (const bitpix of [-32, 16, 8, 32, -64]) {
+        const values = bitpix === 16 ? [-32768, -32767, -1, 0, 1, 32767] : [1, 2, 3, 4, 5, 6];
+        const header = {BSCALE: 2, BZERO: bitpix === 16 ? 32768 : 3,
+            'DATE-OBS': '2025-01-02T03:04:05.123', BUNIT: 'MJy/sr', INSTRUME: 'SPHEREx', DETECTOR: 1};
+        const frame = await engine.readFile(file(imageHdu({bitpix, values, header})));
+        assert.equal(frame.width, 3);
+        assert.equal(frame.height, 2);
+        assert.equal(frame.kind, 'fits');
+        assert.ok(frame.data instanceof Float32Array);
+        assert.deepEqual(Array.from(frame.data), values.map(v => v * 2 + header.BZERO));
+        assert.equal(frame.date.toISOString(), '2025-01-02T03:04:05.123Z');
+        assert.equal(frame.dateSource, 'DATE-OBS');
+        assert.equal(frame.unit, 'MJy/sr');
+        assert.equal(frame.meta.instrument, 'SPHEREx');
+        assert.equal(frame.meta.detector, 1);
+    }
+    const blank = await engine.readFile(file(imageHdu({bitpix: 16, values: [1, -99, 3, 4, 5, 6], header: {BLANK: -99}})));
+    assert.ok(Number.isNaN(blank.data[1]));
+    for (const key of ['MJD-OBS', 'MJD-AVG']) {
+        const frame = await engine.readFile(file(imageHdu({header: {[key]: 51544.5}})));
+        assert.equal(frame.date.toISOString(), '2000-01-01T12:00:00.000Z');
+        assert.equal(frame.dateSource, 'MJD-OBS');
+    }
+    const fallback = await engine.readFile(file(imageHdu({header: {'DATE-OBS': 'invalid'}}), 'fallback.fits', 0));
+    assert.equal(fallback.dateSource, 'file');
+    assert.equal(fallback.date.getTime(), 0);
+    const undated = await engine.readFile(file(imageHdu()));
+    assert.equal(undated.date, null);
+    assert.equal(undated.dateSource, 'none');
+});
+
+test('IMAGE preference, primary metadata, ZIMAGE skip, ZODI and gzip', async function ()
+{
+    const bytes = Buffer.concat([
+        imageHdu({values: [99, 99, 99, 99, 99, 99], header: {'DATE-OBS': '2025-02-03', INSTRUME: 'SPHEREx'}}),
+        compressedHdu(),
+        imageHdu({primary: false, header: {EXTNAME: 'IMAGE', BUNIT: 'MJy/sr'}, values: [10, 20, 30, 40, 50, 60]}),
+        imageHdu({primary: false, header: {EXTNAME: 'ZODI'}, values: [1, 2, 3, 4, 5, 6]})
+    ]);
+    const plain = await engine.readFile(file(bytes));
+    assert.deepEqual(Array.from(plain.data), [9, 18, 27, 36, 45, 54]);
+    assert.equal(plain.meta.hdu, 2);
+    assert.equal(plain.date.toISOString(), '2025-02-03T00:00:00.000Z');
+    assert.equal(plain.meta.instrument, 'SPHEREx');
+    assert.ok(plain.warnings.some(w => /ZIMAGE.*not supported/i.test(w)));
+    assert.ok(plain.warnings.includes("Zodiacal light model removed (from the file's ZODI plane)"));
+    for (const name of ['frame.fits.gz', 'magic.fits']) {
+        const zipped = await engine.readFile(file(gzipSync(bytes), name));
+        assert.deepEqual(Array.from(zipped.data), Array.from(plain.data));
+        assert.equal(zipped.date.getTime(), plain.date.getTime());
+    }
+    await assert.rejects(engine.readFile(file(Buffer.concat([imageHdu({width: 0}), compressedHdu()]))), /ZIMAGE|tile.compressed/i);
+    await assert.rejects(engine.readFile(file(bytes.subarray(0, 100))), /truncated|header/i);
+});
+
+test('PNG/JPG replaceable decoder, luminance, alpha mask and warning', async function ()
+{
+    const original = engine.decodeImage;
+    engine.decodeImage = async function ()
+    {
+        return {width: 2, height: 1, data: new Uint8ClampedArray([100, 50, 20, 255, 9, 8, 7, 0])};
+    };
+    try {
+        for (const name of ['display.png', 'display.JPG']) {
+            const frame = await engine.readFile(file(new Uint8Array([1, 2, 3]), name, 1234));
+            close(frame.data[0], 0.2126 * 100 + 0.7152 * 50 + 0.0722 * 20);
+            assert.ok(Number.isNaN(frame.data[1]));
+            assert.equal(frame.kind, name.endsWith('png') ? 'png' : 'jpg');
+            assert.equal(frame.dateSource, 'file');
+            assert.equal(frame.unit, null);
+            assert.ok(frame.warnings.includes('Display image: brightness is already stretched, so changes are rough'));
+        }
+    } finally {
+        engine.decodeImage = original;
+    }
+});
+
+test('translation voting and centroid refinement recover known subpixel shifts', async function ()
+{
+    for (const [dx, dy] of [[3.4, -2.2], [-5.7, 4.3], [0.35, 0.4]]) {
+        const session = await engine.process([fitsField(field(), 'ref.fits'),
+            fitsField(field({dx, dy, seed: 19}), 'moved.fits')]);
+        assert.equal(session.shifts[1].ok, true);
+        assert.equal(session.shifts[1].method, 'stars');
+        close(session.shifts[1].dx, -dx, 0.3);
+        close(session.shifts[1].dy, -dy, 0.3);
+        const s = session.shifts[1];
+        const edgeX = s.dx < 0 ? session.width - 1 : 0;
+        assert.ok(Number.isNaN(session.frames[1].data[50 * session.width + edgeX]));
+        const index = 46 * 128 + 22;
+        close(session.frames[1].data[index], session.frames[0].data[index], 12);
+    }
+});
+
+test('starless frames fail honestly, including WCS-bearing frames', async function ()
+{
+    const flat = new Float32Array(128 * 112).fill(50);
+    const wcs = {CRVAL1: 10, CRVAL2: 20, CRPIX1: 64, CRPIX2: 56, CDELT1: 0.01, CDELT2: 0.01};
+    const session = await engine.process([fitsField(field()), fitsField(flat, 'starless.fits', 128, 112, wcs)]);
+    assert.equal(session.frames[1].meta.hasWcs, true);
+    assert.equal(session.shifts[1].ok, false);
+    assert.equal(session.shifts[1].method, 'stars');
+    assert.equal(session.shifts[1].dx, 0);
+    assert.equal(session.shifts[1].dy, 0);
+    assert.ok(session.frames[1].data.every(v => v === 0));
+    assert.ok(session.notes.includes("Couldn't line up starless.fits; shown as is"));
+});
+
+test('quantized PNG stars with equal-height peaks still align', async function ()
+{
+    const width = 80;
+    function quantized(dx)
+    {
+        const data = new Uint8ClampedArray(width * width * 4);
+        for (let y = 0; y < width; y++) {
+            for (let x = 0; x < width; x++) {
+                let value = 0;
+                for (const [sx, sy] of [[15.5, 15.5], [48.5, 20.5], [27.5, 53.5]]) {
+                    value += 240 * Math.exp(-((x - sx - dx) ** 2 + (y - sy) ** 2) / 4);
+                }
+                const offset = (y * width + x) * 4;
+                data[offset] = data[offset + 1] = data[offset + 2] = Math.round(value);
+                data[offset + 3] = 255;
+            }
+        }
+        return {width, height: width, data};
+    }
+    const session = await engine.process([file([], 'ref.png'), file([], 'shifted.png')], {
+        decodeImage: async input => quantized(input.name === 'ref.png' ? 0 : 3)
+    });
+    assert.equal(session.shifts[1].ok, true);
+    close(session.shifts[1].dx, -3, 0.3);
+    close(session.shifts[1].dy, 0, 0.3);
+});
+
+test('browser-style asynchronous cancellation runs between processing stages', async function ()
+{
+    const controller = new AbortController();
+    const seen = [];
+    await assert.rejects(engine.process([fitsField(field()), fitsField(field(), 'second.fits')], {
+        signal: controller.signal,
+        onJob: function (i, name)
+        {
+            seen.push(name);
+            if (name === 'size') {
+                setTimeout(() => controller.abort(), 0);
+            }
+        }
+    }), {name: 'AbortError'});
+    assert.equal(seen.includes('ready'), false);
+});
+
+test('date ordering, centre cropping, stage reporting and aborts', async function ()
+{
+    const events = [];
+    const session = await engine.process([
+        fitsField(new Float32Array(48).fill(5), 'undated.fits', 8, 6),
+        fitsField(new Float32Array(16).fill(9), 'late.fits', 4, 4, {'DATE-OBS': '2026-02-01'}),
+        fitsField(Float32Array.from({length: 36}, (_, i) => i), 'early.fits', 6, 6, {'DATE-OBS': '2025-02-01'})
+    ], {onJob: (i, stage, info) => events.push({i, stage, info})});
+    assert.deepEqual(Array.from(session.frames, f => f.name), ['early.fits', 'late.fits', 'undated.fits']);
+    assert.equal(session.ref, 0);
+    assert.equal(session.width, 4);
+    assert.equal(session.height, 4);
+    // Centre crop of the 6x6 ramp starts at (1,1); its median is 17.5.
+    close(session.frames[0].data[0], 7 - 17.5);
+    assert.ok(session.notes.some(note => /crop/i.test(note)));
+    assert.deepEqual(Array.from(engine.STAGES), ['read', 'header', 'decode', 'size', 'align', 'stretch', 'ready']);
+    for (let i = 0; i < 3; i++) {
+        assert.deepEqual(events.filter(event => event.i === i).map(event => event.stage), Array.from(engine.STAGES));
+        assert.ok(events.filter(event => event.i === i).every(event => event.info.name));
+    }
+    for (const stopStage of engine.STAGES) {
+        const controller = new AbortController();
+        const seen = [];
+        await assert.rejects(engine.process([fitsField(field())], {signal: controller.signal,
+            onJob: function (i, stage)
+            {
+                seen.push(stage);
+                if (stage === stopStage) {
+                    controller.abort();
+                }
+            }}), {name: 'AbortError'});
+        assert.equal(seen.at(-1), stopStage);
+    }
+    const already = new AbortController();
+    already.abort();
+    await assert.rejects(engine.process([fitsField(field())], {signal: already.signal}), {name: 'AbortError'});
+    await assert.rejects(engine.process([]), /file|frame/i);
+});
+
+test('median background removal and one reference asinh stretch prevent fake brightening', async function ()
+{
+    // Exactly representable values keep the +50 experiment free of float rounding differences.
+    const data = Float32Array.from(field(), v => Math.round(v * 16) / 16);
+    data[0] = NaN;
+    const offset = Float32Array.from(data, v => v + 50);
+    const session = await engine.process([fitsField(data), fitsField(offset, 'offset.fits')]);
+    const original = engine.render(session, 0, {mode: 'blink'});
+    const shiftedSky = engine.render(session, 1, {mode: 'blink'});
+    assert.ok(original instanceof TestImageData);
+    assert.deepEqual(original.data, shiftedSky.data);
+    const sorted = Array.from(session.frames[0].data).filter(Number.isFinite).sort((a, b) => a - b);
+    function percentile(p)
+    {
+        const index = (sorted.length - 1) * p;
+        const low = Math.floor(index);
+        return sorted[low] + (sorted[Math.ceil(index)] - sorted[low]) * (index - low);
+    }
+    close(session.stretch.lo, percentile(0.01));
+    close(session.stretch.hi, percentile(0.997));
+    const position = 10;
+    const t = Math.max(0, Math.min(1, (session.frames[0].data[position] - session.stretch.lo) /
+        (session.stretch.hi - session.stretch.lo)));
+    const expected = Math.round(255 * Math.asinh(10 * t) / Math.asinh(10));
+    assert.equal(original.data[position * 4], expected);
+    assert.equal(original.data[3], 0);
+    assert.equal(engine.candidates(session, 0, 1).length, 0);
+});
+
+test('stack is a NaN-aware mean; subtraction uses signed orange and blue', async function ()
+{
+    const makeFrame = data => ({data: new Float32Array(data), width: 3, height: 2});
+    const session = {frames: [makeFrame([NaN, 2, 3, 4, 5, 6]), makeFrame([5, NaN, 8, 2, 4, 6])],
+        width: 3, height: 2, ref: 0, stretch: {lo: 0, hi: 10}};
+    const stack = engine.render(session, 0, {mode: 'stack'});
+    const mean = {...session, frames: [makeFrame([5, 2, 5.5, 3, 4.5, 6])]};
+    assert.deepEqual(stack.data, engine.render(mean, 0, {mode: 'blink'}).data);
+    const diff = engine.render(session, 0, {mode: 'subtract', a: 0, b: 1});
+    assert.equal(diff.data[3], 0);
+    assert.ok(diff.data[8] > diff.data[10], 'positive difference is orange');
+    assert.ok(diff.data[14] > diff.data[12], 'negative difference is blue');
+    assert.ok(diff.data[20] < 20 && diff.data[21] < 20 && diff.data[22] < 20);
+    assert.throws(() => engine.render(session, 8), /index|frame/i);
+});
+
+test('20 sigma brightening ranks first, faintening has its sign, noise gives no candidates', async function ()
+{
+    const changed = [...stars, [62.2, 62.4, 20 * Math.sqrt(2)]];
+    const session = await engine.process([fitsField(field()), fitsField(field({sources: changed, seed: 987}), 'bright.fits')]);
+    const candidates = engine.candidates(session, 0, 1, {k: 5});
+    assert.ok(candidates.length > 0);
+    const top = candidates[0];
+    assert.equal(top.sign, 'brighter');
+    close(top.x, 62.2, 1);
+    close(top.y, 62.4, 1);
+    assert.ok(top.peak / top.sigma > 10);
+    assert.ok(top.pixels >= 2);
+    assert.equal(engine.candidates(session, 1, 0)[0].sign, 'fainter');
+    for (let i = 1; i < candidates.length; i++) {
+        assert.ok(Math.abs(candidates[i - 1].peak / candidates[i - 1].sigma) >= Math.abs(candidates[i].peak / candidates[i].sigma));
+    }
+    const noise = await engine.process([fitsField(field({sources: [], seed: 1})),
+        fitsField(field({sources: [], seed: 2}), 'noise.fits')]);
+    assert.equal(engine.candidates(noise, 0, 1, {k: 5}).length, 0);
+});
+
+test('candidate connectivity, limit and NaN-edge rejection', async function ()
+{
+    const width = 96;
+    const height = 96;
+    const a = field({width, height, sources: [], seed: 41, sky: 0});
+    const b = field({width, height, sources: [], seed: 42, sky: 0});
+    for (let y = 10; y <= 70; y += 10) {
+        for (let x = 10; x <= 70; x += 10) {
+            b[y * width + x] += 30;
+        }
+    }
+    const session = {width, height, frames: [{data: a}, {data: b}]};
+    assert.equal(engine.candidates(session, 0, 1).length, 20);
+    b.fill(0);
+    a.fill(0);
+    // Alternating +/-1 noise has a nonzero MAD.
+    for (let i = 0; i < b.length; i++) {
+        b[i] = i % 2 ? 1 : -1;
+    }
+    b[20 * width + 20] = 30;
+    b[21 * width + 21] = 25;
+    b[40 * width + 40] = 40;
+    b[40 * width + 41] = NaN;
+    b[0] = 50;
+    const blobs = engine.candidates(session, 0, 1);
+    assert.equal(blobs.length, 1);
+    assert.equal(blobs[0].pixels, 2);
+    assert.equal(blobs[0].peak, 30);
+});
+
+test('real SPHEREx cutouts: exact shapes, header dates, units and honest alignment', async function ()
+{
+    const names = (await readdir(new URL('./testdata/', import.meta.url))).filter(name => /\.fits$/i.test(name)).sort();
+    assert.equal(names.length, 3, 'all three real cutouts must be present');
+    const expectedDates = ['2025-05-18T09:31:00.088Z', '2025-11-29T19:05:52.495Z', '2026-05-23T23:30:27.510Z'];
+    const files = await Promise.all(names.map(async name => file(await readFile(new URL('./testdata/' + name, import.meta.url)), name)));
+    for (let i = 0; i < files.length; i++) {
+        const frame = await engine.readFile(files[i]);
+        assert.equal(frame.width, 58);
+        assert.equal(frame.height, 59);
+        assert.equal(frame.date.toISOString(), expectedDates[i]);
+        assert.equal(frame.dateSource, 'DATE-OBS');
+        assert.equal(frame.unit, 'MJy / sr');
+        assert.equal(frame.meta.bunit, 'MJy / sr');
+        assert.equal(frame.meta.hdu, 1);
+        assert.equal(frame.meta.hasWcs, true);
+        assert.ok(frame.warnings.includes("Zodiacal light model removed (from the file's ZODI plane)"));
+    }
+    const session = await engine.process(files.toReversed());
+    assert.deepEqual(Array.from(session.frames, frame => frame.date.toISOString()), expectedDates);
+    for (let i = 0; i < session.frames.length; i++) {
+        const frame = session.frames[i];
+        const shift = session.shifts[i];
+        if (shift.ok) {
+            assert.ok(Math.hypot(shift.dx, shift.dy) < 8, 'accepted real cutout shift must be small');
+        } else {
+            assert.equal(shift.dx, 0);
+            assert.equal(shift.dy, 0);
+            assert.ok(session.notes.includes(`Couldn't line up ${frame.name}; shown as is`));
+        }
+        console.log(`REAL ${frame.width}x${frame.height} ${frame.date.toISOString()} ${frame.unit} shift=(${shift.dx.toFixed(3)},${shift.dy.toFixed(3)}) ${shift.ok ? 'ok' : 'failed'} ${shift.method}`);
+    }
+    const top = engine.candidates(session, 0, 2).slice(0, 3);
+    console.log('REAL top 3 (first to last): ' + JSON.stringify(top.map(c => ({x: +c.x.toFixed(2), y: +c.y.toFixed(2),
+        peak: +c.peak.toFixed(3), sigma: +c.sigma.toFixed(3), sign: c.sign, pixels: c.pixels}))));
+});
+
+test('2040x2040 float32 frame processing performance', async function ()
+{
+    const width = 2040;
+    const values = field({width, height: width, sources: stars, seed: 123});
+    const input = fitsField(values, 'large.fits', width, width);
+    const start = performance.now();
+    const session = await engine.process([input]);
+    const elapsed = performance.now() - start;
+    assert.equal(session.frames[0].data.length, width * width);
+    assert.ok(elapsed < 2000, `processing took ${elapsed.toFixed(0)} ms (budget 2000 ms)`);
+    const renderStart = performance.now();
+    const pixels = engine.render(session, 0, {mode: 'blink'});
+    assert.equal(pixels.data.length, width * width * 4);
+    console.log(`PERF 2040x2040: process=${elapsed.toFixed(0)} ms, render=${(performance.now() - renderStart).toFixed(0)} ms (Node ${process.version})`);
+});
+
+let passed = 0;
+for (const {name, run} of tests) {
+    try {
+        await run();
+        passed++;
+        console.log('PASS ' + name);
+    } catch (error) {
+        console.error('FAIL ' + name);
+        console.error(error);
+        process.exitCode = 1;
+    }
+}
+console.log(`${passed}/${tests.length} tests passed`);

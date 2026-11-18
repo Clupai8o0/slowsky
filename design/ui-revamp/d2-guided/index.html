@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Slowsky — a guided look</title>
+    <link rel="icon" href="img/logo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="base.css">
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+    <a class="skip-link" href="#step-1">Skip to controls</a>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <a class="brand" href="#top" aria-label="Slowsky, back to top">
+                <img src="img/logo.svg" width="32" height="32" alt="">
+                <span>Slowsky<span class="brand-period">.</span></span>
+            </a>
+            <button class="target-trigger" id="target-trigger" aria-haspopup="dialog" aria-controls="target-dialog">
+                <span class="target-trigger-label" data-target-name>Barnard’s Star</span>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+            </button>
+            <div class="topbar-actions">
+                <span class="tour-progress" data-tour-progress>Step 1 of 5</span>
+                <button class="btn ghost explore-trigger" data-action="dock" aria-expanded="false" aria-controls="explore-dock">Explore freely <span aria-hidden="true">↗</span></button>
+                <button class="btn icon theme-button" data-theme-toggle aria-label="Switch to dark mode"><span data-theme-icon></span></button>
+            </div>
+        </div>
+    </header>
+
+    <main id="top" class="tour">
+        <section class="hero" aria-labelledby="headline">
+            <div class="eyebrow"><span class="small-dot"></span> THE INFRARED SKY <span class="eyebrow-slash">/</span> A GUIDED LOOK</div>
+            <h1 class="swap" id="headline">Barnard’s Star, <span>walking north</span></h1>
+            <p class="hero-hook swap" id="hero-hook">Moves fastest across our sky</p>
+            <div class="beginner-help" aria-labelledby="help-title">
+                <h2 id="help-title"></h2>
+                <p id="help-intro"></p>
+            </div>
+        </section>
+
+        <div class="tour-body">
+            <figure class="viewer" id="viewer" aria-label="Interactive sky viewer">
+                <div class="viewer-heading">
+                    <div class="viewer-identity"><span class="live-dot" aria-hidden="true"></span><span data-target-name>Barnard’s Star</span><span class="saved-label">Saved copy</span></div>
+                    <span class="viewer-step" data-tour-progress>Step 1 of 5</span><div class="plate-details"><span>This <button type="button" class="term-button" data-term="frame" aria-haspopup="dialog" aria-controls="term-popover" aria-expanded="false">frame</button></span><button class="plate-info" data-action="frame-info" aria-expanded="false" aria-controls="frame-panel" aria-label="Show this frame’s details"><span data-icon="info"></span></button></div>
+                </div>
+                <div class="stage-viewport" id="stage-viewport">
+                    <div class="plate-bounds" id="plate-bounds">
+                        <div class="sky is-initial" id="sky" role="img" tabindex="0" aria-label="Loading Barnard’s Star">
+                            <div class="sky-skeleton" aria-hidden="true"></div>
+                            <svg class="ring-layer" id="ring-layer" viewBox="0 0 480 480" aria-hidden="true">
+                                <g id="ring-trail"></g>
+                                <circle class="target-ring" id="target-ring" cx="240" cy="240" r="24"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="orientation" aria-hidden="true"><span>N</span><svg viewBox="0 0 20 34" fill="none" stroke="currentColor"><path d="M10 31V4M5 9l5-5 5 5"/></svg></div>
+                    <div class="plate-caption"><span class="caption-dash"></span><span id="plate-caption">Gold ring · position preview</span></div>
+                    <div class="stage-band"><span id="stage-band">Saved colour</span><span class="num" data-saved-band></span></div>
+                    <div class="older-frame" id="older-frame" hidden><img id="older-image" src="img/barnard-0.png" alt="First saved visit"><span id="older-date"></span></div>
+                    <div class="loupe" id="loupe" aria-hidden="true" hidden><span></span></div>
+                    <div class="stage-progress" id="stage-progress" aria-hidden="true"><span></span></div>
+                    <div class="stage-message" id="stage-message" hidden></div>
+                </div>
+                <figcaption class="viewer-footer">
+                    <div class="frame-date"><span class="frame-counter num" id="frame-counter"></span><span id="frame-date"></span></div>
+                    <div class="mini-transport">
+                        <button class="btn icon ghost" data-action="prev" aria-label="Previous date" data-icon="prev"></button>
+                        <button class="btn icon ghost" data-action="play" aria-label="Pause" aria-pressed="true" data-icon="pause"></button>
+                        <button class="btn icon ghost" data-action="next" aria-label="Next date" data-icon="next"></button>
+                    </div>
+                    <span class="viewer-source">Real SPHEREx pixels <span class="source-separator">·</span> <span class="num" data-field-label>6′</span> across</span>
+                </figcaption>
+                <div class="load-caption" id="load-caption" aria-hidden="true"></div>
+            </figure>
+
+            <div class="after-plate">
+                <div class="look-note"><span class="gold-dot" aria-hidden="true"></span><p class="swap" id="show-copy"></p></div>
+                <div class="plate-tips"><span>Hold the image for the first visit</span><span>Hover to magnify</span><button class="text-button mobile-explore" data-action="dock" aria-expanded="false" aria-controls="explore-dock">Explore freely ↗</button></div>
+                <section class="reveal" id="frame-panel" inert aria-labelledby="frame-title"><div><div class="information-panel"><div class="panel-heading"><h2 id="frame-title" tabindex="-1">This frame</h2><button class="btn icon ghost" data-action="frame-info" aria-label="Close frame details">×</button></div><div id="frame-details"></div></div></div></section>
+
+                <section class="reveal" id="explore-dock" inert aria-labelledby="dock-title"><div><div class="dock">
+                    <div class="panel-heading"><div><div class="eyebrow">ALL YOUR CONTROLS</div><h2 id="dock-title" tabindex="-1">Explore freely</h2></div><button class="btn icon ghost" data-action="dock" aria-label="Close full controls">×</button></div>
+                    <div class="dock-grid">
+                        <section class="dock-cell"><h3>Watch it move</h3><div data-controls="dates" data-context="dock"></div></section>
+                        <section class="dock-cell"><h3>Change the colour</h3><div data-controls="wavelength" data-context="dock"></div></section>
+                        <section class="dock-cell"><h3>Compare all dates</h3><div data-controls="modes" data-context="dock"></div><div class="field-row"><label for="field-size">Field size</label><select id="field-size" data-field aria-describedby="field-help"><option value="6">6′ across</option><option value="3">3′ across</option><option value="1.5">1.5′ across</option></select></div><p class="control-help" id="field-help" data-help="field"></p></section>
+                        <section class="dock-cell"><h3>Overlays</h3><div data-controls="overlays" data-context="dock"></div></section>
+                    </div>
+                    <div class="dock-bottom"><button class="text-button" data-action="live">Go live ↗</button><button class="text-button" data-action="copy-link">Copy link <span data-icon="share"></span></button><button class="text-button" data-action="frame-info">This frame ↗</button></div>
+                    <p class="inline-note" id="dock-notice" hidden></p>
+                    <input class="copy-fallback" id="copy-fallback" aria-label="Select and copy this value" readonly hidden>
+                </div></div></section>
+
+                <div class="steps" id="steps">
+                    <section class="step-card active" id="step-1" data-step="1" aria-labelledby="step-title-1">
+                        <div class="step-number num">01</div><div class="step-content">
+                            <div class="step-kicker">START HERE</div><h2 id="step-title-1">Watch it move</h2>
+                            <p class="step-description" id="step-watch-copy"></p>
+                            <div class="control-area" data-controls="dates" data-context="tour"></div>
+                            <div class="motion-row"><div><span class="small-label">Position (RA, Dec)</span><button class="coordinate-button num" id="coordinates" data-action="copy-coordinates" title="Copy coordinates"></button></div><svg class="motion-diagram" viewBox="0 0 160 64" aria-label="Direction of motion, in step with the dates"><path class="motion-axis" d="M12 37h136M80 8v48"/><path class="motion-vector" id="motion-vector" d="M80 37v0"/><text x="86" y="14">N</text><circle class="motion-point" cx="80" cy="37" r="2"/></svg></div>
+                            <a class="next-step" href="#step-2">Next: try another colour <span aria-hidden="true">↓</span></a>
+                        </div>
+                    </section>
+
+                    <section class="step-card" id="step-2" data-step="2" aria-labelledby="step-title-2">
+                        <div class="step-number num">02</div><div class="step-content">
+                            <div class="step-kicker">LOOK A LITTLE DIFFERENTLY</div><h2 id="step-title-2">Try another colour</h2>
+                            <p class="step-description" id="step-colour-copy"></p>
+                            <div class="control-area" data-controls="wavelength" data-context="tour"></div>
+                            <a class="next-step" href="#step-3">Next: compare all dates <span aria-hidden="true">↓</span></a>
+                        </div>
+                    </section>
+
+                    <section class="step-card" id="step-3" data-step="3" aria-labelledby="step-title-3">
+                        <div class="step-number num">03</div><div class="step-content">
+                            <div class="step-kicker">ONE SKY, DIFFERENT VIEWS</div><h2 id="step-title-3">Compare all dates</h2>
+                            <p class="step-description" id="step-compare-copy"></p>
+                            <div class="control-area" data-controls="modes" data-context="tour"></div>
+                            <p class="derived-note">Stack &amp; Subtract: mockup calculations on the displayed PNGs.</p>
+                            <a class="next-step" href="#step-4">Next: what this can’t tell you <span aria-hidden="true">↓</span></a>
+                        </div>
+                    </section>
+
+                    <section class="step-card" id="step-4" data-step="4" aria-labelledby="step-title-4">
+                        <div class="step-number num">04</div><div class="step-content">
+                            <div class="step-kicker">KEEP THE LIMITS IN VIEW</div><h2 id="step-title-4">What this can’t tell you</h2>
+                            <p class="step-description" id="not-copy"></p>
+                            <aside class="ai-note" aria-labelledby="ai-note-title">
+                                <h3 id="ai-note-title">AI note</h3>
+                                <p class="control-help" data-help="aiNote"></p>
+                                <p class="ai-note-body">Written by AI (model name goes here). Mockup placeholder: the live app writes this from numbers it measured.</p>
+                            </aside>
+                            <div class="control-area" data-controls="overlays" data-context="tour"></div>
+                            <p class="inline-note overlay-note" data-overlay-note>Gold positions are an overlay preview in this mockup.</p>
+                            <button class="next-step disclosure" data-action="candidates" aria-expanded="false" aria-controls="candidate-panel">Candidate changes <span aria-hidden="true">+</span></button>
+                            <div class="reveal" id="candidate-panel" inert><div><p class="inline-note candidate-note">No candidate measurements are included in this mockup.</p></div></div>
+                            <p class="control-help" data-help="changes"></p>
+                            <a class="next-step" href="#step-5">Next: visit another star <span aria-hidden="true">↓</span></a>
+                        </div>
+                    </section>
+
+                    <section class="step-card" id="step-5" data-step="5" aria-labelledby="step-title-5">
+                        <div class="step-number num">05</div><div class="step-content">
+                            <div class="step-kicker">KEEP LOOKING</div><h2 id="step-title-5">Visit another star</h2>
+                            <p class="step-description">Where in the sky</p>
+                            <div class="sky-map-wrap">
+                                <span class="map-dec-title">Dec</span>
+                                <div class="map-dec-axis" aria-label="Declination"><span>+90°</span><span>0°</span><span>−90°</span></div>
+                                <div class="sky-map" id="sky-map" aria-label="Choose one of the five targets by sky position">
+                                <svg class="map-grid" viewBox="0 0 640 240" preserveAspectRatio="none" aria-hidden="true"><path d="M0 120h640M160 0v240M320 0v240M480 0v240M0 60h640M0 180h640"/></svg>
+                                </div>
+                                <div class="map-ra-axis" aria-label="Right ascension"><span>360°</span><span>180°</span><span>0°</span></div>
+                                <span class="map-ra-title">RA</span>
+                            </div>
+                            <div class="map-caption swap" id="map-caption"><span id="map-name"></span><span id="map-hook"></span></div>
+                            <button class="text-button back-top" data-action="top">Back to the sky ↑</button>
+                        </div>
+                    </section>
+                </div>
+
+                <footer class="page-footer">
+                    <a class="footer-brand" href="#top"><img src="img/logo.svg" alt="" width="22" height="22">Slowsky</a>
+                    <p class="mock-note">Interactive mockup · real saved SPHEREx pixels. Wavelength loads and data overlays are demonstrations. No live archive requests.</p>
+                    <p class="ai-disclosure"><span id="ai-line"></span> <a id="ai-tools-link">Which AI tools</a></p>
+                    <button class="text-button" data-action="shortcuts" aria-expanded="false" aria-controls="shortcuts-panel">Keyboard shortcuts <span aria-hidden="true">↗</span></button>
+                    <div class="reveal" id="shortcuts-panel" inert><div><div class="shortcuts"><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd> <kbd>→</kbd> Dates</span><span><kbd>B</kbd> Blink</span><span><kbd>S</kbd> Stack</span><span><kbd>D</kbd> Subtract</span><span><kbd>T</kbd> Theme</span></div></div></div>
+                </footer>
+            </div>
+        </div>
+    </main>
+
+    <dialog class="target-dialog" id="target-dialog" aria-labelledby="target-title">
+        <div class="panel-heading"><div><div class="eyebrow">A DIFFERENT PATCH OF SKY</div><h2 id="target-title">Choose a target</h2></div><button class="btn icon ghost" data-action="close-targets" aria-label="Close target chooser">×</button></div>
+        <label class="search-box"><span data-icon="search"></span><input id="target-search" type="search" placeholder="Any star, or RA, Dec" aria-label="Any star, or RA, Dec" autocomplete="off"></label>
+        <div class="target-list" id="target-list"></div>
+        <p class="search-empty inline-note" id="search-empty" hidden>No saved target matches. This mockup searches the five saved targets and their coordinates.</p>
+        <p class="dialog-note">Saved copy <span aria-hidden="true">·</span> Select a star to begin again.</p>
+    </dialog>
+    <div class="term-popover" id="term-popover" role="dialog" aria-modal="false" aria-labelledby="term-title" aria-describedby="term-description" tabindex="-1" hidden>
+        <div class="term-heading"><h2 id="term-title"></h2><button class="btn icon ghost" data-action="close-term" aria-label="Close explanation">×</button></div>
+        <p id="term-description"></p>
+    </div>
+    <div class="sr" id="announcer" aria-live="polite" aria-atomic="true"></div>
+    <noscript><p class="noscript">Enable JavaScript to explore the saved sky frames.</p></noscript>
+    <script src="frames.js"></script>
+    <script src="copy.js"></script>
+    <script src="base.js"></script>
+    <script src="help.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

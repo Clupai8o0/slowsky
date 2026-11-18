@@ -1,0 +1,92 @@
+{
+ "wise0855": {
+  "main_id": "WISEA J085510.74-071442.5",
+  "ra": "133.81890825",
+  "dec": "-7.247048000000001",
+  "pmra": "-8123.7",
+  "pmdec": "673.2",
+  "plx_value": "439.0",
+  "rvz_radvel": "",
+  "query_id": "WISE J085510.83-071442.5"
+ },
+ "barnard": {
+  "main_id": "NAME Barnard's star",
+  "ra": "269.4520769586187",
+  "dec": "4.693364966576667",
+  "pmra": "-801.551",
+  "pmdec": "10362.394",
+  "plx_value": "546.9759",
+  "rvz_radvel": "-110.11",
+  "query_id": "GJ 699"
+ },
+ "luhman16": {
+  "main_id": "NAME Luhman 16",
+  "ra": "162.32881400000002",
+  "dec": "-53.319466000000006",
+  "pmra": "-2767.502",
+  "pmdec": "356.856",
+  "plx_value": "501.557",
+  "rvz_radvel": "",
+  "query_id": "WISE J104915.57-531906.1"
+ },
+ "epsindib": {
+  "main_id": "* eps Ind B",
+  "ra": "331.04414658852124",
+  "dec": "-56.782844195116105",
+  "pmra": "3981.977",
+  "pmdec": "-2466.832",
+  "plx_value": "270.658",
+  "rvz_radvel": "",
+  "query_id": "eps Ind B"
+ },
+ "kapteyn": {
+  "main_id": "HD  33793",
+  "ra": "77.91912433145708",
+  "dec": "-45.01843381524333",
+  "pmra": "6491.223",
+  "pmdec": "-5708.614",
+  "plx_value": "254.1986",
+  "rvz_radvel": "245.234",
+  "query_id": "GJ 191"
+ },
+ "teegarden": {
+  "main_id": "NAME Teegarden's Star",
+  "ra": "43.253715805170415",
+  "dec": "16.881286719482496",
+  "pmra": "3429.083",
+  "pmdec": "-3805.541",
+  "plx_value": "260.9884",
+  "rvz_radvel": "63.0",
+  "query_id": "Teegarden's star"
+ },
+ "groombridge1830": {
+  "main_id": "HD 103095",
+  "ra": "178.2448639115646",
+  "dec": "37.718681698090286",
+  "pmra": "4002.655",
+  "pmdec": "-5817.8",
+  "plx_value": "109.0296",
+  "rvz_radvel": "-98.008",
+  "query_id": "HD 103095"
+ },
+ "rwaur": {
+  "main_id": "V* RW Aur",
+  "ra": "76.95652603458333",
+  "dec": "30.401438173888888",
+  "pmra": "7.23",
+  "pmdec": "-20.33",
+  "plx_value": "15.42",
+  "rvz_radvel": "15.0",
+  "query_id": "V* RW Aur"
+ },
+ "rdra": {
+  "main_id": "V* R Dra",
+  "ra": "248.16761083295",
+  "dec": "66.75497941722",
+  "pmra": "-20.643",
+  "pmdec": "6.149",
+  "plx_value": "1.2509",
+  "rvz_radvel": "-132.8",
+  "query_id": "V* R Dra"
+ }
+}

@@ -1,0 +1,657 @@
+[
+  {
+    "__typename": "TeamsIndexPage",
+    "id": "aWQ6NTUxMjI=",
+    "title": "Find a Team",
+    "meta": {
+      "type": "TEAMINDEX",
+      "slug": "find-a-team",
+      "firstPublishedAt": "2025-08-18T15:59:03.579000Z",
+      "lastPublishedAt": "2026-11-13T21:07:32.253814Z",
+      "relativeUrl": "/2026/find-a-team/",
+      "live": true,
+      "parent": {
+        "id": "aWQ6NTM3MzU="
+      }
+    },
+    "breadcrumbs": [
+      {
+        "name": "Home",
+        "link": "/"
+      },
+      {
+        "name": "2026 NASA Space Apps Challenge",
+        "link": "/2026/"
+      },
+      {
+        "name": "Find a Team",
+        "link": "/2026/find-a-team/"
+      }
+    ],
+    "event": "aWQ6NA==",
+    "featuredImage": null,
+    "heroContent": "<p data-block-key=\"t4kt0\">Join one of the teams below or create your own. Please note that all teammates, including the Team Owner, must be registered for the same Local Event to be eligible for Global Judging. Use the search bar if you are looking for a specific team name, look for teams who are still seeking members, or use the filters to narrow down your search for a team by: Skills, Languages, Challenges, and Local Event.</p>",
+    "noResultsContent": "",
+    "searchHeading": "All Teams",
+    "detailsTabLabel": "About",
+    "detailsSectionHeading": "About the Team",
+    "challengeSectionHeading": "About the Challenge",
+    "projectTabLabel": "Project",
+    "showProjectTab": true,
+    "boardTabLabel": "Board",
+    "showBoardTab": false,
+    "membersTabLabel": "Members",
+    "showMembersTab": true,
+    "membersSectionHeading": "Team Members",
+    "memberRequestsSectionHeading": "New Member Requests",
+    "chatCardTitle": "Join the Discussion",
+    "chatCardText": "Get support and connect with the NASA Space Apps GO Team, Subject Matter Experts, Navigators, Global Collaborators, and fellow participants in Space Apps Connect that is hosted on GitHub Discussions.",
+    "chatCardLink": "https://github.com/nasa/spaceapps/discussions",
+    "chatCardLinkLabel": "Join Space Apps Connect",
+    "showChatCard": false,
+    "editHelpText": "",
+    "judgingHelpText": "<p data-block-key=\"at1re\"><b>Tips for Submitting Your Project</b></p><p data-block-key=\"9t0o0\">1) Review the Project Submission Guide for detailed instructions and best practices for submitting your project.<br/><br/>2) <b>Save your project often!</b> Use the \"Save Progress\" button to save your changes as you edit your Project. Your changes will now be viewable to anyone who visits your page.<b> Saving your project does not submit it for judging, you must click “Submit for Judging” to be considered for awards.</b> <b><br/><br/></b>3) If you have multiple team members who might be trying to edit your project at the same time, you can toggle the edit \"Lock\" to 'ON'. This will let other team members know you are making changes to the project tab so they do not try to make edits at the same time. However, another team member may still remove the lock and make changes to the project, overwriting any changes you had not yet saved.<br/><br/>4) Once you are ready, click the \"Submit for Judging\" button. You should see a notification bar at the top letting you know that your project has been submitted. You will then be able to access your participation certificate from your account profile page.<br/><br/> 5) You can see the latest times your project was saved or submitted in the “Edit Details” box on the Project tab. <b>Only your final click on “Submit for Judging” will be reviewed by judges.<br/><br/></b>6) Project submission closes on Sunday, November 15 at 11:59 PM local time, in accordance with the time zone of your Local Event. If your team is registered for the Universal Event, your project must be submitted in accordance with the local time of your Team Owner's area of residence. <b>Any projects saved or submitted past this deadline will not be eligible for judging. No edit requests or exceptions past this deadline are allowed. Submission is final.</b></p>",
+    "editTeamForm": "aWQ6Nw==",
+    "editProjectForm": "aWQ6NDE=",
+    "teamsFilter": "aWQ6OA=="
+  },
+  {
+    "__typename": "LandingPage",
+    "id": "aWQ6NTUxMDg=",
+    "title": "2026 Space Agency Partners",
+    "meta": {
+      "type": "LANDING",
+      "slug": "space-agency-partners",
+      "firstPublishedAt": "2026-08-14T14:05:56.653000Z",
+      "lastPublishedAt": "2026-10-27T19:46:00.249187Z",
+      "relativeUrl": "/2026/space-agency-partners/",
+      "live": true,
+      "parent": {
+        "id": "aWQ6NTM3MzU="
+      }
+    },
+    "shortName": "",
+    "breadcrumbs": [
+      {
+        "name": "Home",
+        "link": "/"
+      },
+      {
+        "name": "2026 NASA Space Apps Challenge",
+        "link": "/2026/"
+      },
+      {
+        "name": "2026 Space Agency Partners",
+        "link": "/2026/space-agency-partners/"
+      }
+    ],
+    "featuredImage": null,
+    "heroContent": "<h2 data-block-key=\"cvphw\">2026 Space Agency Partners</h2>",
+    "content": [
+      {
+        "__typename": "HtmlBlock",
+        "id": "962fac9e-0cc0-41f8-8290-578061ad1a7c",
+        "type": "RICHTEXT",
+        "value": {
+          "html": "<p data-block-key=\"hp800\">NASA Space Apps is proud to partner with 17 Space Agency Partners from around the world to foster international collaboration by connecting cities and countries around the globe during the NASA Space Apps Challenge. Alongside NASA’s free and open data, Space Agency Partners provide additional spaced-based data for participants to use. These partnerships reflect the global nature of the NASA Space Apps Challenge and the collaborative spirit that drives innovation.</p><p data-block-key=\"citbe\">Our 2026 Space Agency Partners are:</p>"
+        }
+      },
+      {
+        "__typename": "TileGroupBlock",
+        "id": "30e26369-da94-4f8a-b538-6ee625a4d5ea",
+        "type": "TILES",
+        "value": {
+          "title": "",
+          "richText": "",
+          "tiles": [
+            {
+              "title": "Angola - National Space Programme Management Office",
+              "text": "The Angola National Space Programme Management Office (GGPEN) was created with a simple belief: space technology should serve people. From operating the ANGOSAT-2 satellite that connects communities across Southern Africa, to using Earth observation data to support key sectors of Angola's economy, GGPEN builds space capability that solves real problems on the ground. As the host of the SADC Regional Satellite Programme and a signatory of the Artemis Accords, Angola is committed to a future where",
+              "image": {
+                "id": "aWQ6MzkwMDc4",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Angola_GGPEN_logo.png"
+                },
+                "title": "Angola GGPEN logo",
+                "alt": "The logo for the Angola National Space Programme Management Office are the letters GGPEN in blue with a satellite circling it.",
+                "caption": "Angola GGPEN logo",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Angola_GGPEN_logo.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Angola_GGPEN_logo.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://www.ggpen.gov.ao/",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Argentina - National Commission on Space Activities",
+              "text": "The National Commission on Space Activities of Argentina (CONAE) is the agency responsible for implementing the national space program, promoting and carrying out space activities for peaceful purposes across the productive, scientific, and educational sectors, and fostering the development of innovative national technologies throughout Argentina. CONAE recognizes the importance of space outreach and capacity building and has supported the NASA Space Apps Challenge since 2021.",
+              "image": {
+                "id": "aWQ6MjU1ODUx",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/CONAE_thumbnail.png"
+                },
+                "title": "CONAE thumbnail",
+                "alt": "The logo for the Argentina Space Agency features the bold black letters “CONAE” inside the outline of a blue circle.",
+                "caption": "CONAE thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/CONAE_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/CONAE_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://www.argentina.gob.ar/ciencia/conae",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Bahrain Space Agency",
+              "text": "The Bahrain Space Agency (BSA) aims to position the Kingdom of Bahrain as a global player in space science to support sustainable development. BSA focuses on space technologies for national growth, promoting space research and applications, and building local capacity. The agency collaborates and partners with government entities, the private sector, and universities.",
+              "image": {
+                "id": "aWQ6MjU1ODQ5",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/BSA_thumbnail2_v1UbdxF.png"
+                },
+                "title": "BSA thumbnail2",
+                "alt": "The logo for the Bahrain Space Agency features a red and gold swoosh orbiting a blue circle with a small satellite above it.",
+                "caption": "BSA thumbnail2",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/BSA_thumbnail2_v1UbdxF.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/BSA_thumbnail2_v1UbdxF.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://bsa.gov.bh/",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Brazilian Space Agency",
+              "text": "The Brazilian Space Agency (AEB) promotes the development of space activities to drive scientific advancement, technological innovation, and sustainable development. As a proud supporter of the NASA Space Apps Challenge, AEB values global collaboration and open innovation to engage new generations in addressing real-world challenges.",
+              "image": {
+                "id": "aWQ6MjU1ODQ4",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/AEB_thumbnail.png"
+                },
+                "title": "AEB thumbnail",
+                "alt": "The logo for the Brazilian Space Agency features a blue sphere with a yellow orbital swoosh alongside bold blue letters reading AEB.",
+                "caption": "AEB thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/AEB_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/AEB_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://www.gov.br/aeb",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Canadian Space Agency",
+              "text": "The Canadian Space Agency (CSA) promotes the peaceful use and development of space through exploration, innovation, observation, and inspiration. Proudly supporting the NASA Space Apps Challenge since 2016, the CSA believes in the transformative power of open space data, uniting innovators to tackle challenges both on Earth and throughout the universe.",
+              "image": {
+                "id": "aWQ6MzkwMDc5",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Canada_Space_Agency_2026_logo.png"
+                },
+                "title": "Canada Space Agency 2026 logo",
+                "alt": "The Canadian Space Agency logo has a red maple leaf with 3 read stars underneath it. At the bottom is the Canadian flag and the agency's name in English and French.",
+                "caption": "Canada Space Agency 2026 logo",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Canada_Space_Agency_2026_logo.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Canada_Space_Agency_2026_logo.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://www.asc-csa.gc.ca/eng/",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "European Space Agency",
+              "text": "The European Space Agency (ESA) is Europe’s gateway to space. Its mission is to shape the development of Europe’s space capability and ensure that investment in space continues to deliver benefits to the citizens of Europe and the world. ESA strives to make its data and discoveries accessible to all, providing access to Earth Observation tools & science mission data.",
+              "image": {
+                "id": "aWQ6MzkwMTgx",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/esa_2026_logo_thumbnail.png"
+                },
+                "title": "esa 2026 logo thumbnail",
+                "alt": "The logo for the European Space Agency features a dark blue circular symbol with a small dot and the letter “e” inside, with the lowercase letters “esa” in matching dark blue to the right.",
+                "caption": "esa 2026 logo thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/esa_2026_logo_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/esa_2026_logo_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://esa.int",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Indian Space Research Organization",
+              "text": "The Indian Space Research Organisation (ISRO) is the space agency of India. The organisation is involved in science, engineering and technology to harvest the benefits of outer space for India and mankind. ISRO is a major constituent of the Department of Space (DOS), Government of India.",
+              "image": {
+                "id": "aWQ6MjU1ODUz",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/ISRO_thumbnail.png"
+                },
+                "title": "ISRO thumbnail",
+                "alt": "The logo for the India Space Agency features an orange upward‑pointing arrow with two blue satellite‑like arms on either side of the arrow, with the agency name underneath.",
+                "caption": "ISRO thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/ISRO_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/ISRO_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://www.isro.gov.in/",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Italian Space Agency",
+              "text": "The Italian Space Agency (ASI) is dedicated to promoting, coordinating, and advancing the national activities and contributions to the global space agenda, with a strong focus on scientific research, Earth observation, space exploration, and technological innovation. ASI believes in the power of open science and the role of global collaboration for our planet and beyond.",
+              "image": {
+                "id": "aWQ6MjU1ODU0",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Italy_Space_Agency_thumbnail.png"
+                },
+                "title": "Italy Space Agency thumbnail",
+                "alt": "The logo for the Italian Space Agency features the letters “ASI” in dark blue with a sweeping arc forming a partial blue orbit around them, with the agency name written in Italian below.",
+                "caption": "Italy Space Agency thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Italy_Space_Agency_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Italy_Space_Agency_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://www.asi.it/",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Japan Aerospace Exploration Agency",
+              "text": "The Japan Aerospace Exploration Agency (JAXA) promotes Earth observation, data analysis, and application research as a core agency to develop Earth observation satellites in Japan. By monitoring the Earth's environment from space, JAXA aims to contribute to addressing global challenges.",
+              "image": {
+                "id": "aWQ6MjU1ODU1",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/JAXA_thumbnail.png"
+                },
+                "title": "JAXA thumbnail",
+                "alt": "The logo for the Japan Space Agency features the stylized blue letters “JAXA,” with a sharp intersecting line forming an abstract star shape for the first “A.”",
+                "caption": "JAXA thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/JAXA_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/JAXA_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://earth.jaxa.jp/en/about/index.html",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Korea AeroSpace Administration",
+              "text": "The Korea AeroSpace Administration (KASA) is the national aerospace agency of the Republic of Korea and the control tower for the nation's space, exploration, and aeronautics endeavors. Its mission is to secure innovative technologies through the development of aerospace technology, promote the aerospace industry, and implement policies and projects to protect the public from space hazards.",
+              "image": {
+                "id": "aWQ6MzkwMDgz",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/KASA_logo_thumbnail.png"
+                },
+                "title": "KASA logo thumbnail",
+                "alt": "The logo for the South Korean Space Agency KASA has their letters with a red upward line for the top of the K culminating with a star over the first A.",
+                "caption": "KASA logo thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/KASA_logo_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/KASA_logo_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://www.kasa.go.kr/eng/index.do",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Nigeria - National Space Research and Development Agency",
+              "text": "Nigeria's Space Agency Mandate is to vigorously pursue the attainment of space capabilities and utilize space science and technology for sustainable national development and to improve the general quality of life in Nigeria.",
+              "image": {
+                "id": "aWQ6MzkwMTI0",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/NASRDA_logo_thumbnail.png"
+                },
+                "title": "NASRDA logo thumbnail",
+                "alt": "The logo for the Nigerian National Space Research and Development Agency features a blue circle with an upward‑facing rocket in the center, and a diamond beneath it with three white stars on each side.",
+                "caption": "NASRDA logo thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/NASRDA_logo_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/NASRDA_logo_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://central.nasrda.gov.ng/",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Paraguayan Space Agency",
+              "text": "The Paraguayan Space Agency (AEP) is an autonomous entity under the administrative and functional authority of the Presidency of the Republic as established by law. Its mission is to lead, design, and implement national policies and programs in the field of space and aerospace. As a proud supporter of the NASA Space Apps Challenge, the Paraguayan Space Agency champions youth participation, open innovation, and international collaboration to unlock the potential of space for national progress.",
+              "image": {
+                "id": "aWQ6MjU1ODU3",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Paraguay_Space_Agency_thumbnail.png"
+                },
+                "title": "Paraguay Space Agency thumbnail",
+                "alt": "The logo for the Paraguay Space Agency features a yellow star framed by red and blue branches, with the agency name written beside it.",
+                "caption": "Paraguay Space Agency thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Paraguay_Space_Agency_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Paraguay_Space_Agency_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://aep.gov.py/",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Senegalese Space Studies Agency",
+              "text": "The Senegalese Space Studies Agency (ASES) is the national agency responsible for developing and implementing Senegal's national policy and strategy for the study, research, training, promotion and development of space activities.",
+              "image": {
+                "id": "aWQ6MzkwMTI1",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/ASES_Logo_thumbnail.png"
+                },
+                "title": "ASES Logo thumbnail",
+                "alt": "The logo for the Senegalese Space Studies Agency features a shooting star above a black‑and‑white Earth, with the star’s green, yellow, and red striped tail streaking across a blue sky.",
+                "caption": "ASES Logo thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/ASES_Logo_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/ASES_Logo_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://sites.google.com/view/redirectionases/ases?utm_source=chatgpt.com",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Spanish Space Agency",
+              "text": "The Spanish Space Agency (AEE) believes that space has the power to improve our lives, protect our planet, and spark curiosity and innovation. That’s why they are proud to support the NASA Space Apps Challenge, a global hackathon that brings people together to address real-world problems using creativity, science, and teamwork. The Spanish Space Agency works to make space part of everyone’s future—by promoting research, supporting innovation, and encouraging young minds to explore new ideas.",
+              "image": {
+                "id": "aWQ6MjYxMzIz",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Spain_Space_Agency_thumbnail_v2.png"
+                },
+                "title": "Spain Space Agency thumbnail v2",
+                "alt": "The logo for the Spain Space Agency features the stylized blue letters “AEE” with curved extensions forming a sleek, aerodynamic shape, with the agency name written below.",
+                "caption": "Spain Space Agency thumbnail v2",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Spain_Space_Agency_thumbnail_v2.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Spain_Space_Agency_thumbnail_v2.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://www.aee.gob.es/",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "Turkish Space Agency",
+              "text": "The Turkish Space Agency (TUA) is a state authority which carries out the activities on law, management, etc. to support the development & dissemination of space, aeronautics sciences & technologies, & coordinates the work within the national & international organizations to protect & safeguard the space-related rights & interests of the Republic of Türkiye.",
+              "image": {
+                "id": "aWQ6MjU1ODYw",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/Turkish_Space_Agency_thumbnail.png"
+                },
+                "title": "Turkish Space Agency thumbnail",
+                "alt": "The logo for the Turkish Space Agency features the bold red letters “TUA,” with the center of the “A” forming a white star, and the agency name written below.",
+                "caption": "Turkish Space Agency thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/Turkish_Space_Agency_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/Turkish_Space_Agency_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://tua.gov.tr/en",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "United Arab Emirates - Mohammed Bin Rashid Space Centre",
+              "text": "The Mohammed Bin Rashid Space Centre (MBRSC) is a leading hub for scientific innovation and space exploration in the UAE, driving missions in Earth observation, human spaceflight, & lunar exploration. Their support of NASA Space Apps reflects their commitment to foster youth engagement, research, & innovation.",
+              "image": {
+                "id": "aWQ6MjU1ODU2",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/MBSRC_thumbnail.png"
+                },
+                "title": "MBSRC thumbnail",
+                "alt": "The logo for the Mohammed Bin Rashid Space Centre features a curved blue arc above Arabic text, with the center’s name written in English underneath.",
+                "caption": "MBSRC thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/MBSRC_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/MBSRC_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "http://www.mbrsc.ae",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            },
+            {
+              "title": "United Kingdom Space Agency",
+              "text": "The UK Space Agency is a part of the UK's Department of Business, Science, Innovation and Trade. We work hard to catalyse investment, deliver missions and capabilities, and champion space. As a proud supporter of the NASA Space Apps Challenge, the UK Space Agency believes in the power of space-derived data and capabilities to elevate innovation to new heights, expand global growth and collaboration, and enrich the lives of all citizens on Earth.",
+              "image": {
+                "id": "aWQ6MjU1ODYx",
+                "meta": {
+                  "type": "images.CustomImage",
+                  "downloadUrl": "https://assets.spaceappschallenge.org/media/original_images/UK_Space_Agency_thumbnail.png"
+                },
+                "title": "UK Space Agency thumbnail",
+                "alt": "The logo for the UK Space Agency features a red arrow with flag‑like stripes and the agency name to the right in red and blue.",
+                "caption": "UK Space Agency thumbnail",
+                "displaySize": "or",
+                "rendition": {
+                  "url": "https://assets.spaceappschallenge.org/media/images/UK_Space_Agency_thumbnail.2e16d0ba.fill-240x240.png",
+                  "fullUrl": "https://assets.spaceappschallenge.org/media/images/UK_Space_Agency_thumbnail.2e16d0ba.fill-240x240.png",
+                  "height": 240,
+                  "width": 240
+                }
+              },
+              "link": {
+                "url": "https://www.gov.uk/government/organisations/uk-space-agency",
+                "text": "Learn More",
+                "isNewTab": true,
+                "isExternal": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "__typename": "PageBreakBlock",
+        "id": "09e8d80a-c3a9-4b74-a0f4-95a5e6f345d9",
+        "type": "PAGEBREAK"
+      }
+    ]
+  },
+  {
+    "__typename": "CommonPage",
+    "id": "aWQ6Ng==",
+    "title": "About NASA Space Apps",
+    "meta": {
+      "type": "COMMON",
+      "slug": "about",
+      "firstPublishedAt": "2023-03-09T17:25:42.838000Z",
+      "lastPublishedAt": "2026-11-09T21:45:00.080898Z",
+      "relativeUrl": "/about/",
+      "live": true,
+      "parent": {
+        "id": "aWQ6Mw=="
+      }
+    },
+    "shortName": "About",
+    "breadcrumbs": [
+      {
+        "name": "Home",
+        "link": "/"
+      },
+      {
+        "name": "About",
+        "link": "/about/"
+      }
+    ],
+    "featuredImage": null,
+    "heroContent": "",
+    "content": [
+      {
+        "__typename": "HtmlBlock",
+        "id": "ed57527a-f63a-4b40-ba49-2659d56deb0c",
+        "type": "RICHTEXT",
+        "value": {
+          "html": "<p data-block-key=\"5tjmv\">NASA Space Apps is a public gateway to NASA science, preparing the next generation of explorers to propel humanity from the Earth to the Moon, Mars, and beyond. NASA Space Apps aims to promote transparency, participation, and global collaboration as part of the Open Government Initiative by sharing openly available data supplied through NASA and its Space Agency Partners to the public through the largest annual global hackathon, the NASA Space Apps Challenge.</p><p data-block-key=\"8de24\">NASA Space Apps is funded by NASA's Science Mission Directorate through a contract with <a href=\"https://www.boozallen.com/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><b>Booz Allen Hamilton</b></a>, <a href=\"https://www.mindgrub.com/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><b>Mindgrub</b></a>, and <a href=\"https://www.secondmuse.com/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><b>SecondMuse</b></a>.</p><p data-block-key=\"dbbe4\">The NASA Space Apps Global Organizing (GO) Team is composed of members of these three organizations. The GO Team serves to guide and support Local Leads and participants throughout their NASA Space Apps experience and engage with members of the NASA Space Apps community year-round. Click <a  href=\"https://www.spaceappschallenge.org/meet-the-team/\"><b>here</b></a> to meet the team members.</p>"
+        }
+      },
+      {
+        "__typename": "AccordionBlock",
+        "id": "90f39bcd-323e-4f9a-9b69-4c7f2d1786bf",
+        "type": "ACCORDION",
+        "value": {
+          "title": "",
+          "panels": [
+            {
+              "title": "NASA Space Apps Values",
+              "richText": "<p data-block-key=\"xc7u5\">At NASA Space Apps, there’s always space for one more.</p><p data-block-key=\"9080g\">We strive to ensure that NASA Space Apps is a place where all feel they belong, where all are comfortable being authentic, and where all are empowered to contribute to their fullest. NASA Space Apps is committed to providing a professional and productive forum for all to engage in a robust exchange of ideas. All ideas are welcome and we encourage our community to share them.</p><p data-block-key=\"1siar\">At all times, participants are responsible for maintaining professional decorum and treating each other with respect and dignity. We encourage collaboration and positive problem solving.</p><p data-block-key=\"8699g\">We are a community that embraces collaboration, growth, and respect. Bullying, discrimination, or harassment on any basis will not be tolerated.</p><p data-block-key=\"51ufb\">If you experience or witness discrimination, harassment, or any form of bullying during the NASA Space Apps Challenge, or have any other concerns, please contact your Local Lead and/or the Space Apps Global Organizing (GO) Team at <a href=\"mailto:conduct@spaceappschallenge.org\">conduct@spaceappschallenge.org</a>. The GO Team will take appropriate action, which may include warning or expelling offending participants from the event.</p>"
+            },
+            {
+              "title": "What is the NASA Space Apps Challenge?",
+              "richText": "<p data-block-key=\"t5xua\">The NASA Space Apps Challenge is the largest annual global hackathon. This two-day event sparks innovation by mobilizing an engaged community of technologists and space science enthusiasts to answer the questions that benefit humanity, drive exploration, and exemplify community-driven, gold-standard science.</p><p data-block-key=\"d6qfg\">During the hackathon, participants gather at hundreds of in-person and virtual Local Events to respond to challenges authored by NASA subject matter experts. These challenges range in complexity and topic, tasking participants with everything from creating designing sustainable recycling systems for Mars to developing informational apps and software programs. Participants utilize NASA’s free and open data and its Space Agency Partners’ space-based data to address these real-world problems on Earth and in space.</p><p data-block-key=\"7ib4u\">After the hackathon, project submissions are judged by subject matter experts and winners are selected for Global Awards.</p><p data-block-key=\"6to2\">The NASA Space Apps Challenge inspires collaboration, creativity, and critical thinking. Participants have gone on to form companies inspired by their projects, develop professional careers via employment opportunities or skill development, and network with like-minded individuals in their local community and around the world.</p><p data-block-key=\"9e1bl\"><b>The next Space Apps Challenge will be held on November 14-15, 2026.</b></p>"
+            },
+            {
+              "title": "The NASA Space Apps Challenge Community",
+              "richText": "<p data-block-key=\"t5xua\">NASA Space Apps collaborates with an amazing community to make the Challenge happen. In addition to the thousands of hackathon participants around the world, we collaborate with:</p><p data-block-key=\"9p6dp\"><b>Subject Matter Experts (SMEs):</b> SMEs author challenge statements and offer their help during the event by answering participant questions in real time. They work at NASA, Space Agency Partners, and industry collaborators.</p><p data-block-key=\"h7rf\"><b>Space Agency Partners:</b> These space agencies from around the world provide space-based data and expertise for use in challenge statements and are involved in the judging process for submitted projects.</p><p data-block-key=\"3vsis\"><b>Local Leads:</b> Local Leads organize a Local Event for a specific city or town to participate in the NASA Space Apps Challenge. Click <a  href=\"https://www.spaceappschallenge.org/host-an-event/\"><u>here</u></a> to learn more about how to become a Local Lead.</p><p data-block-key=\"bp68o\"><b>Navigators:</b> Navigators are individuals who provide their expertise and experience with the NASA Space Apps Challenge and/or NASA’s open data to help guide participants through their hackathon journeys. Click <a  href=\"https://www.spaceappschallenge.org/become-a-navigator/\">here</a> to learn more about how to become a Navigator.</p><p data-block-key=\"7h3k6\"><b>Amplification Collaborator:</b> Amplification Collaborators are companies or organizations that promote the NASA Space Apps Challenge to their communities. Click <a  href=\"https://www.spaceappschallenge.org/become-a-collaborator/\">here</a> to learn more about how to become a Collaborator.</p><p data-block-key=\"4vobk\"><b>Global Collaborator:</b> Global Collaborators are companies or organizations that provide free tools and resources to NASA Space Apps Challenge participants to support the creation of their projects. Click <a  href=\"https://www.spaceappschallenge.org/become-a-collaborator/\">here</a> to learn more about how to become a Collaborator.</p>"
+            },
+            {
+              "title": "How can I get involved with the NASA Space Apps Challenge?",
+              "richText": "<ul><li data-block-key=\"t5xua\">Want to participate in the NASA Space Apps Challenge? The best place to start getting involved is the <a  href=\"https://www.spaceappschallenge.org/resources/participant-faqs/\"><b>Participant FAQ</b></a>, where you will find a step-by-step breakdown of what it looks like to participate, or our <a href=\"https://assets.spaceappschallenge.org/media/documents/2026_NASA_Space_Apps_Registration_Recruitment.pdf\" data-link><b>2026 Registration Flyer</b></a>.</li><li data-block-key=\"aeohm\">Do you want to join us as a Local Lead to host a NASA Space Apps Challenge for your city? Learn more about how to become a Local Lead <a  href=\"https://www.spaceappschallenge.org/host-an-event/\"><b>here</b></a>.</li><li data-block-key=\"9b1mn\">Do you want to provide expertise, experience, tools or resources? Learn more about how to become a <a  href=\"https://www.spaceappschallenge.org/become-a-collaborator/\"><b>Collaborator</b></a> or <a  href=\"https://www.spaceappschallenge.org/become-a-navigator/\"><b>Navigator</b></a><b>.</b></li><li data-block-key=\"dd2ut\">For the latest updates, follow #SpaceApps on <a href=\"http://twitter.com/spaceapps\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><b>X</b></a>, <a href=\"http://facebook.com/spaceappschallenge\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><b>Facebook</b></a>, <a href=\"https://www.instagram.com/nasa_spaceapps/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><b>Instagram</b></a><b>,</b> and <a href=\"https://www.youtube.com/c/NASASpaceAppsChallenge\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><b>YouTube</b></a>.</li></ul>"
+            },
+            {
+              "title": "How can I connect with the NASA Space Apps community?",
+              "richText": "<p data-block-key=\"5fg9p\">Follow us on <a href=\"https://twitter.com/spaceapps?lang=en\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>X</u></a>, <a href=\"https://www.facebook.com/spaceappschallenge/\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>Facebook</u></a>, <a href=\"https://www.instagram.com/nasa_spaceapps/?hl=en\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>Instagram</u></a>, and <a href=\"https://www.youtube.com/c/nasaspaceappschallenge\" target=\"_blank\" rel=\"noopener noreferrer\" data-external ><u>YouTube</u></a> to connect with the NASA Space Apps community! Share your excitement and hackathon journey using #SpaceApps.</p><p data-block-key=\"2m477\">If you’d like to be more involved, learn more about how to become a <a  href=\"https://www.spaceappschallenge.org/host-an-event/\">Local Lead</a>.</p>"
+            },
+            {
+              "title": "What was the NASA Space Apps Collective?",
+              "richText": "<p data-block-key=\"t5xua\">The NASA Space Apps Collective (2023-2025) was a year-round initiative designed to build capacity and skills within the NASA Space Apps community through learning, connection, and collaboration around using NASA data.</p><p data-block-key=\"e0m4v\"><a  href=\"https://www.spaceappschallenge.org/collective/\"><span class=\"cta-button cta-button--blue\">Learn more about the Collective</span class=\"cta-button cta-button--blue\"></a></p>"
+            },
+            {
+              "title": "Where can I get a copy of the NASA Space Apps Challenge logo?",
+              "richText": "<p data-block-key=\"5fg9p\">Access the NASA Space Apps Challenge Logo and Brand Guidelines on our <a  href=\"https://www.spaceappschallenge.org/brand/\">Brand</a> page.</p>"
+            },
+            {
+              "title": "How do I contact NASA Space Apps GO Team?",
+              "richText": "<p data-block-key=\"5fg9p\">Reach out to us via our <a  href=\"https://www.spaceappschallenge.org/contact-us/\">Contact Us</a> page.</p>"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

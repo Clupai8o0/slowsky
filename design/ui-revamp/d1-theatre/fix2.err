@@ -1,0 +1,2 @@
+{"policy": "personal", "allowed_routes": ["agy", "codex", "cursor", "dsh", "grok", "kimi", "muse", "opencode"], "ladder": ["codex"]}
+{"provider": "codex", "model": "default", "ok": true, "secs": 802, "usage": {"total": 139271}, "quota": false, "error": ""}
